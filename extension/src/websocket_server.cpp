@@ -189,7 +189,9 @@ void WebSocketServer::ParseFrames(Client* client)
 {
     std::vector<char>& buf = client->recvBuf;
 
-    while (buf.size() >= 2) {
+    // Process at most ONE frame per call to prevent Reaper API calls
+    // from overlapping (e.g., track queries during FX enumeration).
+    if (buf.size() >= 2) {
         unsigned char opcode     = buf[0] & 0x0F;
         bool          masked     = (buf[1] & 0x80) != 0;
         uint64_t      payloadLen = buf[1] & 0x7F;

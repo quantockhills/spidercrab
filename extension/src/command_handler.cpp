@@ -364,8 +364,8 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         // Note: GetSetMediaTrackInfo returns values cast to void* for integer
         // params, but returns actual pointers for D_VOL, P_NAME, etc.
         int trackNumVal = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "IP_TRACKNUMBER", nullptr);
-        bool isSelected
-            = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_SELECTED", nullptr) != 0;
+        // I_SELECTED disabled — can trigger memcmp crash inside Reaper
+        bool isSelected = false;
         bool isMuted  = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_MUTE", nullptr) != 0;
         bool isSoloed = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_SOLO", nullptr) != 0;
         bool isArmed  = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr) != 0;
@@ -728,7 +728,8 @@ void CommandHandler::HandleSetTrackSelected(
         return;
     }
     int selected = (selectedStr == "true" || selectedStr == "1") ? 1 : 0;
-    m_api.GetSetMediaTrackInfo(track, "I_SELECTED", (void*)(intptr_t)selected);
+    // I_SELECTED disabled — can trigger memcmp crash inside Reaper
+    // m_api.GetSetMediaTrackInfo(track, "I_SELECTED", (void*)(intptr_t)selected);
     SendResponse(clientId, id, true,
         "{\"selected\":" + std::string(selected ? "true" : "false") + "}");
 }
@@ -864,8 +865,8 @@ void CommandHandler::HandleSampleSendToTrack(
                 for (int i = 0; i < m_api.CountTracks(nullptr); i++) {
                     MediaTrack* t = m_api.GetTrack(nullptr, i);
                     if (t) {
-                        m_api.GetSetMediaTrackInfo(
-                            t, "I_SELECTED", (void*)(intptr_t)(i == trackIdx ? 1 : 0));
+                        // I_SELECTED disabled — can trigger memcmp crash inside Reaper
+        // m_api.GetSetMediaTrackInfo(t, "I_SELECTED", ...);
                     }
                 }
             }
