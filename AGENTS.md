@@ -129,6 +129,39 @@ tea pr create --repo madhav/reaper-ipad
 - **Integration:** Extension + actual Reaper for end-to-end verification.
 - Run `make test` before committing.
 
+
+### Implementation & Verification Workflow
+
+Every feature goes through this sequence before its issue is closed:
+
+**1. Before coding** — review the spec:
+- [ ] Read the Gitea issue for requirements
+- [ ] Check `docs/UI.md` for screen layouts and interactions
+- [ ] Check `docs/ARCHITECTURE.md` for patterns and constraints
+- [ ] Confirm the approach with Tamura if unclear
+
+**2. Implement** — write code + tests:
+- [ ] Write failing tests first (TDD)
+- [ ] Implement the feature
+- [ ] Make all tests pass
+- [ ] `make lint` and `make check` clean
+
+**3. Verify** — confirm the implementation matches the spec:
+- [ ] Does the UI behave as described in `docs/UI.md`? (run it and look)
+- [ ] Does the code follow the architecture in `docs/ARCHITECTURE.md`?
+- [ ] Does the implementation cover everything in the Gitea issue?
+- [ ] Are edge cases handled? (empty state, errors, network disconnect)
+- [ ] Are there tests for the new feature?
+- [ ] Do existing tests still pass? (`make test` + `cd frontend && npm test`)
+- [ ] Does the signal flow work end-to-end? (app → WS → extension → Reaper → back)
+
+**4. Close out:**
+- [ ] Close the Gitea issue
+- [ ] Update `docs/UI.md` or `docs/ARCHITECTURE.md` if the implementation diverged from the original design
+- [ ] Add to changelog
+
+**Label workflow:** When code is done but not yet verified, tag the issue with `needs-verification`. Once verified by running the app and matching against the UI doc, remove the label and close the issue.
+
 ### Getting Unstuck
 If you're stuck:
 1. **UI/UX design** — `docs/UI.md` for full screen layouts and interaction specs
