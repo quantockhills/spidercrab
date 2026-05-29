@@ -214,8 +214,10 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    Sets direction before building starts
 
 👷 Builder (3-5 min)
-   Read plan or issue → write code → compile → commit
-   Done. No testing, no verifying, no closing.
+   Read plan or issue → write code + tests → compile → commit
+   Done. No verifying, no closing.
+   ⚠️ Write failing tests first (TDD), even if they're simple.
+      The Tester will run them later — but they must exist.
 
    **When stuck / looped back:**
    - Check API/SDK docs (`docs/reaper-sdk/sdk/`) before guessing — wrong
@@ -224,9 +226,24 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    - `fprintf(stderr, ...)` for printf debugging
    - See `DEBUGGING.md` for all debugging tools
 
+   **Compilation fails?**
+   - Check the FIRST error, not the last — earlier errors cause cascading ones
+   - Look for new compiler warnings — they often point to real bugs
+   - Check the sysroot (`/tmp/sysroot`) exists if brew GCC complains about missing headers
+
 🔍 Reviewer (2-3 min) — fires after builder
    Read diff → check against AGENTS.md + UI.md + issue
    → approve OR flag issues → comment on Gitea
+
+   **Diff review checklist:**
+   - [ ] New compiler warnings? (check build output)
+   - [ ] Memory safety (C++): RAII, smart pointers, no raw new/delete?
+   - [ ] Error handling: what happens when WS disconnects? Reaper not running?
+   - [ ] Edge cases: empty track list, no FX, null pointers?
+   - [ ] Tests written? (builder must write tests — Tester just runs them)
+   - [ ] Do the tests actually prove the behavior, or just that code ran?
+   - [ ] API usage matches SDK docs? (`docs/reaper-sdk/sdk/reaper_plugin_functions.h`)
+   - [ ] No I_SELECTED calls? (known crash trigger — use GetSetMediaTrackInfo_String instead)
 
    **Debugging tools available:**
    - `docs/reaper-sdk/sdk/reaper_plugin_functions.h` — API signatures + docs

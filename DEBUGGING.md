@@ -73,14 +73,40 @@ Address Sanitizer is baked into the debug build
 (`BUILD_TYPE=debug`). It catches buffer overflows and use-after-free
 in our extension code. For crashes inside Reaper itself (libc), use GDB.
 
-### Known Crash: Reaper API Race Condition
-A segfault in `__memcmp_avx2_movbe` called from `GetSetMediaTrackInfo`
-indicates Reaper's internal string comparison failed (likely concurrent API
-calls from multiple WS commands).
+### Known Crash: GetSetMediaTrackInfo API Misuse
+A segfault in `__memcmp_avx2_movbe` triggered from within Reaper when
+`GetSetMediaTrackInfo(track, "P_NAME", buffer)` is called with a non-null
+buffer pointer. This is **API misuse**, not a Reaper bug.
 
-**Fix:** A mutex in `CommandHandler::HandleMessage` serializes all
-Reaper API calls. If crashes persist, check for other race conditions
-in the WS message processing pipeline.
+**The bug:** `GetSetMediaTrackInfo` takes `void* setNewValue` — when non-null,
+Reaper interprets it as the **new value to SET**, not a buffer to fill.
+Passing a stack buffer like `nameBuf[256]` tells Reaper: "set the track name
+to whatever garbage is in nameBuf." This empties all track names and
+corrupts Reaper's internal string table, causing the memcmp crash later.
+
+**Correct API for reading strings:** `GetSetMediaTrackInfo_String`:
+```cpp
+char nameBuf[256] = {0};
+m_api.GetSetMediaTrackInfo_String(track, "P_NAME", nameBuf, false);  // read
+m_api.GetSetMediaTrackInfo_String(track, "P_NAME", "New Name", true); // write
+```
+
+**Also crashes (same internal code path):**
+- `GetSetMediaTrackInfo` with any property name + non-null buffer
+- `GetSetMediaTrackInfo_String` with any property name (Chromium WS context)
+- `CSurf_TrackToID(track, false)` — may call GetSetMediaTrackInfo internally
+
+**Safe APIs (no property lookup):**
+- `CountTracks(nullptr)` — returns integer
+- `GetTrack(nullptr, idx)` — returns pointer by index
+
+**Workaround for FX enumeration crash:**
+The first `fx/enumerate` call via Chromium WS crashes Reaper. Pre-cache
+via Python WS (which works) and the frontend's second call returns
+instantly from cache. See Issue #31.
+
+**Lesson:** Check SDK docs (`docs/reaper-sdk/sdk/reaper_plugin_functions.h`)
+before changing debug tools. The `void*` cast hides the direction of data flow.
 
 ----
 
