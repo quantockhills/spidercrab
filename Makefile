@@ -54,6 +54,43 @@ frontend-build:
 
 # ---- Everything ----
 
+# ---- Headless Testing (requires Reaper + Xvfb) ----
+
+# Start Reaper headless with extension loaded (background)
+headless-start:
+	bash test/headless_test.sh --no-build
+
+# Quick check: is the WebSocket server running?
+headless-status:
+	@if ss -tlnp 2>/dev/null | grep -q :9224; then \
+		echo "✅ WebSocket server running on port 9224"; \
+	else \
+		echo "❌ WebSocket server not detected on port 9224"; \
+		echo "   Run 'make headless-launch' first"; \
+	fi
+
+# Kill headless Reaper
+headless-stop:
+	@pkill -x reaper 2>/dev/null && echo "✅ Reaper stopped" || echo "ℹ️  Reaper was not running"
+
+# Build, launch, and run headless connectivity tests
+headless-test:
+	bash test/headless_test.sh
+
+# Launch Reaper headless (background, for interactive use)
+headless-launch:
+	@echo "Starting Xvfb + Reaper headless..."
+	@if ! pgrep -x Xvfb > /dev/null 2>&1; then \
+		Xvfb :99 -screen 0 1024x768x24 & \
+		sleep 1; \
+	fi
+	@export DISPLAY=:99 && export LD_LIBRARY_PATH=/home/linuxbrew/.linuxbrew/lib:$$LD_LIBRARY_PATH && \
+		~/reaper-portable/reaper &
+	@sleep 3
+	@echo "✅ Reaper launched headless on :99"
+	@echo "   PID: $$(pgrep -x reaper)"
+	@echo "   WebSocket: port 9224"
+
 check: lint build test
 
 check-all: lint frontend-lint build frontend-build test frontend-test

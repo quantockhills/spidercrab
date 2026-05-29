@@ -64,6 +64,7 @@ SYSROOT_FLAGS="$SYSROOT_FLAGS -L/lib/x86_64-linux-gnu"
 SRC="$SCRIPT_DIR/src/main.cpp"
 SRC="$SRC $SCRIPT_DIR/src/websocket_server.cpp"
 SRC="$SRC $SCRIPT_DIR/src/command_handler.cpp"
+SRC="$SRC $SCRIPT_DIR/src/sha1_utils.cpp"
 
 # WDL jnetlib (needed for networking)
 WDL_DIR="$PROJECT_DIR/docs/WDL/WDL"
