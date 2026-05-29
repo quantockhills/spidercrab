@@ -162,9 +162,18 @@ Every feature goes through this sequence before its issue is closed:
 - [ ] Does the signal flow work end-to-end? (app → WS → extension → Reaper → back)
 
 **4. Close out:**
+- [ ] **Evidence required** — never close an issue without proof:
+      - Code changes: attach test output (`make test` / headless test run)
+      - UI features: screenshot or video
+      - Reaper integration: headless test script output showing the command and verified response
 - [ ] Close the Gitea issue
 - [ ] Update `docs/UI.md` or `docs/ARCHITECTURE.md` if the implementation diverged from the original design
 - [ ] Add to changelog
+
+**Sloppy close prevention — hard rules:**
+- Issues MUST NOT be closed based on "code compiles" alone
+- Issues MUST NOT be closed based on "I wrote the code, it should work"
+- If an issue can't be verified, it stays open. No exceptions.
 
 **Label workflow:** When code is done but not yet verified, tag the issue with `needs-verification`. Once verified by running the app and matching against the UI doc, remove the label and close the issue.
 
