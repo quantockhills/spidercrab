@@ -184,6 +184,7 @@ Every feature goes through this sequence before its issue is closed:
 - [ ] **Challenge your assumptions** — does your test actually prove the thing works, or just that the extension responds? (A passing test that tests the wrong thing is worse than no test.)
 - [ ] Does the UI behave as described in `docs/UI.md`? (run it and look)
 - [ ] Does the code follow the architecture in `docs/ARCHITECTURE.md`?
+- [ ] For UI/design work: does it match `design/design-guidelines.md`? (colors, fonts, spacing, square corners, pastel palette)
 - [ ] Does the implementation cover everything in the Gitea issue?
 - [ ] Are edge cases handled? (empty state, errors, network disconnect)
 - [ ] Are there tests for the new feature?
@@ -227,9 +228,14 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    ⚠️ Write failing tests first (TDD), even if they're simple.
       The Tester will run them later — but they must exist.
 
+   **Before coding, read:**
+   - For UI/design work: `design/design-guidelines.md` + `design/designer-prompt.md`
+   - For backend/C++ work: `docs/ARCHITECTURE.md`
+   - For protocol/API work: `docs/reaper-sdk/sdk/reaper_plugin_functions.h`
+   - Match the pipeline: `docs/workflows.md` (which stages apply to this work?)
+
    **When stuck / looped back:**
-   - Check API/SDK docs (`docs/reaper-sdk/sdk/`) before guessing — wrong
-     API usage can look like memory corruption
+   - Check API/SDK docs before guessing — wrong API usage looks like memory corruption
    - Use `make build-debug` (ASan) to catch buffer overflows early
    - `fprintf(stderr, ...)` for printf debugging
    - See `DEBUGGING.md` for all debugging tools
@@ -240,8 +246,13 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    - Check the sysroot (`/tmp/sysroot`) exists if brew GCC complains about missing headers
 
 🔍 Reviewer (2-3 min) — fires after builder
-   Read diff → check against AGENTS.md + UI.md + issue
+   Read diff → check against AGENTS.md + issue
    → approve OR flag issues → comment on Gitea
+
+   **References to check (task-dependent):**
+   - UI/design work: `design/design-guidelines.md` + `docs/UI.md`
+   - Backend/C++ work: `docs/ARCHITECTURE.md` + `docs/reaper-sdk/sdk/reaper_plugin_functions.h`
+   - Pipeline compliance: `docs/workflows.md` (did every stage run?)
 
    **Diff review checklist:**
    - [ ] New compiler warnings? (check build output)
@@ -252,6 +263,8 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    - [ ] Do the tests actually prove the behavior, or just that code ran?
    - [ ] API usage matches SDK docs? (`docs/reaper-sdk/sdk/reaper_plugin_functions.h`)
    - [ ] No I_SELECTED calls? (known crash trigger — use GetSetMediaTrackInfo_String instead)
+   - [ ] Design compliance (if UI work): matches design-guidelines.md? (colors, fonts, shapes)
+   - [ ] Architecture compliance: matches ARCHITECTURE.md?
 
    **Debugging tools available:**
    - `docs/reaper-sdk/sdk/reaper_plugin_functions.h` — API signatures + docs
