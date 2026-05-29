@@ -842,8 +842,8 @@ void CommandHandler::HandleSampleSendToTrack(
         }
     }
 
-    // InsertMedia mode: 1 = add media to selected track
-    int result = m_api.InsertMedia(filePath.c_str(), 1);
+    // InsertMedia mode: 512|0 = add media to absolute track index (trackIdx goes in high word)
+    int result = m_api.InsertMedia(filePath.c_str(), 0);
 
     if (result > 0) {
         SendResponse(clientId, id, true,
