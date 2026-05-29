@@ -58,6 +58,9 @@ public:
     // Handle an incoming JSON command
     void HandleMessage(int clientId, const std::string& message);
 
+    // Format a JSON response string (public for testing)
+    static std::string FormatResponse(const std::string& id, bool success, const std::string& payload);
+
 private:
     WebSocketServer* m_ws;
     ReaperAPI        m_api;

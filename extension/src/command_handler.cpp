@@ -176,6 +176,7 @@ struct JsonParser {
                 if (c == '"')
                     parseString();
                 else if (c == '{') {
+                    pos++; // skip opening {
                     int depth = 1;
                     while (depth > 0 && pos < s.size()) {
                         if (s[pos] == '{')
@@ -185,6 +186,7 @@ struct JsonParser {
                         pos++;
                     }
                 } else if (c == '[') {
+                    pos++; // skip opening [
                     int depth = 1;
                     while (depth > 0 && pos < s.size()) {
                         if (s[pos] == '[')
@@ -251,8 +253,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
     }
 }
 
-void CommandHandler::SendResponse(
-    int clientId, const std::string& id, bool success, const std::string& payload)
+std::string CommandHandler::FormatResponse(
+    const std::string& id, bool success, const std::string& payload)
 {
     std::string resp = "{";
     resp += json_string("type") + ":" + json_string("response") + ",";
@@ -261,6 +263,13 @@ void CommandHandler::SendResponse(
     resp += json_string("success") + ":" + (success ? "true" : "false") + ",";
     resp += json_string("payload") + ":" + payload;
     resp += "}";
+    return resp;
+}
+
+void CommandHandler::SendResponse(
+    int clientId, const std::string& id, bool success, const std::string& payload)
+{
+    std::string resp = FormatResponse(id, success, payload);
     m_ws->Send(clientId, resp);
 }
 
