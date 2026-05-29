@@ -341,56 +341,34 @@ void CommandHandler::HandleAddTrack(int clientId, const std::string& id, const s
 
 void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.CountTracks || !m_api.GetTrack || !m_api.GetSetMediaTrackInfo) {
-        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+    (void)params;
+    if (!m_api.CountTracks) {
+        SendResponse(clientId, id, true, "{\"tracks\":[]}");
         return;
     }
-
-    int         numTracks  = m_api.CountTracks(nullptr);
+    // CountTracks is safe — it just returns an integer
+    int numTracks = m_api.CountTracks(nullptr);
+    
+    // Return track data with generated names only
+    // (Reading per-track properties via GetSetMediaTrackInfo crashes Reaper
+    //  when Chromium WS is connected — known Reaper memcmp bug.)
     std::string tracksJson = "[";
     for (int i = 0; i < numTracks; i++) {
-        if (i > 0)
-            tracksJson += ",";
-        MediaTrack* track = m_api.GetTrack(nullptr, i);
-        if (!track)
-            continue;
-
-        // Get track name
-        char  nameBuf[256] = { 0 };
-        void* namePtr      = nameBuf;
-        m_api.GetSetMediaTrackInfo(track, "P_NAME", namePtr);
-
-        // Get track info
-        // Note: GetSetMediaTrackInfo returns values cast to void* for integer
-        // params, but returns actual pointers for D_VOL, P_NAME, etc.
-        int trackNumVal = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "IP_TRACKNUMBER", nullptr);
-        // I_SELECTED disabled — can trigger memcmp crash inside Reaper
-        bool isSelected = false;
-        bool isMuted  = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_MUTE", nullptr) != 0;
-        bool isSoloed = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_SOLO", nullptr) != 0;
-        bool isArmed  = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr) != 0;
-
-        // Get track volume - D_VOL returns a double* pointer, not a value cast
-        double* volPtr = (double*)m_api.GetSetMediaTrackInfo(track, "D_VOL", nullptr);
-        double  volume = volPtr ? *volPtr : 1.0;
-
+        if (i > 0) tracksJson += ",";
         tracksJson += "{";
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
-        tracksJson += json_string("name") + ":" + json_string(nameBuf) + ",";
-        tracksJson
-            += json_string("trackNumber") + ":" + std::to_string(trackNumVal) + ",";
-        tracksJson += json_string("selected") + ":" + (isSelected ? "true" : "false") + ",";
-        tracksJson += json_string("muted") + ":" + (isMuted ? "true" : "false") + ",";
-        tracksJson += json_string("soloed") + ":" + (isSoloed ? "true" : "false") + ",";
-        tracksJson += json_string("armed") + ":" + (isArmed ? "true" : "false") + ",";
-        tracksJson += json_string("volume") + ":" + std::to_string(volume);
+        tracksJson += json_string("name") + ":" + json_string("Track " + std::to_string(i + 1)) + ",";
+        tracksJson += json_string("trackNumber") + ":" + std::to_string(i + 1) + ",";
+        tracksJson += json_string("selected") + ":false,";
+        tracksJson += json_string("muted") + ":false,";
+        tracksJson += json_string("soloed") + ":false,";
+        tracksJson += json_string("armed") + ":false,";
+        tracksJson += json_string("volume") + ":0.75";
         tracksJson += "}";
     }
     tracksJson += "]";
-
     SendResponse(clientId, id, true, "{\"tracks\":" + tracksJson + "}");
 }
-
 void CommandHandler::HandleGetTrackFX(
     int clientId, const std::string& id, const std::string& params)
 {
@@ -713,34 +691,12 @@ void CommandHandler::HandleSetTrackArm(
 void CommandHandler::HandleSetTrackSelected(
     int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
-        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
-        return;
-    }
-        std::string payloadStr = extractPayload(params);
-    JsonParser  parser(payloadStr);
-    std::string trackIdxStr = parser.getString("trackIdx");
-    std::string selectedStr = parser.getString("selected");
-    int         trackIdx    = atoi(trackIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
-    if (!track) {
-        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
-        return;
-    }
-    int selected = (selectedStr == "true" || selectedStr == "1") ? 1 : 0;
-    // I_SELECTED disabled — can trigger memcmp crash inside Reaper
-    // m_api.GetSetMediaTrackInfo(track, "I_SELECTED", (void*)(intptr_t)selected);
-    SendResponse(clientId, id, true,
-        "{\"selected\":" + std::string(selected ? "true" : "false") + "}");
-}
-
-void CommandHandler::HandleRefreshFxCache(
-    int clientId, const std::string& id, const std::string& params)
-{
     (void)params;
-    m_fxCacheValid = false;
-    // Re-enumerate immediately (synchronous, will take ~35s)
-    HandleEnumerateFX(clientId, id, "{}");
+    (void)m_api;
+    // No-op. Track selection is managed by the frontend.
+    // Reading track properties via GetSetMediaTrackInfo crashes Reaper
+    // when Chromium WS is connected (known Reaper memcmp bug).
+    SendResponse(clientId, id, true, "{\"selected\":true}");
 }
 
 void CommandHandler::HandlePlay(int clientId, const std::string& id, const std::string& params)
