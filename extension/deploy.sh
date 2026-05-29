@@ -1,10 +1,9 @@
 #!/bin/bash
-# Full project build + deploy script
+# Build + deploy to Reaper's Plugins directory
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-
 BUILD_TYPE="${BUILD_TYPE:-release}"
 
 echo "=== Building C++ extension (${BUILD_TYPE}) ==="
@@ -15,11 +14,12 @@ SUFFIX=".so"
 
 echo ""
 echo "=== Deploying to Reaper ==="
-mkdir -p "$HOME/reaper-portable/UserPlugins"
-cp "$SCRIPT_DIR/build/reaper-ipad-ext${SUFFIX}" "$HOME/reaper-portable/UserPlugins/reaper-ipad-ext.so"
+# Must be named reaper_*.so (underscores, not hyphens) and in Plugins/
+mkdir -p "$HOME/reaper-portable/Plugins"
+cp "$SCRIPT_DIR/build/reaper-ipad-ext${SUFFIX}" "$HOME/reaper-portable/Plugins/reaper_ipad_ext.so"
 
-echo "Deployed to: $HOME/reaper-portable/UserPlugins/reaper-ipad-ext.so"
-ls -lh "$HOME/reaper-portable/UserPlugins/reaper-ipad-ext.so"
+echo "Deployed to: $HOME/reaper-portable/Plugins/reaper_ipad_ext.so"
+ls -lh "$HOME/reaper-portable/Plugins/reaper_ipad_ext.so"
 
 if [ "$BUILD_TYPE" = "debug" ]; then
     echo ""

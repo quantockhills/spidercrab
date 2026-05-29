@@ -230,12 +230,35 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         }
     });
 
-    // Register as a control surface
+    // Register the control surface TYPE (appears in Reaper prefs)
     rec->Register("csurf", &g_csurfReg);
 
-    // Also register the extension to receive the csurf_inst callback
-    // This allows adding the surface automatically without user config
-    rec->Register("csurf_inst", g_surface ? (void*)g_surface : nullptr);
+    // Create the surface instance directly and register it immediately.
+    // Without this, Reaper only creates the surface when the user manually
+    // adds it in Preferences -> Control/OSC/Web.
+    if (!g_surface) {
+        g_surface = new iPadControlSurface();
+
+        bool ok = g_wsServer.Start(g_port);
+        if (!ok) {
+            for (int p = g_port + 1; p < g_port + 10; p++) {
+                if (g_wsServer.Start(p)) {
+                    g_port = p;
+                    ok     = true;
+                    break;
+                }
+            }
+        }
+
+        if (ok) {
+            fprintf(stderr, "[reaper-ipad] WebSocket server started on port %d\n", g_port);
+        } else {
+            fprintf(stderr, "[reaper-ipad] Failed to start WebSocket server\n");
+        }
+    }
+
+    rec->Register("csurf_inst", g_surface);
+
 
     // Save extstate for next launch
     if (SetProjExtState) {
