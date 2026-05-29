@@ -141,6 +141,7 @@ Every feature goes through this sequence before its issue is closed:
 - [ ] Confirm the approach with Tamura if unclear
 
 **2. Implement** — write code + tests:
+- [ ] **Keep the issue updated** — add progress comments as you go (bug found, fix attempted, tested, etc.). Don't wait until the end.
 - [ ] Write failing tests first (TDD)
 - [ ] Implement the feature
 - [ ] Make all tests pass
