@@ -9,7 +9,23 @@ Reaper backend. Tests live in `frontend/e2e/`.
 
 - Config: `frontend/playwright.config.ts`
 - Browser: Chromium (headless)
-- Runner: `npx playwright test`
+- Browser binary: installed via `npm install` → `@playwright/test` → cached in `~/.cache/ms-playwright/`
+- Runner: `npm run test:e2e`
+
+### System Dependencies
+
+Playwright requires system libraries for Chromium that may not be present on a bare system.
+Install them to run E2E tests:
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install -y libnss3 libatk-bridge2.0-0 libx11-6 libxcomposite1 \
+  libxdamage1 libxext6 libxfixes3 libxrandr2 libgbm1 libpango-1.0-0 \
+  libcairo2 libasound2 libatk1.0-0 libcups2 libdrm2
+
+# After installing deps, verify with:
+npx playwright test
+```
 
 ## Conventions
 
