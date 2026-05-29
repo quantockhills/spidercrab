@@ -233,6 +233,11 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         api.CSurf_OnStop                = CSurf_OnStop;
         api.GetPlayState                = GetPlayState;
         g_cmdHandler->SetApi(api);
+
+        // Pre-cache FX list at startup, before any WebSocket client
+        // connects. This avoids a crash when EnumInstalledFX is called
+        // from a Chromium WebSocket context (X11/SWELL display conflict).
+        g_cmdHandler->PreCacheFX();
     }
 
     // Set up WebSocket message handler
@@ -271,6 +276,10 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
 
     rec->Register("csurf_inst", g_surface);
 
+    // Pre-cache FX list at startup (runs only once, before any WS client)
+    if (g_cmdHandler) {
+        g_cmdHandler->PreCacheFX();
+    }
 
     // Save extstate for next launch
     if (SetProjExtState) {

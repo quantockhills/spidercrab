@@ -556,21 +556,10 @@ void CommandHandler::HandleGetTransport(
 // FX enumeration
 // ============================================================
 
-void CommandHandler::HandleEnumerateFX(
-    int clientId, const std::string& id, const std::string& params)
+// Shared FX enumeration logic (extracted so both HandleEnumerateFX and
+// PreCacheFX can reuse it without duplicating the loop).
+std::string CommandHandler::RunFXEnumeration()
 {
-    (void)params;
-    if (!m_api.EnumInstalledFX) {
-        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
-        return;
-    }
-
-    // Return cached FX list if available
-    if (m_fxCacheValid) {
-        SendResponse(clientId, id, true, "{\"fx\":" + m_fxCache + "}");
-        return;
-    }
-
     std::string fxList = "[";
     int         idx    = 0;
     while (true) {
@@ -610,10 +599,57 @@ void CommandHandler::HandleEnumerateFX(
     }
     fxList += "]";
 
-    // Cache the result so subsequent calls are instant
     m_fxCache      = fxList;
     m_fxCacheValid = true;
+    return fxList;
+}
 
+// Pre-populate FX cache at extension startup, before any WebSocket
+// client connects. This avoids the crash when EnumInstalledFX is called
+// from a Chromium WebSocket context (X11/SWELL display conflict).
+void CommandHandler::PreCacheFX()
+{
+    if (m_fxCacheValid) return;
+    if (!m_api.EnumInstalledFX) return;
+
+    fprintf(stderr, "[reaper-ipad] Pre-caching FX list...\n");
+    RunFXEnumeration();
+    fprintf(stderr,
+        "[reaper-ipad] FX cache populated (%zu entries)\n", m_fxCache.size());
+}
+
+void CommandHandler::HandleEnumerateFX(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    if (!m_api.EnumInstalledFX) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    // Return cached FX list if available (pre-cached or previously enumerated)
+    if (m_fxCacheValid) {
+        SendResponse(clientId, id, true, "{\"fx\":" + m_fxCache + "}");
+        return;
+    }
+
+    // Shouldn't normally reach this if PreCacheFX() was called at startup,
+    // but handle gracefully — enumerate and cache now
+    std::string fxList = RunFXEnumeration();
+    SendResponse(clientId, id, true, "{\"fx\":" + fxList + "}");
+}
+
+void CommandHandler::HandleRefreshFxCache(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    if (!m_api.EnumInstalledFX) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    m_fxCacheValid = false;
+    std::string fxList = RunFXEnumeration();
     SendResponse(clientId, id, true, "{\"fx\":" + fxList + "}");
 }
 

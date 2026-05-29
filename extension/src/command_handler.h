@@ -70,6 +70,11 @@ public:
     // Format a JSON response string (public for testing)
     static std::string FormatResponse(const std::string& id, bool success, const std::string& payload);
 
+    // Pre-populate FX cache at extension startup (avoids crash when
+    // EnumInstalledFX is called from Chromium WS context due to X11/SWELL
+    // display conflict). Safe to call before any WebSocket client connects.
+    void PreCacheFX();
+
 private:
     WebSocketServer* m_ws;
     ReaperAPI        m_api;
@@ -79,6 +84,10 @@ private:
     // FX enumeration cache (EnumInstalledFX takes ~35s)
     std::string m_fxCache;
     bool        m_fxCacheValid = false;
+
+    // Run the actual EnumInstalledFX loop (no response, just populate cache)
+    // Returns the JSON string of the FX list
+    std::string RunFXEnumeration();
 
     // Send a JSON response to a client
     void SendResponse(
