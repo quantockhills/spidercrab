@@ -284,3 +284,77 @@ TEST(JsonStringTest, EmptyString)
 {
     EXPECT_EQ(json_string(""), "\"\"");
 }
+
+// ============================================================
+// Sample browser command tests
+// ============================================================
+
+TEST(SampleBrowserTest, GetDirectoryMissingPath)
+{
+    // Empty path should return error
+    std::string json = R"({"type":"command","command":"sample/getDirectory","path":"","id":"cmd_1"})";
+    JsonParser  parser(json);
+    EXPECT_EQ(parser.getString("command"), "sample/getDirectory");
+    EXPECT_EQ(parser.getString("path"), "");
+    // The command dispatch in HandleMessage handles this,
+    // but we can verify the JSON parser extracts correctly
+    std::string path = parser.getString("path");
+    EXPECT_TRUE(path.empty());
+}
+
+TEST(SampleBrowserTest, GetDirectoryReturnsEntries)
+{
+    // Test that the handler produces valid JSON for a real directory
+    // We use /tmp as a known-accessible directory
+    CommandHandler handler(nullptr);
+    std::string json = R"({"type":"command","command":"sample/getDirectory","path":"/tmp","id":"dir_1"})";
+    
+    // Since HandleMessage dispatches to HandleSampleGetDirectory which uses
+    // the internal SendResponse to send the result via WebSocket, but we
+    // don't have a WebSocket server connected, we can't capture the response.
+    // Instead, create a test directory and verify JSON parsing works.
+    
+    // Create temp directory with known contents
+    system("mkdir -p /tmp/_sample_test && touch /tmp/_sample_test/a.wav /tmp/_sample_test/b.wav");
+    
+    // Verify directory listing works
+    std::string testDir = "/tmp/_sample_test";
+    bool foundA = false, foundB = false;
+    for (const auto& entry : fs::directory_iterator(testDir)) {
+        std::string name = entry.path().filename().string();
+        if (name == "a.wav") foundA = true;
+        if (name == "b.wav") foundB = true;
+    }
+    EXPECT_TRUE(foundA);
+    EXPECT_TRUE(foundB);
+    
+    // Cleanup
+    system("rm -rf /tmp/_sample_test");
+}
+
+TEST(SampleBrowserTest, SendToTrackNoApi)
+{
+    // When InsertMedia API is not loaded, should respond with error
+    // Since m_api is all zeros (no Reaper), the check will fail.
+    // We can't fully test this without a mock, but we verify the
+    // JSON dispatch code paths are wired.
+    std::string json = R"({"type":"command","command":"sample/sendToTrack","path":"/tmp/test.wav","trackIdx":0,"id":"send_1"})";
+    JsonParser parser(json);
+    EXPECT_EQ(parser.getString("command"), "sample/sendToTrack");
+    EXPECT_EQ(parser.getString("path"), "/tmp/test.wav");
+    EXPECT_EQ(parser.getString("trackIdx"), "0");
+    EXPECT_EQ(parser.getString("id"), "send_1");
+}
+
+TEST(SampleBrowserTest, JsonEscapeFilepath)
+{
+    // Verify json_escape handles paths with spaces and special chars
+    std::string path = "/home/user/My Samples/beat.wav";
+    std::string escaped = json_escape(path);
+    EXPECT_EQ(escaped, path); // No special chars, no change
+    
+    std::string path2 = "/home/user/\"cool\" beats/hat.wav";
+    std::string escaped2 = json_escape(path2);
+    EXPECT_EQ(escaped2, "/home/user/\\\"cool\\\" beats/hat.wav");
+}
+

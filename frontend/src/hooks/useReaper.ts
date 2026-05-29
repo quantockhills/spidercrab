@@ -29,6 +29,12 @@ export interface EnumeratedFx {
   format: string;
 }
 
+export interface DirEntry {
+  name: string;
+  type: 'dir' | 'file';
+  size: number;
+}
+
 export interface FxParam {
   index: number;
   name: string;
@@ -159,6 +165,19 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return ok;
   }, [tracks, setTrackArm, refreshTracks]);
 
+  // Sample browser commands
+  const getDirectory = useCallback(async (path: string): Promise<{entries: DirEntry[]}> => {
+    if (!clientRef.current) return {entries: []};
+    const resp = await clientRef.current.send('sample/getDirectory', { path });
+    return resp.payload as {entries: DirEntry[]};
+  }, []);
+
+  const sendSampleToTrack = useCallback(async (path: string, trackIdx: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('sample/sendToTrack', { path, trackIdx });
+    return resp.success;
+  }, []);
+
   const selectTrack = useCallback(async (trackIdx: number): Promise<boolean> => {
     return await setTrackSelected(trackIdx, true);
   }, [setTrackSelected]);
@@ -181,5 +200,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     toggleTrackSolo,
     toggleTrackArm,
     selectTrack,
+    getDirectory,
+    sendSampleToTrack,
   };
 }

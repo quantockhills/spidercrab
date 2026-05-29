@@ -2,7 +2,9 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <sstream>
+namespace fs = std::filesystem;
 
 // Minimal JSON builder (no dependencies)
 static std::string json_escape(const std::string& s)
@@ -280,6 +282,10 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleSetTrackArm(clientId, id, message);
         } else if (command == "track/setSelected") {
             HandleSetTrackSelected(clientId, id, message);
+        } else if (command == "sample/getDirectory") {
+            HandleSampleGetDirectory(clientId, id, message);
+        } else if (command == "sample/sendToTrack") {
+            HandleSampleSendToTrack(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -733,3 +739,120 @@ void CommandHandler::HandleStop(int clientId, const std::string& id, const std::
         SendResponse(clientId, id, false, "{\"error\":\"Transport API not loaded\"}");
     }
 }
+
+// ============================================================
+// Sample / media browser commands
+// ============================================================
+
+void CommandHandler::HandleSampleGetDirectory(
+    int clientId, const std::string& id, const std::string& params)
+{
+    // Extract "path" from params JSON
+    JsonParser parser(params);
+    std::string path = parser.getString("path");
+    if (path.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+        return;
+    }
+
+    std::string entries = "[";
+    bool first = true;
+
+    try {
+        // Add parent directory entry (..) for navigation
+        entries += "{\"name\":\"..\",\"type\":\"dir\",\"size\":0}";
+        first = false;
+
+        for (const auto& entry : fs::directory_iterator(path)) {
+            if (!first) entries += ",";
+            first = false;
+
+            std::string entryName = entry.path().filename().string();
+            std::string entryType = entry.is_directory() ? "dir" : "file";
+            uintmax_t   entrySize = entry.is_regular_file()
+                                         ? fs::file_size(entry.path())
+                                         : 0;
+
+            entries += "{";
+            entries += json_string("name") + ":" + json_string(entryName) + ",";
+            entries += json_string("type") + ":" + json_string(entryType) + ",";
+            entries += json_string("size") + ":" + std::to_string(entrySize);
+            entries += "}";
+        }
+    } catch (const fs::filesystem_error& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    entries += "]";
+
+    std::string payload = "{";
+    payload += json_string("path") + ":" + json_string(path) + ",";
+    payload += json_string("entries") + ":" + entries;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSampleSendToTrack(
+    int clientId, const std::string& id, const std::string& params)
+{
+    JsonParser  parser(params);
+    std::string filePath = parser.getString("path");
+    std::string trackIdxStr = parser.getString("trackIdx");
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+        return;
+    }
+
+    // Verify file exists
+    if (!fs::exists(filePath)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"File not found: " + json_escape(filePath) + "\"}");
+        return;
+    }
+
+    if (!m_api.InsertMedia) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"InsertMedia API not loaded\"}");
+        return;
+    }
+
+    // Select the target track if specified
+    if (!trackIdxStr.empty()) {
+        int trackIdx = atoi(trackIdxStr.c_str());
+        if (m_api.CountTracks && trackIdx >= 0 && trackIdx < m_api.CountTracks(nullptr)) {
+            MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+            if (track) {
+                // Select only this track, deselect others
+                for (int i = 0; i < m_api.CountTracks(nullptr); i++) {
+                    MediaTrack* t = m_api.GetTrack(nullptr, i);
+                    if (t) {
+                        m_api.GetSetMediaTrackInfo(
+                            t, "I_SELECTED", (void*)(intptr_t)(i == trackIdx ? 1 : 0));
+                    }
+                }
+            }
+        }
+    }
+
+    // InsertMedia mode: 1 = add media to selected track
+    int result = m_api.InsertMedia(filePath.c_str(), 1);
+
+    if (result > 0) {
+        SendResponse(clientId, id, true,
+            "{\"inserted\":true,\"result\":" + std::to_string(result) + "}");
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"InsertMedia returned " + std::to_string(result) + "\"}");
+    }
+}
+
+// ============================================================
+// Sample / media browser commands
+// ============================================================
+

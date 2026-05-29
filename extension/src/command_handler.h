@@ -47,6 +47,10 @@ struct ReaperAPI {
     void (*CSurf_OnPlay)() = nullptr;
     void (*CSurf_OnStop)() = nullptr;
     int (*GetPlayState)() = nullptr;
+
+    // Media/sample
+    int (*InsertMedia)(const char* file, int mode) = nullptr;
+    const char* (*EnumerateFiles)(const char* path, int fileindex) = nullptr;
 };
 
 class CommandHandler {
@@ -86,6 +90,10 @@ private:
     void HandleSetTrackSolo(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackArm(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackSelected(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — sample/media
+    void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleSendToTrack(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX
     void HandleEnumerateFX(int clientId, const std::string& id, const std::string& params);

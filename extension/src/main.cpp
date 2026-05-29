@@ -35,6 +35,8 @@
 #define REAPERAPI_WANT_GetProjExtState
 #define REAPERAPI_WANT_SetProjExtState
 #define REAPERAPI_WANT_EnumProjects
+#define REAPERAPI_WANT_InsertMedia
+#define REAPERAPI_WANT_EnumerateFiles
 
 #include "reaper_plugin.h"
 #include "reaper_plugin_functions.h"

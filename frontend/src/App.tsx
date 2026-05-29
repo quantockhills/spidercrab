@@ -3,6 +3,7 @@ import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
 import { ParamControl } from './components/ParamControl';
+import { SampleBrowser } from './components/SampleBrowser';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'settings';
 
@@ -28,6 +29,8 @@ function App() {
     setFxParam,
     addFx,
     deleteFx,
+    getDirectory,
+    sendSampleToTrack,
   } = useReaper();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
@@ -119,13 +122,13 @@ function App() {
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-hidden">
         {activeTab === 'media' && (
-          <div className="flex items-center justify-center h-full text-[var(--text-secondary)] p-8 text-center">
-            <div>
-              <div className="text-5xl mb-4">📂</div>
-              <p className="text-sm">Media Browser</p>
-              <p className="text-xs mt-1">Coming soon — browse samples and session view</p>
-            </div>
-          </div>
+          <SampleBrowser
+            tracks={tracks}
+            selectedTrack={selectedTrack}
+            getDirectory={getDirectory}
+            sendSampleToTrack={sendSampleToTrack}
+            onBack={() => setActiveTab('tracks')}
+          />
         )}
 
         {activeTab === 'fx' && (paramView ? (
