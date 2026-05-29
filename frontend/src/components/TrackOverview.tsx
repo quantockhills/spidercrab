@@ -76,7 +76,7 @@ export function TrackOverview({
             data-testid="transport-play"
             onClick={handlePlay}
             className={`
-              w-16 h-10 text-sm font-semibold transition-all active:scale-90
+              w-16 h-10 text-sm font-semibold transition-colors active:brightness-95
               ${isPlaying
                 ? 'bg-[var(--accent-green)]/25 text-[var(--accent-green)] ring-1 ring-[var(--accent-green)]/40'
                 : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
@@ -89,7 +89,7 @@ export function TrackOverview({
             data-testid="transport-stop"
             onClick={handleStop}
             className={`
-              w-16 h-10 text-sm font-semibold transition-all active:scale-90
+              w-16 h-10 text-sm font-semibold transition-colors active:brightness-95
               ${!isPlaying
                 ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
                 : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
@@ -112,13 +112,13 @@ export function TrackOverview({
         <div className="flex gap-2">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="text-xs px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] active:scale-95"
+            className="text-xs px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] active:brightness-95"
           >
             {collapsed ? 'Expand' : 'Collapse'}
           </button>
           <button
             onClick={onRefresh}
-            className="p-2 hover:bg-[var(--bg-tertiary)] active:scale-95 transition-transform text-sm"
+            className="p-2 hover:bg-[var(--bg-tertiary)] active:brightness-95 transition-colors text-sm"
             title="Refresh tracks"
           >
             ↻
@@ -133,7 +133,7 @@ export function TrackOverview({
           <p className="text-sm">No tracks loaded</p>
           <button
             onClick={onRefresh}
-            className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:scale-95 transition-transform"
+            className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:brightness-95 transition-colors"
           >
             Refresh
           </button>
@@ -185,7 +185,7 @@ function TrackRow({
       onClick={onSelect}
       className={`
         flex items-center gap-2.5 px-3 py-2 cursor-pointer
-        active:scale-[0.98] transition-all duration-100 select-none
+        active:brightness-95 transition-colors duration-100 select-none
         ${isSelected
           ? 'bg-[var(--bg-tertiary)] ring-1 ring-[var(--accent-orange)]/40'
           : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]'
@@ -220,7 +220,7 @@ function TrackRow({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
           className={`
-            w-9 h-9 text-xs font-semibold transition-all active:scale-90
+            w-11 h-11 text-xs font-semibold transition-colors active:brightness-95
             ${track.muted
               ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
               : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
@@ -234,7 +234,7 @@ function TrackRow({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleSolo(); }}
           className={`
-            w-9 h-9 text-xs font-semibold transition-all active:scale-90
+            w-11 h-11 text-xs font-semibold transition-colors active:brightness-95
             ${track.soloed
               ? 'bg-[var(--accent-yellow)]/25 text-[var(--accent-yellow)] ring-1 ring-[var(--accent-yellow)]/40'
               : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
@@ -248,7 +248,7 @@ function TrackRow({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleArm(); }}
           className={`
-            w-9 h-9 text-xs font-semibold transition-all active:scale-90
+            w-11 h-11 text-xs font-semibold transition-colors active:brightness-95
             ${track.armed
               ? 'bg-[var(--accent-red)]/30 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/50'
               : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'

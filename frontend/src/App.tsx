@@ -190,13 +190,13 @@ function App() {
               </div>
               <button
                 onClick={() => refreshTracks()}
-                className="w-full py-2.5 bg-[var(--bg-secondary)] text-sm active:scale-95 transition-transform"
+                className="w-full py-2.5 bg-[var(--bg-secondary)] text-sm active:brightness-95 transition-colors"
               >
                 Refresh Tracks
               </button>
               <button
                 onClick={() => refreshFxCache()}
-                className="w-full py-2.5 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:scale-95 transition-transform"
+                className="w-full py-2.5 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:brightness-95 transition-colors"
               >
                 Refresh Plugin List
               </button>

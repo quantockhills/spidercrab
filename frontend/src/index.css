@@ -22,6 +22,11 @@
   --danger: var(--accent-red);
   --warning: var(--accent-yellow);
   --border: #E0D8C4; /* subtle warm border */
+
+  /* Format badge colors (VST2, CLAP, DX — extending the pastel palette) */
+  --format-vst2: #7EC8A0;
+  --format-clap: #C49EC8;
+  --format-dx: #D48A9E;
 }
 
 body {
@@ -61,6 +66,12 @@ h1, h2, h3, h4, h5, h6, .font-semibold {
 }
 
 /* Touch-friendly tap targets */
+/* Apple HIG minimum touch targets */
 button, select, input {
-  min-height: 44px;  /* Apple HIG minimum */
+  min-height: 44px;
+}
+
+/* No border-radius on any interactive element — square corners per design spec */
+button, select, input, textarea {
+  border-radius: 0;
 }

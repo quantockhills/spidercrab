@@ -149,7 +149,7 @@ export function FxBrowser({
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] active:scale-95 transition-transform"
+            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
             aria-label="Back"
           >
             ← Back
@@ -223,7 +223,7 @@ export function FxBrowser({
                   .catch((err) => setError(err.message))
                   .finally(() => setLoading(false));
               }}
-              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:scale-95 transition-transform"
+              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:brightness-95 transition-colors"
             >
               Retry
             </button>
@@ -304,7 +304,7 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
     <div
       className="flex items-center gap-2.5 px-3 py-2
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
-        active:scale-[0.98] transition-all duration-100 select-none"
+        active:brightness-95 transition-all duration-100 select-none"
     >
       {/* FX name - tap to view params */}
       <button
@@ -338,7 +338,7 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
         disabled={selectedTrack === null || isAdding}
         className={`
           flex-shrink-0 px-3 py-1.5 text-xs font-medium
-          transition-all active:scale-90 min-h-[36px]
+          transition-all active:brightness-95 min-h-[44px]
           ${selectedTrack === null
             ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/50 cursor-not-allowed'
             : isAdded
@@ -361,15 +361,15 @@ function getFormatBadgeStyle(format: string): string {
     case 'VST3':
       return 'bg-[var(--accent-blue)]/20 text-[var(--accent-blue)]';
     case 'VST2':
-      return 'bg-[#7EC8A0]/20 text-[#7EC8A0]';
+      return 'bg-[var(--format-vst2)]/20 text-[var(--format-vst2)]';
     case 'CLAP':
-      return 'bg-[#C49EC8]/20 text-[#C49EC8]';
+      return 'bg-[var(--format-clap)]/20 text-[var(--format-clap)]';
     case 'JSFX':
       return 'bg-[var(--accent-green)]/20 text-[var(--accent-green)]';
     case 'AU':
       return 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)]';
     case 'DX':
-      return 'bg-[#D48A9E]/20 text-[#D48A9E]';
+      return 'bg-[var(--format-dx)]/20 text-[var(--format-dx)]';
     default:
       return 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]';
   }

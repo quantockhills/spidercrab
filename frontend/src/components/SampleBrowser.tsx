@@ -124,7 +124,7 @@ export function SampleBrowser({
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
-            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] active:scale-95 transition-transform"
+            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors active:brightness-95"
             aria-label="Back to tracks"
           >
             ← Back
@@ -188,7 +188,7 @@ export function SampleBrowser({
             <p className="text-sm text-[var(--accent-red)]">{error}</p>
             <button
               onClick={() => currentPath && loadDirectory(currentPath)}
-              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:scale-95 transition-transform"
+              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:brightness-95 transition-colors"
             >
               Retry
             </button>
@@ -255,7 +255,7 @@ function DirRow({ entry, onNavigate }: DirRowProps) {
       onClick={() => onNavigate(entry)}
       className="w-full flex items-center gap-3 px-3 py-2.5
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
-        active:scale-[0.98] transition-all duration-100 text-left"
+        active:brightness-95 transition-colors duration-100 text-left"
     >
       <span className="text-lg flex-shrink-0">
         {entry.name === '..' ? '📂' : '📁'}
@@ -285,7 +285,7 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, on
     <div
       className="flex items-center gap-2.5 px-3 py-2
         bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60
-        active:scale-[0.98] transition-all duration-100 select-none"
+        active:brightness-95 transition-colors duration-100 select-none"
     >
       {/* Icon + name */}
       <span className="text-base flex-shrink-0">{icon}</span>
@@ -303,7 +303,7 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, on
           disabled={!canSend || isSending}
           className={`
             flex-shrink-0 px-3 py-1.5 text-xs font-medium
-            transition-all active:scale-90 min-h-[32px]
+            transition-all active:brightness-95 min-h-[44px]
             ${!canSend
               ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/50 cursor-not-allowed'
               : isSent

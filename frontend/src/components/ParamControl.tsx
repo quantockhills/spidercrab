@@ -86,7 +86,7 @@ export function ParamControl({
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
-            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] active:scale-95 transition-transform flex-shrink-0"
+            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors active:brightness-95 flex-shrink-0"
             aria-label="Back"
           >
             ← Back
@@ -106,7 +106,7 @@ export function ParamControl({
             disabled={deleting}
             className="px-3 py-1.5 text-xs font-medium
               bg-[var(--accent-red)]/15 text-[var(--accent-red)]
-              active:scale-90 transition-all disabled:opacity-50"
+              active:brightness-95 transition-all disabled:opacity-50"
           >
             {deleting ? '...' : 'Remove FX'}
           </button>
@@ -133,7 +133,7 @@ export function ParamControl({
                   .catch((err) => setError(err.message))
                   .finally(() => setLoading(false));
               }}
-              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:scale-95 transition-transform"
+              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:brightness-95 transition-colors"
             >
               Retry
             </button>
