@@ -138,6 +138,11 @@ fi
 # =============================================================================
 log "Starting frontend dev server on port ${FRONTEND_PORT}..."
 cd "$SCRIPT_DIR"
+
+# Kill any stale Vite processes first (common cause of port conflicts)
+pkill -f "vite.*--port" 2>/dev/null || true
+sleep 1
+
 npm run dev -- --port "$FRONTEND_PORT" &>/tmp/vite-e2e.log &
 VITE_PID=$!
 log "Vite PID: $VITE_PID"
