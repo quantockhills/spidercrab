@@ -277,6 +277,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleStop(clientId, id, message);
         } else if (command == "fx/enumerate") {
             HandleEnumerateFX(clientId, id, message);
+        } else if (command == "fx/refreshCache") {
+            HandleRefreshFxCache(clientId, id, message);
         } else if (command == "track/setMute") {
             HandleSetTrackMute(clientId, id, message);
         } else if (command == "track/setSolo") {
@@ -583,6 +585,12 @@ void CommandHandler::HandleEnumerateFX(
         return;
     }
 
+    // Return cached FX list if available
+    if (m_fxCacheValid) {
+        SendResponse(clientId, id, true, "{\"fx\":" + m_fxCache + "}");
+        return;
+    }
+
     std::string fxList = "[";
     int         idx    = 0;
     while (true) {
@@ -621,6 +629,10 @@ void CommandHandler::HandleEnumerateFX(
         idx++;
     }
     fxList += "]";
+
+    // Cache the result so subsequent calls are instant
+    m_fxCache      = fxList;
+    m_fxCacheValid = true;
 
     SendResponse(clientId, id, true, "{\"fx\":" + fxList + "}");
 }
@@ -719,6 +731,15 @@ void CommandHandler::HandleSetTrackSelected(
     m_api.GetSetMediaTrackInfo(track, "I_SELECTED", (void*)(intptr_t)selected);
     SendResponse(clientId, id, true,
         "{\"selected\":" + std::string(selected ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleRefreshFxCache(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    m_fxCacheValid = false;
+    // Re-enumerate immediately (synchronous, will take ~35s)
+    HandleEnumerateFX(clientId, id, "{}");
 }
 
 void CommandHandler::HandlePlay(int clientId, const std::string& id, const std::string& params)

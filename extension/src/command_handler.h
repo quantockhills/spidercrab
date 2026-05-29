@@ -76,6 +76,10 @@ private:
     ResponseCallback m_responseCb;
     std::mutex       m_apiMutex;  // Serialize Reaper API calls to prevent race conditions
 
+    // FX enumeration cache (EnumInstalledFX takes ~35s)
+    std::string m_fxCache;
+    bool        m_fxCacheValid = false;
+
     // Send a JSON response to a client
     void SendResponse(
         int clientId, const std::string& id, bool success, const std::string& payload);
@@ -99,6 +103,7 @@ private:
 
     // Command handlers — FX
     void HandleEnumerateFX(int clientId, const std::string& id, const std::string& params);
+    void HandleRefreshFxCache(int clientId, const std::string& id, const std::string& params);
     void HandleGetTrackFX(int clientId, const std::string& id, const std::string& params);
     void HandleGetFXParams(int clientId, const std::string& id, const std::string& params);
     void HandleSetFXParam(int clientId, const std::string& id, const std::string& params);

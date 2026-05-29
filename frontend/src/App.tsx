@@ -31,6 +31,7 @@ function App() {
     deleteFx,
     getDirectory,
     sendSampleToTrack,
+    refreshFxCache,
     play,
     stop,
     getTransportState,
@@ -192,6 +193,12 @@ function App() {
                 className="w-full py-2.5 bg-white/10 rounded-xl text-sm active:scale-95 transition-transform"
               >
                 Refresh Tracks
+              </button>
+              <button
+                onClick={() => refreshFxCache()}
+                className="w-full py-2.5 bg-[var(--accent-dim)]/60 text-[var(--accent)] rounded-xl text-sm active:scale-95 transition-transform"
+              >
+                Refresh Plugin List
               </button>
             </div>
           </div>

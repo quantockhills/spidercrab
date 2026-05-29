@@ -197,6 +197,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return (resp.payload as any) || {playing: false, recording: false};
   }, []);
 
+  const refreshFxCache = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('fx/refreshCache', {}, 65000);
+    return resp.success;
+  }, []);
+
   const selectTrack = useCallback(async (trackIdx: number): Promise<boolean> => {
     return await setTrackSelected(trackIdx, true);
   }, [setTrackSelected]);
@@ -224,5 +230,6 @@ export function useReaper(opts: UseReaperOptions = {}) {
     getTransportState,
     getDirectory,
     sendSampleToTrack,
+    refreshFxCache,
   };
 }
