@@ -328,9 +328,11 @@ When working as an isolated sub-agent (20-min cron, spawned task):
 3. **Re-read before closing** — don't assume your first read is enough. Check again before you call it done.
 4. **Question your test** — does it prove the thing actually works, or just that the code ran? Test the behavior, not the response.
 5. **Phase 1 MVP only** — do NOT touch Phase 2, Future, or Process issues. If Phase 1 MVP is complete, exit.
-6. **Create issues as needed** — if you discover work that isn't tracked yet, create a new issue and add it to the Phase 1 MVP milestone with proper labels.
-7. **No silent failures** — if you're stuck, write to ~/blockers.md and move to the next issue. Don't pretend it's fine.
-8. **Evidence or nothing** — don't close issues without proof. "Code compiles" is not proof.
+6. **Create issues as needed** — if you discover work that isn't tracked yet, create a new issue. If it'\''s a bug or needed feature for the current milestone, add it to Phase 1 MVP. If it'\''s clearly a future feature, tag it with the appropriate milestone (Phase 2, Future, etc.).
+7. **Reopen on failure** — if you closed an issue but the fix doesn'\''t actually work (test fails, Reaper crashes, visual mismatch), reopen it immediately. Don'\''t leave broken closes behind.
+8. **Update milestones** — when you add issues to a milestone or complete one, update the milestone state. When open=0 for a milestone, write integration tests, run them, and close the milestone only if tests pass.
+9. **No silent failures** — if you'\''re stuck, write to ~/blockers.md and move to the next issue. Don'\''t pretend it'\''s fine.
+10. **Evidence or nothing** — don'\''t close issues without proof. "Code compiles" is not proof.
 
 ### Getting Unstuck
 If you're stuck:
