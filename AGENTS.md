@@ -66,9 +66,6 @@ Read this on every session start. Update it when decisions change.
 │   ├── reaper-sdk/        ← REAPER C/C++ extension SDK headers
 │   └── WDL/               ← Cockos Foundation Library (jnetlib networking)
 │
-├── WDL/                   ← Cockos Foundation Library (jnetlib networking)
-├── reaper-sdk/            ← REAPER C/C++ extension SDK
-│
 └── reaper/                ← (not in repo) Portable Reaper at ~/reaper-portable/
 ```
 
