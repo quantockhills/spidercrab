@@ -185,6 +185,29 @@ Every feature goes through this sequence before its issue is closed:
 
 **Label workflow:** When code is done but not yet verified, tag the issue with `needs-verification`. Once verified by running the app and matching against the UI doc, remove the label and close the issue.
 
+### Assembly Line Pattern — Faster Sub-agents
+
+Instead of one sub-agent doing everything, chain specialized sub-agents:
+
+```
+👷 Builder (3-5 min)
+   Read issue → write code → compile → commit
+   Done. Skips testing, verifying, closing.
+
+🔍 Reviewer (2-3 min) — fires after builder
+   Read diff → check against AGENTS.md + UI.md + issue
+   → flag issues → comment on Gitea
+
+🧪 Tester (3-5 min) — fires after reviewer clears
+   Run headless tests → C++ tests → frontend tests
+   → report results → close issue if green
+
+🔄 If reviewer finds issues → loop back to builder
+   Builder fixes → reviewer rechecks → tester validates
+```
+
+This keeps each sub-agent fast and focused. No compile-fix cycles for mistakes. No waiting on headless Reaper startup. The chain is slower end-to-end (9-13 min) but each link finishes faster and produces cleaner output. Chaining is manual (I spawn the next after the previous completes) to avoid merge conflicts.
+
 ### Sub-agent / Autonomous Worker Guidelines
 
 When working as an isolated sub-agent (20-min cron, spawned task):

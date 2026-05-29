@@ -243,40 +243,80 @@ except Exception as e:
     sys.exit(2)
 
 
-# ── Test 3: Change 5 different parameters ────────────────────────────
+# ── Test 3: Change 5 different parameters + verify each ────────────────
 print("\n──── ReaEQ Test 3: Change 5 params + verify each ────")
 
-# Pick 5 distinct parameters (indices 0-4, or up to available count)
+# Pick 5 distinct parameters
 num_to_test = min(5, len(params))
 chosen_params = params[:num_to_test]
 
-# For each param, compute a distinct new value that's clearly different
-# Use a value in the middle of the range to avoid extremes
+# For each param, compute a distinct new value
 param_changes = []
 for p in chosen_params:
     pmin = p['min']
     pmax = p['max']
-    mid = p['mid']
     cur = p['value']
-    # Set to ~midpoint of range (or if currently at mid, offset slightly)
+    mid = (pmin + pmax) / 2.0
     target = mid
-    if abs(target - cur) < 0.05:
-        # Current value is already near midpoint, move to 75% of range
+    if abs(target - cur) < 0.1:
         target = pmin + (pmax - pmin) * 0.75
     param_changes.append((p['index'], target))
 
 all_stuck = True
 for idx, (param_idx, new_val) in enumerate(param_changes):
     try:
-        # Send the set command
-        frames = send_and_recv(c, {
+        # Send set command on same connection
+        c.send({
             "type": "command", "command": "fx/setParam", "id": f"req_s{idx}",
             "payload": {"trackIdx": 0, "fxIdx": fx_idx,
                         "paramIdx": param_idx, "value": new_val}
         })
+        time.sleep(0.5)
 
+        # Re-read params to verify
+        c.send({
+            "type": "command", "command": "fx/getParams", "id": f"req_v{idx}",
+            "payload": {"trackIdx": 0, "fxIdx": fx_idx}
+        })
+        time.sleep(0.5)
+
+        # Read all pending frames
+        c.sock.settimeout(2)
+        rd = b''
+        try:
+            while True:
+                chunk = c.sock.recv(65536)
+                if not chunk: break
+                rd += chunk
+        except socket.timeout:
+            pass
+
+        # Parse frames
+        verify_frames = []
+        o = 0
+        while o + 2 <= len(rd):
+            mf = (rd[o+1] & 0x80) != 0
+            l = rd[o+1] & 0x7F
+            o += 2
+            if l == 126:
+                l = struct.unpack('>H', rd[o:o+2])[0]
+                o += 2
+            elif l == 127:
+                l = struct.unpack('>Q', rd[o:o+8])[0]
+                o += 8
+            mk2 = rd[o:o+4] if mf else None
+            if mf: o += 4
+            p = rd[o:o+l]
+            if mk2: p = bytes([p[i] ^ mk2[i % 4] for i in range(len(p))])
+            o += l
+            try:
+                verify_frames.append(json.loads(p.decode()))
+            except json.JSONDecodeError:
+                pass
+
+        # Find set response and verify
         set_ok = False
-        for f in frames:
+        for f in verify_frames:
             if f.get("type") == "response" and f.get("id") == f"req_s{idx}":
                 set_ok = f.get("payload", {}).get("set", False)
                 break
@@ -286,16 +326,9 @@ for idx, (param_idx, new_val) in enumerate(param_changes):
             all_stuck = False
             continue
 
-        # Re-read params to verify the change stuck
-        c2 = WSClient()  # fresh connection to avoid stale receive buffer
-        frames2 = send_and_recv(c2, {
-            "type": "command", "command": "fx/getParams", "id": f"req_v{idx}",
-            "payload": {"trackIdx": 0, "fxIdx": fx_idx}
-        })
-        c2.close()
-
+        # Find verify response
         actual_val = None
-        for f in frames2:
+        for f in verify_frames:
             if f.get("type") == "response" and f.get("id") == f"req_v{idx}":
                 reread_params = f.get("payload", {}).get("params", [])
                 for rp in reread_params:
@@ -311,37 +344,55 @@ for idx, (param_idx, new_val) in enumerate(param_changes):
                 f"param[{param_idx}] set to {new_val:.4f} but re-read shows {actual_val:.4f}")
             all_stuck = False
         else:
-            failed(f"param[{param_idx}] — could not re-read value to verify")
+            failed(f"param[{param_idx}] — could not re-read value")
             all_stuck = False
 
     except Exception as e:
         failed(f"param[{param_idx}] error: {e}")
         all_stuck = False
 
-
 # ── Cleanup: Remove ReaEQ from track ─────────────────────────────────
 print("\n──── ReaEQ Cleanup: Delete FX ────")
 try:
-    # Use a fresh connection for deletion
-    c.close()
-    c = WSClient()
-
-    frames = send_and_recv(c, {
+    c.send({
         "type": "command", "command": "fx/delete", "id": "req_d1",
         "payload": {"trackIdx": 0, "fxIdx": fx_idx}
     })
-
+    time.sleep(0.5)
+    c.sock.settimeout(2)
+    rd = b''
+    try:
+        while True:
+            chunk = c.sock.recv(65536)
+            if not chunk: break
+            rd += chunk
+    except socket.timeout:
+        pass
     deleted = False
-    for f in frames:
-        if f.get("type") == "response" and f.get("id") == "req_d1":
-            deleted = f.get("payload", {}).get("deleted", False)
-            break
-
+    o = 0
+    while o + 2 <= len(rd):
+        mf = (rd[o+1] & 0x80) != 0
+        l = rd[o+1] & 0x7F
+        o += 2
+        if l == 126:
+            l = struct.unpack('>H', rd[o:o+2])[0]; o += 2
+        elif l == 127:
+            l = struct.unpack('>Q', rd[o:o+8])[0]; o += 8
+        mk2 = rd[o:o+4] if mf else None
+        if mf: o += 4
+        p = rd[o:o+l]
+        if mk2: p = bytes([p[i] ^ mk2[i % 4] for i in range(len(p))])
+        o += l
+        try:
+            f = json.loads(p.decode())
+            if f.get("type") == "response" and f.get("id") == "req_d1":
+                deleted = f.get("payload", {}).get("deleted", False)
+        except json.JSONDecodeError:
+            pass
     if deleted:
         passed("ReaEQ removed from track 0")
     else:
         log("Warning: ReaEQ may not have been removed (non-critical)")
-
 except Exception as e:
     log(f"Cleanup deletion error: {e} (non-critical)")
 finally:
