@@ -70,14 +70,22 @@ private:
     void SendResponse(
         int clientId, const std::string& id, bool success, const std::string& payload);
 
-    // Command handlers
+    // Command handlers — transport
+    void HandleGetTransport(int clientId, const std::string& id, const std::string& params);
+    void HandlePlay(int clientId, const std::string& id, const std::string& params);
+    void HandleStop(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — tracks
     void HandleGetTracks(int clientId, const std::string& id, const std::string& params);
+    void HandleSetTrackMute(int clientId, const std::string& id, const std::string& params);
+    void HandleSetTrackSolo(int clientId, const std::string& id, const std::string& params);
+    void HandleSetTrackArm(int clientId, const std::string& id, const std::string& params);
+    void HandleSetTrackSelected(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — FX
     void HandleGetTrackFX(int clientId, const std::string& id, const std::string& params);
     void HandleGetFXParams(int clientId, const std::string& id, const std::string& params);
     void HandleSetFXParam(int clientId, const std::string& id, const std::string& params);
     void HandleAddFX(int clientId, const std::string& id, const std::string& params);
     void HandleDeleteFX(int clientId, const std::string& id, const std::string& params);
-    void HandleGetTransport(int clientId, const std::string& id, const std::string& params);
-    void HandlePlay(int clientId, const std::string& id, const std::string& params);
-    void HandleStop(int clientId, const std::string& id, const std::string& params);
 };

@@ -240,6 +240,14 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandlePlay(clientId, id, message);
         } else if (command == "transport/stop") {
             HandleStop(clientId, id, message);
+        } else if (command == "track/setMute") {
+            HandleSetTrackMute(clientId, id, message);
+        } else if (command == "track/setSolo") {
+            HandleSetTrackSolo(clientId, id, message);
+        } else if (command == "track/setArm") {
+            HandleSetTrackArm(clientId, id, message);
+        } else if (command == "track/setSelected") {
+            HandleSetTrackSelected(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -300,6 +308,11 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_SELECTED", nullptr) != 0;
         bool isMuted  = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_MUTE", nullptr) != 0;
         bool isSoloed = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_SOLO", nullptr) != 0;
+        bool isArmed  = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr) != 0;
+
+        // Get track volume (0-1 scale, convert to dB later in frontend)
+        double* volPtr = (double*)m_api.GetSetMediaTrackInfo(track, "D_VOL", nullptr);
+        double  volume = volPtr ? *volPtr : 1.0;
 
         tracksJson += "{";
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
@@ -308,7 +321,9 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             += json_string("trackNumber") + ":" + std::to_string(trackNum ? *trackNum : 0) + ",";
         tracksJson += json_string("selected") + ":" + (isSelected ? "true" : "false") + ",";
         tracksJson += json_string("muted") + ":" + (isMuted ? "true" : "false") + ",";
-        tracksJson += json_string("soloed") + ":" + (isSoloed ? "true" : "false");
+        tracksJson += json_string("soloed") + ":" + (isSoloed ? "true" : "false") + ",";
+        tracksJson += json_string("armed") + ":" + (isArmed ? "true" : "false") + ",";
+        tracksJson += json_string("volume") + ":" + std::to_string(volume);
         tracksJson += "}";
     }
     tracksJson += "]";
@@ -481,6 +496,98 @@ void CommandHandler::HandleGetTransport(
 {
     (void)params; // unused, but keep - we don't have the full transport API loaded yet
     SendResponse(clientId, id, true, "{\"playing\":false,\"recording\":false}");
+}
+
+// ============================================================
+// Track control handlers
+// ============================================================
+
+void CommandHandler::HandleSetTrackMute(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    JsonParser  parser(params);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string mutedStr    = parser.getString("muted");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+    int muted = (mutedStr == "true" || mutedStr == "1") ? 1 : 0;
+    m_api.GetSetMediaTrackInfo(track, "I_MUTE", (void*)(intptr_t)muted);
+    SendResponse(clientId, id, true,
+        "{\"muted\":" + std::string(muted ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleSetTrackSolo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    JsonParser  parser(params);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string soloedStr   = parser.getString("soloed");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+    int soloed = (soloedStr == "true" || soloedStr == "1") ? 1 : 0;
+    m_api.GetSetMediaTrackInfo(track, "I_SOLO", (void*)(intptr_t)soloed);
+    SendResponse(clientId, id, true,
+        "{\"soloed\":" + std::string(soloed ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleSetTrackArm(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    JsonParser  parser(params);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string armedStr    = parser.getString("armed");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+    int armed = (armedStr == "true" || armedStr == "1") ? 1 : 0;
+    m_api.GetSetMediaTrackInfo(track, "I_RECARM", (void*)(intptr_t)armed);
+    SendResponse(clientId, id, true,
+        "{\"armed\":" + std::string(armed ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleSetTrackSelected(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    JsonParser  parser(params);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string selectedStr = parser.getString("selected");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+    int selected = (selectedStr == "true" || selectedStr == "1") ? 1 : 0;
+    m_api.GetSetMediaTrackInfo(track, "I_SELECTED", (void*)(intptr_t)selected);
+    SendResponse(clientId, id, true,
+        "{\"selected\":" + std::string(selected ? "true" : "false") + "}");
 }
 
 void CommandHandler::HandlePlay(int clientId, const std::string& id, const std::string& params)
