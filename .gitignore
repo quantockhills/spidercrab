@@ -37,3 +37,4 @@ docs/helgobox/
 .env
 .env.local
 __pycache__/
+frontend/test-results/
