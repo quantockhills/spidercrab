@@ -17,6 +17,11 @@ Read this on every session start. Update it when decisions change.
 
 ## 📋 Daily Routine
 
+**Background worker:** An hourly cron job (`reaper-ipad autonomous worker`) runs silently
+in isolated sessions, picks the next open issue, works on it, commits, and pushes.
+It does NOT announce to Telegram — progress appears as commits and Gitea comments.
+The daily check-in (10am UTC) is separate and handles the summary/flagging.
+
 **Once per day, or at session start:**
 1. Check **Gitea issues** for anything new or updated:
    ```
