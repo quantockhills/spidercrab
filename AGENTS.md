@@ -208,6 +208,9 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    For any UI feature: launch full stack (Reaper headless + extension + frontend),
    take screenshots via Playwright, then have a vision-capable agent (Kimi K2.6)
    analyze each screenshot against claimed content.
+
+   🎯 **Always spawn with:** `model: "openrouter/moonshotai/kimi-k2.6"`
+   (DeepSeek V4 Flash can't do vision. The model override is explicit per-spawn.)
    Rules:
    - Wait for async data to arrive before capturing (wait for WebSocket responses,
      not just wall-clock timeouts)
