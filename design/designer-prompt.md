@@ -30,12 +30,24 @@ Read `design/design-guidelines.md` for the full rules. Key points:
 - **Square everything** — no rounded corners on buttons, cards, or panels
 - **Everforest Light palette** — warm beige backgrounds, soft dark text,
   green/orange/red accents
+- **Pastel aesthetic** — all icons and text should use muted/pastel tones,
+  not saturated colors. Inactive states use opacity/transparency, not gray.
 - **DAW aesthetic** — dense but clean, alternating row backgrounds,
   generous touch targets (min 44pt)
 - **Landscape-first** — 2360×1640, use the horizontal space for
   multi-panel layouts
-- **Sans-serif system font** — no custom fonts
+- **Typography: Inter font** — `https://rsms.me/inter/` or Google Fonts.
+  Regular (400) for body, Semi-Bold (600) for headings, Inter Mono for
+  numeric readouts. Load via CSS @font-face or CDN.
 - **No pure white or pure black** — use warm off-whites and soft darks
+
+## Font Resource
+
+**Inter** by Rasmus Andersson — open-source typeface optimized for
+screen readability. Available at:
+- Website: https://rsms.me/inter/
+- GitHub: https://github.com/rsms/inter
+- Google Fonts: https://fonts.google.com/specimen/Inter
 
 ## Current UI
 

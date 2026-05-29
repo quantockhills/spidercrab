@@ -75,8 +75,10 @@ The daily check-in (10am UTC) is separate and handles the summary/flagging.
 │
 ├── design/                ← Design system reference
 │   ├── design-guidelines.md ← Visual design rules (colors, shapes, typography)
-│   ├── designer-prompt.md ← Brief for a UI designer
-│   └── original-theme/    ← 80gray v2.2 REAPER themes (reference material)
+│   ├── designer-prompt.md ← Brief for a UI designer (includes Inter font ref)
+│   └── original-theme/    ← 80gray v2.2 REAPER themes (palette reference)
+│   ├── Inter font → rsms.me/inter (loaded via Google Fonts CDN)
+│   └── Everforest palette → github.com/sainnhe/everforest
 │
 └── reaper/                ← (not in repo) Portable Reaper at ~/reaper-portable/
 ```

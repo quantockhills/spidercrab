@@ -55,9 +55,12 @@ It evolves over time as decisions are made. **AGENTS.md** points here.
   off-whites and soft darks instead.
 
 ### Typography
-- Sans-serif, clean, legible at small sizes
-- Current: Calibri / Arial family
-- For the iPad app (React): system font stack, no custom fonts
+- **Inter font** — clean, highly legible at small sizes, perfect for dense DAW UIs
+- Download: [rsms.me/inter](https://rsms.me/inter/) or Google Fonts
+- Weight: Regular (400) for body text, Semi-Bold (600) for headings
+- Monospace variant (Inter Mono) for parameter values / numeric readouts
+- Loaded via CSS @font-face or Google Fonts CDN
+- Fallback: system sans-serif stack
 
 ### Layout Principles
 - DAW-inspired: dense but not cluttered
@@ -66,9 +69,11 @@ It evolves over time as decisions are made. **AGENTS.md** points here.
 - Landscape-first: two-panel layouts preferred when possible
 
 ### Icons
-- Simple, monoline icons
+- Simple, monoline icons — **pastel tones**, not saturated
 - Same stroke weight throughout
 - Semantic colors (green = playing/active, gray = idle)
+- Use subtle opacity/transparency for inactive states instead of gray
+- Minimal icon set: transport (▶ ■ ⏸), track (🔊 🔴), FX (🎛️), nav (📂 🎛️ 🎚️ ⚙️)
 
 ---
 

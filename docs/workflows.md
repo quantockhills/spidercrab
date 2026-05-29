@@ -61,7 +61,7 @@ Designer → Builder → Reviewer → Screenshot Verifier → Close
 
 | Stage | Tool | Pass/Fail |
 |-------|------|-----------|
-| **Designer** | Review design-guidelines.md, create spec/mockup | Approved |
+| **Designer** | Review design resources, create spec/mockup | Approved |
 | **Builder** | Implement CSS/components | Matches design spec |
 | **Reviewer** | Read diff, check design-guidelines compliance | No violations |
 | **Screenshot Verifier** | Full stack → Playwright screenshots → Kimi K2.6 visual check | Matches design spec |
@@ -73,6 +73,16 @@ Designer → Builder → Reviewer → Screenshot Verifier → Close
 - The Designer stage is a human-in-the-loop step (not automated).
 - The Screenshot Verifier should specifically check against the
   design guidelines (colors, shapes, spacing).
+
+### Designer Resources
+A Designer agent should check ALL of these before starting:
+- `design/design-guidelines.md` — full design rules (colors, fonts, shapes)
+- `design/designer-prompt.md` — brief with context + deliverables
+- `design/original-theme/` — 80gray v2.2 REAPER theme files (reference)
+- `docs/UI.md` — current screen layouts and interactions
+- Everforest palette: github.com/sainnhe/everforest
+- Inter font: rsms.me/inter (or Google Fonts)
+- Current screenshots: `gui_testing/*.png`
 
 ---
 
