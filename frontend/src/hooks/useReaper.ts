@@ -17,12 +17,19 @@ export interface Track {
   volume: number;
 }
 
-interface FxInfo {
+export interface FxInfo {
   index: number;
   name: string;
 }
 
-interface FxParam {
+export interface EnumeratedFx {
+  index: number;
+  name: string;
+  ident: string;
+  format: string;
+}
+
+export interface FxParam {
   index: number;
   name: string;
   value: number;
@@ -58,6 +65,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     if (!clientRef.current) return [];
     const resp = await clientRef.current.send('track/getAll');
     return (resp.payload as any).tracks as Track[];
+  }, []);
+
+  const enumerateFx = useCallback(async (): Promise<EnumeratedFx[]> => {
+    if (!clientRef.current) return [];
+    const resp = await clientRef.current.send('fx/enumerate');
+    return (resp.payload as any).fx as EnumeratedFx[];
   }, []);
 
   const getTrackFx = useCallback(async (trackIdx: number): Promise<FxInfo[]> => {
@@ -157,6 +170,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     getTrackFx,
     getFxParams,
     setFxParam,
+    enumerateFx,
     addFx,
     deleteFx,
     setTrackMute,

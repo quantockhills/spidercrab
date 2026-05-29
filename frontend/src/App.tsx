@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
+import { FxBrowser } from './components/FxBrowser';
+import { ParamControl } from './components/ParamControl';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'settings';
 
@@ -20,10 +22,24 @@ function App() {
     toggleTrackSolo,
     toggleTrackArm,
     selectTrack,
+    enumerateFx,
+    getTrackFx,
+    getFxParams,
+    setFxParam,
+    addFx,
+    deleteFx,
   } = useReaper();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
+
+  // Param control navigation state
+  const [paramView, setParamView] = useState<{
+    trackIdx: number;
+    trackName: string;
+    fxIdx: number;
+    fxName: string;
+  } | null>(null);
 
   // Refresh tracks on connect
   useEffect(() => {
@@ -48,6 +64,28 @@ function App() {
   const handleToggleArm = useCallback(async (index: number) => {
     await toggleTrackArm(index);
   }, [toggleTrackArm]);
+
+  // ── FX / Param navigation ──
+  const handleSelectFx = useCallback(
+    (trackIdx: number, fxIdx: number, fxName: string) => {
+      const track = tracks.find((t) => t.index === trackIdx);
+      setParamView({
+        trackIdx,
+        trackName: track?.name || `Track ${trackIdx + 1}`,
+        fxIdx,
+        fxName,
+      });
+    },
+    [tracks],
+  );
+
+  const handleBackFromParam = useCallback(() => {
+    setParamView(null);
+  }, []);
+
+  const handleBackFromFxBrowser = useCallback(() => {
+    setActiveTab('tracks');
+  }, []);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col">
@@ -90,15 +128,29 @@ function App() {
           </div>
         )}
 
-        {activeTab === 'fx' && (
-          <div className="flex items-center justify-center h-full text-[var(--text-secondary)] p-8 text-center">
-            <div>
-              <div className="text-5xl mb-4">🎛️</div>
-              <p className="text-sm">FX Browser</p>
-              <p className="text-xs mt-1">Coming soon — browse and edit FX parameters</p>
-            </div>
-          </div>
-        )}
+        {activeTab === 'fx' && (paramView ? (
+          <ParamControl
+            key={`${paramView.trackIdx}-${paramView.fxIdx}`}
+            trackIdx={paramView.trackIdx}
+            trackName={paramView.trackName}
+            fxIdx={paramView.fxIdx}
+            fxName={paramView.fxName}
+            getFxParams={getFxParams}
+            setFxParam={setFxParam}
+            deleteFx={deleteFx}
+            onBack={handleBackFromParam}
+          />
+        ) : (
+          <FxBrowser
+            tracks={tracks}
+            selectedTrack={selectedTrack}
+            enumerateFx={enumerateFx}
+            getTrackFx={getTrackFx}
+            addFx={addFx}
+            onSelectFx={handleSelectFx}
+            onBack={handleBackFromFxBrowser}
+          />
+        ))}
 
         {activeTab === 'tracks' && (
           <TrackOverview
