@@ -161,6 +161,15 @@ Every feature goes through this sequence before its issue is closed:
 - [ ] Check `docs/ARCHITECTURE.md` for patterns and constraints
 - [ ] Confirm the approach with Tamura if unclear
 
+**When debugging crashes/bugs:**
+- [ ] **Check API/SDK docs FIRST** — if a crash involves a platform API (Reaper SDK,
+      WebSocket, stdlib, etc.), read the official docs before reaching for debug
+      tools. Wrong function signatures or parameter semantics cause crashes that
+      look like memory corruption but are just API misuse.
+- [ ] `docs/reaper-sdk/sdk/reaper_plugin_functions.h` — function signatures + docs
+- [ ] `docs/reaper-sdk/sdk/reaper_plugin.h` — types + interfaces
+- [ ] Check if the error is reproducible without the platform (mock/fake the API)
+
 **2. Implement** — write code + tests:
 - [ ] **Keep the issue updated** — add progress comments as you go (bug found, fix attempted, tested, etc.). Don't wait until the end.
 - [ ] Write failing tests first (TDD)
