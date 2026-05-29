@@ -187,32 +187,43 @@ Every feature goes through this sequence before its issue is closed:
 
 ### Assembly Line Pattern — Faster Sub-agents
 
-Instead of one sub-agent doing everything, chain specialized sub-agents:
+Instead of one sub-agent doing everything, chain specialized sub-agents.
 
 ```
+📋 Planner (1-2 min) — optional, for complex features
+   Read issue + docs → write brief plan → comment on Gitea
+   Sets direction before building starts
+
 👷 Builder (3-5 min)
-   Read issue → write code → compile → commit
-   Done. Skips testing, verifying, closing.
+   Read plan or issue → write code → compile → commit
+   Done. No testing, no verifying, no closing.
 
 🔍 Reviewer (2-3 min) — fires after builder
    Read diff → check against AGENTS.md + UI.md + issue
-   → flag issues → comment on Gitea
+   → approve OR flag issues → comment on Gitea
+   ⚠️ If issues found → loop back to Builder
+   ✅ If clean → pass to Tester
 
 🧪 Tester (3-5 min) — fires after reviewer clears
    Run headless tests → C++ tests → frontend tests
-   → report results → close issue if green
-
-🔄 If reviewer finds issues → loop back to builder
-   Builder fixes → reviewer rechecks → tester validates
+   → report results
+   ⚠️ If tests fail → loop back to Builder + Reviewer
+   ✅ If all green → close issue
 ```
 
-This keeps each sub-agent fast and focused. No compile-fix cycles for mistakes. No waiting on headless Reaper startup. The chain is slower end-to-end (9-13 min) but each link finishes faster and produces cleaner output. Chaining is manual (I spawn the next after the previous completes) to avoid merge conflicts.
+Testing is conditional — it only runs after the reviewer approves.
+If tests fail, the whole build-review loop resets so the builder fixes
+with test feedback in hand.
+
+This keeps each sub-agent fast and focused. Chaining is manual
+(I spawn the next after the previous completes) to avoid merge conflicts.
 
 ### Sub-agent / Autonomous Worker Guidelines
 
 When working as an isolated sub-agent (20-min cron, spawned task):
 
-1. **Read AGENTS.md first** — every time. The project rules may have changed.
+1. **Start with a plan** — read the issue, read the relevant docs, think about what needs to happen. Comment a brief plan on the issue before writing code.
+2. **Read AGENTS.md first** — every time. The project rules may have changed.
 2. **Read the relevant docs** — UI.md, ARCHITECTURE.md, the issue itself. Don't code from memory.
 3. **Re-read before closing** — don't assume your first read is enough. Check again before you call it done.
 4. **Question your test** — does it prove the thing actually works, or just that the code ran? Test the behavior, not the response.
