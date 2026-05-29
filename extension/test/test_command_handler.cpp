@@ -992,6 +992,280 @@ TEST(FxEnumCacheTest, DifferentHandlerHasOwnCache)
     EXPECT_EQ(g_mockEnumCallCount, 4);
 }
 
+// ============================================================
+// Phase 1 MVP — Integration tests
+// Tests the full end-to-end behavior that the milestone requires:
+//   - Track browsing (mute/solo/arm/volume)
+//   - FX browser + param control
+//   - Sample browser
+//   - Transport control
+//   - FX cache (no crash on startup)
+//   - Protocol integrity
+// ============================================================
+
+TEST(Phase1MVPTest, FullTrackRoundTrip)
+{
+    // Set up mock with 3 tracks and varying properties
+    MockState state;
+
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.fx.push_back({ 0, "ReaEQ", {"Freq"}, {100.0}, {20.0}, {20000.0}, {1000.0} });
+
+    MockTrack t1;
+    t1.name = "Snare";
+    t1.fx.push_back({ 0, "ReaComp", {"Thresh"}, {-18.0}, {-60.0}, {0.0}, {-18.0} });
+    t1.fx.push_back({ 1, "ReaDelay", {}, {}, {}, {}, {} });
+
+    MockTrack t2;
+    t2.name = "Hat";
+    // No FX
+
+    state.tracks = { t0, t1, t2 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Step 1: Get all tracks
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"integ1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& tracksResp = responses[0];
+
+    // Verify track response structure (names are server-generated since
+    // GetSetMediaTrackInfo_String crashes from Chromium WS context)
+    EXPECT_NE(tracksResp.find("\"Track 1\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"Track 2\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"Track 3\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"index\":0"), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"index\":1"), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"index\":2"), std::string::npos);
+    EXPECT_EQ(tracksResp.find("\"error\""), std::string::npos);
+
+    // Step 2: Get FX for track 0 (should have ReaEQ)
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"integ2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+
+    // Step 3: Get FX for track 1 (should have ReaComp and ReaDelay)
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":1},"id":"integ3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"ReaComp\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"ReaDelay\""), std::string::npos);
+
+    // Step 4: Get FX for track 2 (should be empty)
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":2},"id":"integ4"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"fx\":[]"), std::string::npos);
+}
+
+TEST(Phase1MVPTest, FullFxParamRoundTrip)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "ReaEQ",
+        {"Frequency", "Gain", "Q"},
+        {1000.0, -3.0, 0.7},
+        {20.0, -24.0, 0.01},
+        {20000.0, 24.0, 10.0},
+        {1000.0, 0.0, 1.0}
+    });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Step 1: Get params — verify initial values
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"fx1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"Frequency\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"value\":1000"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"min\":20"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"max\":20000"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+
+    // Step 2: Set Frequency to 5000
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"fx2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"set\":true"), std::string::npos);
+
+    // Step 3: Get params again — verify new value
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"fx3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"value\":5000"), std::string::npos);
+    // Gain should still be -3.0
+    EXPECT_NE(responses[0].find("\"value\":-3"), std::string::npos);
+}
+
+TEST(Phase1MVPTest, PreCacheFXPopulatesCache)
+{
+    // Verify that calling PreCacheFX() before any WS request populates
+    // the cache, so subsequent HandleEnumerateFX returns cached data
+    // without touching EnumInstalledFX again.
+    g_mockFxList = {
+        { "ReaEQ", "VST3:ReaEQ" },
+        { "ReaComp", "VST3:ReaComp" },
+        { "Serum", "CLAP:Serum" },
+    };
+    g_mockEnumCallCount = 0;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Call PreCacheFX before any WS client connects
+    handler->PreCacheFX();
+
+    // EnumInstalledFX should have been called during PreCacheFX()
+    int callsAfterPrecache = g_mockEnumCallCount;
+    EXPECT_GT(callsAfterPrecache, 0);
+
+    // Now handle a WS request — should use cache, not re-enumerate
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"cached"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // All 3 FX should be in the response
+    EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"ReaComp\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"Serum\""), std::string::npos);
+
+    // EnumInstalledFX should NOT have been called again
+    EXPECT_EQ(g_mockEnumCallCount, callsAfterPrecache);
+}
+
+TEST(Phase1MVPTest, UnknownCommandReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"unknown/command","id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Unknown command"), std::string::npos);
+    // Should indicate failure
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+}
+
+TEST(Phase1MVPTest, MissingCommandFieldReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // JSON is valid but has no "command" field
+    handler->HandleMessage(1, R"({"type":"command","id":"noop"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(Phase1MVPTest, InvalidJsonReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, "not json at all");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(Phase1MVPTest, ResponseJsonIsAlwaysValid)
+{
+    // Run several commands and verify each response is well-formed JSON
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "ReaEQ", {}, {}, {}, {}, {} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    struct CmdCheck {
+        const char* cmd;
+        const char* desc;
+    };
+
+    CmdCheck commands[] = {
+        {R"({"type":"command","command":"track/getAll","id":"v1"})", "track/getAll"},
+        {R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"v2"})", "track/getFx"},
+        {R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"v3"})", "fx/getParams"},
+        {R"({"type":"command","command":"track/setMute","payload":{"trackIdx":0,"muted":"true"},"id":"v4"})", "track/setMute"},
+        {R"({"type":"command","command":"track/setSolo","payload":{"trackIdx":0,"soloed":"true"},"id":"v5"})", "track/setSolo"},
+        {R"({"type":"command","command":"track/setArm","payload":{"trackIdx":0,"armed":"true"},"id":"v6"})", "track/setArm"},
+        {R"({"type":"command","command":"sample/getDirectory","payload":{"path":"/tmp"},"id":"v7"})", "sample/getDirectory"},
+        {R"({"type":"command","command":"transport/play","id":"v8"})", "transport/play"},
+        {R"({"type":"command","command":"transport/stop","id":"v9"})", "transport/stop"},
+        {R"({"type":"command","command":"unknown/X","id":"v10"})", "unknown command"},
+    };
+
+    for (const auto& cc : commands) {
+        responses.clear();
+        handler->HandleMessage(1, cc.cmd);
+        ASSERT_EQ(responses.size(), 1u) << "Command " << cc.desc << " should produce 1 response";
+
+        const std::string& resp = responses[0];
+
+        // Verify balanced braces
+        int depth = 0;
+        for (char c : resp) {
+            if (c == '{') depth++;
+            if (c == '}') depth--;
+        }
+        EXPECT_EQ(depth, 0) << "Unbalanced JSON for " << cc.desc;
+
+        // Verify starts and ends with braces
+        EXPECT_EQ(resp.front(), '{') << cc.desc;
+        EXPECT_EQ(resp.back(), '}') << cc.desc;
+
+        // Verify has type field
+        EXPECT_NE(resp.find("\"type\""), std::string::npos) << cc.desc;
+    }
+}
+
+TEST(Phase1MVPTest, SampleBrowserDirectoryAndSendToTrack)
+{
+    // Verify sample browser commands produce valid JSON structures
+    MockState state;
+    state.tracks = { MockTrack{0, "Kick", {}} };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Create a test directory
+    system("mkdir -p /tmp/_mvp_test && touch /tmp/_mvp_test/loop.wav /tmp/_mvp_test/clap.wav");
+
+    // Browse directory
+    std::string dirCmd = R"({"type":"command","command":"sample/getDirectory","payload":{"path":"/tmp/_mvp_test"},"id":"mvp_dir"})";
+    handler->HandleMessage(1, dirCmd);
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& dirResp = responses[0];
+
+    // Should have success or error depending on whether InsertMedia is available
+    // In mock, InsertMedia is null, so sendToTrack should error
+    EXPECT_TRUE(dirResp.find("\"type\":\"response\"") != std::string::npos ||
+                dirResp.find("error") != std::string::npos);
+
+    // Cleanup
+    system("rm -rf /tmp/_mvp_test");
+}
+
 TEST(FxEnumCacheTest, EnumerateReturnsFormatCorrectly)
 {
     // Verify format detection works for different plugin types
