@@ -125,28 +125,35 @@ The sample browser lets you navigate local folders, preview audio, select region
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│ ← Back                          🔍 Search            │
+│ ← Back                          🔍 [Search...]       │
 ├──────────────────────────────────────────────────────┤
-│ Category: [All │ EQ │ Comp │ Reverb │ Delay ...]    │
+│ Format: [All ▼]   Category: [All │ EQ │ Comp ...]   │
 ├──────────────────────────────────────────────────────┤
 │                                                      │
-│ ReaEQ           ★★★★☆  [Add to Track]               │
-│ ReaComp         ★★★★☆  [Add to Track]               │
-│ ReaVerbate      ★★★☆☆  [Add to Track]               │
-│ ValhallaRoom    ★★★★★  [Add to Track]               │
-│ ...                                                   │
+│ ReaEQ           VST3        ★★★★☆  [Add to Track]   │
+│ ReaComp         VST3        ★★★★☆  [Add to Track]   │
+│ ReaVerbate      VST3        ★★★☆☆  [Add to Track]   │
+│ ValhallaRoom    VST         ★★★★★  [Add to Track]   │
+│ Serum           CLAP        ★★★★★  [Add to Track]   │
+│ JS: Delay       JSFX        ★★★☆☆  [Add to Track]   │
+│ ...                                                    │
 └──────────────────────────────────────────────────────┘
 ```
 
-- Browse by category (EQ, dynamics, reverb, delay, modulation, etc.)
-- Search by name
-- Tap "Add to Track" to insert into the selected Reaper track
-- Tap FX name to see parameters and tweak them
+- **Format dropdown** — filter by plugin format:
+  - `All` — show everything
+  - `VST`, `VST3`, `CLAP`, `CLAPI` (instruments), `JSFX`, `RfxChain`
+- **Category filter** — by effect type (EQ, Comp, Reverb, Delay, Modulation, etc.)
+- **Search** — filter by name as you type
+- Show format badge next to each plugin name
+- Tap **Add to Track** to insert into the selected Reaper track
+- Tap FX name to see its parameters and tweak via touch sliders
 
 ### FX Chain Browser
 
-Same as FX browser but shows `.RfxChain` files from a configurable folder.
+Same layout but shows `.RfxChain` files from a configurable folder.
 These are your single-FX chains acting as presets.
+Includes the same search and format/category filtering.
 
 ---
 
