@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <memory>
 #include <string>
 
 // Include the source directly so we have access to the JsonParser struct
@@ -439,12 +440,33 @@ static bool mock_TrackFX_Delete(MediaTrack* track, int fx)
 
 static void* mock_GetSetMediaTrackInfo(MediaTrack*, const char*, void*) { return nullptr; }
 
+// ---- Mock EnumInstalledFX ----
+
+struct MockFxEntry {
+    std::string name;
+    std::string ident;
+};
+
+static std::vector<MockFxEntry> g_mockFxList;
+static int g_mockEnumCallCount = 0;
+
+static bool mock_EnumInstalledFX(int index, const char** nameOut, const char** identOut)
+{
+    g_mockEnumCallCount++;
+    if (index < 0 || index >= (int)g_mockFxList.size())
+        return false;
+    if (nameOut)  *nameOut  = g_mockFxList[index].name.c_str();
+    if (identOut) *identOut = g_mockFxList[index].ident.c_str();
+    return true;
+}
+
 // ---- Helper: build a CommandHandler wired to mock API ----
 
-static CommandHandler MakeMockHandler(MockState* state, std::vector<std::string>* outResponses)
+static std::unique_ptr<CommandHandler> MakeMockHandler(
+    MockState* state, std::vector<std::string>* outResponses)
 {
     g_mock = state;
-    CommandHandler handler(nullptr);
+    auto handler = std::make_unique<CommandHandler>(nullptr);
     ReaperAPI      api{};
     api.CountTracks          = mock_CountTracks;
     api.GetTrack             = mock_GetTrack;
@@ -457,9 +479,10 @@ static CommandHandler MakeMockHandler(MockState* state, std::vector<std::string>
     api.TrackFX_AddByName    = mock_TrackFX_AddByName;
     api.TrackFX_Delete       = mock_TrackFX_Delete;
     api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
-    handler.SetApi(api);
+    api.EnumInstalledFX      = mock_EnumInstalledFX;
+    handler->SetApi(api);
     if (outResponses) {
-        handler.SetResponseCallback([outResponses](int, const std::string& resp) {
+        handler->SetResponseCallback([outResponses](int, const std::string& resp) {
             outResponses->push_back(resp);
         });
     }
@@ -490,7 +513,7 @@ TEST(FXRoundtripTest, GetTrackFXReturnsSpecificNames)
     auto handler = MakeMockHandler(&state, &responses);
 
     std::string cmd = R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"fx_1"})";
-    handler.HandleMessage(1, cmd);
+    handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
     std::string& resp = responses[0];
@@ -524,19 +547,19 @@ TEST(FXRoundtripTest, MultiTrackEachHasOwnFX)
     auto handler = MakeMockHandler(&state, &responses);
 
     // Track 0
-    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"t0"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"t0"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
     EXPECT_NE(responses[0].find("\"ReaDelay\""), std::string::npos);
 
     // Track 1
-    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":1},"id":"t1"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":1},"id":"t1"})");
     ASSERT_EQ(responses.size(), 2u);
     EXPECT_NE(responses[1].find("\"ReaComp\""), std::string::npos);
     EXPECT_EQ(responses[1].find("\"ReaEQ\""), std::string::npos); // should NOT be on track 1
 
     // Track 2 (no FX)
-    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":2},"id":"t2"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":2},"id":"t2"})");
     ASSERT_EQ(responses.size(), 3u);
     EXPECT_NE(responses[2].find("\"fx\":[]"), std::string::npos);
 }
@@ -556,7 +579,7 @@ TEST(FXRoundtripTest, GetFXParamsReturnsSpecificParamNames)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    handler.HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"p1"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"p1"})");
     ASSERT_EQ(responses.size(), 1u);
     std::string& resp = responses[0];
 
@@ -585,13 +608,13 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     auto handler = MakeMockHandler(&state, &responses);
 
     // Set Frequency to 5000.0
-    handler.HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"set1"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"set1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"set\":true"), std::string::npos);
 
     // Now get params and verify the new value
     responses.clear();
-    handler.HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"get1"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"get1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"value\":5000"), std::string::npos);
     // Gain should still be 0.0
@@ -609,13 +632,13 @@ TEST(FXRoundtripTest, AddFXThenListIncludesIt)
     auto handler = MakeMockHandler(&state, &responses);
 
     // Add ReaComp
-    handler.HandleMessage(1, R"({"type":"command","command":"fx/add","payload":{"trackIdx":0,"fxName":"ReaComp"},"id":"add1"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/add","payload":{"trackIdx":0,"fxName":"ReaComp"},"id":"add1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"fxIdx\":1"), std::string::npos);
 
     // List FX — should now have both
     responses.clear();
-    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"list1"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"list1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
     EXPECT_NE(responses[0].find("\"ReaComp\""), std::string::npos);
@@ -634,13 +657,13 @@ TEST(FXRoundtripTest, DeleteFXThenListExcludesIt)
     auto handler = MakeMockHandler(&state, &responses);
 
     // Delete the middle FX (ReaComp at index 1)
-    handler.HandleMessage(1, R"({"type":"command","command":"fx/delete","payload":{"trackIdx":0,"fxIdx":1},"id":"del1"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/delete","payload":{"trackIdx":0,"fxIdx":1},"id":"del1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"deleted\":true"), std::string::npos);
 
     // List FX — should have ReaEQ and ReaDelay, NOT ReaComp
     responses.clear();
-    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"list1"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"list1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
     EXPECT_NE(responses[0].find("\"ReaDelay\""), std::string::npos);
@@ -655,7 +678,7 @@ TEST(FXRoundtripTest, InvalidTrackIndexReturnsError)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"bad"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"bad"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
     EXPECT_NE(responses[0].find("Invalid track index"), std::string::npos);
@@ -676,7 +699,7 @@ TEST(FXRoundtripTest, ParamMinMaxMidAreCorrect)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    handler.HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"mm"})");
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"mm"})");
     ASSERT_EQ(responses.size(), 1u);
     std::string& resp = responses[0];
 
@@ -784,5 +807,218 @@ TEST(SampleBrowserTest, JsonEscapeFilepath)
     std::string path2 = "/home/user/\"cool\" beats/hat.wav";
     std::string escaped2 = json_escape(path2);
     EXPECT_EQ(escaped2, "/home/user/\\\"cool\\\" beats/hat.wav");
+}
+
+// ============================================================
+// FX enumeration caching tests
+// ============================================================
+
+TEST(FxEnumCacheTest, FirstEnumerateReturnsFullFxList)
+{
+    // Prepare mock FX list
+    g_mockFxList = {
+        { "ReaEQ", "VST3:ReaEQ" },
+        { "ReaComp", "VST3:ReaComp" },
+        { "Serum", "CLAP:Serum" },
+    };
+    g_mockEnumCallCount = 0;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // First enumeration should iterate through all FX
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify it returned all 3 FX
+    EXPECT_NE(resp.find("\"ReaEQ\""), std::string::npos);
+    EXPECT_NE(resp.find("\"ReaComp\""), std::string::npos);
+    EXPECT_NE(resp.find("\"Serum\""), std::string::npos);
+    EXPECT_NE(resp.find("\"CLAP:Serum\""), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // EnumInstalledFX should have been called for each index + 1 termination check
+    // For 3 FX: called at indices 0, 1, 2 (true), 3 (false) = 4 calls to the mock
+    EXPECT_EQ(g_mockEnumCallCount, 4);
+}
+
+TEST(FxEnumCacheTest, SecondEnumerateReturnsCachedResult)
+{
+    // Prepare mock FX list
+    g_mockFxList = {
+        { "ReaEQ", "VST3:ReaEQ" },
+        { "ReaComp", "VST3:ReaComp" },
+        { "Serum", "CLAP:Serum" },
+    };
+    g_mockEnumCallCount = 0;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // First enumeration - populates cache
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    int callsAfterFirst = g_mockEnumCallCount;
+    EXPECT_GT(callsAfterFirst, 0); // Should have called EnumInstalledFX
+
+    // Second enumeration - should return from cache, no re-enumeration
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify it returned the same 3 FX
+    EXPECT_NE(resp.find("\"ReaEQ\""), std::string::npos);
+    EXPECT_NE(resp.find("\"ReaComp\""), std::string::npos);
+    EXPECT_NE(resp.find("\"Serum\""), std::string::npos);
+
+    // EnumInstalledFX should NOT have been called again
+    // Call count should be exactly the same as after first call
+    EXPECT_EQ(g_mockEnumCallCount, callsAfterFirst);
+}
+
+TEST(FxEnumCacheTest, ThirdEnumerateReturnsCachedResult)
+{
+    // Test that multiple subsequent calls all hit the cache
+    g_mockFxList = {
+        { "ReaEQ", "VST3:ReaEQ" },
+    };
+    g_mockEnumCallCount = 0;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // First call populates cache
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
+
+    int callsAfterFirst = g_mockEnumCallCount;
+
+    // Second call hits cache
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_EQ(g_mockEnumCallCount, callsAfterFirst);
+
+    // Third call hits cache again
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_EQ(g_mockEnumCallCount, callsAfterFirst);
+}
+
+TEST(FxEnumCacheTest, RefreshCacheInvalidatesAndReenumerates)
+{
+    // Test that refreshCache invalidates the cache and re-enumerates
+    g_mockFxList = {
+        { "ReaEQ", "VST3:ReaEQ" },
+    };
+    g_mockEnumCallCount = 0;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // First enumeration populates cache
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    int callsAfterEnum = g_mockEnumCallCount;
+    EXPECT_GT(callsAfterEnum, 0);
+
+    // Second call hits cache
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_EQ(g_mockEnumCallCount, callsAfterEnum);
+
+    // Now refresh the cache
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/refreshCache","id":"refresh1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
+
+    // EnumInstalledFX should have been called again
+    int callsAfterRefresh = g_mockEnumCallCount;
+    EXPECT_GT(callsAfterRefresh, callsAfterEnum);
+
+    // After refresh, subsequent enumerate should hit the (fresh) cache
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_EQ(g_mockEnumCallCount, callsAfterRefresh);
+}
+
+TEST(FxEnumCacheTest, DifferentHandlerHasOwnCache)
+{
+    // Verify that each CommandHandler instance has its own cache
+    g_mockFxList = {
+        { "ReaEQ", "VST3:ReaEQ" },
+    };
+    g_mockEnumCallCount = 0;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler1 = MakeMockHandler(&state, &responses);
+    auto handler2 = MakeMockHandler(&state, &responses);
+
+    // Handler 1 enumerates - populates its cache
+    responses.clear();
+    handler1->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum1"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Handler 2 enumerates - should NOT use handler1's cache
+    responses.clear();
+    handler2->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum2"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // EnumInstalledFX should have been called for BOTH handlers
+    // First handler: 2 calls (idx 0 returns true, idx 1 returns false)
+    // Second handler: 2 calls
+    EXPECT_EQ(g_mockEnumCallCount, 4);
+}
+
+TEST(FxEnumCacheTest, EnumerateReturnsFormatCorrectly)
+{
+    // Verify format detection works for different plugin types
+    g_mockFxList = {
+        { "ReaEQ", "VST3:ReaEQ" },
+        { "ValhallaRoom", "VST:ValhallaRoom" },
+        { "Serum", "CLAP:Serum" },
+        { "JS: Delay", "JS:Delay" },
+        { "AU Instrument", "AU:Instrument" },
+    };
+    g_mockEnumCallCount = 0;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"fx/enumerate","id":"enum1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Check format strings are present
+    EXPECT_NE(resp.find("\"VST3\""), std::string::npos);
+    EXPECT_NE(resp.find("\"VST2\""), std::string::npos);
+    EXPECT_NE(resp.find("\"CLAP\""), std::string::npos);
+    EXPECT_NE(resp.find("\"JSFX\""), std::string::npos);
+    EXPECT_NE(resp.find("\"AU\""), std::string::npos);
 }
 
