@@ -46,6 +46,9 @@ frontend-lint:
 frontend-test:
 	cd frontend && npm test
 
+frontend-e2e:
+	bash frontend/run_e2e.sh
+
 frontend-typecheck:
 	cd frontend && npm run typecheck
 
@@ -92,7 +95,7 @@ headless-launch:
 
 check: lint build test
 
-check-all: lint frontend-lint build frontend-build test frontend-test
+check-all: lint frontend-lint build frontend-build test frontend-test frontend-e2e
 
 # ---- Git ----
 
