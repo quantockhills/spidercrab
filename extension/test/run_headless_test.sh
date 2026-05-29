@@ -506,6 +506,21 @@ else
 fi
 
 # =============================================================================
+# SECTION 2D: Hardened FX Roundtrip (specific names, multi-track, param assertions)
+# =============================================================================
+run_test "Hardened FX roundtrip (specific names, multi-track, param assertions)"
+HARDENED_OUTPUT=$(python3 "${SCRIPT_DIR}/hardened_fx_test.py" "${REAPER_PORT}" 2>&1)
+HARDENED_RESULT=$?
+echo "$HARDENED_OUTPUT" | sed 's/^/  /'
+HARDENED_PASS=$(echo "$HARDENED_OUTPUT" | grep -c '✅' || true)
+HARDENED_FAIL=$(echo "$HARDENED_OUTPUT" | grep -c '❌' || true)
+if [ "$HARDENED_RESULT" -eq 0 ]; then
+    pass "Hardened FX tests: $HARDENED_PASS passed, $HARDENED_FAIL failed (exit=0)"
+else
+    fail "Hardened FX tests: $HARDENED_PASS passed, $HARDENED_FAIL failed (exit=$HARDENED_RESULT)"
+fi
+
+# =============================================================================
 # SECTION 3: Summary# SECTION 3: Summary
 # =============================================================================
 echo ""
