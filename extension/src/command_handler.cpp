@@ -316,7 +316,11 @@ void CommandHandler::SendResponse(
     int clientId, const std::string& id, bool success, const std::string& payload)
 {
     std::string resp = FormatResponse(id, success, payload);
-    m_ws->Send(clientId, resp);
+    if (m_responseCb) {
+        m_responseCb(clientId, resp);
+    } else if (m_ws) {
+        m_ws->Send(clientId, resp);
+    }
 }
 
 void CommandHandler::HandleAddTrack(int clientId, const std::string& id, const std::string& params)

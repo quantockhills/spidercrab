@@ -286,8 +286,405 @@ TEST(JsonStringTest, EmptyString)
 }
 
 // ============================================================
-// Sample browser command tests
+// FX roundtrip tests — hardened, with specific names, multi-track,
+// and param name assertions.  Uses a mock ReaperAPI so no real
+// Reaper instance is required.
 // ============================================================
+
+struct MockTrack {
+    int         idx;
+    std::string name;
+    struct MockFX {
+        int                    idx;
+        std::string            name;
+        std::vector<std::string> paramNames;
+        std::vector<double>    paramVals;
+        std::vector<double>    paramMins;
+        std::vector<double>    paramMaxs;
+        std::vector<double>    paramMids;
+    };
+    std::vector<MockFX> fx;
+};
+
+struct MockState {
+    std::vector<MockTrack> tracks;
+};
+
+static MockState* g_mock = nullptr;
+
+// ---- Mock Reaper API functions ----
+
+static int mock_CountTracks(ReaProject*) { return g_mock ? (int)g_mock->tracks.size() : 0; }
+
+static MediaTrack* mock_GetTrack(ReaProject*, int idx)
+{
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return nullptr;
+    // Return a unique non-null pointer per valid track index so the handler
+    // can distinguish tracks.  We never dereference it.
+    return reinterpret_cast<MediaTrack*>(static_cast<uintptr_t>(idx + 1));
+}
+
+static int mock_TrackFX_GetCount(MediaTrack* track)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return 0;
+    return (int)g_mock->tracks[idx].fx.size();
+}
+
+static bool mock_TrackFX_GetFXName(MediaTrack* track, int fx, char* buf, int buf_sz)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return false;
+    auto& t = g_mock->tracks[idx];
+    if (fx < 0 || fx >= (int)t.fx.size())
+        return false;
+    snprintf(buf, (size_t)buf_sz, "%s", t.fx[fx].name.c_str());
+    return true;
+}
+
+static int mock_TrackFX_GetNumParams(MediaTrack* track, int fx)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return 0;
+    auto& t = g_mock->tracks[idx];
+    if (fx < 0 || fx >= (int)t.fx.size())
+        return 0;
+    return (int)t.fx[fx].paramNames.size();
+}
+
+static double mock_TrackFX_GetParamEx(
+    MediaTrack* track, int fx, int param, double* minOut, double* maxOut, double* midOut)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return 0.0;
+    auto& t = g_mock->tracks[idx];
+    if (fx < 0 || fx >= (int)t.fx.size())
+        return 0.0;
+    auto& f = t.fx[fx];
+    if (param < 0 || param >= (int)f.paramNames.size())
+        return 0.0;
+    if (minOut) *minOut = f.paramMins[param];
+    if (maxOut) *maxOut = f.paramMaxs[param];
+    if (midOut) *midOut = f.paramMids[param];
+    return f.paramVals[param];
+}
+
+static bool mock_TrackFX_GetParamName(MediaTrack* track, int fx, int param, char* buf, int buf_sz)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return false;
+    auto& t = g_mock->tracks[idx];
+    if (fx < 0 || fx >= (int)t.fx.size())
+        return false;
+    auto& f = t.fx[fx];
+    if (param < 0 || param >= (int)f.paramNames.size())
+        return false;
+    snprintf(buf, (size_t)buf_sz, "%s", f.paramNames[param].c_str());
+    return true;
+}
+
+static bool mock_TrackFX_SetParam(MediaTrack* track, int fx, int param, double val)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return false;
+    auto& t = g_mock->tracks[idx];
+    if (fx < 0 || fx >= (int)t.fx.size())
+        return false;
+    auto& f = t.fx[fx];
+    if (param < 0 || param >= (int)f.paramNames.size())
+        return false;
+    f.paramVals[param] = val;
+    return true;
+}
+
+static int mock_TrackFX_AddByName(MediaTrack* track, const char* fxname, bool, int)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return -1;
+    auto& t = g_mock->tracks[idx];
+    MockTrack::MockFX f;
+    f.idx         = (int)t.fx.size();
+    f.name        = fxname ? fxname : "";
+    f.paramNames  = { "Bypass", "Wet" };
+    f.paramVals   = { 0.0, 1.0 };
+    f.paramMins   = { 0.0, 0.0 };
+    f.paramMaxs   = { 1.0, 1.0 };
+    f.paramMids   = { 0.5, 0.5 };
+    t.fx.push_back(f);
+    return f.idx;
+}
+
+static bool mock_TrackFX_Delete(MediaTrack* track, int fx)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return false;
+    auto& t = g_mock->tracks[idx];
+    if (fx < 0 || fx >= (int)t.fx.size())
+        return false;
+    t.fx.erase(t.fx.begin() + fx);
+    // Re-index remaining FX
+    for (size_t i = 0; i < t.fx.size(); i++)
+        t.fx[i].idx = (int)i;
+    return true;
+}
+
+static void* mock_GetSetMediaTrackInfo(MediaTrack*, const char*, void*) { return nullptr; }
+
+// ---- Helper: build a CommandHandler wired to mock API ----
+
+static CommandHandler MakeMockHandler(MockState* state, std::vector<std::string>* outResponses)
+{
+    g_mock = state;
+    CommandHandler handler(nullptr);
+    ReaperAPI      api{};
+    api.CountTracks          = mock_CountTracks;
+    api.GetTrack             = mock_GetTrack;
+    api.TrackFX_GetCount     = mock_TrackFX_GetCount;
+    api.TrackFX_GetFXName    = mock_TrackFX_GetFXName;
+    api.TrackFX_GetNumParams = mock_TrackFX_GetNumParams;
+    api.TrackFX_GetParamEx   = mock_TrackFX_GetParamEx;
+    api.TrackFX_GetParamName = mock_TrackFX_GetParamName;
+    api.TrackFX_SetParam     = mock_TrackFX_SetParam;
+    api.TrackFX_AddByName    = mock_TrackFX_AddByName;
+    api.TrackFX_Delete       = mock_TrackFX_Delete;
+    api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
+    handler.SetApi(api);
+    if (outResponses) {
+        handler.SetResponseCallback([outResponses](int, const std::string& resp) {
+            outResponses->push_back(resp);
+        });
+    }
+    return handler;
+}
+
+// ---- Helper: extract a string value from JSON by key ----
+
+static std::string jsonExtract(const std::string& json, const char* key)
+{
+    JsonParser p(json);
+    return p.getString(key);
+}
+
+// ---- Tests ----
+
+TEST(FXRoundtripTest, GetTrackFXReturnsSpecificNames)
+{
+    MockState state;
+    MockTrack t;
+    t.name = "Guitar";
+    MockTrack::MockFX f1{ 0, "ReaEQ", { "Frequency", "Gain", "Q" }, { 1000.0, 0.0, 1.0 }, { 20.0, -24.0, 0.01 }, { 20000.0, 24.0, 10.0 }, { 1000.0, 0.0, 1.0 } };
+    MockTrack::MockFX f2{ 1, "ReaComp", { "Threshold", "Ratio", "Attack", "Release" }, { -18.0, 4.0, 10.0, 100.0 }, { -60.0, 1.0, 0.1, 1.0 }, { 0.0, 20.0, 300.0, 1000.0 }, { -18.0, 4.0, 10.0, 100.0 } };
+    t.fx = { f1, f2 };
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"fx_1"})";
+    handler.HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"ReaEQ\""), std::string::npos);
+    EXPECT_NE(resp.find("\"ReaComp\""), std::string::npos);
+    EXPECT_NE(resp.find("\"trackIdx\":0"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+}
+
+TEST(FXRoundtripTest, MultiTrackEachHasOwnFX)
+{
+    MockState state;
+
+    MockTrack t0;
+    t0.name = "Vocals";
+    t0.fx.push_back({ 0, "ReaEQ", {}, {}, {}, {}, {} });
+    t0.fx.push_back({ 1, "ReaDelay", {}, {}, {}, {}, {} });
+
+    MockTrack t1;
+    t1.name = "Drums";
+    t1.fx.push_back({ 0, "ReaComp", {}, {}, {}, {}, {} });
+
+    MockTrack t2;
+    t2.name = "Bass";
+    // No FX
+
+    state.tracks = { t0, t1, t2 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Track 0
+    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"t0"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"ReaDelay\""), std::string::npos);
+
+    // Track 1
+    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":1},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 2u);
+    EXPECT_NE(responses[1].find("\"ReaComp\""), std::string::npos);
+    EXPECT_EQ(responses[1].find("\"ReaEQ\""), std::string::npos); // should NOT be on track 1
+
+    // Track 2 (no FX)
+    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":2},"id":"t2"})");
+    ASSERT_EQ(responses.size(), 3u);
+    EXPECT_NE(responses[2].find("\"fx\":[]"), std::string::npos);
+}
+
+TEST(FXRoundtripTest, GetFXParamsReturnsSpecificParamNames)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "ReaEQ",
+        { "Frequency", "Gain", "Q" },
+        { 1000.0, -3.0, 0.7 },
+        { 20.0, -24.0, 0.01 },
+        { 20000.0, 24.0, 10.0 },
+        { 1000.0, 0.0, 1.0 } });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler.HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"p1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"Frequency\""), std::string::npos);
+    EXPECT_NE(resp.find("\"Gain\""), std::string::npos);
+    EXPECT_NE(resp.find("\"Q\""), std::string::npos);
+    EXPECT_NE(resp.find("\"value\":1000"), std::string::npos);
+    EXPECT_NE(resp.find("\"value\":-3"), std::string::npos);
+    EXPECT_NE(resp.find("\"value\":0.7"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+}
+
+TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "ReaEQ",
+        { "Frequency", "Gain" },
+        { 1000.0, 0.0 },
+        { 20.0, -24.0 },
+        { 20000.0, 24.0 },
+        { 1000.0, 0.0 } });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set Frequency to 5000.0
+    handler.HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"set1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"set\":true"), std::string::npos);
+
+    // Now get params and verify the new value
+    responses.clear();
+    handler.HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"get1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"value\":5000"), std::string::npos);
+    // Gain should still be 0.0
+    EXPECT_NE(responses[0].find("\"value\":0"), std::string::npos);
+}
+
+TEST(FXRoundtripTest, AddFXThenListIncludesIt)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "ReaEQ", {}, {}, {}, {}, {} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Add ReaComp
+    handler.HandleMessage(1, R"({"type":"command","command":"fx/add","payload":{"trackIdx":0,"fxName":"ReaComp"},"id":"add1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"fxIdx\":1"), std::string::npos);
+
+    // List FX — should now have both
+    responses.clear();
+    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"list1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"ReaComp\""), std::string::npos);
+}
+
+TEST(FXRoundtripTest, DeleteFXThenListExcludesIt)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "ReaEQ", {}, {}, {}, {}, {} });
+    t.fx.push_back({ 1, "ReaComp", {}, {}, {}, {}, {} });
+    t.fx.push_back({ 2, "ReaDelay", {}, {}, {}, {}, {} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Delete the middle FX (ReaComp at index 1)
+    handler.HandleMessage(1, R"({"type":"command","command":"fx/delete","payload":{"trackIdx":0,"fxIdx":1},"id":"del1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"deleted\":true"), std::string::npos);
+
+    // List FX — should have ReaEQ and ReaDelay, NOT ReaComp
+    responses.clear();
+    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"list1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"ReaEQ\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"ReaDelay\""), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"ReaComp\""), std::string::npos);
+}
+
+TEST(FXRoundtripTest, InvalidTrackIndexReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler.HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Invalid track index"), std::string::npos);
+}
+
+TEST(FXRoundtripTest, ParamMinMaxMidAreCorrect)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "ReaEQ",
+        { "Frequency" },
+        { 1000.0 },
+        { 20.0 },
+        { 20000.0 },
+        { 1000.0 } });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler.HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"mm"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"min\":20"), std::string::npos);
+    EXPECT_NE(resp.find("\"max\":20000"), std::string::npos);
+    EXPECT_NE(resp.find("\"mid\":1000"), std::string::npos);
+}
+
 
 TEST(SampleBrowserTest, GetDirectoryMissingPath)
 {
