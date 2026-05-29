@@ -75,19 +75,19 @@ export function useReaper(opts: UseReaperOptions = {}) {
 
   const enumerateFx = useCallback(async (): Promise<EnumeratedFx[]> => {
     if (!clientRef.current) return [];
-    const resp = await clientRef.current.send('fx/enumerate');
+    const resp = await clientRef.current.send('fx/enumerate', {}, 60000);
     return (resp.payload as any).fx as EnumeratedFx[];
   }, []);
 
   const getTrackFx = useCallback(async (trackIdx: number): Promise<FxInfo[]> => {
     if (!clientRef.current) return [];
-    const resp = await clientRef.current.send('track/getFx', { trackIdx });
+    const resp = await clientRef.current.send('track/getFx', { trackIdx }, 30000);
     return (resp.payload as any).fx as FxInfo[];
   }, []);
 
   const getFxParams = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxParam[]> => {
     if (!clientRef.current) return [];
-    const resp = await clientRef.current.send('fx/getParams', { trackIdx, fxIdx });
+    const resp = await clientRef.current.send('fx/getParams', { trackIdx, fxIdx }, 30000);
     return (resp.payload as any).params as FxParam[];
   }, []);
 

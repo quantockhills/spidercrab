@@ -145,7 +145,7 @@ export class WsClient {
     this.ws = null;
   }
 
-  send(command: string, params: Record<string, unknown> = {}, timeoutMs = 5000): Promise<WsResponse> {
+  send(command: string, params: Record<string, unknown> = {}, timeoutMs = 30000): Promise<WsResponse> {
     return new Promise((resolve, reject) => {
       const id = `cmd_${++this.commandIdCounter}`;
       const msg: WsCommand = { type: 'command', command, id, ...params };
