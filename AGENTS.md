@@ -62,6 +62,7 @@ Read this on every session start. Update it when decisions change.
 │
 ├── docs/                  ← Library repos + design docs (everything referenceable)
 │   ├── ARCHITECTURE.md    ← Design decisions and rationale
+│   ├── UI.md              ← UI/UX design spec (screens, interactions)
 │   ├── helgobox/          ← Cloned helgobox repo (Playtime 2 / ReaLearn API)
 │   ├── reaper-sdk/        ← REAPER C/C++ extension SDK headers
 │   └── WDL/               ← Cockos Foundation Library (jnetlib networking)
@@ -130,11 +131,12 @@ tea pr create --repo madhav/reaper-ipad
 
 ### Getting Unstuck
 If you're stuck:
-1. **Reaper API** — `docs/reaper-sdk/sdk/reaper_plugin_functions.h` (every function)
-2. **Networking** — `docs/WDL/WDL/jnetlib/` (listen.h, connection.h)
-3. **Playtime 2** — `docs/helgobox/playtime-api/src/lib.rs` (Rust API)
-4. **ReaLearn** — `docs/helgobox/doc/` for controller integration docs
-5. Ask Tamura — they know Reaper's internals better than any doc
+1. **UI/UX design** — `docs/UI.md` for full screen layouts and interaction specs
+2. **Reaper API** — `docs/reaper-sdk/sdk/reaper_plugin_functions.h` (every function)
+3. **Networking** — `docs/WDL/WDL/jnetlib/` (listen.h, connection.h)
+4. **Playtime 2** — `docs/helgobox/playtime-api/src/lib.rs` (Rust API)
+5. **ReaLearn** — `docs/helgobox/doc/` for controller integration docs
+6. Ask Tamura — they know Reaper's internals better than any doc
 
 ### Debugging
 - **ASan+UBSan** are baked into debug builds — they catch bugs at runtime automatically.
