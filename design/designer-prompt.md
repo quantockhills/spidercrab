@@ -24,22 +24,32 @@ https://github.com/sainnhe/everforest — Vim color scheme, warm earthy
 tones. The palette is defined in:
 https://github.com/sainnhe/everforest/blob/master/palette.md
 
+## The Vibe (read this first)
+
+This app should feel like:
+
+> Sitting in a sunlit room with a cup of tea, tweaking a mix on your iPad.
+> Everything is pastel, warm, and cozy. Inter font keeps it crisp and modern,
+> but the colors feel like watercolor on warm paper.
+> DAW power wrapped in Studio Ghibli warmth.
+
+Everforest'\''s motto is "Comfortable & Pleasant" — that'\''s the entire design
+philosophy. No cold grays, no harsh contrasts, no sterile tech vibes.
+Just warm tools that feel good to use.
+
 ## Design Guidelines
 
 Read `design/design-guidelines.md` for the full rules. Key points:
+- **Pastel everything** — desaturated Everforest colors, nothing should shout
 - **Square everything** — no rounded corners on buttons, cards, or panels
-- **Everforest Light palette** — warm beige backgrounds, soft dark text,
-  green/orange/red accents
-- **Pastel aesthetic** — all icons and text should use muted/pastel tones,
-  not saturated colors. Inactive states use opacity/transparency, not gray.
-- **DAW aesthetic** — dense but clean, alternating row backgrounds,
-  generous touch targets (min 44pt)
-- **Landscape-first** — 2360×1640, use the horizontal space for
-  multi-panel layouts
-- **Typography: Inter font** — `https://rsms.me/inter/` or Google Fonts.
-  Regular (400) for body, Semi-Bold (600) for headings, Inter Mono for
-  numeric readouts. Load via CSS @font-face or CDN.
-- **No pure white or pure black** — use warm off-whites and soft darks
+- **Everforest Light palette** — warm beige `#FDF6E3`, soft dark `#5C6A72`
+- **Minimal** — less chrome, more content. No redundant borders or shadows
+- **Warm** — every color has a touch of beige/cream
+- **Generous touch targets** — min 44pt for iPad fingers
+- **Landscape-first** — 2360×1640, two-panel layouts
+- **Typography: Inter** — Regular 400 body, Semi-Bold 600 headings,
+  Inter Mono for values. From Google Fonts CDN.
+- **No pure white or pure black** — warm off-whites and soft darks only
 
 ## Font Resource
 

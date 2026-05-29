@@ -215,6 +215,12 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    Read issue + docs → write brief plan → comment on Gitea
    Sets direction before building starts
 
+🎨 Designer (3-5 min) — for design/layout changes
+   Read design-guidelines.md + designer-prompt.md + original-theme/
+   → create Tailwind theme / component spec → comment on Gitea
+   Resources: design/*.md, original-theme/, gui_testing/*.png
+              rsms.me/inter, github.com/sainnhe/everforest
+
 👷 Builder (3-5 min)
    Read plan or issue → write code + tests → compile → commit
    Done. No verifying, no closing.

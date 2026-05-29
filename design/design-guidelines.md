@@ -1,7 +1,11 @@
-# Design Guidelines
+# Design Guidelines — reaper-ipad Vibe & Visual Language
 
-This file defines the visual design direction for the reaper-ipad app.
-It evolves over time as decisions are made. **AGENTS.md** points here.
+**This should feel like:** A warm, cozy DAW on an iPad. Like sitting in a
+sunlit room with a cup of tea, tweaking a mix. Soft pastels on warm paper.
+Inter font keeping everything crisp and modern. No sharp edges, no harsh
+contrasts, no cold tech vibes. DAW power wrapped in Studio Ghibli warmth.
+
+Everforest philosophy: "Comfortable & Pleasant" — that's the whole ethos.
 
 ---
 
@@ -12,68 +16,88 @@ It evolves over time as decisions are made. **AGENTS.md** points here.
 - **Theme adjuster:** `original-theme/80gray v2.0 Theme Adjuster.lua`
 - **Type:** REAPER theme (WALTER layout + color scheme)
 - **Notable:** Muted, warm, low-contrast UI. Uses square buttons, clean
-  track separators, and legible typography (Calibri / Arial).
-- **Everforest Light** variant applies the Everforest color palette:
-  warm beige backgrounds (`#FDF6E3`), green accents (`#8DA101`),
-  and soft muted foregrounds (`#5C6A72`).
+  track separators, and legible typography (Inter / system sans).
 
 ### 2. Everforest (Vim color scheme)
 - **Repo:** https://github.com/sainnhe/everforest
 - **Palette:** https://github.com/sainnhe/everforest/blob/master/palette.md
 - **Philosophy:** "Comfortable & Pleasant" — warm, earthy tones, reduced
   eye strain, optimized for long sessions.
-- **Key colors (light):**
-  - Background: `#FDF6E3` (medium)
-  - Foreground: `#5C6A72`
-  - Red: `#F85552` — errors, deletes
-  - Orange: `#F57D26` — operators, labels
-  - Yellow: `#DFA000` — types, warnings
-  - Green: `#8DA101` — functions, strings
-  - Aqua: `#35A77C` — constants
-  - Blue: `#3A94C5` — identifiers, info
-  - Purple: `#DF69BA` — special
-- **Available in both dark and light variants**, with hard/medium/soft
-  contrast sub-variants.
-- **Preferred mode:** Light (Everforest Light) — warm beige, not cold white.
+- **Preferred mode:** Light (warm beige, not cold white).
+
+### 3. Vibes (not technical, but essential)
+- Studio Ghibli warmth — think Howl's Moving Castle interior, Kiki's seaside
+- Watercolor on warm paper — nothing flat or digital-feeling
+- A cozy music studio with wooden desks and warm lamps
+- Clean and modern (Inter font) but not sterile (pastel colors)
+- 
 
 ---
 
 ## Current Design Rules
 
-### Shape & Form
-- **Square buttons, no rounded corners.** Everything should be
-  rectilinear. No pill buttons, no radius on cards, no curved edges.
-- Sharp corners reinforce the utilitarian/DAW aesthetic.
+### Overall Vibe (most important rule)
+- **Pastel everything.** Muted, desaturated versions of the Everforest colors.
+  Nothing should shout. Think watercolor, not acrylic.
+- **Minimal.** Less UI chrome, more content. No redundant borders, no
+  decorative elements, no shadows unless they serve a functional purpose
+  (active state indicators).
+- **Warm.** Even error states are warm red, not cold red. Every color has
+  a touch of beige/cream in it.
+- **Cozy DAW.** It should feel like a professional tool that someone
+  thoughtfully crafted, not a cold industrial panel.
 
-### Color
-- Base palette: Everforest Light (80gray variant)
-- Backgrounds: warm beige/off-white (`#FDF6E3` range)
-- Text: soft dark (`#5C6A72` range)
-- Accents: use Everforest accent colors (green for active, orange for
-  warnings, red for errors)
-- Avoid pure white (#FFFFFF) and pure black (#000000) — use warm
-  off-whites and soft darks instead.
+### Shape & Form
+- **Square everything — no rounded corners.** But soften with color and
+  spacing, not radius. The squareness should feel intentional, not harsh.
+- Buttons are rectangular, cards are rectangular, panels are rectangular.
+  No pill shapes, no border-radius anywhere.
+- Active states: subtle color fill, no box-shadows.
+- Hover/tap feedback: subtle brightness shift, no scale animations.
+
+### Color Palette (Everforest Light, pastel-adjusted)
+- **Background:** warm off-white `#FDF6E3` (like unbleached paper)
+- **Secondary bg:** slightly warmer `#F5EBD9` (alternating rows, cards)
+- **Tertiary bg:** `#EDE5D0` (hover states, pressed buttons)
+- **Text primary:** soft dark `#5C6A72` (not black — think pencil on paper)
+- **Text secondary:** `#859289` (labels, hints, less important info)
+- **Accent green:** `#A6C48A` (play, active, on states) — pastel green
+- **Accent red:** `#E67A6F` (stop, delete, errors) — pastel red
+- **Accent orange:** `#E8A84C` (warnings, selection) — pastel orange
+- **Accent yellow:** `#D4B96A` (solo, attention) — pastel yellow
+- **Accent blue:** `#7BB3C9` (info, links) — pastel blue
+- **Avoid pure white (#FFF) and pure black (#000)** everywhere.
 
 ### Typography
-- **Inter font** — clean, highly legible at small sizes, perfect for dense DAW UIs
-- Download: [rsms.me/inter](https://rsms.me/inter/) or Google Fonts
-- Weight: Regular (400) for body text, Semi-Bold (600) for headings
-- Monospace variant (Inter Mono) for parameter values / numeric readouts
-- Loaded via CSS @font-face or Google Fonts CDN
-- Fallback: system sans-serif stack
+- **Primary font: Inter** — clean, highly legible at small sizes
+  Download: [rsms.me/inter](https://rsms.me/inter/) or Google Fonts
+- **Weights:** Regular 400 for body, Semi-Bold 600 for headings
+- **Inter Mono** for parameter values, dB readouts, numeric displays
+- **Loading:** CSS @font-face from Google Fonts CDN
+- **Fallback:** system sans-serif stack (SF Pro on iPad)
+- **Size scale:** 10-12px for metadata/labels, 13-15px for body,
+  16-20px for headings. Dense but readable.
 
 ### Layout Principles
-- DAW-inspired: dense but not cluttered
-- Clear hierarchy with background shading (alternating row colors)
-- Generous touch targets for iPad (min 44pt tap area)
-- Landscape-first: two-panel layouts preferred when possible
+- **Landscape-first:** 2360×1640 iPad Pro. Two-panel layouts preferred:
+  master/detail (track list on left, detail on right).
+- **Dense but airy:** DAW density with breathing room. Generous padding
+  (12-16px) but compact data (tight type, minimal whitespace between lines).
+- **Touch targets:** minimum 44×44pt. iPad fingers, not mouse cursors.
+- **Alternating row backgrounds** for track lists and FX lists.
+  Use the secondary bg color, not stripes or borders.
 
 ### Icons
-- Simple, monoline icons — **pastel tones**, not saturated
-- Same stroke weight throughout
-- Semantic colors (green = playing/active, gray = idle)
-- Use subtle opacity/transparency for inactive states instead of gray
-- Minimal icon set: transport (▶ ■ ⏸), track (🔊 🔴), FX (🎛️), nav (📂 🎛️ 🎚️ ⚙️)
+- **Minimal monoline** — thin, consistent stroke weight throughout
+- **Pastel tones only** — no fully saturated colors on icons
+- Inactive states: reduce opacity to ~40%, don't change color
+- Active states: use the matching pastel accent color
+- **Icon set:**
+  - Transport: ▶ (play, pastel green), ■ (stop, pastel red), ⏸ (pause)
+  - Track: 🔊 (speaker), 🔴 (record arm, pastel red)
+  - FX: 🎛️ (knob icon)
+  - Navigation: 📂 (media), 🎛️ (FX), 🎚️ (tracks), ⚙️ (settings)
+  - Misc: ← (back), ↻ (refresh), ＋ (add), ✕ (close)
 
 ---
 
