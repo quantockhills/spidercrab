@@ -61,7 +61,7 @@ Designer → Builder → Reviewer → Screenshot Verifier → Close
 
 | Stage | Tool | Pass/Fail |
 |-------|------|-----------|
-| **Designer** | Read design docs + create Tailwind theme / component spec | Approved |
+| **Designer** | Read design docs → commit `design/spec-<issue>.md` → comment on issue | Approved |
 | **Builder** | Implement CSS/components | Matches design spec |
 | **Reviewer** | Read diff, check design-guidelines compliance | No violations |
 | **Screenshot Verifier** | Full stack → Playwright screenshots → Kimi K2.6 visual check | Matches design spec |

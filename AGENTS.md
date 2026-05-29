@@ -218,9 +218,11 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
 
 🎨 Designer (3-5 min) — for design/layout changes
    Read design-guidelines.md + designer-prompt.md + original-theme/
-   → create Tailwind theme / component spec → comment on Gitea
-   Resources: design/*.md, original-theme/, gui_testing/*.png
-              rsms.me/inter, github.com/sainnhe/everforest
+   → create Tailwind theme / component spec
+   **Output:** commit a spec file to `design/spec-<issue>.md` and
+   comment on the Gitea issue with what was created.
+   Resources: `design/*.md`, `original-theme/`, `gui_testing/*.png`,
+              `rsms.me/inter`, `github.com/sainnhe/everforest`
 
 👷 Builder (3-5 min)
    Read plan or issue → write code + tests → compile → commit
@@ -229,8 +231,9 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
       The Tester will run them later — but they must exist.
 
    **Before coding, read:**
-   - For UI/design work: `design/design-guidelines.md` + `design/designer-prompt.md`
-   - For backend/C++ work: `docs/ARCHITECTURE.md`
+   - If Designer stage ran: read `design/spec-<issue>.md` (the Designer's output)
+   - If no Designer: read `design/design-guidelines.md` (for UI work) or
+     `docs/ARCHITECTURE.md` (for backend work)
    - For protocol/API work: `docs/reaper-sdk/sdk/reaper_plugin_functions.h`
    - Match the pipeline: `docs/workflows.md` (which stages apply to this work?)
 
@@ -246,12 +249,13 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    - Check the sysroot (`/tmp/sysroot`) exists if brew GCC complains about missing headers
 
 🔍 Reviewer (2-3 min) — fires after builder
-   Read diff → check against AGENTS.md + issue
+   Read diff → check against AGENTS.md + issue + spec
    → approve OR flag issues → comment on Gitea
 
    **References to check (task-dependent):**
-   - UI/design work: `design/design-guidelines.md` + `docs/UI.md`
-   - Backend/C++ work: `docs/ARCHITECTURE.md` + `docs/reaper-sdk/sdk/reaper_plugin_functions.h`
+   - If Designer ran: check against `design/spec-<issue>.md` (the spec)
+   - If no Designer: check `design/design-guidelines.md` (for UI) or
+     `docs/ARCHITECTURE.md` (for backend)
    - Pipeline compliance: `docs/workflows.md` (did every stage run?)
 
    **Diff review checklist:**
