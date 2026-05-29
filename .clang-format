@@ -1,0 +1,12 @@
+BasedOnStyle: WebKit
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 100
+AccessModifierOffset: -4
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AllowShortFunctionsOnASingleLine: Inline
+BreakConstructorInitializers: BeforeComma
+NamespaceIndentation: None
+PointerAlignment: Left
+SpaceAfterTemplateKeyword: true

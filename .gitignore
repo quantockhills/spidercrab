@@ -1,0 +1,35 @@
+# Build artifacts
+extension/build/
+extension/cmake-build*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+frontend/node_modules/
+
+# Sysroot (generated from downloaded .deb packages)
+/tmp/sysroot/
+
+# Reaper portable install (can be re-downloaded)
+~/reaper-portable/
+
+# Compiled extensions in UserPlugins
+~/reaper-portable/UserPlugins/*.so
+
+# Logs
+*.log
+/tmp/reaper-*.log
+/tmp/reaper-*.txt
+
+# Environment
+.env
+.env.local

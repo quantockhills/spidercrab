@@ -1,0 +1,107 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { WsClient, type WsResponse } from '../lib/wsClient';
+
+interface UseReaperOptions {
+  host?: string;
+  port?: number;
+}
+
+interface Track {
+  index: number;
+  name: string;
+  trackNumber: number;
+  selected: boolean;
+  muted: boolean;
+  soloed: boolean;
+}
+
+interface FxInfo {
+  index: number;
+  name: string;
+}
+
+interface FxParam {
+  index: number;
+  name: string;
+  value: number;
+  min: number;
+  max: number;
+  mid: number;
+}
+
+export function useReaper(opts: UseReaperOptions = {}) {
+  const clientRef = useRef<WsClient | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [tracks, setTracks] = useState<Track[]>([]);
+
+  useEffect(() => {
+    const client = new WsClient({
+      host: opts.host || 'localhost',
+      port: opts.port ?? 9224,
+      onConnect: () => setConnected(true),
+      onDisconnect: () => setConnected(false),
+      onError: (err) => console.error('[reaper-ipad]', err),
+    });
+
+    clientRef.current = client;
+    client.connect();
+
+    return () => {
+      client.disconnect();
+      clientRef.current = null;
+    };
+  }, [opts.host, opts.port]);
+
+  const getTracks = useCallback(async (): Promise<Track[]> => {
+    if (!clientRef.current) return [];
+    const resp = await clientRef.current.send('track/getAll');
+    return (resp.payload as any).tracks as Track[];
+  }, []);
+
+  const getTrackFx = useCallback(async (trackIdx: number): Promise<FxInfo[]> => {
+    if (!clientRef.current) return [];
+    const resp = await clientRef.current.send('track/getFx', { trackIdx });
+    return (resp.payload as any).fx as FxInfo[];
+  }, []);
+
+  const getFxParams = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxParam[]> => {
+    if (!clientRef.current) return [];
+    const resp = await clientRef.current.send('fx/getParams', { trackIdx, fxIdx });
+    return (resp.payload as any).params as FxParam[];
+  }, []);
+
+  const setFxParam = useCallback(async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('fx/setParam', { trackIdx, fxIdx, paramIdx, value });
+    return resp.success;
+  }, []);
+
+  const addFx = useCallback(async (trackIdx: number, fxName: string): Promise<number> => {
+    if (!clientRef.current) return -1;
+    const resp = await clientRef.current.send('fx/add', { trackIdx, fxName });
+    return (resp.payload as any).fxIdx ?? -1;
+  }, []);
+
+  const deleteFx = useCallback(async (trackIdx: number, fxIdx: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('fx/delete', { trackIdx, fxIdx });
+    return resp.success;
+  }, []);
+
+  const refreshTracks = useCallback(async () => {
+    const t = await getTracks();
+    setTracks(t);
+    return t;
+  }, [getTracks]);
+
+  return {
+    connected,
+    tracks,
+    refreshTracks,
+    getTrackFx,
+    getFxParams,
+    setFxParam,
+    addFx,
+    deleteFx,
+  };
+}
