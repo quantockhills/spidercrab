@@ -82,7 +82,7 @@ export function ParamControl({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onBack}
@@ -104,8 +104,8 @@ export function ParamControl({
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium
-              bg-red-500/15 text-red-400
+            className="px-3 py-1.5 text-xs font-medium
+              bg-[var(--accent-red)]/15 text-[var(--accent-red)]
               active:scale-90 transition-all disabled:opacity-50"
           >
             {deleting ? '...' : 'Remove FX'}
@@ -123,7 +123,7 @@ export function ParamControl({
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
             <div className="text-4xl">⚠️</div>
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-[var(--accent-red)]">{error}</p>
             <button
               onClick={() => {
                 setError(null);
@@ -133,7 +133,7 @@ export function ParamControl({
                   .catch((err) => setError(err.message))
                   .finally(() => setLoading(false));
               }}
-              className="px-5 py-2.5 bg-white/10 rounded-xl text-sm active:scale-95 transition-transform"
+              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:scale-95 transition-transform"
             >
               Retry
             </button>
@@ -244,13 +244,13 @@ function ParamSlider({ param, onChange }: ParamSliderProps) {
         </span>
       </div>
 
-      {/* Slider track */}
+      {/* Slider track — square corners per design spec */}
       <div
         ref={trackRef}
         className={`
-          relative h-8 rounded-xl overflow-hidden cursor-pointer select-none
+          relative h-8 overflow-hidden cursor-pointer select-none
           transition-shadow
-          ${dragging ? 'ring-2 ring-[var(--accent)]' : 'ring-1 ring-white/5'}
+          ${dragging ? 'ring-2 ring-[var(--accent-orange)]/60' : 'ring-1 ring-[var(--border)]'}
           bg-[var(--bg-tertiary)]
         `}
         onPointerDown={handlePointerDown}
@@ -258,13 +258,13 @@ function ParamSlider({ param, onChange }: ParamSliderProps) {
       >
         {/* Fill */}
         <div
-          className="absolute inset-y-0 left-0 bg-gradient-to-r from-[var(--accent-dim)] to-[var(--accent)]/60 rounded-xl transition-[width] duration-50"
+          className="absolute inset-y-0 left-0 bg-gradient-to-r from-[var(--accent-orange)]/40 to-[var(--accent-orange)]/60 transition-[width] duration-50"
           style={{ width: `${pct}%` }}
         />
 
         {/* Knob indicator */}
         <div
-          className="absolute top-1 bottom-1 w-1 rounded-full bg-white/80 transition-[left] duration-50"
+          className="absolute top-1 bottom-1 w-1 bg-[var(--accent-orange)]/80 transition-[left] duration-50"
           style={{ left: `calc(${pct}% - 2px)` }}
         />
       </div>

@@ -25,9 +25,9 @@ function volumeToDb(vol: number): string {
 function VolumeBar({ volume }: { volume: number }) {
   const pct = Math.min(volume * 100, 100);
   return (
-    <div className="relative w-24 h-5 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+    <div className="relative w-24 h-5 bg-[var(--bg-tertiary)] overflow-hidden">
       <div
-        className="absolute inset-y-0 left-0 bg-[var(--accent)]/40 rounded-full transition-all duration-75"
+        className="absolute inset-y-0 left-0 bg-[var(--accent-green)]/50 transition-all duration-75"
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -71,15 +71,15 @@ export function TrackOverview({
     <div className="flex flex-col h-full">
       {/* Transport bar */}
       {onPlay && onStop && (
-        <div className="flex items-center justify-center gap-4 px-4 py-3 border-b border-white/5">
+        <div className="flex items-center justify-center gap-4 px-4 py-3 border-b border-[var(--border)]">
           <button
             data-testid="transport-play"
             onClick={handlePlay}
             className={`
-              w-16 h-10 rounded-xl text-sm font-bold transition-all active:scale-90
+              w-16 h-10 text-sm font-semibold transition-all active:scale-90
               ${isPlaying
-                ? 'bg-green-500/25 text-green-400 ring-1 ring-green-500/40'
-                : 'bg-white/10 text-[var(--text-secondary)]'
+                ? 'bg-[var(--accent-green)]/25 text-[var(--accent-green)] ring-1 ring-[var(--accent-green)]/40'
+                : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
               }
             `}
           >
@@ -89,10 +89,10 @@ export function TrackOverview({
             data-testid="transport-stop"
             onClick={handleStop}
             className={`
-              w-16 h-10 rounded-xl text-sm font-bold transition-all active:scale-90
+              w-16 h-10 text-sm font-semibold transition-all active:scale-90
               ${!isPlaying
-                ? 'bg-red-500/25 text-red-400 ring-1 ring-red-500/40'
-                : 'bg-white/10 text-[var(--text-secondary)]'
+                ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
+                : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
               }
             `}
           >
@@ -112,13 +112,13 @@ export function TrackOverview({
         <div className="flex gap-2">
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="text-xs px-2 py-1 rounded-lg bg-white/5 text-[var(--text-secondary)] active:scale-95"
+            className="text-xs px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] active:scale-95"
           >
             {collapsed ? 'Expand' : 'Collapse'}
           </button>
           <button
             onClick={onRefresh}
-            className="p-2 rounded-lg hover:bg-white/5 active:scale-95 transition-transform text-sm"
+            className="p-2 hover:bg-[var(--bg-tertiary)] active:scale-95 transition-transform text-sm"
             title="Refresh tracks"
           >
             ↻
@@ -133,7 +133,7 @@ export function TrackOverview({
           <p className="text-sm">No tracks loaded</p>
           <button
             onClick={onRefresh}
-            className="px-5 py-2.5 bg-white/10 rounded-xl text-sm active:scale-95 transition-transform"
+            className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:scale-95 transition-transform"
           >
             Refresh
           </button>
@@ -184,11 +184,11 @@ function TrackRow({
     <div
       onClick={onSelect}
       className={`
-        flex items-center gap-2.5 px-3 py-2 rounded-xl cursor-pointer
+        flex items-center gap-2.5 px-3 py-2 cursor-pointer
         active:scale-[0.98] transition-all duration-100 select-none
         ${isSelected
-          ? 'bg-[#2a2a3a] ring-1 ring-[var(--accent-dim)]'
-          : 'bg-[var(--bg-tertiary)] hover:bg-[#2a2a3a]/60'
+          ? 'bg-[var(--bg-tertiary)] ring-1 ring-[var(--accent-orange)]/40'
+          : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]'
         }
         ${track.muted ? 'opacity-50' : ''}
       `}
@@ -220,10 +220,10 @@ function TrackRow({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
           className={`
-            w-9 h-9 rounded-lg text-xs font-bold transition-all active:scale-90
+            w-9 h-9 text-xs font-semibold transition-all active:scale-90
             ${track.muted
-              ? 'bg-red-500/25 text-red-400 ring-1 ring-red-500/40'
-              : 'bg-white/8 text-[var(--text-secondary)]'
+              ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
+              : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
             }
           `}
         >
@@ -234,10 +234,10 @@ function TrackRow({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleSolo(); }}
           className={`
-            w-9 h-9 rounded-lg text-xs font-bold transition-all active:scale-90
+            w-9 h-9 text-xs font-semibold transition-all active:scale-90
             ${track.soloed
-              ? 'bg-yellow-500/25 text-yellow-400 ring-1 ring-yellow-500/40'
-              : 'bg-white/8 text-[var(--text-secondary)]'
+              ? 'bg-[var(--accent-yellow)]/25 text-[var(--accent-yellow)] ring-1 ring-[var(--accent-yellow)]/40'
+              : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
             }
           `}
         >
@@ -248,10 +248,10 @@ function TrackRow({
         <button
           onClick={(e) => { e.stopPropagation(); onToggleArm(); }}
           className={`
-            w-9 h-9 rounded-lg text-xs font-bold transition-all active:scale-90
+            w-9 h-9 text-xs font-semibold transition-all active:scale-90
             ${track.armed
-              ? 'bg-red-600/30 text-red-400 ring-1 ring-red-500/50'
-              : 'bg-white/8 text-[var(--text-secondary)]'
+              ? 'bg-[var(--accent-red)]/30 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/50'
+              : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
             }
           `}
         >

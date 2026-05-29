@@ -95,31 +95,31 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col">
+    <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col text-[var(--text-primary)]">
       {/* ── Status Bar ── */}
-      <header className="sticky top-0 z-10 bg-[var(--bg-secondary)]/95 backdrop-blur-sm
-        border-b border-white/5 px-4 py-2.5
-        flex items-center justify-between safe-area-top">
-        <div className="flex items-center gap-2">
-          <h1 className="text-base font-bold">Utpaladeva</h1>
-          <span className="text-[10px] text-[var(--text-secondary)] hidden sm:inline">
-            Reaper Remote
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-[var(--text-secondary)] hidden xs:inline">
-            {connected ? 'Connected' : 'Disconnected'}
-          </span>
-          <div
-            className={`w-2 h-2 rounded-full transition-colors ${
-              connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'
-            }`}
-          />
-          {activeTab === 'tracks' && tracks.length > 0 && (
-            <span className="text-[11px] text-[var(--text-secondary)] ml-1">
-              {tracks.length} trk
+      <header className="sticky top-0 z-10 bg-[var(--bg-secondary)] border-b border-[var(--border)] px-4 py-2.5 safe-area-top">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-semibold">Utpaladeva</h1>
+            <span className="text-[10px] text-[var(--text-secondary)] hidden sm:inline">
+              Reaper Remote
             </span>
-          )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-[var(--text-secondary)] hidden xs:inline">
+              {connected ? 'Connected' : 'Disconnected'}
+            </span>
+            <div
+              className={`w-2 h-2 transition-colors ${
+                connected ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'
+              }`}
+            />
+            {activeTab === 'tracks' && tracks.length > 0 && (
+              <span className="text-[11px] text-[var(--text-secondary)] ml-1">
+                {tracks.length} trk
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
@@ -177,11 +177,11 @@ function App() {
         {activeTab === 'settings' && (
           <div className="p-6 text-[var(--text-secondary)] space-y-4">
             <h2 className="text-sm font-semibold uppercase tracking-wider">Settings</h2>
-            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 space-y-3">
+            <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm">Connection</span>
                 <div className="flex items-center gap-2">
-                  <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
+                  <div className={`w-1.5 h-1.5 ${connected ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'}`} />
                   <span className="text-xs">{connected ? 'Connected' : 'Disconnected'}</span>
                 </div>
               </div>
@@ -190,13 +190,13 @@ function App() {
               </div>
               <button
                 onClick={() => refreshTracks()}
-                className="w-full py-2.5 bg-white/10 rounded-xl text-sm active:scale-95 transition-transform"
+                className="w-full py-2.5 bg-[var(--bg-secondary)] text-sm active:scale-95 transition-transform"
               >
                 Refresh Tracks
               </button>
               <button
                 onClick={() => refreshFxCache()}
-                className="w-full py-2.5 bg-[var(--accent-dim)]/60 text-[var(--accent)] rounded-xl text-sm active:scale-95 transition-transform"
+                className="w-full py-2.5 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:scale-95 transition-transform"
               >
                 Refresh Plugin List
               </button>
@@ -206,8 +206,7 @@ function App() {
       </main>
 
       {/* ── Tab Bar ── */}
-      <nav className="sticky bottom-0 z-10 bg-[var(--bg-secondary)]/95 backdrop-blur-sm
-        border-t border-white/5 safe-area-bottom">
+      <nav className="sticky bottom-0 z-10 bg-[var(--bg-secondary)] border-t border-[var(--border)] safe-area-bottom">
         <div className="flex">
           {TABS.map((tab) => (
             <button
@@ -217,7 +216,7 @@ function App() {
                 flex-1 flex flex-col items-center justify-center py-2 gap-0.5
                 text-[10px] transition-colors min-h-[52px]
                 ${activeTab === tab.id
-                  ? 'text-[var(--accent)]'
+                  ? 'text-[var(--accent-orange)]'
                   : 'text-[var(--text-secondary)]'
                 }
               `}

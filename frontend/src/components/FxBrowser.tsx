@@ -145,7 +145,7 @@ export function FxBrowser({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
@@ -166,7 +166,7 @@ export function FxBrowser({
       </div>
 
       {/* Search + Filter row */}
-      <div className="px-4 py-2.5 flex items-center gap-2 border-b border-white/5">
+      <div className="px-4 py-2.5 flex items-center gap-2 border-b border-[var(--border)]">
         <div className="relative flex-1">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)]">
             🔍
@@ -176,16 +176,16 @@ export function FxBrowser({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search FX..."
-            className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] rounded-xl text-sm
+            className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] text-sm
               text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
-              outline-none ring-1 ring-white/5 focus:ring-[var(--accent-dim)]"
+              outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
           />
         </div>
         <select
           value={formatFilter}
           onChange={(e) => setFormatFilter(e.target.value as FormatFilter)}
-          className="bg-[var(--bg-tertiary)] rounded-xl text-sm px-3 py-2
-            text-[var(--text-primary)] outline-none ring-1 ring-white/5
+          className="bg-[var(--bg-tertiary)] text-sm px-3 py-2
+            text-[var(--text-primary)] outline-none ring-1 ring-[var(--border)]
             border-none appearance-none cursor-pointer"
         >
           {FORMAT_FILTERS.map((f) => (
@@ -196,8 +196,8 @@ export function FxBrowser({
 
       {/* No track selected warning */}
       {selectedTrack === null && (
-        <div className="px-4 py-3 bg-yellow-500/10 border-b border-yellow-500/20">
-          <p className="text-xs text-yellow-400">
+        <div className="px-4 py-3 bg-[var(--accent-yellow)]/15 border-b border-[var(--accent-yellow)]/30">
+          <p className="text-xs text-[var(--accent-yellow)]">
             ⚠ Select a track first (Tracks tab) to add FX
           </p>
         </div>
@@ -213,7 +213,7 @@ export function FxBrowser({
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
             <div className="text-4xl">⚠️</div>
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-[var(--accent-red)]">{error}</p>
             <button
               onClick={() => {
                 setError(null);
@@ -223,7 +223,7 @@ export function FxBrowser({
                   .catch((err) => setError(err.message))
                   .finally(() => setLoading(false));
               }}
-              className="px-5 py-2.5 bg-white/10 rounded-xl text-sm active:scale-95 transition-transform"
+              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:scale-95 transition-transform"
             >
               Retry
             </button>
@@ -247,7 +247,7 @@ export function FxBrowser({
               <div key={format}>
                 {/* Format section header */}
                 <div className="px-2 py-1.5 flex items-center gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)]">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-blue)]">
                     {format}
                   </span>
                   <span className="text-[10px] text-[var(--text-secondary)]">
@@ -277,7 +277,7 @@ export function FxBrowser({
 
       {/* Count footer */}
       {!loading && allFx.length > 0 && (
-        <div className="px-4 py-2 border-t border-white/5 flex justify-between text-[10px] text-[var(--text-secondary)]">
+        <div className="px-4 py-2 border-t border-[var(--border)] flex justify-between text-[10px] text-[var(--text-secondary)]">
           <span>{allFx.length} total plugins</span>
           {search && <span>{groupedFx.reduce((s, [_, l]) => s + l.length, 0)} filtered</span>}
         </div>
@@ -302,8 +302,8 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
 
   return (
     <div
-      className="flex items-center gap-2.5 px-3 py-2 rounded-xl
-        bg-[var(--bg-tertiary)] hover:bg-[#2a2a3a]/60
+      className="flex items-center gap-2.5 px-3 py-2
+        bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
         active:scale-[0.98] transition-all duration-100 select-none"
     >
       {/* FX name - tap to view params */}
@@ -324,8 +324,7 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
 
       {/* Format badge */}
       <span
-        className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full
-          ${getFormatBadgeStyle(fx.format)}`}
+        className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 ${getFormatBadgeStyle(fx.format)}`}
       >
         {fx.format}
       </span>
@@ -338,15 +337,15 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
         }}
         disabled={selectedTrack === null || isAdding}
         className={`
-          flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium
+          flex-shrink-0 px-3 py-1.5 text-xs font-medium
           transition-all active:scale-90 min-h-[36px]
           ${selectedTrack === null
-            ? 'bg-white/5 text-[var(--text-secondary)]/50 cursor-not-allowed'
+            ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/50 cursor-not-allowed'
             : isAdded
-              ? 'bg-green-500/20 text-green-400 ring-1 ring-green-500/40'
+              ? 'bg-[var(--accent-green)]/20 text-[var(--accent-green)] ring-1 ring-[var(--accent-green)]/40'
               : isAdding
-                ? 'bg-white/10 text-[var(--text-secondary)]'
-                : 'bg-[var(--accent-dim)]/60 text-[var(--accent)] active:bg-[var(--accent-dim)]'
+                ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                : 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
           }
         `}
       >
@@ -356,22 +355,22 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
   );
 }
 
-// Format badge colors
+// Format badge colors (Everforest pastel)
 function getFormatBadgeStyle(format: string): string {
   switch (format) {
     case 'VST3':
-      return 'bg-blue-500/15 text-blue-400';
+      return 'bg-[var(--accent-blue)]/20 text-[var(--accent-blue)]';
     case 'VST2':
-      return 'bg-cyan-500/15 text-cyan-400';
+      return 'bg-[#7EC8A0]/20 text-[#7EC8A0]';
     case 'CLAP':
-      return 'bg-purple-500/15 text-purple-400';
+      return 'bg-[#C49EC8]/20 text-[#C49EC8]';
     case 'JSFX':
-      return 'bg-green-500/15 text-green-400';
+      return 'bg-[var(--accent-green)]/20 text-[var(--accent-green)]';
     case 'AU':
-      return 'bg-orange-500/15 text-orange-400';
+      return 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)]';
     case 'DX':
-      return 'bg-pink-500/15 text-pink-400';
+      return 'bg-[#D48A9E]/20 text-[#D48A9E]';
     default:
-      return 'bg-white/10 text-[var(--text-secondary)]';
+      return 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]';
   }
 }

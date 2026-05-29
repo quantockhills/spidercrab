@@ -120,7 +120,7 @@ export function SampleBrowser({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <div className="flex items-center gap-3">
           <button
             onClick={onBack}
@@ -141,7 +141,7 @@ export function SampleBrowser({
       </div>
 
       {/* Path breadcrumb + Search */}
-      <div className="px-4 py-2.5 border-b border-white/5 space-y-2">
+      <div className="px-4 py-2.5 border-b border-[var(--border)] space-y-2">
         {/* Current path */}
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-[var(--text-secondary)] font-mono truncate flex-1">
@@ -159,17 +159,17 @@ export function SampleBrowser({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filter files..."
-            className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] rounded-xl text-sm
+            className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] text-sm
               text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
-              outline-none ring-1 ring-white/5 focus:ring-[var(--accent-dim)]"
+              outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
           />
         </div>
       </div>
 
       {/* No track selected warning */}
       {selectedTrack === null && (
-        <div className="px-4 py-3 bg-yellow-500/10 border-b border-yellow-500/20">
-          <p className="text-xs text-yellow-400">
+        <div className="px-4 py-3 bg-[var(--accent-yellow)]/15 border-b border-[var(--accent-yellow)]/30">
+          <p className="text-xs text-[var(--accent-yellow)]">
             ⚠ Select a track first (Tracks tab) to send samples
           </p>
         </div>
@@ -185,10 +185,10 @@ export function SampleBrowser({
         ) : error ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
             <div className="text-4xl">⚠️</div>
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-[var(--accent-red)]">{error}</p>
             <button
               onClick={() => currentPath && loadDirectory(currentPath)}
-              className="px-5 py-2.5 bg-white/10 rounded-xl text-sm active:scale-95 transition-transform"
+              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:scale-95 transition-transform"
             >
               Retry
             </button>
@@ -233,7 +233,7 @@ export function SampleBrowser({
 
       {/* Footer stats */}
       {!loading && entries.length > 0 && (
-        <div className="px-4 py-2 border-t border-white/5 flex justify-between text-[10px] text-[var(--text-secondary)]">
+        <div className="px-4 py-2 border-t border-[var(--border)] flex justify-between text-[10px] text-[var(--text-secondary)]">
           <span>{dirs.length} dirs · {files.length} files{search ? ` (filtered)` : ''}</span>
           {selectedTrackName && <span>→ {selectedTrackName}</span>}
         </div>
@@ -253,8 +253,8 @@ function DirRow({ entry, onNavigate }: DirRowProps) {
   return (
     <button
       onClick={() => onNavigate(entry)}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
-        bg-[var(--bg-tertiary)] hover:bg-[#2a2a3a]/60
+      className="w-full flex items-center gap-3 px-3 py-2.5
+        bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
         active:scale-[0.98] transition-all duration-100 text-left"
     >
       <span className="text-lg flex-shrink-0">
@@ -283,8 +283,8 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, on
 
   return (
     <div
-      className="flex items-center gap-2.5 px-3 py-2 rounded-xl
-        bg-[var(--bg-tertiary)]/80 hover:bg-[#2a2a3a]/40
+      className="flex items-center gap-2.5 px-3 py-2
+        bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60
         active:scale-[0.98] transition-all duration-100 select-none"
     >
       {/* Icon + name */}
@@ -302,15 +302,15 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, on
           onClick={onSend}
           disabled={!canSend || isSending}
           className={`
-            flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium
+            flex-shrink-0 px-3 py-1.5 text-xs font-medium
             transition-all active:scale-90 min-h-[32px]
             ${!canSend
-              ? 'bg-white/5 text-[var(--text-secondary)]/50 cursor-not-allowed'
+              ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/50 cursor-not-allowed'
               : isSent
-                ? 'bg-green-500/20 text-green-400 ring-1 ring-green-500/40'
+                ? 'bg-[var(--accent-green)]/20 text-[var(--accent-green)] ring-1 ring-[var(--accent-green)]/40'
                 : isSending
-                  ? 'bg-white/10 text-[var(--text-secondary)]'
-                  : 'bg-[var(--accent-dim)]/60 text-[var(--accent)] active:bg-[var(--accent-dim)]'
+                  ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                  : 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
             }
           `}
         >

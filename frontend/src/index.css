@@ -1,28 +1,52 @@
 @import "tailwindcss";
 
+/* ── Everforest Light (pastel-adjusted) palette ── */
+
 :root {
-  --bg-primary: #0f0f0f;
-  --bg-secondary: #1a1a1a;
-  --bg-tertiary: #252525;
-  --text-primary: #e8e8e8;
-  --text-secondary: #888;
-  --accent: #4fc3f7;
-  --accent-dim: #1a6b8a;
-  --danger: #ef5350;
-  --success: #66bb6a;
+  --bg-primary: #FDF6E3;   /* warm off-white (unbleached paper) */
+  --bg-secondary: #F5EBD9; /* slightly warmer (alternating rows, cards) */
+  --bg-tertiary: #EDE5D0;  /* hover states, pressed buttons */
+  --text-primary: #5C6A72; /* soft dark (pencil on paper) */
+  --text-secondary: #859289; /* labels, hints */
+
+  --accent-green: #A6C48A;  /* play, active, on states */
+  --accent-red: #E67A6F;    /* stop, delete, errors */
+  --accent-orange: #E8A84C; /* warnings, selection, active tab */
+  --accent-yellow: #D4B96A; /* solo, attention */
+  --accent-blue: #7BB3C9;   /* info, links */
+
+  /* Semantic aliases (backward-compatible with existing var() references) */
+  --accent: var(--accent-orange);
+  --accent-dim: color-mix(in srgb, var(--accent-orange) 40%, transparent);
+  --success: var(--accent-green);
+  --danger: var(--accent-red);
+  --warning: var(--accent-yellow);
+  --border: #E0D8C4; /* subtle warm border */
 }
 
 body {
   margin: 0;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   /* Prevent iOS bounce/overscroll */
   overscroll-behavior: none;
   /* Safe area for iPad notch/home indicator */
   padding: env(safe-area-inset-top) env(safe-area-inset-right)
            env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Inter Semi-Bold for headings */
+h1, h2, h3, h4, h5, h6, .font-semibold {
+  font-weight: 600;
+}
+
+/* Inter Mono for numerical displays */
+.font-mono, .tabular-nums {
+  font-family: 'Inter Mono', 'SF Mono', SFMono-Regular, ui-monospace, monospace;
+  font-weight: 400;
 }
 
 /* Custom scrollbar for webkit (iPad Safari) */
@@ -33,8 +57,7 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #444;
-  border-radius: 3px;
+  background: #D5CCB8;
 }
 
 /* Touch-friendly tap targets */
