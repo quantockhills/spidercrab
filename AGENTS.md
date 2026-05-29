@@ -91,7 +91,13 @@ The daily check-in (10am UTC) is separate and handles the summary/flagging.
 - **Issues** are our task tracker. All ideas, bugs, features go here.  
 - **Labels:** `bug`, `feature`, `enhancement`, `idea`, `question`, `wontfix`  
 - **Milestones:** `Phase 1 MVP`, `Phase 2`, `Future`, `Process`  
-- **Pull Requests** — used when submitting code changes for review
+
+**Milestone focus rule — HARD CONSTRAINT:**
+We are currently laser-focused on **Phase 1 MVP** only.
+Do NOT work on Phase 2, Future, or Process issues until Phase 1 MVP hits 100%.
+If you're in an autonomous work cycle and Phase 1 MVP is done, exit immediately.
+
+**Pull Requests** — used when submitting code changes for review
 
 **When to check Gitea:**
 - At session start — check for new/updated issues
@@ -153,6 +159,8 @@ Every feature goes through this sequence before its issue is closed:
 - [ ] `make lint` and `make check` clean
 
 **3. Verify** — confirm the implementation matches the spec:
+- [ ] **Re-read the issue, UI.md, and ARCHITECTURE.md** — did you actually build what was asked, or just something that looks similar?
+- [ ] **Challenge your assumptions** — does your test actually prove the thing works, or just that the extension responds? (A passing test that tests the wrong thing is worse than no test.)
 - [ ] Does the UI behave as described in `docs/UI.md`? (run it and look)
 - [ ] Does the code follow the architecture in `docs/ARCHITECTURE.md`?
 - [ ] Does the implementation cover everything in the Gitea issue?
@@ -176,6 +184,18 @@ Every feature goes through this sequence before its issue is closed:
 - If an issue can't be verified, it stays open. No exceptions.
 
 **Label workflow:** When code is done but not yet verified, tag the issue with `needs-verification`. Once verified by running the app and matching against the UI doc, remove the label and close the issue.
+
+### Sub-agent / Autonomous Worker Guidelines
+
+When working as an isolated sub-agent (20-min cron, spawned task):
+
+1. **Read AGENTS.md first** — every time. The project rules may have changed.
+2. **Read the relevant docs** — UI.md, ARCHITECTURE.md, the issue itself. Don't code from memory.
+3. **Re-read before closing** — don't assume your first read is enough. Check again before you call it done.
+4. **Question your test** — does it prove the thing actually works, or just that the code ran? Test the behavior, not the response.
+5. **Phase 1 MVP only** — do NOT touch Phase 2, Future, or Process issues. If Phase 1 MVP is complete, exit.
+6. **No silent failures** — if you're stuck, write to ~/blockers.md and move to the next issue. Don't pretend it's fine.
+7. **Evidence or nothing** — don't close issues without proof. "Code compiles" is not proof.
 
 ### Getting Unstuck
 If you're stuck:
