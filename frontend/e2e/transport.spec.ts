@@ -19,10 +19,16 @@ test.describe('Transport controls (play/stop)', () => {
 
   test('clicking play dispatches transport/play command', async ({ page }) => {
     const wsMessages: string[] = [];
-    page.on('websocket', (ws) => {
-      ws.on('framesent', (frame) => {
-        wsMessages.push(frame.payload as string);
+
+    // RouteWebSocket intercepts the connection before it's created,
+    // so the app's WsClient will open successfully (mock handshake)
+    // and all frames from the page are captured via onMessage.
+    await page.routeWebSocket('ws://127.0.0.1:9224', (ws) => {
+      ws.onMessage((message) => {
+        wsMessages.push(message.toString());
       });
+      // No connectToServer() needed — Playwright auto-completes
+      // the handshake so the page WebSocket opens successfully.
     });
 
     await page.goto('/');
@@ -38,9 +44,10 @@ test.describe('Transport controls (play/stop)', () => {
 
   test('clicking stop dispatches transport/stop command', async ({ page }) => {
     const wsMessages: string[] = [];
-    page.on('websocket', (ws) => {
-      ws.on('framesent', (frame) => {
-        wsMessages.push(frame.payload as string);
+
+    await page.routeWebSocket('ws://127.0.0.1:9224', (ws) => {
+      ws.onMessage((message) => {
+        wsMessages.push(message.toString());
       });
     });
 
