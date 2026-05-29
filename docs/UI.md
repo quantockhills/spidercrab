@@ -11,38 +11,73 @@
 The app is a full-screen PWA on iPad (add to home screen for native feel).
 Dark theme. Touch-first. Landscape orientation.
 
-### Layout
+### Layout — Tab Bar
+
+The app uses a **bottom tab bar** (like iOS native apps) for primary navigation.
+This feels more natural on iPad/iPhone than a sidebar.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  Header: Logo · Connection status · Settings ⚙️         │
-├──────────┬──────────────────────────────────────────────┤
-│          │                                              │
-│  Sidebar │           Main Content Area                  │
-│          │                                              │
-│  📂      │  (changes based on selected mode)            │
-│  Samples │                                              │
-│  🎛️      │                                              │
-│  FX      │                                              │
-│  🔗      │                                              │
-│  Chains  │                                              │
-│  🎵      │                                              │
-│  Session │                                              │
-│          │                                              │
-│          │                                              │
-├──────────┴──────────────────────────────────────────────┤
-│  Footer: Now playing / Selected track info               │
+│  Status Bar: ● Connected · Track: Kick · ...           │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│               Main Content Area                         │
+│                                                         │
+│  (changes based on selected tab)                        │
+│                                                         │
+│  Tab 1: Media Browser + Session View                    │
+│  Tab 2: FX / FX Chains + Parameter Control              │
+│  Tab 3: Track Overview (mixer, mute/solo/arm)           │
+│                                                         │
+│                                                         │
+├─────────────────────────────────────────────────────────┤
+│  [📂+🎵 Media]  [🎛️ FX]  [🎚️ Tracks]  [⚙️ Settings]  │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Sidebar Modes
+### Tab 1: Media + Session View
 
-| Icon | Mode | Description |
-|------|------|-------------|
-| 📂 | Samples | Browse, preview, and load samples |
-| 🎛️ | FX | Browse and add FX to tracks |
-| 🔗 | FX Chains | Browse and load preset FX chains |
-| 🎵 | Session View | Playtime 2 clip matrix (launch clips, scenes) |
+Combined view: browse samples on the left half, session view grid on the right.
+Drag samples from the browser onto clip slots.
+
+### Tab 2: FX + Parameters
+
+FX browser/chain browser at the top. Tap an FX to show its parameters as
+touch sliders below. This replaces the sidebar-based FX mode.
+
+### Tab 3: Track Overview
+
+A mixer-style list of all tracks with key controls:
+
+```
+┌──────────────────────────────────────────────────────┐
+│ ← Back                         Track: Drums          │
+├──────────────────────────────────────────────────────┤
+│                                                      │
+│  [🔊 Kick]    M[■]  S[ ]  R[ ]  ████████░░  -3.2dB  │
+│  [🔊 Snare]   M[ ]  S[■]  R[ ]  ██████░░░░  -6.0dB  │
+│  [🔊 Hat]     M[ ]  S[ ]  R[■]  ████████░░  -2.8dB  │
+│  [🔊 Bass]    M[■]  S[ ]  R[ ]  ████████░░  -4.1dB  │
+│  [🔊 Synth]   M[ ]  S[ ]  R[ ]  ██████████  -1.5dB  │
+│                                                      │
+│  [➕ Add Track]                                      │
+└──────────────────────────────────────────────────────┘
+```
+
+Each row:
+- **M** = Mute toggle (grayed when muted)
+- **S** = Solo toggle (highlighted when soloed)
+- **R** = Record Arm toggle (red when armed)
+- **Volume fader** — touch slider for track volume
+- Tap the track name to select it (affects where FX/samples get loaded)
+
+### Tab 4: Settings
+
+- Server connection (host/port)
+- Sample root folder path
+- FX chain folder path
+- Theme selection (dark/light)
+- Connection diagnostics
 
 ---
 
