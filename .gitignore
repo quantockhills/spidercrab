@@ -38,3 +38,6 @@ docs/helgobox/
 .env.local
 __pycache__/
 frontend/test-results/
+
+# E2E test artifacts (screenshots, video)
+gui_testing/
