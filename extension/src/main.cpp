@@ -213,6 +213,8 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         api.CSurf_TrackToID             = CSurf_TrackToID;
         api.GetSetMediaTrackInfo        = GetSetMediaTrackInfo;
         api.GetSetMediaTrackInfo_String = GetSetMediaTrackInfo_String;
+        api.InsertMedia                 = InsertMedia;
+        api.EnumerateFiles              = EnumerateFiles;
         api.TrackFX_GetCount            = TrackFX_GetCount;
         api.TrackFX_AddByName           = TrackFX_AddByName;
         api.TrackFX_GetFXName           = TrackFX_GetFXName;

@@ -747,8 +747,9 @@ void CommandHandler::HandleStop(int clientId, const std::string& id, const std::
 void CommandHandler::HandleSampleGetDirectory(
     int clientId, const std::string& id, const std::string& params)
 {
-    // Extract "path" from params JSON
-    JsonParser parser(params);
+    // Extract "path" from payload
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string path = parser.getString("path");
     if (path.empty()) {
         SendResponse(clientId, id, false,
@@ -799,7 +800,8 @@ void CommandHandler::HandleSampleGetDirectory(
 void CommandHandler::HandleSampleSendToTrack(
     int clientId, const std::string& id, const std::string& params)
 {
-    JsonParser  parser(params);
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string filePath = parser.getString("path");
     std::string trackIdxStr = parser.getString("trackIdx");
 

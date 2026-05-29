@@ -291,15 +291,47 @@ TEST(JsonStringTest, EmptyString)
 
 TEST(SampleBrowserTest, GetDirectoryMissingPath)
 {
-    // Empty path should return error
-    std::string json = R"({"type":"command","command":"sample/getDirectory","path":"","id":"cmd_1"})";
-    JsonParser  parser(json);
-    EXPECT_EQ(parser.getString("command"), "sample/getDirectory");
-    EXPECT_EQ(parser.getString("path"), "");
-    // The command dispatch in HandleMessage handles this,
-    // but we can verify the JSON parser extracts correctly
+    // Empty path in payload should return error
+    std::string json = R"({"type":"command","command":"sample/getDirectory","payload":{"path":""},"id":"cmd_1"})";
+    std::string payloadStr = extractPayload(json);
+    JsonParser  parser(payloadStr);
     std::string path = parser.getString("path");
     EXPECT_TRUE(path.empty());
+}
+
+TEST(SampleBrowserTest, GetDirectoryExtractsPathFromPayload)
+{
+    // Path inside payload object should be extracted correctly
+    std::string json = R"({"type":"command","command":"sample/getDirectory","payload":{"path":"/tmp/samples"},"id":"dir_1"})";
+    std::string payloadStr = extractPayload(json);
+
+    // Verify payload extraction gives us just the payload object
+    EXPECT_EQ(payloadStr, R"({"path":"/tmp/samples"})");
+
+    // Parse the extracted payload
+    JsonParser parser(payloadStr);
+    std::string path = parser.getString("path");
+    EXPECT_EQ(path, "/tmp/samples");
+}
+
+TEST(SampleBrowserTest, SendToTrackExtractsPathFromPayload)
+{
+    // Path and trackIdx inside payload should be extracted
+    std::string json = R"({"type":"command","command":"sample/sendToTrack","payload":{"path":"/tmp/test.wav","trackIdx":0},"id":"send_1"})";
+    std::string payloadStr = extractPayload(json);
+    JsonParser  parser(payloadStr);
+
+    EXPECT_EQ(parser.getString("path"), "/tmp/test.wav");
+    EXPECT_EQ(parser.getString("trackIdx"), "0");
+}
+
+TEST(SampleBrowserTest, ExtractPayloadSkipsTopLevelKeys)
+{
+    // Verify extractPayload correctly finds the payload object
+    // even when there are fields before and after it
+    std::string json = R"({"type":"command","command":"sample/getDirectory","payload":{"path":"/home/samples"},"id":"dir_1"})";
+    std::string payloadStr = extractPayload(json);
+    EXPECT_EQ(payloadStr, R"({"path":"/home/samples"})");
 }
 
 TEST(SampleBrowserTest, GetDirectoryReturnsEntries)
@@ -338,12 +370,11 @@ TEST(SampleBrowserTest, SendToTrackNoApi)
     // Since m_api is all zeros (no Reaper), the check will fail.
     // We can't fully test this without a mock, but we verify the
     // JSON dispatch code paths are wired.
-    std::string json = R"({"type":"command","command":"sample/sendToTrack","path":"/tmp/test.wav","trackIdx":0,"id":"send_1"})";
-    JsonParser parser(json);
-    EXPECT_EQ(parser.getString("command"), "sample/sendToTrack");
+    std::string json = R"({"type":"command","command":"sample/sendToTrack","payload":{"path":"/tmp/test.wav","trackIdx":0},"id":"send_1"})";
+    std::string payloadStr = extractPayload(json);
+    JsonParser  parser(payloadStr);
     EXPECT_EQ(parser.getString("path"), "/tmp/test.wav");
     EXPECT_EQ(parser.getString("trackIdx"), "0");
-    EXPECT_EQ(parser.getString("id"), "send_1");
 }
 
 TEST(SampleBrowserTest, JsonEscapeFilepath)

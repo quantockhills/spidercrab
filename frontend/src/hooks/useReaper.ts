@@ -178,6 +178,25 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return resp.success;
   }, []);
 
+  // Transport commands
+  const play = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('transport/play');
+    return resp.success;
+  }, []);
+
+  const stop = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('transport/stop');
+    return resp.success;
+  }, []);
+
+  const getTransportState = useCallback(async (): Promise<{playing: boolean; recording: boolean}> => {
+    if (!clientRef.current) return {playing: false, recording: false};
+    const resp = await clientRef.current.send('transport/getState');
+    return (resp.payload as any) || {playing: false, recording: false};
+  }, []);
+
   const selectTrack = useCallback(async (trackIdx: number): Promise<boolean> => {
     return await setTrackSelected(trackIdx, true);
   }, [setTrackSelected]);
@@ -200,6 +219,9 @@ export function useReaper(opts: UseReaperOptions = {}) {
     toggleTrackSolo,
     toggleTrackArm,
     selectTrack,
+    play,
+    stop,
+    getTransportState,
     getDirectory,
     sendSampleToTrack,
   };

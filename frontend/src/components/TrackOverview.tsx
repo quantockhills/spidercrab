@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import type { Track } from '../hooks/useReaper';
 
 interface TrackOverviewProps {
@@ -9,6 +9,9 @@ interface TrackOverviewProps {
   onToggleSolo: (index: number) => void;
   onToggleArm: (index: number) => void;
   onRefresh: () => void;
+  onPlay?: () => Promise<boolean>;
+  onStop?: () => Promise<boolean>;
+  onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
 }
 
 /** Convert linear 0-1 Reaper volume to approximate dB string */
@@ -39,11 +42,68 @@ export function TrackOverview({
   onToggleSolo,
   onToggleArm,
   onRefresh,
+  onPlay,
+  onStop,
+  onGetTransportState,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const handlePlay = useCallback(async () => {
+    if (!onPlay) return;
+    const ok = await onPlay();
+    if (ok && onGetTransportState) {
+      const state = await onGetTransportState();
+      setIsPlaying(state.playing);
+    }
+  }, [onPlay, onGetTransportState]);
+
+  const handleStop = useCallback(async () => {
+    if (!onStop) return;
+    const ok = await onStop();
+    if (ok && onGetTransportState) {
+      const state = await onGetTransportState();
+      setIsPlaying(state.playing);
+    }
+  }, [onStop, onGetTransportState]);
 
   return (
     <div className="flex flex-col h-full">
+      {/* Transport bar */}
+      {onPlay && onStop && (
+        <div className="flex items-center justify-center gap-4 px-4 py-3 border-b border-white/5">
+          <button
+            data-testid="transport-play"
+            onClick={handlePlay}
+            className={`
+              w-16 h-10 rounded-xl text-sm font-bold transition-all active:scale-90
+              ${isPlaying
+                ? 'bg-green-500/25 text-green-400 ring-1 ring-green-500/40'
+                : 'bg-white/10 text-[var(--text-secondary)]'
+              }
+            `}
+          >
+            ▶
+          </button>
+          <button
+            data-testid="transport-stop"
+            onClick={handleStop}
+            className={`
+              w-16 h-10 rounded-xl text-sm font-bold transition-all active:scale-90
+              ${!isPlaying
+                ? 'bg-red-500/25 text-red-400 ring-1 ring-red-500/40'
+                : 'bg-white/10 text-[var(--text-secondary)]'
+              }
+            `}
+          >
+            ■
+          </button>
+          <span className="text-[11px] text-[var(--text-secondary)] w-20 text-center">
+            {isPlaying ? 'Playing' : 'Stopped'}
+          </span>
+        </div>
+      )}
+
       {/* Section header */}
       <div className="flex items-center justify-between px-4 py-3">
         <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">

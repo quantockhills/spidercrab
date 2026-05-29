@@ -31,6 +31,9 @@ function App() {
     deleteFx,
     getDirectory,
     sendSampleToTrack,
+    play,
+    stop,
+    getTransportState,
   } = useReaper();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
@@ -164,6 +167,9 @@ function App() {
             onToggleSolo={handleToggleSolo}
             onToggleArm={handleToggleArm}
             onRefresh={refreshTracks}
+            onPlay={play}
+            onStop={stop}
+            onGetTransportState={getTransportState}
           />
         )}
 
