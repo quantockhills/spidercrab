@@ -217,9 +217,32 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    Read plan or issue → write code → compile → commit
    Done. No testing, no verifying, no closing.
 
+   **When stuck / looped back:**
+   - Check API/SDK docs (`docs/reaper-sdk/sdk/`) before guessing — wrong
+     API usage can look like memory corruption
+   - Use `make build-debug` (ASan) to catch buffer overflows early
+   - `fprintf(stderr, ...)` for printf debugging
+   - See `DEBUGGING.md` for all debugging tools
+
 🔍 Reviewer (2-3 min) — fires after builder
    Read diff → check against AGENTS.md + UI.md + issue
    → approve OR flag issues → comment on Gitea
+
+   **Debugging tools available:**
+   - `docs/reaper-sdk/sdk/reaper_plugin_functions.h` — API signatures + docs
+   - `make build-debug` — compiles with ASan (catches buffer overflows, use-after-free)
+   - `gdb -batch -x /tmp/gdb_script.gdb --args env ...` — catch segfaults
+   - `fprintf(stderr, ...)` — printf debugging in extension
+   - `DEBUGGING.md` — full reference for all tools
+
+   **When something looks wrong:**
+   1. Check API/SDK docs FIRST — wrong function signatures cause crashes
+      that look like memory corruption (e.g., GetSetMediaTrackInfo(buffer)
+      sets the property, it does NOT read into the buffer)
+   2. Check if the error is reproducible without the platform (mock the API)
+   3. Check DEBUGGING.md for known crashes and fixes
+   4. Only then reach for GDB/ASan/valgrind
+
    ⚠️ If issues found → loop back to Builder
    ✅ If clean → pass to Tester
 
