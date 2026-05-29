@@ -240,6 +240,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandlePlay(clientId, id, message);
         } else if (command == "transport/stop") {
             HandleStop(clientId, id, message);
+        } else if (command == "fx/enumerate") {
+            HandleEnumerateFX(clientId, id, message);
         } else if (command == "track/setMute") {
             HandleSetTrackMute(clientId, id, message);
         } else if (command == "track/setSolo") {
@@ -496,6 +498,61 @@ void CommandHandler::HandleGetTransport(
 {
     (void)params; // unused, but keep - we don't have the full transport API loaded yet
     SendResponse(clientId, id, true, "{\"playing\":false,\"recording\":false}");
+}
+
+// ============================================================
+// FX enumeration
+// ============================================================
+
+void CommandHandler::HandleEnumerateFX(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    if (!m_api.EnumInstalledFX) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string fxList = "[";
+    int         idx    = 0;
+    while (true) {
+        const char* name  = nullptr;
+        const char* ident = nullptr;
+        if (!m_api.EnumInstalledFX(idx, &name, &ident))
+            break;
+        if (idx > 0)
+            fxList += ",";
+
+        // Determine format from ident prefix
+        std::string format = "VST3";
+        if (ident) {
+            std::string idStr(ident);
+            if (idStr.find("VST2:") == 0 || idStr.find("VST:") == 0)
+                format = "VST2";
+            else if (idStr.find("VST3:") == 0)
+                format = "VST3";
+            else if (idStr.find("CLAP:") == 0)
+                format = "CLAP";
+            else if (idStr.find("JS:") == 0)
+                format = "JSFX";
+            else if (idStr.find("AU:") == 0)
+                format = "AU";
+            else if (idStr.find("DX:") == 0)
+                format = "DX";
+        }
+
+        fxList += "{";
+        fxList += json_string("index") + ":" + std::to_string(idx) + ",";
+        fxList += json_string("name") + ":" + json_string(name ? name : "") + ",";
+        fxList += json_string("ident") + ":" + json_string(ident ? ident : "") + ",";
+        fxList += json_string("format") + ":" + json_string(format);
+        fxList += "}";
+
+        idx++;
+    }
+    fxList += "]";
+
+    SendResponse(clientId, id, true, "{\"fx\":" + fxList + "}");
 }
 
 // ============================================================

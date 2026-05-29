@@ -23,6 +23,7 @@ struct ReaperAPI {
         bool setNewValue_isAllowed) = nullptr;
 
     // FX functions
+    bool (*EnumInstalledFX)(int index, const char** nameOut, const char** identOut) = nullptr;
     int (*TrackFX_GetCount)(MediaTrack* track) = nullptr;
     int (*TrackFX_AddByName)(MediaTrack* track, const char* fxname, bool recFX, int instantiate)
         = nullptr;
@@ -83,6 +84,7 @@ private:
     void HandleSetTrackSelected(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX
+    void HandleEnumerateFX(int clientId, const std::string& id, const std::string& params);
     void HandleGetTrackFX(int clientId, const std::string& id, const std::string& params);
     void HandleGetFXParams(int clientId, const std::string& id, const std::string& params);
     void HandleSetFXParam(int clientId, const std::string& id, const std::string& params);

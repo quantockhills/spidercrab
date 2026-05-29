@@ -27,6 +27,7 @@
 #define REAPERAPI_WANT_TrackFX_CopyToTrack
 #define REAPERAPI_WANT_TrackFX_GetPresetIndex
 #define REAPERAPI_WANT_TrackFX_SetPreset
+#define REAPERAPI_WANT_EnumInstalledFX
 #define REAPERAPI_WANT_Main_OnCommand
 #define REAPERAPI_WANT_GetProjExtState
 #define REAPERAPI_WANT_SetProjExtState
@@ -219,6 +220,7 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         api.TrackFX_CopyToTrack         = TrackFX_CopyToTrack;
         api.TrackFX_GetPresetIndex      = TrackFX_GetPresetIndex;
         api.TrackFX_SetPreset           = TrackFX_SetPreset;
+        api.EnumInstalledFX             = EnumInstalledFX;
         api.Main_OnCommand              = Main_OnCommand;
         g_cmdHandler->SetApi(api);
     }
