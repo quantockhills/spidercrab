@@ -206,6 +206,34 @@ struct JsonParser {
     }
 };
 
+
+// Extract the JSON object inside "payload" from a command message.
+static std::string extractPayload(const std::string& message)
+{
+    size_t pos = message.find("\"payload\"");
+    if (pos == std::string::npos)
+        return message;
+    pos = message.find(':', pos);
+    if (pos == std::string::npos)
+        return message;
+    pos++;
+    while (pos < message.size() && (message[pos] == ' ' || message[pos] == '\t'))
+        pos++;
+    if (pos >= message.size() || message[pos] != '{')
+        return message;
+    int depth = 1;
+    size_t start = pos;
+    pos++;
+    while (pos < message.size() && depth > 0) {
+        if (message[pos] == '{') depth++;
+        if (message[pos] == '}') depth--;
+        pos++;
+    }
+    if (depth != 0)
+        return message;
+    return message.substr(start, pos - start);
+}
+
 CommandHandler::CommandHandler(WebSocketServer* ws)
     : m_ws(ws)
 {
@@ -224,6 +252,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
     if (type.empty() || type == "command") {
         if (command == "track/getAll") {
             HandleGetTracks(clientId, id, message);
+        } else if (command == "track/add") {
+            HandleAddTrack(clientId, id, message);
         } else if (command == "track/getFx") {
             HandleGetTrackFX(clientId, id, message);
         } else if (command == "fx/getParams") {
@@ -281,6 +311,17 @@ void CommandHandler::SendResponse(
 {
     std::string resp = FormatResponse(id, success, payload);
     m_ws->Send(clientId, resp);
+}
+
+void CommandHandler::HandleAddTrack(int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    if (m_api.Main_OnCommand) {
+        m_api.Main_OnCommand(40001, 0);
+        SendResponse(clientId, id, true, "{\"added\":true}");
+    } else {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+    }
 }
 
 void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const std::string& params)
@@ -342,7 +383,8 @@ void CommandHandler::HandleGetTrackFX(
     }
 
     // Extract track index from params
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     int         trackIdx    = atoi(trackIdxStr.c_str());
     MediaTrack* track       = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
@@ -377,7 +419,8 @@ void CommandHandler::HandleGetFXParams(
         return;
     }
 
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
     int         trackIdx    = atoi(trackIdxStr.c_str());
@@ -423,7 +466,8 @@ void CommandHandler::HandleSetFXParam(
         return;
     }
 
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
     std::string paramIdxStr = parser.getString("paramIdx");
@@ -452,7 +496,8 @@ void CommandHandler::HandleAddFX(int clientId, const std::string& id, const std:
         return;
     }
 
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxName      = parser.getString("fxName");
 
@@ -475,7 +520,8 @@ void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const s
         return;
     }
 
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
 
@@ -566,7 +612,8 @@ void CommandHandler::HandleSetTrackMute(
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string mutedStr    = parser.getString("muted");
     int         trackIdx    = atoi(trackIdxStr.c_str());
@@ -588,7 +635,8 @@ void CommandHandler::HandleSetTrackSolo(
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string soloedStr   = parser.getString("soloed");
     int         trackIdx    = atoi(trackIdxStr.c_str());
@@ -610,7 +658,8 @@ void CommandHandler::HandleSetTrackArm(
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string armedStr    = parser.getString("armed");
     int         trackIdx    = atoi(trackIdxStr.c_str());
@@ -632,7 +681,8 @@ void CommandHandler::HandleSetTrackSelected(
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    JsonParser  parser(params);
+        std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string selectedStr = parser.getString("selected");
     int         trackIdx    = atoi(trackIdxStr.c_str());

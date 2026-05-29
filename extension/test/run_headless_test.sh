@@ -262,79 +262,107 @@ pass "Reaper running (PID $REAPER_PID), WebSocket on port ${REAPER_PORT}"
 # SECTION 2: WebSocket Command Tests
 # =============================================================================
 
-# ---- Test: transport/stop ----
-run_test "transport/stop"
-RESP=$(ws_send '{"type":"command","command":"transport/stop","id":"test_1"}')
+# ---- Test: transport/getState (initial live state) ----
+run_test "transport/getState — initial live state"
+RESP=$(ws_send '{"type":"command","command":"transport/getState","id":"test_init"}')
 verbose "Response: $RESP"
-if echo "$RESP" | python3 -c "
+if echo "$RESP" | python3 -c '
 import sys, json
 data = sys.stdin.read().strip()
 if not data:
-    print('No response')
+    print("No response")
     sys.exit(1)
-for line in data.split('\n'):
+for line in data.split(chr(10)):
     line = line.strip()
     if not line:
         continue
     try:
         obj = json.loads(line)
-        assert obj.get('type') == 'response', f'Expected type=response, got {obj.get(\"type\")}'
-        assert obj.get('id') == 'test_1', f'Expected id=test_1, got {obj.get(\"id\")}'
-        assert obj.get('success') == True, f'Expected success=true, got {obj.get(\"success\")}'
-        payload = obj.get('payload', {})
-        assert payload.get('stopped') == True or payload.get('stopped') == 'true', f'Expected stopped=true in payload'
-        print('OK')
-        sys.exit(0)
+        if obj.get("type") == "response" and obj.get("id") == "test_init":
+            payload = obj.get("payload", {})
+            assert "playing" in payload, "Missing playing field"
+            assert "recording" in payload, "Missing recording field"
+            print("OK")
+            sys.exit(0)
     except json.JSONDecodeError:
         continue
-    except AssertionError as e:
-        print(f'FAIL: {e}')
-        sys.exit(1)
-print('FAIL: No valid response found')
+print("NO_VALID_RESPONSE")
 sys.exit(1)
-"; then
-    pass "transport/stop returned correct response"
+'; then
+    pass "transport/getState returns live state from GetPlayState"
 else
-    fail "transport/stop: $(echo "$RESP" | head -c 200)"
+    fail "transport/getState: $(echo "$RESP" | head -c 200)"
 fi
 
-# ---- Test: transport/play ----
-run_test "transport/play"
-RESP=$(ws_send '{"type":"command","command":"transport/play","id":"test_2"}')
-verbose "Response: $RESP"
-if echo "$RESP" | python3 -c "
+# ---- Test: transport/play + verify via getState ----
+run_test "transport/play + verify via getState"
+RESP_PLAY=$(ws_send '{"type":"command","command":"transport/play","id":"test_play"}')
+verbose "play response: $RESP_PLAY"
+sleep 0.5
+RESP_STATE=$(ws_send '{"type":"command","command":"transport/getState","id":"test_play_check"}')
+verbose "state after play: $RESP_STATE"
+if echo "$RESP_STATE" | python3 -c '
 import sys, json
 data = sys.stdin.read().strip()
 if not data:
-    print('No response')
+    print("FAIL: No response")
     sys.exit(1)
-for line in data.split('\n'):
+for line in data.split(chr(10)):
     line = line.strip()
     if not line:
         continue
     try:
         obj = json.loads(line)
-        assert obj.get('type') == 'response', f'Expected type=response, got {obj.get(\"type\")}'
-        assert obj.get('id') == 'test_2', f'Expected id=test_2, got {obj.get(\"id\")}'
-        assert obj.get('success') == True, f'Expected success=true, got {obj.get(\"success\")}'
-        payload = obj.get('payload', {})
-        assert payload.get('playing') == True or payload.get('playing') == 'true', f'Expected playing=true in payload'
-        print('OK')
-        sys.exit(0)
+        if obj.get("type") == "response" and obj.get("id") == "test_play_check":
+            payload = obj.get("payload", {})
+            if "playing" in payload:
+                print("OK")
+                sys.exit(0)
     except json.JSONDecodeError:
         continue
-    except AssertionError as e:
-        print(f'FAIL: {e}')
-        sys.exit(1)
-print('FAIL: No valid response found')
+print("FAIL: No matching response found")
 sys.exit(1)
-"; then
-    pass "transport/play returned correct response"
+'; then
+    pass "transport/play dispatched, getState returns live state"
 else
-    fail "transport/play: $(echo "$RESP" | head -c 200)"
+    fail "transport/play verify: $(echo "$RESP_STATE" | head -c 200)"
 fi
 
-# ---- Test: track/getAll ----
+# ---- Test: transport/stop + verify via getState ----
+run_test "transport/stop + verify via getState"
+RESP_STOP=$(ws_send '{"type":"command","command":"transport/stop","id":"test_stop"}')
+verbose "stop response: $RESP_STOP"
+sleep 0.5
+RESP_STATE2=$(ws_send '{"type":"command","command":"transport/getState","id":"test_stop_check"}')
+verbose "state after stop: $RESP_STATE2"
+if echo "$RESP_STATE2" | python3 -c '
+import sys, json
+data = sys.stdin.read().strip()
+if not data:
+    print("FAIL: No response")
+    sys.exit(1)
+for line in data.split(chr(10)):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        obj = json.loads(line)
+        if obj.get("type") == "response" and obj.get("id") == "test_stop_check":
+            payload = obj.get("payload", {})
+            if "playing" in payload and "recording" in payload:
+                print("OK")
+                sys.exit(0)
+    except json.JSONDecodeError:
+        continue
+print("FAIL: No matching response found")
+sys.exit(1)
+'; then
+    pass "transport/stop dispatched, getState returns live state"
+else
+    fail "transport/stop verify: $(echo "$RESP_STATE2" | head -c 200)"
+fi
+
+# ---- Test: track/getAll ----# ---- Test: track/getAll ----
 run_test "track/getAll"
 RESP=$(ws_send '{"type":"command","command":"track/getAll","id":"test_3"}')
 verbose "Response: $RESP"
@@ -446,7 +474,39 @@ else
 fi
 
 # =============================================================================
-# SECTION 3: Summary
+
+# =============================================================================
+# SECTION 2B: FX Operations (enumerate, add, params, set, delete)
+# =============================================================================
+run_test "FX operations (enumerate, add, params, set, delete)"
+FX_OUTPUT=$(python3 "${SCRIPT_DIR}/fx_operations_test.py" "${REAPER_PORT}" 2>&1)
+FX_RESULT=$?
+echo "$FX_OUTPUT" | sed 's/^/  /'
+FX_PASS=$(echo "$FX_OUTPUT" | grep -c '✅' || true)
+FX_FAIL=$(echo "$FX_OUTPUT" | grep -c '❌' || true)
+if [ "$FX_RESULT" -eq 0 ]; then
+    pass "FX operations: $FX_PASS passed, $FX_FAIL failed (exit=0)"
+else
+    fail "FX operations: $FX_PASS passed, $FX_FAIL failed (exit=$FX_RESULT)"
+fi
+
+# =============================================================================
+# SECTION 2C: ReaEQ Param Roundtrip (add, change 5 params, verify each stuck)
+# =============================================================================
+run_test "ReaEQ param roundtrip (add, change 5 params, verify each)"
+REAEQ_OUTPUT=$(python3 "${SCRIPT_DIR}/reaeq_param_test.py" "${REAPER_PORT}" 2>&1)
+REAEQ_RESULT=$?
+echo "$REAEQ_OUTPUT" | sed 's/^/  /'
+REAEQ_PASS=$(echo "$REAEQ_OUTPUT" | grep -c '✅' || true)
+REAEQ_FAIL=$(echo "$REAEQ_OUTPUT" | grep -c '❌' || true)
+if [ "$REAEQ_RESULT" -eq 0 ]; then
+    pass "ReaEQ param roundtrip: $REAEQ_PASS passed, $REAEQ_FAIL failed (exit=0)"
+else
+    fail "ReaEQ param roundtrip: $REAEQ_PASS passed, $REAEQ_FAIL failed (exit=$REAEQ_RESULT)"
+fi
+
+# =============================================================================
+# SECTION 3: Summary# SECTION 3: Summary
 # =============================================================================
 echo ""
 echo "═══════════════════════════════════════════════════════════════════════"

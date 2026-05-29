@@ -29,6 +29,9 @@
 #define REAPERAPI_WANT_TrackFX_SetPreset
 #define REAPERAPI_WANT_EnumInstalledFX
 #define REAPERAPI_WANT_Main_OnCommand
+#define REAPERAPI_WANT_CSurf_OnPlay
+#define REAPERAPI_WANT_CSurf_OnStop
+#define REAPERAPI_WANT_GetPlayState
 #define REAPERAPI_WANT_GetProjExtState
 #define REAPERAPI_WANT_SetProjExtState
 #define REAPERAPI_WANT_EnumProjects
@@ -222,6 +225,9 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         api.TrackFX_SetPreset           = TrackFX_SetPreset;
         api.EnumInstalledFX             = EnumInstalledFX;
         api.Main_OnCommand              = Main_OnCommand;
+        api.CSurf_OnPlay                = CSurf_OnPlay;
+        api.CSurf_OnStop                = CSurf_OnStop;
+        api.GetPlayState                = GetPlayState;
         g_cmdHandler->SetApi(api);
     }
 
