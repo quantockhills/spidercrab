@@ -3,6 +3,10 @@
 > Captured as they come. Nothing gets lost.
 > *Nonlinear ideas, future features, half-baked thoughts, workflow improvements.*
 
+*Note: New ideas now go to **Gitea issues** with the `idea` label.
+This file is kept as a legacy reference. See AGENTS.md for workflow.*
+---
+
 ---
 
 ## 🚀 Vision
@@ -31,6 +35,10 @@ Browse and push samples, FX chains, and presets to tracks — tweak parameters i
 ---
 
 ## 💡 Workflow / Process Ideas
+
+*Note: These are now tracked in Gitea issues. See AGENTS.md for workflow.*
+---
+
 
 ### Sub-agents for parallel work
 Spawn isolated OpenClaw agents to work on separable tasks simultaneously.

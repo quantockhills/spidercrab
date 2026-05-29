@@ -1,7 +1,8 @@
 # ✅ TODO.md — Actionable Items
 
 > Things we're actually working on or planning to build next.
-> *Blue-sky ideas go in IDEAS.md, this is for concrete next steps.*
+> *Now tracked in Gitea issues instead. See AGENTS.md for workflow.*
+> *Kept as legacy reference: all 16 issues migrated to Gitea.*
 
 ---
 
