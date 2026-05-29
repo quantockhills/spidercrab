@@ -51,7 +51,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
 
   useEffect(() => {
     const client = new WsClient({
-      host: opts.host || 'localhost',
+      host: opts.host || '127.0.0.1',
       port: opts.port ?? 9224,
       onConnect: () => setConnected(true),
       onDisconnect: () => setConnected(false),
