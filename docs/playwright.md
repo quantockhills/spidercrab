@@ -111,6 +111,61 @@ npx playwright test --headed
 
 ---
 
+## Screenshot Capture (for Screenshot Verifier)
+
+The Screenshot Verifier agent uses Playwright to capture UI screenshots
+for visual verification. Screenshots go to `gui_testing/`.
+
+### Basic Capture Pattern
+
+```javascript
+const { chromium } = require('playwright');
+const G = '/home/sasha/projects/reaper-ipad/gui_testing';
+
+(async () => {
+  const b = await chromium.launch({ headless: true });
+  const p = await b.newPage({ viewport: { width: 2360, height: 1640 } });
+  await p.goto('http://localhost:5173', { waitUntil: 'networkidle' });
+
+  // Wait for WS connection before interacting
+  for (let i = 0; i < 20; i++) {
+    await p.waitForTimeout(1000);
+    if (await p.evaluate(() => document.body.textContent.includes('Connected'))) break;
+  }
+
+  await p.screenshot({ path: G + '/ss-descriptive-name.png', fullPage: false });
+  await b.close();
+})();
+```
+
+### Memory-Constrained Environments
+
+If the system has limited RAM (Reaper + Chromium can exceed 3.7GB),
+use the lighter `chromium_headless_shell` instead:
+
+```javascript
+const SHELL = '/home/sasha/.cache/ms-playwright/chromium_headless_shell-1223/chrome-headless-shell-linux64/chrome-headless-shell';
+const b = await chromium.launch({
+  executablePath: SHELL,
+  args: ['--disable-gpu', '--no-sandbox', '--disable-dev-shm-usage']
+});
+```
+
+### Avoiding X11 Display Conflicts
+
+Reaper and Chromium should NOT share the same X display. Use separate
+displays to avoid SWELL layer crashes:
+- Reaper: `DISPLAY=:99` (Xvfb)
+- Chromium: `DISPLAY=:100` (separate Xvfb)
+
+### Known Limitation
+
+`EnumInstalledFX` crashes Reaper when Chromium WS is connected
+(see issue #34). Workaround: pre-cache FX enumeration via Python
+WS before opening the frontend. The cache makes FX loading instant.
+
+---
+
 ## Architecture
 
 Browser tests follow this flow:

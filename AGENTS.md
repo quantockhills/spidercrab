@@ -293,6 +293,9 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    take screenshots via Playwright, then have a vision-capable agent (Kimi K2.6)
    analyze each screenshot against claimed content.
 
+   **Before capturing, read:** `docs/playwright.md` (Playwright setup + screenshot guide)
+   **Output directory:** `gui_testing/` (all screenshots go here)
+
    🎯 **Always spawn with:** `model: "openrouter/moonshotai/kimi-k2.6"`
    (DeepSeek V4 Flash can't do vision. The model override is explicit per-spawn.)
    Rules:
