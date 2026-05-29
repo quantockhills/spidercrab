@@ -36,3 +36,4 @@ docs/helgobox/
 # Environment
 .env
 .env.local
+__pycache__/
