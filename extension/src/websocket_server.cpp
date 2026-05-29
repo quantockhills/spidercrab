@@ -133,7 +133,7 @@ bool WebSocketServer::Start(int port)
 
 void WebSocketServer::Stop()
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
     // Close all clients
     for (int i = m_clients.GetSize() - 1; i >= 0; i--) {
@@ -156,7 +156,7 @@ void WebSocketServer::Run()
 {
     AcceptNew();
 
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (int i = m_clients.GetSize() - 1; i >= 0; i--) {
         Client* c = m_clients.Get(i);
         if (c->conn) {
@@ -181,7 +181,7 @@ void WebSocketServer::AcceptNew()
         client->handshakeDone = false;
         client->frameState    = 0;
 
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
         m_clients.Add(client);
     }
 }
@@ -250,12 +250,11 @@ void WebSocketServer::ReadClient(Client* client)
 
     // Read available data
     int avail = conn->recv_bytes_available();
-    if (avail <= 0)
-        return;
-
-    size_t oldSize = client->recvBuf.size();
-    client->recvBuf.resize(oldSize + avail);
-    conn->recv_bytes(client->recvBuf.data() + oldSize, avail);
+    if (avail > 0) {
+        size_t oldSize = client->recvBuf.size();
+        client->recvBuf.resize(oldSize + avail);
+        conn->recv_bytes(client->recvBuf.data() + oldSize, avail);
+    }
 
     if (!client->handshakeDone) {
         // Check if we have the full HTTP headers (ends with \r\n\r\n)
@@ -266,13 +265,21 @@ void WebSocketServer::ReadClient(Client* client)
             client->recvBuf.erase(client->recvBuf.begin(), client->recvBuf.begin() + headerEnd + 4);
             if (!HandleUpgrade(client)) {
                 RemoveClient(client);
+                return;
             }
+            // handshakeDone is now true — fall through to ParseFrames
+            // if there's leftover data in recvBuf (same TCP packet)
+        } else {
+            // Wait for more data
+            return;
         }
-        // Else wait for more data
-        return;
     }
 
-    ParseFrames(client);
+    // Process any WebSocket frames in the buffer
+    // (handles both: leftover data after upgrade, and data from subsequent reads)
+    if (client->handshakeDone && !client->recvBuf.empty()) {
+        ParseFrames(client);
+    }
 }
 
 void WebSocketServer::ParseFrames(Client* client)
@@ -340,7 +347,7 @@ void WebSocketServer::ParseFrames(Client* client)
 
 bool WebSocketServer::Send(int clientId, const std::string& message)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (int i = 0; i < m_clients.GetSize(); i++) {
         Client* c = m_clients.Get(i);
         if (c->id == clientId && c->handshakeDone) {
@@ -352,7 +359,7 @@ bool WebSocketServer::Send(int clientId, const std::string& message)
 
 void WebSocketServer::Broadcast(const std::string& message)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (int i = 0; i < m_clients.GetSize(); i++) {
         Client* c = m_clients.Get(i);
         if (c->handshakeDone) {

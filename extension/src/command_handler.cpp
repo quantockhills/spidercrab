@@ -154,9 +154,14 @@ struct JsonParser {
     // Get a string value for a key in an object
     std::string getString(const std::string& key)
     {
-        if (next() != '{')
-            return "";
-        while (peek() != '}') {
+        // If we're at the start of an object, skip the opening {
+        // This allows calling getString multiple times on the same object
+        if (peek() == '{')
+            next();
+        // Skip comma between key-value pairs
+        if (peek() == ',')
+            next();
+        while (peek() != '}' && pos < s.size()) {
             std::string k = parseString();
             if (next() != ':')
                 return "";
