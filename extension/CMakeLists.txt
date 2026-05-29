@@ -6,8 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ---- Paths ----
-set(WDL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../WDL")
-set(SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../reaper-sdk/sdk")
+set(WDL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../docs/WDL")
+set(SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../docs/reaper-sdk/sdk")
 
 # ---- Include paths ----
 include_directories(

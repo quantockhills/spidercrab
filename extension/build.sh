@@ -45,12 +45,12 @@ fi
 CXXFLAGS="$CXXFLAGS -Wall -Wextra -Wno-unused-parameter"
 
 # ---- Includes ----
-INCLUDES="-I$PROJECT_DIR/reaper-sdk/sdk"
-INCLUDES="$INCLUDES -I$PROJECT_DIR/WDL"
-INCLUDES="$INCLUDES -I$PROJECT_DIR/WDL/WDL"
-INCLUDES="$INCLUDES -I$PROJECT_DIR/WDL/WDL/jnetlib"
-INCLUDES="$INCLUDES -I$PROJECT_DIR/WDL/WDL/eel2"
-INCLUDES="$INCLUDES -I$PROJECT_DIR/WDL/WDL/swell"
+INCLUDES="-I$PROJECT_DIR/docs/reaper-sdk/sdk"
+INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL"
+INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL"
+INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL/jnetlib"
+INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL/eel2"
+INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL/swell"
 
 # ---- Sysroot for brew gcc on Linux ----
 SYSROOT="/tmp/sysroot"
@@ -66,7 +66,7 @@ SRC="$SRC $SCRIPT_DIR/src/websocket_server.cpp"
 SRC="$SRC $SCRIPT_DIR/src/command_handler.cpp"
 
 # WDL jnetlib (needed for networking)
-WDL_DIR="$PROJECT_DIR/WDL/WDL"
+WDL_DIR="$PROJECT_DIR/docs/WDL/WDL"
 SRC="$SRC $WDL_DIR/jnetlib/listen.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/connection.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/util.cpp"

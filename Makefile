@@ -64,8 +64,10 @@ git-status:
 	git status
 
 docs-pull:
-	@echo "SDK + WDL are symlinked in docs/."
-	@echo "helgobox (Playtime 2 / ReaLearn) is cloned at docs/helgobox/"
-	@echo "To refresh: git -C docs/helgobox pull"
+	@echo "Everything is in docs/ already."
+	@echo "  docs/reaper-sdk/ — SDK headers"
+	@echo "  docs/WDL/ — Cockos Foundation Library"
+	@echo "  docs/helgobox/ — Playtime 2 / ReaLearn"
+	@echo "To update helgobox: git -C docs/helgobox pull"
 
 .PHONY: all build lint test deploy check fmt docs-pull
