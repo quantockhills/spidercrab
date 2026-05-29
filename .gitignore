@@ -41,3 +41,5 @@ frontend/test-results/
 
 # E2E test artifacts (screenshots, video)
 gui_testing/
+# Extracted theme assets (keep only .ReaperThemeZip files)
+design/original-theme/everforest-extracted/

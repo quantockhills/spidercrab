@@ -70,7 +70,13 @@ The daily check-in (10am UTC) is separate and handles the summary/flagging.
 │   ├── UI.md              ← UI/UX design spec (screens, interactions)
 │   ├── helgobox/          ← Cloned helgobox repo (Playtime 2 / ReaLearn API)
 │   ├── reaper-sdk/        ← REAPER C/C++ extension SDK headers
-│   └── WDL/               ← Cockos Foundation Library (jnetlib networking)
+│   ├── WDL/               ← Cockos Foundation Library (jnetlib networking)
+│   └── workflows.md       ← Task pipeline definitions (which stages per task type)
+│
+├── design/                ← Design system reference
+│   ├── design-guidelines.md ← Visual design rules (colors, shapes, typography)
+│   ├── designer-prompt.md ← Brief for a UI designer
+│   └── original-theme/    ← 80gray v2.2 REAPER themes (reference material)
 │
 └── reaper/                ← (not in repo) Portable Reaper at ~/reaper-portable/
 ```
@@ -142,6 +148,10 @@ tea pr create --repo madhav/reaper-ipad
 
 
 ### Implementation & Verification Workflow
+
+**See `docs/workflows.md` for the full pipeline definitions per task type.**
+Use the appropriate pipeline (UI Feature, Backend, Design/Layout, etc.)
+before closing any issue.
 
 Every feature goes through this sequence before its issue is closed:
 
