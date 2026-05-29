@@ -56,9 +56,9 @@ frontend-build:
 
 # ---- Headless Testing (requires Reaper + Xvfb) ----
 
-# Start Reaper headless with extension loaded (background)
-headless-start:
-	bash test/headless_test.sh --no-build
+# Integration test: headless Reaper + WebSocket commands
+headless-test:
+	bash extension/test/run_headless_test.sh
 
 # Quick check: is the WebSocket server running?
 headless-status:
@@ -71,25 +71,24 @@ headless-status:
 
 # Kill headless Reaper
 headless-stop:
-	@pkill -x reaper 2>/dev/null && echo "✅ Reaper stopped" || echo "ℹ️  Reaper was not running"
-
-# Build, launch, and run headless connectivity tests
-headless-test:
-	bash test/headless_test.sh
+	@if pgrep -x reaper > /dev/null 2>&1; then \
+		pkill -x reaper 2>/dev/null && echo "✅ Reaper stopped"; \
+	else \
+		echo "ℹ️  Reaper was not running"; \
+	fi
 
 # Launch Reaper headless (background, for interactive use)
 headless-launch:
 	@echo "Starting Xvfb + Reaper headless..."
 	@if ! pgrep -x Xvfb > /dev/null 2>&1; then \
-		Xvfb :99 -screen 0 1024x768x24 & \
+		Xvfb :99 -screen 0 1024x768x24 -ac -nolisten tcp 2>/dev/null & \
 		sleep 1; \
 	fi
-	@export DISPLAY=:99 && export LD_LIBRARY_PATH=/home/linuxbrew/.linuxbrew/lib:$$LD_LIBRARY_PATH && \
-		~/reaper-portable/reaper &
+	@DISPLAY=:99 LD_LIBRARY_PATH=/home/linuxbrew/.linuxbrew/lib \
+		~/reaper-portable/reaper -newinst -nosplash &
 	@sleep 3
 	@echo "✅ Reaper launched headless on :99"
 	@echo "   PID: $$(pgrep -x reaper)"
-	@echo "   WebSocket: port 9224"
 
 check: lint build test
 
