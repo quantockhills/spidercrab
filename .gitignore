@@ -26,10 +26,14 @@ frontend/node_modules/
 ~/reaper-portable/UserPlugins/*.so
 
 # Logs
+.gitignore
+!docs/helgobox/.gitkeep
+docs/helgobox/
 *.log
 /tmp/reaper-*.log
 /tmp/reaper-*.txt
 
-# Environment
+# Env
 .env
 .env.local
+helgobox/

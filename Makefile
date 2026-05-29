@@ -64,10 +64,8 @@ git-status:
 	git status
 
 docs-pull:
-	@mkdir -p docs/lib
-	@cp reaper-sdk/sdk/reaper_plugin_functions.h docs/lib/ 2>/dev/null || true
-	@cp reaper-sdk/sdk/reaper_plugin.h docs/lib/ 2>/dev/null || true
-	@cp WDL/WDL/jnetlib/*.h docs/lib/ 2>/dev/null || true
-	@echo "Library headers synced to docs/lib/"
+	@echo "SDK + WDL are symlinked in docs/."
+	@echo "helgobox (Playtime 2 / ReaLearn) is cloned at docs/helgobox/"
+	@echo "To refresh: git -C docs/helgobox pull"
 
 .PHONY: all build lint test deploy check fmt docs-pull

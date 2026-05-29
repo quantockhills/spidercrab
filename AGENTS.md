@@ -60,10 +60,11 @@ Read this on every session start. Update it when decisions change.
 │   │   └── test/wsClient.test.ts  ← 9 Vitest tests
 │   └── package.json
 │
-├── docs/                  ← Long-form documentation
+├── docs/                  ← Long-form documentation + library repos
 │   ├── ARCHITECTURE.md    ← Design decisions and rationale
-│   └── lib/               ← Library docs pulled from SDK/WDL (run 
-│                            `make docs-pull` to update)
+│   ├── helgobox/          ← Cloned helgobox repo (Playtime 2 / ReaLearn API)
+│   ├── reaper-sdk -> ../reaper-sdk  ← Symlink to SDK headers
+│   └── wdl -> ../WDL               ← Symlink to WDL library
 │
 ├── WDL/                   ← Cockos Foundation Library (jnetlib networking)
 ├── reaper-sdk/            ← REAPER C/C++ extension SDK
@@ -131,11 +132,12 @@ tea pr create --repo madhav/reaper-ipad
 - Run `make test` before committing.
 
 ### Getting Unstuck
-If you're stuck on a Reaper API call or networking issue:
-1. Check `docs/lib/` — we pull relevant SDK/docs there
-2. Check `reaper-sdk/sdk/reaper_plugin_functions.h` (10K+ lines, every API function)
-3. Check `WDL/WDL/jnetlib/` for networking primitives
-4. Ask Tamura — they know Reaper's internals better than any doc
+If you're stuck:
+1. **Reaper API** — `docs/reaper-sdk/sdk/reaper_plugin_functions.h` (every function)
+2. **Networking** — `docs/wdl/WDL/jnetlib/` (listen.h, connection.h)
+3. **Playtime 2** — `docs/helgobox/playtime-api/src/lib.rs` (Rust API)
+4. **ReaLearn** — `docs/helgobox/doc/` for controller integration docs
+5. Ask Tamura — they know Reaper's internals better than any doc
 
 ### Debugging
 - **ASan+UBSan** are baked into debug builds — they catch bugs at runtime automatically.
