@@ -1,134 +1,167 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useReaper } from './hooks/useReaper';
+import { TrackOverview } from './components/TrackOverview';
 
-function TrackRow({ track, onSelect, onToggleMute, onToggleSolo }: {
-  track: { index: number; name: string; muted: boolean; soloed: boolean; selected: boolean };
-  onSelect: () => void;
-  onToggleMute: () => void;
-  onToggleSolo: () => void;
-}) {
-  return (
-    <div
-      onClick={onSelect}
-      className={`flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer
-        active:scale-[0.98] transition-transform
-        ${track.selected ? 'bg-[#2a2a3a] ring-1 ring-[var(--accent-dim)]' : 'bg-[var(--bg-tertiary)]'}`}
-    >
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium truncate">{track.name || `Track ${track.index + 1}`}</div>
-        <div className="text-xs text-[var(--text-secondary)]">Track {track.index + 1}</div>
-      </div>
-      <div className="flex gap-2">
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleSolo(); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors
-            ${track.soloed
-              ? 'bg-yellow-500/20 text-yellow-400'
-              : 'bg-white/10 text-[var(--text-secondary)]'}`}
-        >
-          S
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleMute(); }}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors
-            ${track.muted
-              ? 'bg-[var(--danger)]/20 text-[var(--danger)]'
-              : 'bg-white/10 text-[var(--text-secondary)]'}`}
-        >
-          {track.muted ? 'MUTED' : 'MUTE'}
-        </button>
-      </div>
-    </div>
-  );
-}
+type Tab = 'media' | 'fx' | 'tracks' | 'settings';
+
+const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'media',   label: 'Media',   icon: '📂' },
+  { id: 'fx',      label: 'FX',      icon: '🎛️' },
+  { id: 'tracks',  label: 'Tracks',  icon: '🎚️' },
+  { id: 'settings',label: 'Settings',icon: '⚙️' },
+];
 
 function App() {
-  const { connected, tracks, refreshTracks } = useReaper();
+  const {
+    connected,
+    tracks,
+    refreshTracks,
+    toggleTrackMute,
+    toggleTrackSolo,
+    toggleTrackArm,
+    selectTrack,
+  } = useReaper();
+
+  const [activeTab, setActiveTab] = useState<Tab>('tracks');
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
 
-  const handleToggleMute = useCallback((trackIndex: number) => {
-    // TODO: implement mute toggle via REAPER API command
-    console.log(`Toggle mute on track ${trackIndex}`);
-  }, []);
+  // Refresh tracks on connect
+  useEffect(() => {
+    if (connected) {
+      refreshTracks();
+    }
+  }, [connected, refreshTracks]);
 
-  const handleToggleSolo = useCallback((trackIndex: number) => {
-    // TODO: implement solo toggle via REAPER API command
-    console.log(`Toggle solo on track ${trackIndex}`);
-  }, []);
+  const handleSelectTrack = useCallback((index: number) => {
+    setSelectedTrack(index);
+    selectTrack(index);
+  }, [selectTrack]);
+
+  const handleToggleMute = useCallback(async (index: number) => {
+    await toggleTrackMute(index);
+  }, [toggleTrackMute]);
+
+  const handleToggleSolo = useCallback(async (index: number) => {
+    await toggleTrackSolo(index);
+  }, [toggleTrackSolo]);
+
+  const handleToggleArm = useCallback(async (index: number) => {
+    await toggleTrackArm(index);
+  }, [toggleTrackArm]);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col">
-      {/* Header */}
+      {/* ── Status Bar ── */}
       <header className="sticky top-0 z-10 bg-[var(--bg-secondary)]/95 backdrop-blur-sm
-        border-b border-white/5 px-4 py-3
-        flex items-center justify-between
-        safe-area-top">
-        <div>
-          <h1 className="text-lg font-bold">Utpaladeva</h1>
-          <p className="text-xs text-[var(--text-secondary)]">Reaper Remote</p>
+        border-b border-white/5 px-4 py-2.5
+        flex items-center justify-between safe-area-top">
+        <div className="flex items-center gap-2">
+          <h1 className="text-base font-bold">Utpaladeva</h1>
+          <span className="text-[10px] text-[var(--text-secondary)] hidden sm:inline">
+            Reaper Remote
+          </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
-          <span className="text-xs text-[var(--text-secondary)]">
+          <span className="text-[11px] text-[var(--text-secondary)] hidden xs:inline">
             {connected ? 'Connected' : 'Disconnected'}
           </span>
+          <div
+            className={`w-2 h-2 rounded-full transition-colors ${
+              connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'
+            }`}
+          />
+          {activeTab === 'tracks' && tracks.length > 0 && (
+            <span className="text-[11px] text-[var(--text-secondary)] ml-1">
+              {tracks.length} trk
+            </span>
+          )}
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 p-4 space-y-3 overflow-y-auto">
-        {tracks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 text-[var(--text-secondary)] space-y-2">
-            <div className="text-4xl">🎛️</div>
-            <p className="text-sm">No tracks loaded</p>
-            <button
-              onClick={() => refreshTracks()}
-              className="px-4 py-2 bg-white/10 rounded-xl text-sm active:scale-95 transition-transform"
-            >
-              Refresh
-            </button>
+      {/* ── Main Content ── */}
+      <main className="flex-1 overflow-hidden">
+        {activeTab === 'media' && (
+          <div className="flex items-center justify-center h-full text-[var(--text-secondary)] p-8 text-center">
+            <div>
+              <div className="text-5xl mb-4">📂</div>
+              <p className="text-sm">Media Browser</p>
+              <p className="text-xs mt-1">Coming soon — browse samples and session view</p>
+            </div>
           </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between px-1">
-              <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-                Tracks ({tracks.length})
-              </h2>
-              <button
-                onClick={() => refreshTracks()}
-                className="p-2 rounded-lg hover:bg-white/5 active:scale-95 transition-transform"
-              >
-                ↻
-              </button>
-            </div>
-            <div className="space-y-2">
-              {tracks.map((track) => (
-                <TrackRow
-                  key={track.index}
-                  track={track}
-                  onSelect={() => setSelectedTrack(track.index)}
-                  onToggleMute={() => handleToggleMute(track.index)}
-                  onToggleSolo={() => handleToggleSolo(track.index)}
-                />
-              ))}
-            </div>
-          </>
         )}
 
-        {/* FX section placeholder */}
-        {selectedTrack !== null && (
-          <div className="mt-6 p-4 bg-[var(--bg-secondary)] rounded-xl">
-            <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-3">
-              FX on Track {selectedTrack + 1}
-            </h3>
-            <p className="text-xs text-[var(--text-secondary)]">
-              Select an FX to edit parameters
-            </p>
+        {activeTab === 'fx' && (
+          <div className="flex items-center justify-center h-full text-[var(--text-secondary)] p-8 text-center">
+            <div>
+              <div className="text-5xl mb-4">🎛️</div>
+              <p className="text-sm">FX Browser</p>
+              <p className="text-xs mt-1">Coming soon — browse and edit FX parameters</p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'tracks' && (
+          <TrackOverview
+            tracks={tracks}
+            selectedTrack={selectedTrack}
+            onSelectTrack={handleSelectTrack}
+            onToggleMute={handleToggleMute}
+            onToggleSolo={handleToggleSolo}
+            onToggleArm={handleToggleArm}
+            onRefresh={refreshTracks}
+          />
+        )}
+
+        {activeTab === 'settings' && (
+          <div className="p-6 text-[var(--text-secondary)] space-y-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wider">Settings</h2>
+            <div className="bg-[var(--bg-tertiary)] rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">Connection</span>
+                <div className="flex items-center gap-2">
+                  <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-[var(--success)]' : 'bg-[var(--danger)]'}`} />
+                  <span className="text-xs">{connected ? 'Connected' : 'Disconnected'}</span>
+                </div>
+              </div>
+              <div className="text-xs text-[var(--text-secondary)]">
+                Server: ws://localhost:9224
+              </div>
+              <button
+                onClick={() => refreshTracks()}
+                className="w-full py-2.5 bg-white/10 rounded-xl text-sm active:scale-95 transition-transform"
+              >
+                Refresh Tracks
+              </button>
+            </div>
           </div>
         )}
       </main>
 
-      {/* Bottom safe area spacer */}
+      {/* ── Tab Bar ── */}
+      <nav className="sticky bottom-0 z-10 bg-[var(--bg-secondary)]/95 backdrop-blur-sm
+        border-t border-white/5 safe-area-bottom">
+        <div className="flex">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`
+                flex-1 flex flex-col items-center justify-center py-2 gap-0.5
+                text-[10px] transition-colors min-h-[52px]
+                ${activeTab === tab.id
+                  ? 'text-[var(--accent)]'
+                  : 'text-[var(--text-secondary)]'
+                }
+              `}
+            >
+              <span className="text-lg leading-none">{tab.icon}</span>
+              <span className="font-medium">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {/* Bottom safe area for iPhone notch/home indicator */}
       <div className="h-[env(safe-area-inset-bottom)]" />
     </div>
   );

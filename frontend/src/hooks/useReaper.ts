@@ -6,13 +6,15 @@ interface UseReaperOptions {
   port?: number;
 }
 
-interface Track {
+export interface Track {
   index: number;
   name: string;
   trackNumber: number;
   selected: boolean;
   muted: boolean;
   soloed: boolean;
+  armed: boolean;
+  volume: number;
 }
 
 interface FxInfo {
@@ -94,6 +96,60 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return t;
   }, [getTracks]);
 
+  // Track control commands (#26)
+  const setTrackMute = useCallback(async (trackIdx: number, muted: boolean): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/setMute', { trackIdx, muted: muted ? 'true' : 'false' });
+    return resp.success;
+  }, []);
+
+  const setTrackSolo = useCallback(async (trackIdx: number, soloed: boolean): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/setSolo', { trackIdx, soloed: soloed ? 'true' : 'false' });
+    return resp.success;
+  }, []);
+
+  const setTrackArm = useCallback(async (trackIdx: number, armed: boolean): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/setArm', { trackIdx, armed: armed ? 'true' : 'false' });
+    return resp.success;
+  }, []);
+
+  const setTrackSelected = useCallback(async (trackIdx: number, selected: boolean): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/setSelected', { trackIdx, selected: selected ? 'true' : 'false' });
+    return resp.success;
+  }, []);
+
+  // Convenience toggles
+  const toggleTrackMute = useCallback(async (trackIdx: number): Promise<boolean> => {
+    const track = tracks.find(t => t.index === trackIdx);
+    if (!track) return false;
+    const ok = await setTrackMute(trackIdx, !track.muted);
+    if (ok) await refreshTracks();
+    return ok;
+  }, [tracks, setTrackMute, refreshTracks]);
+
+  const toggleTrackSolo = useCallback(async (trackIdx: number): Promise<boolean> => {
+    const track = tracks.find(t => t.index === trackIdx);
+    if (!track) return false;
+    const ok = await setTrackSolo(trackIdx, !track.soloed);
+    if (ok) await refreshTracks();
+    return ok;
+  }, [tracks, setTrackSolo, refreshTracks]);
+
+  const toggleTrackArm = useCallback(async (trackIdx: number): Promise<boolean> => {
+    const track = tracks.find(t => t.index === trackIdx);
+    if (!track) return false;
+    const ok = await setTrackArm(trackIdx, !track.armed);
+    if (ok) await refreshTracks();
+    return ok;
+  }, [tracks, setTrackArm, refreshTracks]);
+
+  const selectTrack = useCallback(async (trackIdx: number): Promise<boolean> => {
+    return await setTrackSelected(trackIdx, true);
+  }, [setTrackSelected]);
+
   return {
     connected,
     tracks,
@@ -103,5 +159,13 @@ export function useReaper(opts: UseReaperOptions = {}) {
     setFxParam,
     addFx,
     deleteFx,
+    setTrackMute,
+    setTrackSolo,
+    setTrackArm,
+    setTrackSelected,
+    toggleTrackMute,
+    toggleTrackSolo,
+    toggleTrackArm,
+    selectTrack,
   };
 }
