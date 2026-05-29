@@ -61,7 +61,9 @@ Read this on every session start. Update it when decisions change.
 │   └── package.json
 │
 ├── docs/                  ← Long-form documentation
-│   └── ARCHITECTURE.md    ← Design decisions and rationale
+│   ├── ARCHITECTURE.md    ← Design decisions and rationale
+│   └── lib/               ← Library docs pulled from SDK/WDL (run 
+│                            `make docs-pull` to update)
 │
 ├── WDL/                   ← Cockos Foundation Library (jnetlib networking)
 ├── reaper-sdk/            ← REAPER C/C++ extension SDK
@@ -127,6 +129,13 @@ tea pr create --repo madhav/reaper-ipad
 - **React:** Vitest. `WebSocketFactory` seam allows mocking WebSocket without browser.
 - **Integration:** Extension + actual Reaper for end-to-end verification.
 - Run `make test` before committing.
+
+### Getting Unstuck
+If you're stuck on a Reaper API call or networking issue:
+1. Check `docs/lib/` — we pull relevant SDK/docs there
+2. Check `reaper-sdk/sdk/reaper_plugin_functions.h` (10K+ lines, every API function)
+3. Check `WDL/WDL/jnetlib/` for networking primitives
+4. Ask Tamura — they know Reaper's internals better than any doc
 
 ### Debugging
 - **ASan+UBSan** are baked into debug builds — they catch bugs at runtime automatically.

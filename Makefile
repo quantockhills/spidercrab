@@ -61,6 +61,13 @@ check-all: lint frontend-lint build frontend-build test frontend-test
 # ---- Git ----
 
 git-status:
-	cd extension && git status
+	git status
 
-.PHONY: all build lint test deploy check fmt
+docs-pull:
+	@mkdir -p docs/lib
+	@cp reaper-sdk/sdk/reaper_plugin_functions.h docs/lib/ 2>/dev/null || true
+	@cp reaper-sdk/sdk/reaper_plugin.h docs/lib/ 2>/dev/null || true
+	@cp WDL/WDL/jnetlib/*.h docs/lib/ 2>/dev/null || true
+	@echo "Library headers synced to docs/lib/"
+
+.PHONY: all build lint test deploy check fmt docs-pull
