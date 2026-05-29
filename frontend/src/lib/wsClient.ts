@@ -103,7 +103,7 @@ export class WsClient {
       this.scheduleReconnect();
     };
 
-    this.ws.onerror = (ev) => {
+    this.ws.onerror = (_ev) => {
       this.config.onError(new Error('WebSocket error'));
     };
 

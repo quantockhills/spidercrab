@@ -8,7 +8,7 @@ function createMockWsClass() {
   class MockWebSocket {
     static lastInstance: any = null;
     url: string;
-    readyState = WebSocket.OPEN;
+    readyState = 1; // WebSocket.OPEN
     sentMessages: string[] = [];
     onopen: (() => void) | null = null;
     onclose: (() => void) | null = null;
@@ -24,7 +24,7 @@ function createMockWsClass() {
     }
 
     send(data: string) { this.sentMessages.push(data); }
-    close() { this.readyState = WebSocket.CLOSED; this.onclose?.(); }
+    close() { this.readyState = 3; this.onclose?.(); } // WebSocket.CLOSED = 3
     simulateMessage(data: string) { this.onmessage?.({ data }); }
   }
 
@@ -54,7 +54,7 @@ describe('WsClient', () => {
   }
 
   it('connects and resolves URL correctly', async () => {
-    const client = createClient();
+    createClient();
     await vi.waitFor(() => expect(getMockWs()).toBeDefined());
     const ws = getMockWs();
     expect(ws.url).toBe('ws://test.local:9999');

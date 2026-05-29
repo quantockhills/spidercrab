@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { WsClient, type WsResponse } from '../lib/wsClient';
+import { WsClient } from '../lib/wsClient';
 
 interface UseReaperOptions {
   host?: string;
