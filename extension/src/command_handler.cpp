@@ -352,14 +352,16 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         m_api.GetSetMediaTrackInfo(track, "P_NAME", namePtr);
 
         // Get track info
-        int* trackNum = (int*)m_api.GetSetMediaTrackInfo(track, "IP_TRACKNUMBER", nullptr);
+        // Note: GetSetMediaTrackInfo returns values cast to void* for integer
+        // params, but returns actual pointers for D_VOL, P_NAME, etc.
+        int trackNumVal = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "IP_TRACKNUMBER", nullptr);
         bool isSelected
             = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_SELECTED", nullptr) != 0;
         bool isMuted  = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_MUTE", nullptr) != 0;
         bool isSoloed = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_SOLO", nullptr) != 0;
         bool isArmed  = (int)(intptr_t)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr) != 0;
 
-        // Get track volume (0-1 scale, convert to dB later in frontend)
+        // Get track volume - D_VOL returns a double* pointer, not a value cast
         double* volPtr = (double*)m_api.GetSetMediaTrackInfo(track, "D_VOL", nullptr);
         double  volume = volPtr ? *volPtr : 1.0;
 
@@ -367,7 +369,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
         tracksJson += json_string("name") + ":" + json_string(nameBuf) + ",";
         tracksJson
-            += json_string("trackNumber") + ":" + std::to_string(trackNum ? *trackNum : 0) + ",";
+            += json_string("trackNumber") + ":" + std::to_string(trackNumVal) + ",";
         tracksJson += json_string("selected") + ":" + (isSelected ? "true" : "false") + ",";
         tracksJson += json_string("muted") + ":" + (isMuted ? "true" : "false") + ",";
         tracksJson += json_string("soloed") + ":" + (isSoloed ? "true" : "false") + ",";

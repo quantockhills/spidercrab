@@ -62,6 +62,7 @@ private:
     JNL_IListen*        m_listener     = nullptr;
     WDL_PtrList<Client> m_clients;
     std::recursive_mutex          m_mutex;
+    bool                m_inRun = false;
 
     MessageCallback    m_msgCallback;
     ConnectCallback    m_connectCallback;

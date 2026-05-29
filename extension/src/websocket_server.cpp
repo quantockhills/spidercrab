@@ -51,6 +51,10 @@ void WebSocketServer::Stop()
 
 void WebSocketServer::Run()
 {
+    if (m_inRun)
+        return;
+    m_inRun = true;
+
     AcceptNew();
 
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -60,6 +64,8 @@ void WebSocketServer::Run()
             ReadClient(c);
         }
     }
+
+    m_inRun = false;
 }
 
 void WebSocketServer::AcceptNew()
