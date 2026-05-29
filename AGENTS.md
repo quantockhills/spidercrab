@@ -116,6 +116,12 @@ tea pr create --repo madhav/reaper-ipad
 | `make frontend-lint` | ESLint on React source |
 | `make frontend-dev` | Start Vite dev server |
 
+### Test-Driven Development (TDD)
+- Every feature starts with a failing test, then we make it pass.
+- C++ code without tests is considered incomplete.
+- Frontend components without tests are considered incomplete.
+- Run `make test` (C++) and `cd frontend && npm test` before committing.
+
 ### Testing Philosophy
 - **C++:** Google Test. Tests should NOT require Reaper to run.
 - **React:** Vitest. `WebSocketFactory` seam allows mocking WebSocket without browser.
