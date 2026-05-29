@@ -54,7 +54,7 @@ INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL/swell"
 
 # ---- Sysroot for brew gcc on Linux ----
 SYSROOT="/tmp/sysroot"
-SYSROOT_FLAGS="--sysroot=$SYSROOT -B$SYSROOT/usr/lib/x86_64-linux-gnu"
+SYSROOT_FLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include -B$SYSROOT/usr/lib/x86_64-linux-gnu"
 SYSROOT_FLAGS="$SYSROOT_FLAGS -L$SYSROOT/usr/lib/x86_64-linux-gnu"
 SYSROOT_FLAGS="$SYSROOT_FLAGS -L/usr/lib/x86_64-linux-gnu"
 SYSROOT_FLAGS="$SYSROOT_FLAGS -L/lib/x86_64-linux-gnu"

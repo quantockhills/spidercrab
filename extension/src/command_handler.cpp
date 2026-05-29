@@ -244,6 +244,9 @@ CommandHandler::~CommandHandler() { }
 
 void CommandHandler::HandleMessage(int clientId, const std::string& message)
 {
+    // Serialize all Reaper API calls to prevent race conditions
+    std::lock_guard<std::mutex> lock(m_apiMutex);
+
     // Parse JSON command
     JsonParser  parser(message);
     std::string type    = parser.getString("type");

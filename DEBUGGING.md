@@ -36,32 +36,26 @@ To view logs when running Reaper:
 ~/reaper-portable/reaper 2>&1 | tee reaper.log
 ```
 
-### GDB Attach
-For debugging the running Reaper process:
+### GDB (Debugger)
+GDB is available at `/usr/bin/gdb`.
+
+**Note:** `ptrace_scope` may prevent attaching to running processes.
+To debug, run Reaper directly under GDB:
 ```bash
-# Find the Reaper PID
-pgrep reaper
-
-# Attach GDB
-gdb -p $(pgrep reaper)
-
-# In GDB, set breakpoints on extension functions
-b WebSocketServer::Run
-b CommandHandler::HandleMessage
-c   # continue
-
-# Or launch Reaper from GDB directly
-gdb --args ~/reaper-portable/reaper
+# Quick batch mode — runs Reaper, prints backtrace on crash
+gdb -batch -x /tmp/gdb_script.gdb --args env DISPLAY=:99 \
+  LD_LIBRARY_PATH=/home/linuxbrew/.linuxbrew/lib \
+  ~/reaper-portable/reaper -cfgfile ...
 ```
 
-### GDB with Extension Symbols
-Since the extension is a .so loaded dynamically:
-```bash
-# Set auto-load for shared libs
-gdb -p $(pgrep reaper) \
-    -ex "set breakpoint pending on" \
-    -ex "b WebSocketServer::Run" \
-    -ex "c"
+GDB script (`/tmp/gdb_script.gdb`):
+```
+set pagination off
+set print pretty on
+handle SIGSEGV stop print
+run
+bt full
+quit
 ```
 
 ### Core Dumps
@@ -70,9 +64,23 @@ gdb -p $(pgrep reaper) \
 ulimit -c unlimited
 echo "/tmp/core.%p" | sudo tee /proc/sys/kernel/core_pattern
 
-# Run Reaper, crash it, then analyze
+# Analyze with GDB
 gdb ~/reaper-portable/reaper /tmp/core.*
 ```
+
+### Crashes + ASan
+Address Sanitizer is baked into the debug build
+(`BUILD_TYPE=debug`). It catches buffer overflows and use-after-free
+in our extension code. For crashes inside Reaper itself (libc), use GDB.
+
+### Known Crash: Reaper API Race Condition
+A segfault in `__memcmp_avx2_movbe` called from `GetSetMediaTrackInfo`
+indicates Reaper's internal string comparison failed (likely concurrent API
+calls from multiple WS commands).
+
+**Fix:** A mutex in `CommandHandler::HandleMessage` serializes all
+Reaper API calls. If crashes persist, check for other race conditions
+in the WS message processing pipeline.
 
 ----
 

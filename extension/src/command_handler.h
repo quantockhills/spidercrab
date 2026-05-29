@@ -2,6 +2,7 @@
 #include "websocket_server.h"
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 
 // Forward declare REAPER types (included from reaper_plugin.h)
@@ -73,6 +74,7 @@ private:
     WebSocketServer* m_ws;
     ReaperAPI        m_api;
     ResponseCallback m_responseCb;
+    std::mutex       m_apiMutex;  // Serialize Reaper API calls to prevent race conditions
 
     // Send a JSON response to a client
     void SendResponse(
