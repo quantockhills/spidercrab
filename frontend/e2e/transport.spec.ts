@@ -18,9 +18,8 @@ test.describe('Transport controls (play/stop)', () => {
   });
 
   test('clicking play dispatches transport/play command', async ({ page }) => {
-    // Intercept WebSocket messages
     const wsMessages: string[] = [];
-    await page.routeWebSocket(/ws:\/\/localhost:9224/, (ws) => {
+    page.on('websocket', (ws) => {
       ws.on('framesent', (frame) => {
         wsMessages.push(frame.payload as string);
       });
@@ -30,17 +29,16 @@ test.describe('Transport controls (play/stop)', () => {
     await page.getByText('Tracks').first().click();
     await page.getByTestId('transport-play').click();
 
-    // Give it a moment to send the message
-    await page.waitForTimeout(1000);
+    // Wait for the async send + any reconnect delay
+    await page.waitForTimeout(1500);
 
-    // Check that a transport/play command was sent
     const playMsg = wsMessages.find(m => m.includes('transport/play'));
     expect(playMsg).toBeTruthy();
   });
 
   test('clicking stop dispatches transport/stop command', async ({ page }) => {
     const wsMessages: string[] = [];
-    await page.routeWebSocket(/ws:\/\/localhost:9224/, (ws) => {
+    page.on('websocket', (ws) => {
       ws.on('framesent', (frame) => {
         wsMessages.push(frame.payload as string);
       });
@@ -50,7 +48,7 @@ test.describe('Transport controls (play/stop)', () => {
     await page.getByText('Tracks').first().click();
     await page.getByTestId('transport-stop').click();
 
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
 
     const stopMsg = wsMessages.find(m => m.includes('transport/stop'));
     expect(stopMsg).toBeTruthy();
