@@ -204,7 +204,20 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    ⚠️ If issues found → loop back to Builder
    ✅ If clean → pass to Tester
 
-🧪 Tester (3-5 min) — fires after reviewer clears
+📸 Screenshot Verifier (1-2 min) — required before closing UI features
+   For any UI feature: launch full stack (Reaper headless + extension + frontend),
+   take screenshots via Playwright, then have a vision-capable agent (Kimi K2.6)
+   analyze each screenshot against claimed content.
+   Rules:
+   - Wait for async data to arrive before capturing (wait for WebSocket responses,
+     not just wall-clock timeouts)
+   - Verify what you *actually* see, not what you expect to see
+   - Flag discrepancies immediately — don't paper over them
+   - ✅ Only pass if screenshots match claims
+   ⚠️ If screenshots show loading states instead of real data → fix timing, retake,
+     re-verify. Don't pass broken/incomplete views.
+
+🧪 Tester (3-5 min) — fires after reviewer + screenshot verifier clear
    Run headless tests → C++ tests → frontend tests
    → report results
    ⚠️ If tests fail → loop back to Builder + Reviewer
