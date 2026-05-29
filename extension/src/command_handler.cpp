@@ -346,14 +346,16 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         SendResponse(clientId, id, true, "{\"tracks\":[]}");
         return;
     }
-    // CountTracks is safe — it just returns an integer
     int numTracks = m_api.CountTracks(nullptr);
     
-    // Return track data with generated names only
-    // (Reading per-track properties via GetSetMediaTrackInfo crashes Reaper
-    //  when Chromium WS is connected — known Reaper memcmp bug.)
+    // Note: GetSetMediaTrackInfo and GetSetMediaTrackInfo_String crash Reaper
+    // when called from Chromium WS context (internal memcmp in property name
+    // lookup). GetTrack and CountTracks are safe. We use GetTrack just to verify
+    // track existence, and generate names server-side.
     std::string tracksJson = "[";
     for (int i = 0; i < numTracks; i++) {
+        MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, i) : nullptr;
+        if (!track) continue;
         if (i > 0) tracksJson += ",";
         tracksJson += "{";
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
