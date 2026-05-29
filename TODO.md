@@ -8,8 +8,8 @@
 
 ## 🔴 Now — Immediate
 
-- [ ] **Fix control surface auto-registration** — Extension loads but doesn't hook into Reaper's Run() loop. Need to create `iPadControlSurface` object and register via `csurf_inst` directly in entry point.
-- [ ] **Confirm extension works in Reaper** — Launch Reaper with Xvfb, verify WebSocket server starts on port 9224, connect with a test client.
+- [x] **Fix control surface auto-registration** — Extension loads but doesn't hook into Reaper's Run() loop. Need to create `iPadControlSurface` object and register via `csurf_inst` directly in entry point.
+- [x] **Confirm extension works in Reaper** — Launch Reaper with Xvfb, verify WebSocket server starts on port 9224, connect with a test client.
 
 ## 🟡 Next — Soon
 
@@ -39,9 +39,11 @@
 - [x] React frontend scaffolded (Vite + TypeScript + Tailwind + Vitest)
 - [x] 9 frontend tests passing (WsClient)
 - [x] C++ extension compiles and loads (ReaperPluginEntry resolves)
-- [x] Google Test integrated — 5 C++ tests passing
+- [x] Google Test integrated — 84 C++ tests passing
 - [x] Git repo initialized, 2 commits
 - [x] Root README.md with build/test/deploy instructions
 - [x] clang-format + clang-tidy linting
 - [x] Makefile for all common tasks
 - [x] Gateway running, Telegram paired
+- [x] **Control surface auto-registration verified** — Extension creates `iPadControlSurface` and registers via `csurf_inst` in `REAPER_PLUGIN_ENTRYPOINT`
+- [x] **Headless Reaper test passed** — WebSocket server starts on port 9224, responds to `transport/getState`, `transport/play`, `transport/stop`, `track/getAll`, `fx/enumerate`
