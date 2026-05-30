@@ -1,5 +1,7 @@
 # 🦀 spidercrab
 
+> ⚠️ **Work in progress.** This is an early-stage project under active development. It may crash, eat your project file, or set your cat on fire. Not yet recommended for live use or critical sessions. Proceed with caution (and backups).
+
 Touch-friendly REAPER remote control for iPad — FX browser, real-time param control, track management, all over WiFi.
 
 ```
