@@ -1,15 +1,16 @@
-# 🎛️ spidercrab
+# 🦀 spidercrab
 
-Touch-friendly REAPER remote control for iPad — browse FX, tweak parameters in real-time, all over WiFi.
+Touch-friendly REAPER remote control for iPad — FX browser, real-time param control, track management, all over WiFi.
 
 ```
 ┌───────────────────────────────────────────────┐
-│  REAPER (Windows 11 / Linux)                   │
+│  REAPER (Windows / Linux)                      │
 │  ┌────────────────────────────────────────┐    │
-│  │  reaper_ipad_ext (.dll / .so)          │    │
+│  │  spidercrab (.dll / .so)               │    │
 │  │  WebSocket server (9224) + HTTP (5173)  │    │
-│  │  → Track & FX management               │    │
-│  │  → Real-time param streaming            │    │
+│  │  → FX browser + real-time param control │    │
+│  │  → Track management (mute/solo/arm)     │    │
+│  │  → Real-time events (no polling)        │    │
 │  └───────────┬────────────────────────────┘    │
 │              ↕ WiFi                             │
 └──────────────┼─────────────────────────────────┘
@@ -17,84 +18,70 @@ Touch-friendly REAPER remote control for iPad — browse FX, tweak parameters in
 ┌──────────────┴─────────────────────────────────┐
 │  iPad / Phone (React PWA)                       │
 │  ┌────────────────────────────────────────┐    │
-│  │  → FX browser + param sliders          │    │
-│  │  → Track overview (mute/solo/arm)      │    │
-│  │  → Real-time parameter control         │    │
+│  │  → Track overview + FX grid            │    │
+│  │  → FX browser with search & filter     │    │
+│  │  → Touch param sliders (real-time)     │    │
+│  │  → Audio sample browser (WIP)          │    │
 │  └────────────────────────────────────────┘    │
 └────────────────────────────────────────────────┘
 ```
 
-## 🚀 Install (End User)
+## 🚀 Quick Install
 
 ### Windows
-
-1. **Download** the [latest release](http://localhost:3000/madhav/spidercrab/releases)
-2. **Extract** `reaper_ipad_ext.dll` → `C:\Users\you\AppData\Roaming\REAPER\UserPlugins\`
-3. **Extract** `frontend/` folder → `C:\Users\you\AppData\Roaming\REAPER\UserPlugins\frontend\`
-4. **Launch REAPER** — check console for:
-   ```
-   [spidercrab] WebSocket server started on port 9224
-   [spidercrab] Frontend server on http://<your-ip>:5173
-   ```
-5. **Open** `http://REAPER-PC-IP:5173` on your iPad — done
+1. Download `spidercrab.dll` from [releases](https://github.com/quantockhills/spidercrab/releases)
+2. Drop into `C:\Users\you\AppData\Roaming\REAPER\UserPlugins\`
+3. Download `frontend/` folder alongside it
+4. Launch REAPER
+5. Open `http://reaper-pc:5173` on your iPad
 
 ### Linux
+Same flow — `spidercrab.so` into `UserPlugins/`, `frontend/` alongside.
 
-Same flow — copy `reaper_ipad_ext.so` to `UserPlugins/` and `frontend/` alongside it.
+> The extension serves both WebSocket (API) and HTTP (frontend). No Node.js, no separate server.
 
-> No Node.js, npm, or separate server needed. The extension serves both WebSocket and HTTP.
+## ✨ Current State (v0.1.0-alpha)
 
-## ✨ What's Working Now (v0.1.0-alpha)
+### ✅ Phase 1 MVP — Complete
+| Feature | Detail |
+|---|---|
+| **WebSocket server** | Auto-registers as REAPER control surface on port 9224 |
+| **HTTP server** | Serves frontend built-in on port 5173 |
+| **Track management** | List tracks, Mute/Solo/Arm with real-time push |
+| **Track state reads** | Reads actual Reaper state (mute/solo/arm/selected via B_MUTE, I_SOLO, I_RECARM) |
+| **FX browser** | Browse 250+ plugins, search, filter by format (VST3, VST2, JSFX, CLAP) |
+| **FX grid** | Cards under each track — tap to open param view |
+| **Param control** | Touch sliders for all FX params with real-time streaming |
+| **Real-time events** | FX param changes stream via CSURF_EXT_SETFXPARAM (no polling) |
+| **Mute/solo/arm push** | SetSurfaceMute/Solo/RecArm callbacks → instant UI update |
+| **Transport** | Play/Stop from iPad, live state read |
+| **Design system** | Everforest pastel palette, Inter font, square corners, touch targets ≥44px |
+| **Windows build** | `TARGET=windows bash build.sh` → 416KB .dll, exports ReaperPluginEntry |
+| **Tests** | 134 C++ tests (Google Test) + 65 frontend tests (Vitest) |
+| **Release** | [v0.1.0-alpha](https://github.com/quantockhills/spidercrab/releases) |
 
-### Core
-- ✅ WebSocket server on port 9224 (auto-registers as control surface)
-- ✅ JSON command protocol (reamo-compatible)
-- ✅ Built-in HTTP server serves the frontend on port 5173
-- ✅ Auto-start — just launch REAPER, no config needed
+### 🚧 Phase 2 — Clip Launcher (in progress)
+| Goal | Detail |
+|---|---|
+| **Clip launcher app** | Ableton Push-style 8×8 pad grid for Playtime 2 |
+| **MIDI sequencer** | Grid-based step sequencer (chromatic, scale, drum modes) |
+| **Playtime 2 integration** | Trigger clips via ReaLearn MIDI bridge or direct gRPC |
+| **Push research** | Researching Push grid layout, color feedback, browser workflow |
+| **Volume faders + pan** | Track volume and pan controls for Push-style mixing |
+| **FX chain browser** | Browse instrument presets and FX chains |
 
-### Track Management
-- ✅ List all tracks with mute/solo/arm/volume
-- ✅ Toggle mute, solo, arm from iPad
-- ✅ Refresh track list live
-
-### FX Browser
-- ✅ Browse all installed plugins (VST3, VST2, JSFX)
-- ✅ Search + filter by format (VST3, VST2, JSFX…)
-- ✅ Add FX to tracks with one tap
-- ✅ View + adjust all parameters with touch sliders
-
-### Real-Time Controls
-- ✅ Set parameters from iPad → reflected in REAPER instantly
-- ✅ External param changes stream back to the UI in real-time
-
-### Transport
-- ✅ Play / Stop from iPad
-
-### Design
-- ✅ Everforest pastel palette (warm, cozy, readable on stage)
-- ✅ Inter font, square corners, touch targets ≥44px
-- ✅ Responsive — works on iPad, phone, desktop browser
-
-## 🗺️ Next Steps
-
-### Phase 2 (in progress)
-- 🔄 Track volume faders + pan control
-- 🔄 Sample browser with audio preview
-- 🔄 Real-time param update events (done — streaming)
-- 🔄 Windows cross-compilation (done — `.dll` builds)
-- 🔄 FX chain save/load
-- 🔄 Remove FX from tracks
-- 🔄 Multi-track FX operations
-
-### Future
-- 📅 Playtime 2 clip launching
-- 📅 MIDI synth parameter control
-- 📅 Drag-and-drop support
-- 📅 MIDI clip grid from iPad
+### 📋 Remaining Phase 2 Issues
+- Track volume faders and pan control
+- Loading states for long operations
+- Dark mode CSS
+- React Error Boundary
+- Domain-specific hooks for useReaper
+- Command handler registry (replace if-else chain)
+- Real track names from Reaper
+- FX chain save/load
+- Remove FX from tracks
 
 ## 🛠️ Development
-
-### Quick Start
 
 ```bash
 # Build the Linux extension (.so)
@@ -104,7 +91,7 @@ cd extension && bash build.sh
 TARGET=windows bash build.sh
 
 # Deploy to REAPER
-cp extension/build/spidercrab-ext.so ~/reaper-portable/Plugins/
+cp extension/build/spidercrab* ~/reaper-portable/Plugins/
 
 # Frontend dev server
 cd frontend && npm run dev
@@ -114,37 +101,36 @@ npm run build
 cp -r dist/* ~/reaper-portable/Plugins/frontend/
 ```
 
-### Full Check
+### Full Develoment Check
 
 ```bash
-make build     # Build C++ extension
-make test      # Run C++ tests (Google Test)
-make lint      # clang-tidy
-make deploy    # Copy .so to REAPER UserPlugins/
+make build           # Build C++ extension
+make test            # Google Test (C++)
+make lint            # clang-tidy
+make deploy          # Copy to REAPER UserPlugins/
 make frontend-install
 make frontend-test   # Vitest (React)
 make frontend-lint   # ESLint
 ```
 
 ### Debug Build
-
 ```bash
 BUILD_TYPE=debug bash extension/build.sh
 ```
-
 Includes AddressSanitizer + UBSan — catches memory bugs at runtime.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Extension | C++17, REAPER SDK, WDL jnetlib |
+| Extension | C++17, REAPER SDK, WDL jnetlib (Justin Frankel) |
 | Frontend | React + TypeScript + Tailwind CSS v4 |
 | C++ Tests | Google Test |
 | Frontend Tests | Vitest |
 | Linting | clang-tidy (C++), ESLint (React) |
-| Protocol | JSON over WebSocket |
+| Protocol | JSON over WebSocket, CSURF_EXT callbacks |
 | Cross-compile | MinGW-w64 (Linux → Windows .dll) |
+| Repository | [github.com/quantockhills/spidercrab](https://github.com/quantockhills/spidercrab) |
 
 ## Project Structure
 
@@ -166,5 +152,10 @@ spidercrab/
 │   └── package.json
 ├── docs/                   # SDK + design docs
 ├── gui_testing/            # E2E screenshots
+├── migrate_issues.py       # Gitea → GitHub issue migrator
 └── README.md
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE) file.
