@@ -36,6 +36,7 @@ export function FxBrowser({
   tracks,
   selectedTrack,
   enumerateFx,
+  getTrackFx,
   addFx,
   onSelectFx,
   onBack,
@@ -133,10 +134,26 @@ export function FxBrowser({
   );
 
   const handleSelectFx = useCallback(
-    (trackIdx: number, fxIdx: number, fxName: string) => {
-      onSelectFx(trackIdx, fxIdx, fxName);
+    async (trackIdx: number, _fxIdx: number, fxName: string) => {
+      // Look up the track-local FX index — fxIdx from the enumerated list is the
+      // GLOBAL plugin index, but Reaper's TrackFX_* APIs expect the 0-based index
+      // of the FX on the specific track (e.g. 0 = first FX on track).
+      try {
+        const trackFx = await getTrackFx(trackIdx);
+        const match = (trackFx as FxInfo[]).find(
+          (tfx: FxInfo) => tfx.name === fxName || tfx.name.includes(fxName.replace(/^.*?:\s*/, ''))
+        );
+        if (match !== undefined) {
+          onSelectFx(trackIdx, match.index, fxName);
+        } else {
+          // Fallback: use the fxIdx as-is (will likely show no params)
+          onSelectFx(trackIdx, 0, fxName);
+        }
+      } catch {
+        onSelectFx(trackIdx, 0, fxName);
+      }
     },
-    [onSelectFx],
+    [onSelectFx, getTrackFx],
   );
 
   const selectedTrackName = selectedTrack !== null

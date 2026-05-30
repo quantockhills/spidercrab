@@ -100,7 +100,7 @@ test.describe('Full-stack E2E Roundtrip with Real Reaper', () => {
     await expect(page.getByText('ReaEQ').first()).toBeVisible();
 
     // Add ReaEQ to Track 1
- const addBtn = page.locator('button:has-text("Add")').first();
+    const addBtn = page.locator('button:has-text("Add")').first();
     await addBtn.click();
     await page.waitForTimeout(1500);
   });
@@ -126,13 +126,13 @@ test.describe('Full-stack E2E Roundtrip with Real Reaper', () => {
     await page.waitForTimeout(800);
 
     // Select track 1 and add ReaEQ
- await page.locator('text=Track 1').first().click();
+    await page.locator('text=Track 1').first().click();
     await page.waitForTimeout(500);
     await page.locator('button:has-text("Add")').first().click();
     await page.waitForTimeout(1500);
 
     // Open params by clicking ReaEQ
- await page.getByText('ReaEQ').first().click();
+    await page.getByText('ReaEQ').first().click();
     await page.waitForTimeout(1000);
 
     // Screenshot: FX params before adjustment
@@ -157,13 +157,13 @@ test.describe('Full-stack E2E Roundtrip with Real Reaper', () => {
     // Add ReaEQ to Track 1
     await page.getByPlaceholder('Search FX...').fill('ReaEQ');
     await page.waitForTimeout(800);
- await page.locator('text=Track 1').first().click();
+    await page.locator('text=Track 1').first().click();
     await page.waitForTimeout(500);
     await page.locator('button:has-text("Add")').first().click();
     await page.waitForTimeout(1500);
 
     // Open params, then remove
- await page.getByText('ReaEQ').first().click();
+    await page.getByText('ReaEQ').first().click();
     await page.waitForTimeout(500);
     await page.locator('button:has-text("Remove FX")').click();
     await page.waitForTimeout(1000);
