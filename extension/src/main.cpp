@@ -151,6 +151,38 @@ public:
 
     // Optional: handle FX param changes from Reaper so we can push
     // updates to connected clients
+    // Called by REAPER when mute/solo/arm state changes (Issue #57)
+    // Broadcast to connected clients so the frontend updates in real-time
+    void SetSurfaceMute(MediaTrack* trackid, bool mute) override
+    {
+        if (!g_cmdHandler) return;
+        int trackIdx = CSurf_TrackToID(trackid, false) - 1;
+        if (trackIdx >= 0) {
+            g_cmdHandler->BroadcastTrackEvent(
+                "track_mute_changed", trackIdx, mute);
+        }
+    }
+
+    void SetSurfaceSolo(MediaTrack* trackid, bool solo) override
+    {
+        if (!g_cmdHandler) return;
+        int trackIdx = CSurf_TrackToID(trackid, false) - 1;
+        if (trackIdx >= 0) {
+            g_cmdHandler->BroadcastTrackEvent(
+                "track_solo_changed", trackIdx, solo);
+        }
+    }
+
+    void SetSurfaceRecArm(MediaTrack* trackid, bool recarm) override
+    {
+        if (!g_cmdHandler) return;
+        int trackIdx = CSurf_TrackToID(trackid, false) - 1;
+        if (trackIdx >= 0) {
+            g_cmdHandler->BroadcastTrackEvent(
+                "track_arm_changed", trackIdx, recarm);
+        }
+    }
+
     int Extended(int call, void* parm1, void* parm2, void* parm3) override
     {
         if (call == CSURF_EXT_SETFXCHANGE) {

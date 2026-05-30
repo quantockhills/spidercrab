@@ -170,4 +170,102 @@ describe('WsClient', () => {
 
     expect(handler).not.toHaveBeenCalled();
   });
+
+  // Real-time track state event tests (Issue #57)
+  it('dispatches track_mute_changed events to registered handlers', () => {
+    const client = createClient();
+    const ws = getMockWs();
+    const handler = vi.fn();
+    client.on('event:track_mute_changed', handler);
+
+    ws.simulateMessage(JSON.stringify({
+      type: 'event',
+      event: 'track_mute_changed',
+      payload: { trackIdx: 0, value: true },
+    }));
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    const msg = handler.mock.calls[0][0];
+    expect(msg.payload).toEqual({ trackIdx: 0, value: true });
+  });
+
+  it('dispatches track_solo_changed events to registered handlers', () => {
+    const client = createClient();
+    const ws = getMockWs();
+    const handler = vi.fn();
+    client.on('event:track_solo_changed', handler);
+
+    ws.simulateMessage(JSON.stringify({
+      type: 'event',
+      event: 'track_solo_changed',
+      payload: { trackIdx: 2, value: false },
+    }));
+
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'track_solo_changed',
+      payload: { trackIdx: 2, value: false },
+    }));
+  });
+
+  it('dispatches track_arm_changed events with correct data', () => {
+    const client = createClient();
+    const ws = getMockWs();
+    const handler = vi.fn();
+    client.on('event:track_arm_changed', handler);
+
+    ws.simulateMessage(JSON.stringify({
+      type: 'event',
+      event: 'track_arm_changed',
+      payload: { trackIdx: 1, value: true },
+    }));
+
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'track_arm_changed',
+      payload: { trackIdx: 1, value: true },
+    }));
+  });
+
+  it('track state events do not interfere with other event types', () => {
+    const client = createClient();
+    const ws = getMockWs();
+    const muteHandler = vi.fn();
+    const fxHandler = vi.fn();
+    const wildcardHandler = vi.fn();
+
+    client.on('event:track_mute_changed', muteHandler);
+    client.on('event:fx_param_changed', fxHandler);
+    client.on('*', wildcardHandler);
+
+    // Send a mute event
+    ws.simulateMessage(JSON.stringify({
+      type: 'event',
+      event: 'track_mute_changed',
+      payload: { trackIdx: 0, value: true },
+    }));
+
+    expect(muteHandler).toHaveBeenCalledTimes(1);
+    expect(fxHandler).not.toHaveBeenCalled();
+    expect(wildcardHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles multiple sequential track state events', () => {
+    const client = createClient();
+    const ws = getMockWs();
+    const handler = vi.fn();
+    client.on('*', handler);
+
+    // Simulate a rapid sequence of track state changes
+    const events = [
+      { type: 'event', event: 'track_mute_changed', payload: { trackIdx: 0, value: true } },
+      { type: 'event', event: 'track_solo_changed', payload: { trackIdx: 1, value: false } },
+      { type: 'event', event: 'track_arm_changed', payload: { trackIdx: 2, value: true } },
+      { type: 'event', event: 'track_mute_changed', payload: { trackIdx: 0, value: false } },
+    ];
+
+    for (const evt of events) {
+      ws.simulateMessage(JSON.stringify(evt));
+    }
+
+    expect(handler).toHaveBeenCalledTimes(4);
+  });
 });

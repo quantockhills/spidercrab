@@ -1266,6 +1266,116 @@ TEST(Phase1MVPTest, SampleBrowserDirectoryAndSendToTrack)
     system("rm -rf /tmp/_mvp_test");
 }
 
+// ============================================================
+// Real-time track state event broadcasting tests (Issue #57)
+// ============================================================
+
+TEST(TrackEventBroadcastTest, BroadcastTrackEventViaCallback)
+{
+    // Test that BroadcastTrackEvent sends through the broadcast callback
+    std::string captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured = msg;
+    });
+
+    handler->BroadcastTrackEvent("track_mute_changed", 0, true);
+
+    // Verify JSON structure
+    EXPECT_NE(captured.find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured.find("\"event\":\"track_mute_changed\""), std::string::npos);
+    EXPECT_NE(captured.find("\"trackIdx\":0"), std::string::npos);
+    EXPECT_NE(captured.find("\"value\":true"), std::string::npos);
+
+    // Verify balanced braces
+    int depth = 0;
+    for (char c : captured) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(TrackEventBroadcastTest, BroadcastAllEventTypes)
+{
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    handler->BroadcastTrackEvent("track_mute_changed", 0, true);
+    handler->BroadcastTrackEvent("track_solo_changed", 1, false);
+    handler->BroadcastTrackEvent("track_arm_changed", 2, true);
+
+    ASSERT_EQ(captured.size(), 3u);
+
+    // Mute event
+    EXPECT_NE(captured[0].find("track_mute_changed"), std::string::npos);
+    EXPECT_NE(captured[0].find("\"trackIdx\":0"), std::string::npos);
+    EXPECT_NE(captured[0].find("\"value\":true"), std::string::npos);
+
+    // Solo event
+    EXPECT_NE(captured[1].find("track_solo_changed"), std::string::npos);
+    EXPECT_NE(captured[1].find("\"trackIdx\":1"), std::string::npos);
+    EXPECT_NE(captured[1].find("\"value\":false"), std::string::npos);
+
+    // Arm event
+    EXPECT_NE(captured[2].find("track_arm_changed"), std::string::npos);
+    EXPECT_NE(captured[2].find("\"trackIdx\":2"), std::string::npos);
+    EXPECT_NE(captured[2].find("\"value\":true"), std::string::npos);
+}
+
+TEST(TrackEventBroadcastTest, BroadcastViaWsServer)
+{
+    // When no callback is set, BroadcastTrackEvent should try m_ws->Broadcast()
+    // With a null m_ws, it should just be a no-op (no crash)
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    EXPECT_NO_THROW({
+        handler->BroadcastTrackEvent("track_mute_changed", 0, true);
+    });
+}
+
+TEST(TrackEventBroadcastTest, TrackEventJsonIsValidAndParseable)
+{
+    std::string captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured = msg;
+    });
+
+    handler->BroadcastTrackEvent("track_mute_changed", 5, false);
+
+    // Parse the JSON and verify fields
+    JsonParser parser(captured);
+    EXPECT_EQ(parser.getString("type"), "event");
+    EXPECT_EQ(parser.getString("event"), "track_mute_changed");
+
+    // Parse the nested payload
+    size_t payloadStart = captured.find("\"payload\":");
+    ASSERT_NE(payloadStart, std::string::npos);
+    payloadStart += 10; // skip "payload":
+    // Skip whitespace
+    while (payloadStart < captured.size() &&
+           (captured[payloadStart] == ' ' || captured[payloadStart] == '\t'))
+        payloadStart++;
+    ASSERT_LT(payloadStart, captured.size());
+    ASSERT_EQ(captured[payloadStart], '{');
+    // Find matching close brace
+    int depth = 0;
+    size_t payloadEnd = payloadStart;
+    for (; payloadEnd < captured.size(); payloadEnd++) {
+        if (captured[payloadEnd] == '{') depth++;
+        if (captured[payloadEnd] == '}') depth--;
+        if (depth == 0) break;
+    }
+    std::string payloadJson = captured.substr(payloadStart, payloadEnd - payloadStart + 1);
+    JsonParser payload(payloadJson);
+    EXPECT_EQ(payload.getString("trackIdx"), "5");
+    // getString doesn't handle boolean literals, so verify via substring search
+    EXPECT_NE(captured.find("\"value\":false"), std::string::npos);
+}
+
 TEST(FxEnumCacheTest, EnumerateReturnsFormatCorrectly)
 {
     // Verify format detection works for different plugin types

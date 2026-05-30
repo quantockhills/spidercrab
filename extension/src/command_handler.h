@@ -57,12 +57,14 @@ struct ReaperAPI {
 class CommandHandler {
 public:
     using ResponseCallback = std::function<void(int clientId, const std::string& response)>;
+    using BroadcastCallback = std::function<void(const std::string& message)>;
 
     CommandHandler(WebSocketServer* ws);
     ~CommandHandler();
 
     void SetApi(const ReaperAPI& api) { m_api = api; }
     void SetResponseCallback(ResponseCallback cb) { m_responseCb = cb; }
+    void SetBroadcastCallback(BroadcastCallback cb) { m_broadcastCb = cb; }
 
     // Handle an incoming JSON command
     void HandleMessage(int clientId, const std::string& message);
@@ -75,16 +77,21 @@ public:
     // display conflict). Safe to call before any WebSocket client connects.
     void PreCacheFX();
 
+    // Real-time event broadcasting (Issue #57)
+    // Broadcast a track state change event (mute/solo/arm) to all WS clients
+    void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
+
     // Real-time param change polling (Issue #52)
     void PollParams();
     void SetWatchedFX(int trackIdx, int fxIdx);
     void ClearWatchedFX();
 
 private:
-    WebSocketServer* m_ws;
-    ReaperAPI        m_api;
-    ResponseCallback m_responseCb;
-    std::mutex       m_apiMutex;  // Serialize Reaper API calls to prevent race conditions
+    WebSocketServer*  m_ws;
+    ReaperAPI         m_api;
+    ResponseCallback  m_responseCb;
+    BroadcastCallback m_broadcastCb;
+    std::mutex        m_apiMutex;  // Serialize Reaper API calls to prevent race conditions
 
     // FX enumeration cache (EnumInstalledFX takes ~35s)
     std::string m_fxCache;

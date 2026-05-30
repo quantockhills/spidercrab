@@ -909,6 +909,28 @@ void CommandHandler::HandleSampleSendToTrack(
 }
 
 // ============================================================
+// Real-time track state event broadcasting (Issue #57)
+// ============================================================
+
+void CommandHandler::BroadcastTrackEvent(
+    const std::string& eventType, int trackIdx, bool value)
+{
+    std::string event = "{";
+    event += "\"type\":\"event\",";
+    event += "\"event\":\"" + json_escape(eventType) + "\",";
+    event += "\"payload\":{";
+    event += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+    event += "\"value\":" + std::string(value ? "true" : "false");
+    event += "}}";
+
+    if (m_broadcastCb) {
+        m_broadcastCb(event);
+    } else if (m_ws) {
+        m_ws->Broadcast(event);
+    }
+}
+
+// ============================================================
 // Real-time FX param change polling (Issue #52)
 // ============================================================
 
