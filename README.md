@@ -31,7 +31,7 @@ Touch-friendly REAPER remote control for iPad — FX browser, real-time param co
 ## 🚀 Quick Install
 
 ### Windows
-1. Download `spidercrab.dll` from [releases](https://github.com/quantockhills/spidercrab/releases)
+1. Download `spidercrab.dll` from the [latest release](https://github.com/quantockhills/spidercrab/releases/tag/v0.1.1-alpha)
 2. Drop into `C:\Users\you\AppData\Roaming\REAPER\UserPlugins\`
 3. Download `frontend/` folder alongside it
 4. Launch REAPER
