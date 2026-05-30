@@ -56,6 +56,34 @@ function App() {
     }
   }, [connected, refreshTracks]);
 
+  // Subscribe to real-time track state changes (Issue #57)
+  useEffect(() => {
+    const unsubTrack = onEvent('event:track_state_changed', (msg: any) => {
+      const { trackIdx, muted, soloed, armed } = msg.payload || {};
+      if (trackIdx !== undefined) {
+        setTracks((prev) =>
+          prev.map((t) =>
+            t.index === trackIdx
+              ? {
+                  ...t,
+                  muted: muted !== undefined ? muted : t.muted,
+                  soloed: soloed !== undefined ? soloed : t.soloed,
+                  armed: armed !== undefined ? armed : t.armed,
+                }
+              : t,
+          ),
+        );
+      }
+    });
+    const unsubList = onEvent('event:track_list_changed', () => {
+      refreshTracks();
+    });
+    return () => {
+      unsubTrack();
+      unsubList();
+    };
+  }, [onEvent, refreshTracks]);
+
   const handleSelectTrack = useCallback((index: number) => {
     setSelectedTrack(index);
     selectTrack(index);
