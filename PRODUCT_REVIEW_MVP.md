@@ -1,8 +1,8 @@
 # Product Review — Phase 1 MVP
 
 **Reviewer:** Utpaladeva (autonomous review cycle)
-**Date:** 2026-05-30
-**Milestone:** Phase 1 MVP (0 open / 3 closed, all approvedbyreviewer)
+**Date:** 2026-05-30 (updated 2026-05-30)
+**Milestone:** Phase 1 MVP (0 open / 4 closed, all approvedbyreviewer)
 
 ---
 
@@ -19,14 +19,17 @@ Phase 1 MVP is genuinely complete. The foundation is solid. The core stack works
 - FX management (enumerate, getTrackFx, add, delete, getParams, setParam)
 - Transport controls (play, stop)
 - FX cache at startup (24,196 entries)
+- Built-in HTTP server (port 5173) serves frontend directly — no Node.js/npm needed
+- Frontend file server with MIME types, SPA fallback, directory traversal protection
 - SHA-1 handshake for WebSocket upgrade
-- 98 Google Test unit tests — all pass
+- 130 Google Test unit tests — all pass
 
 ### 2. React Frontend (`frontend/`)
 - 4-tab bottom nav: Media, FX, Tracks, Settings
 - Track overview with mute/solo/arm controls
 - FX browser with search, filter, add to tracks
 - Param control view with individual parameter sliders
+- Subscribes to real-time FX param change events from extension
 - Sample browser (placeholder for Phase 2)
 - Settings with connection status + refresh buttons
 - Transport bar (play/stop, connected status)
@@ -70,9 +73,10 @@ The following are clearly Phase 2 features and should NOT delay the milestone:
 
 ### No critical bugs found during review
 - Extension loads and runs stably
-- WebSocket connection works
+- WebSocket connection works (port 9224)
+- Built-in HTTP server serves frontend on port 5173
 - FX cache is populated
-- All tests pass
+- All 130 C++ + 54 frontend tests pass
 - Design system is consistent
 
 ## Decision
@@ -100,7 +104,7 @@ The following are clearly Phase 2 features and should NOT delay the milestone:
 - Everforest Light pastel design system with Inter font
 
 **Testing:**
-- 98 C++ Google Test unit tests
+- 130 C++ Google Test unit tests (including frontend_server, MIME type, WebRoot tests)
 - 54 Vitest frontend tests
 - Playwright E2E tests for full-stack verification
 - Headless Reaper testing infrastructure
