@@ -1,10 +1,12 @@
 #!/bin/bash
 # Build script for reaper-ipad extension
-# Supports debug and release builds
+# Supports debug, release, and windows builds
 #
 # Usage:
-#   BUILD_TYPE=debug bash build.sh    # Debug + ASan
-#   BUILD_TYPE=release bash build.sh  # Optimized (default)
+#   BUILD_TYPE=debug   bash build.sh    # Debug + ASan (Linux)
+#   BUILD_TYPE=release bash build.sh    # Optimized (Linux, default)
+#   TARGET=windows     bash build.sh    # Windows cross-compile (.dll)
+#   TARGET=windows BUILD_TYPE=debug bash build.sh  # Windows debug
 #
 # Debug build includes:
 #   - Full debug symbols (-g3)
@@ -19,27 +21,45 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 # ---- Config ----
 BUILD_TYPE="${BUILD_TYPE:-release}"
+TARGET="${TARGET:-linux}"
 
 # Toolchain paths
 BREW_PREFIX="/home/linuxbrew/.linuxbrew"
 export PATH="$BREW_PREFIX/bin:$BREW_PREFIX/opt/binutils/bin:$PATH"
 
-CXX="$BREW_PREFIX/bin/g++"
-CC="$BREW_PREFIX/bin/gcc"
-
-# ---- Flags ----
-BASE_FLAGS="-std=c++17 -fvisibility=default -fPIC -DPTHREAD=1"
-
-if [ "$BUILD_TYPE" = "debug" ]; then
-    echo "=== DEBUG BUILD ==="
-    CXXFLAGS="$BASE_FLAGS -O0 -g3 -DDEBUG=1 -fno-omit-frame-pointer"
-    CXXFLAGS="$CXXFLAGS -fsanitize=address -fsanitize=undefined"
-    CXXFLAGS="$CXXFLAGS -fno-optimize-sibling-calls"
-    SUFFIX="-debug.so"
+if [ "$TARGET" = "windows" ]; then
+    # Windows cross-compile (MinGW)
+    CXX="$BREW_PREFIX/bin/x86_64-w64-mingw32-g++"
+    CC="$BREW_PREFIX/bin/x86_64-w64-mingw32-gcc"
+    BASE_FLAGS="-std=c++17 -fvisibility=default -O2 -DNDEBUG -Wall -Wextra -Wno-unused-parameter"
+    BASE_FLAGS="$BASE_FLAGS -D_WIN32 -DWDL_NO_JPEG"
+    CXXFLAGS="$BASE_FLAGS"
+    SUFFIX=".dll"
+    SYSROOT_FLAGS=""
+    LINK_FLAGS="-shared -lws2_32 -lpthread"
+    echo "=== WINDOWS BUILD (MinGW) ==="
 else
-    echo "=== RELEASE BUILD ==="
-    CXXFLAGS="$BASE_FLAGS -O2 -DNDEBUG -g1"
-    SUFFIX=".so"
+    CXX="$BREW_PREFIX/bin/g++"
+    CC="$BREW_PREFIX/bin/gcc"
+    BASE_FLAGS="-std=c++17 -fvisibility=default -fPIC -DPTHREAD=1"
+
+    if [ "$BUILD_TYPE" = "debug" ]; then
+        echo "=== DEBUG BUILD ==="
+        CXXFLAGS="$BASE_FLAGS -O0 -g3 -DDEBUG=1 -fno-omit-frame-pointer"
+        CXXFLAGS="$CXXFLAGS -fsanitize=address -fsanitize=undefined"
+        CXXFLAGS="$CXXFLAGS -fno-optimize-sibling-calls"
+        SUFFIX="-debug.so"
+    else
+        echo "=== RELEASE BUILD ==="
+        CXXFLAGS="$BASE_FLAGS -O2 -DNDEBUG -g1"
+        SUFFIX=".so"
+    fi
+    
+    SYSROOT_FLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include -B$SYSROOT/usr/lib/x86_64-linux-gnu"
+    SYSROOT_FLAGS="$SYSROOT_FLAGS -L$SYSROOT/usr/lib/x86_64-linux-gnu"
+    SYSROOT_FLAGS="$SYSROOT_FLAGS -L/usr/lib/x86_64-linux-gnu"
+    SYSROOT_FLAGS="$SYSROOT_FLAGS -L/lib/x86_64-linux-gnu"
+    LINK_FLAGS="-shared -lpthread -ldl"
 fi
 
 CXXFLAGS="$CXXFLAGS -Wall -Wextra -Wno-unused-parameter"
@@ -52,12 +72,14 @@ INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL/jnetlib"
 INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL/eel2"
 INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL/swell"
 
-# ---- Sysroot for brew gcc on Linux ----
-SYSROOT="/tmp/sysroot"
-SYSROOT_FLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include -B$SYSROOT/usr/lib/x86_64-linux-gnu"
-SYSROOT_FLAGS="$SYSROOT_FLAGS -L$SYSROOT/usr/lib/x86_64-linux-gnu"
-SYSROOT_FLAGS="$SYSROOT_FLAGS -L/usr/lib/x86_64-linux-gnu"
-SYSROOT_FLAGS="$SYSROOT_FLAGS -L/lib/x86_64-linux-gnu"
+# ---- Sysroot for brew gcc on Linux (not needed for MinGW) ----
+if [ "$TARGET" != "windows" ]; then
+    SYSROOT="/tmp/sysroot"
+    SYSROOT_FLAGS="--sysroot=$SYSROOT -I$SYSROOT/usr/include -B$SYSROOT/usr/lib/x86_64-linux-gnu"
+    SYSROOT_FLAGS="$SYSROOT_FLAGS -L$SYSROOT/usr/lib/x86_64-linux-gnu"
+    SYSROOT_FLAGS="$SYSROOT_FLAGS -L/usr/lib/x86_64-linux-gnu"
+    SYSROOT_FLAGS="$SYSROOT_FLAGS -L/lib/x86_64-linux-gnu"
+fi
 
 # ---- Sources ----
 # Our extension
@@ -82,10 +104,9 @@ echo "Output: $OUT"
 echo ""
 
 $CXX $CXXFLAGS $SYSROOT_FLAGS $INCLUDES \
-    -shared \
     -o "$OUT" \
     $SRC \
-    -lpthread -ldl \
+    $LINK_FLAGS \
     2>&1
 
 echo ""
