@@ -573,23 +573,26 @@ std::string CommandHandler::RunFXEnumeration()
         if (idx > 0)
             fxList += ",";
 
-        // Determine format from ident prefix
+        // Determine format from name or ident prefix
         std::string format = "VST3";
-        if (ident) {
-            std::string idStr(ident);
-            if (idStr.find("VST2:") == 0 || idStr.find("VST:") == 0)
-                format = "VST2";
-            else if (idStr.find("VST3:") == 0)
-                format = "VST3";
-            else if (idStr.find("CLAP:") == 0)
-                format = "CLAP";
-            else if (idStr.find("JS:") == 0)
-                format = "JSFX";
-            else if (idStr.find("AU:") == 0)
-                format = "AU";
-            else if (idStr.find("DX:") == 0)
-                format = "DX";
-        }
+        std::string nameStr(name ? name : "");
+        std::string idStr(ident ? ident : "");
+        
+        // Check name first — includes format prefix like "VST: ", "JS: ", etc.
+        // Fall back to ident for plugins without name prefix
+        if (nameStr.find("VST2:") == 0 || nameStr.find("VST:") == 0
+            || idStr.find("VST2:") == 0 || idStr.find("VST:") == 0)
+            format = "VST2";
+        else if (nameStr.find("VST3:") == 0 || idStr.find("VST3:") == 0)
+            format = "VST3";
+        else if (nameStr.find("CLAP:") == 0 || idStr.find("CLAP:") == 0)
+            format = "CLAP";
+        else if (nameStr.find("JS:") == 0 || idStr.find("JS:") == 0)
+            format = "JSFX";
+        else if (nameStr.find("AU:") == 0 || idStr.find("AU:") == 0)
+            format = "AU";
+        else if (nameStr.find("DX:") == 0 || idStr.find("DX:") == 0)
+            format = "DX";
 
         fxList += "{";
         fxList += json_string("index") + ":" + std::to_string(idx) + ",";
