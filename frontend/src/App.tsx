@@ -195,6 +195,8 @@ function App() {
             onPlay={play}
             onStop={stop}
             onGetTransportState={getTransportState}
+            getTrackFx={getTrackFx}
+            onSelectFx={handleSelectFx}
           />
         )}
 

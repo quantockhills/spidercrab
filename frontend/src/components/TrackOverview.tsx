@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import type { Track } from '../hooks/useReaper';
+import { useState, useCallback, useEffect } from 'react';
+import type { Track, FxInfo } from '../hooks/useReaper';
 
 interface TrackOverviewProps {
   tracks: Track[];
@@ -12,6 +12,8 @@ interface TrackOverviewProps {
   onPlay?: () => Promise<boolean>;
   onStop?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
+  getTrackFx?: (trackIdx: number) => Promise<FxInfo[]>;
+  onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
 }
 
 /** Convert linear 0-1 Reaper volume to approximate dB string */
@@ -34,6 +36,11 @@ function VolumeBar({ volume }: { volume: number }) {
   );
 }
 
+/** Clean FX name for display (strip format prefix like "VST3: ") */
+function cleanFxName(name: string): string {
+  return name.replace(/^(VST3?i?:\s*|CLAPi?:\s*|AUi?:\s*|DX:\s*|JS:\s*)/, '');
+}
+
 export function TrackOverview({
   tracks,
   selectedTrack,
@@ -45,9 +52,45 @@ export function TrackOverview({
   onPlay,
   onStop,
   onGetTransportState,
+  getTrackFx,
+  onSelectFx,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [trackFxMap, setTrackFxMap] = useState<Record<number, FxInfo[]>>({});
+  const [fxLoading, setFxLoading] = useState(false);
+
+  // Fetch FX for all tracks on mount / when track list changes
+  useEffect(() => {
+    if (!getTrackFx || tracks.length === 0) {
+      setTrackFxMap({});
+      return;
+    }
+    let cancelled = false;
+    setFxLoading(true);
+    Promise.all(
+      tracks.map(async (t) => {
+        try {
+          const fx = await getTrackFx(t.index);
+          return { index: t.index, fx };
+        } catch {
+          return { index: t.index, fx: [] as FxInfo[] };
+        }
+      }),
+    ).then((results) => {
+      if (!cancelled) {
+        const map: Record<number, FxInfo[]> = {};
+        for (const r of results) {
+          map[r.index] = r.fx;
+        }
+        setTrackFxMap(map);
+        setFxLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) setFxLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [tracks, getTrackFx]);
 
   const handlePlay = useCallback(async () => {
     if (!onPlay) return;
@@ -144,16 +187,48 @@ export function TrackOverview({
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-3 space-y-1.5 pb-4">
+          {fxLoading && tracks.length > 0 && (
+            <div className="px-3 py-2 text-xs text-[var(--text-secondary)] animate-pulse">
+              Loading FX…
+            </div>
+          )}
           {tracks.map((track) => (
-            <TrackRow
-              key={track.index}
-              track={track}
-              isSelected={track.index === selectedTrack}
-              onSelect={() => onSelectTrack(track.index)}
-              onToggleMute={() => onToggleMute(track.index)}
-              onToggleSolo={() => onToggleSolo(track.index)}
-              onToggleArm={() => onToggleArm(track.index)}
-            />
+            <div key={track.index}>
+              <TrackRow
+                track={track}
+                isSelected={track.index === selectedTrack}
+                onSelect={() => onSelectTrack(track.index)}
+                onToggleMute={() => onToggleMute(track.index)}
+                onToggleSolo={() => onToggleSolo(track.index)}
+                onToggleArm={() => onToggleArm(track.index)}
+              />
+              {/* FX grid cards under the track row */}
+              {getTrackFx && onSelectFx && trackFxMap[track.index]?.length > 0 && (
+                <div className="flex flex-wrap gap-2 px-3 pb-2">
+                  {trackFxMap[track.index].map((fx) => (
+                    <button
+                      key={fx.index}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelectFx(track.index, fx.index, fx.name);
+                      }}
+                      className="
+                        flex flex-col items-center justify-center
+                        w-24 h-18 px-2 py-2
+                        bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
+                        ring-1 ring-[var(--border)]
+                        active:brightness-95 transition-all duration-100
+                        cursor-pointer text-center
+                      "
+                    >
+                      <span className="text-xs font-medium truncate w-full leading-tight">
+                        {cleanFxName(fx.name)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
