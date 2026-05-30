@@ -11,6 +11,7 @@ interface ParamControlProps {
   getFxParams: (trackIdx: number, fxIdx: number) => Promise<FxParam[]>;
   setFxParam: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<boolean>;
   deleteFx: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onEvent: (pattern: string, handler: (data: any) => void) => () => void;
   onBack: () => void;
 }
 
@@ -29,6 +30,7 @@ export function ParamControl({
   getFxParams,
   setFxParam,
   deleteFx,
+  onEvent,
   onBack,
 }: ParamControlProps) {
   const [params, setParams] = useState<FxParam[]>([]);
@@ -36,7 +38,7 @@ export function ParamControl({
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Load params on mount
+  // Load params on mount + subscribe to real-time updates
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -56,6 +58,23 @@ export function ParamControl({
       });
     return () => { cancelled = true; };
   }, [trackIdx, fxIdx, getFxParams]);
+
+  // Subscribe to real-time param change events (Issue #52)
+  useEffect(() => {
+    const unsubscribe = onEvent('event:fx_param_changed', (msg: any) => {
+      const { trackIdx: eventTrack, fxIdx: eventFx, params: changedParams } = msg.payload || {};
+      // Only update if this event is for the FX we're viewing
+      if (eventTrack === trackIdx && eventFx === fxIdx && Array.isArray(changedParams)) {
+        setParams((prev) =>
+          prev.map((p) => {
+            const changed = changedParams.find((cp: any) => cp.index === p.index);
+            return changed ? { ...p, value: changed.value, min: changed.min, max: changed.max, mid: changed.mid } : p;
+          }),
+        );
+      }
+    });
+    return unsubscribe;
+  }, [trackIdx, fxIdx, onEvent]);
 
   const handleParamChange = useCallback(
     async (paramIdx: number, value: number) => {

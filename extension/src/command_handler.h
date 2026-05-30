@@ -75,6 +75,11 @@ public:
     // display conflict). Safe to call before any WebSocket client connects.
     void PreCacheFX();
 
+    // Real-time param change polling (Issue #52)
+    void PollParams();
+    void SetWatchedFX(int trackIdx, int fxIdx);
+    void ClearWatchedFX();
+
 private:
     WebSocketServer* m_ws;
     ReaperAPI        m_api;
@@ -84,6 +89,13 @@ private:
     // FX enumeration cache (EnumInstalledFX takes ~35s)
     std::string m_fxCache;
     bool        m_fxCacheValid = false;
+
+    // Real-time param change tracking (Issue #52)
+    int         m_watchedTrackIdx = -1;
+    int         m_watchedFxIdx    = -1;
+    int         m_watchedNumParams = 0;
+    double*     m_watchedParamValues = nullptr;  // heap-allocated array
+    int         m_pollSkipCounter = 0;  // poll every N calls to reduce CPU
 
     // Run the actual EnumInstalledFX loop (no response, just populate cache)
     // Returns the JSON string of the FX list

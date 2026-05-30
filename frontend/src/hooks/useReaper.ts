@@ -207,6 +207,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return await setTrackSelected(trackIdx, true);
   }, [setTrackSelected]);
 
+  // Subscribe to events from the WS client (e.g. fx_param_changed)
+  const onEvent = useCallback((pattern: string, handler: (data: any) => void): (() => void) => {
+    if (!clientRef.current) return () => {};
+    return clientRef.current.on(pattern, handler);
+  }, []);
+
   return {
     connected,
     tracks,
@@ -231,5 +237,6 @@ export function useReaper(opts: UseReaperOptions = {}) {
     getDirectory,
     sendSampleToTrack,
     refreshFxCache,
+    onEvent,
   };
 }

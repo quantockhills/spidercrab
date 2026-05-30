@@ -449,6 +449,9 @@ void CommandHandler::HandleGetFXParams(
         paramsList += "}";
     }
     paramsList += "]";
+    
+    // Auto-watch this FX for real-time param change events (Issue #52)
+    SetWatchedFX(trackIdx, fxIdx);
 
     SendResponse(clientId, id, true,
         "{\"trackIdx\":" + std::to_string(trackIdx) + ",\"fxIdx\":" + std::to_string(fxIdx)
@@ -880,6 +883,112 @@ void CommandHandler::HandleSampleSendToTrack(
 }
 
 // ============================================================
-// Sample / media browser commands
+// Real-time FX param change polling (Issue #52)
 // ============================================================
+
+void CommandHandler::SetWatchedFX(int trackIdx, int fxIdx)
+{
+    if (trackIdx == m_watchedTrackIdx && fxIdx == m_watchedFxIdx)
+        return;  // Already watching this FX
+
+    // Clear old cache
+    ClearWatchedFX();
+
+    if (!m_api.GetTrack || !m_api.TrackFX_GetNumParams || !m_api.TrackFX_GetParamEx)
+        return;
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) return;
+
+    int numParams = m_api.TrackFX_GetNumParams(track, fxIdx);
+    if (numParams <= 0) return;
+
+    m_watchedTrackIdx   = trackIdx;
+    m_watchedFxIdx      = fxIdx;
+    m_watchedNumParams  = numParams;
+    m_watchedParamValues = new double[numParams];
+    m_pollSkipCounter   = 0;
+
+    // Snapshot current param values
+    for (int i = 0; i < numParams; i++) {
+        double minVal = 0, maxVal = 0, midVal = 0;
+        m_watchedParamValues[i] = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
+    }
+}
+
+void CommandHandler::ClearWatchedFX()
+{
+    delete[] m_watchedParamValues;
+    m_watchedParamValues = nullptr;
+    m_watchedTrackIdx    = -1;
+    m_watchedFxIdx       = -1;
+    m_watchedNumParams   = 0;
+    m_pollSkipCounter    = 0;
+}
+
+void CommandHandler::PollParams()
+{
+    if (m_watchedTrackIdx < 0 || m_watchedFxIdx < 0 || !m_watchedParamValues)
+        return;
+
+    // Skip most polls to reduce CPU — poll every ~6 calls (5 Hz at 30 Hz loop)
+    m_pollSkipCounter++;
+    if (m_pollSkipCounter < 6) return;
+    m_pollSkipCounter = 0;
+
+    if (!m_api.GetTrack || !m_api.TrackFX_GetParamEx || !m_api.TrackFX_GetParamName)
+        return;
+
+    MediaTrack* track = m_api.GetTrack(nullptr, m_watchedTrackIdx);
+    if (!track) { ClearWatchedFX(); return; }
+
+    // Check if FX still exists on track
+    int numFx = m_api.TrackFX_GetCount ? m_api.TrackFX_GetCount(track) : 0;
+    if (m_watchedFxIdx >= numFx) { ClearWatchedFX(); return; }
+
+    std::string changes = "[";
+    bool first = true;
+
+    for (int i = 0; i < m_watchedNumParams; i++) {
+        double minVal = 0, maxVal = 0, midVal = 0;
+        double val = m_api.TrackFX_GetParamEx(track, m_watchedFxIdx, i, &minVal, &maxVal, &midVal);
+
+        // Detect change with small epsilon
+        double diff = val - m_watchedParamValues[i];
+        if (diff < -0.001 || diff > 0.001) {
+            if (!first) changes += ",";
+            first = false;
+
+            // Get param name for the event payload
+            char name[256] = { 0 };
+            m_api.TrackFX_GetParamName(track, m_watchedFxIdx, i, name, sizeof(name));
+
+            changes += "{";
+            changes += "\"index\":" + std::to_string(i) + ",";
+            changes += "\"name\":\"" + json_escape(name) + "\",";
+            changes += "\"value\":" + std::to_string(val) + ",";
+            changes += "\"min\":" + std::to_string(minVal) + ",";
+            changes += "\"max\":" + std::to_string(maxVal) + ",";
+            changes += "\"mid\":" + std::to_string(midVal);
+            changes += "}";
+
+            // Update cache
+            m_watchedParamValues[i] = val;
+        }
+    }
+
+    changes += "]";
+
+    // Only broadcast if something changed
+    if (!first) {
+        std::string event = "{\"type\":\"event\",\"event\":\"fx_param_changed\",";
+        event += "\"payload\":{\"trackIdx\":" + std::to_string(m_watchedTrackIdx) + ",";
+        event += "\"fxIdx\":" + std::to_string(m_watchedFxIdx) + ",";
+        event += "\"params\":" + changes + "}}";
+
+        if (m_ws) {
+            m_ws->Broadcast(event);
+        }
+    }
+}
 

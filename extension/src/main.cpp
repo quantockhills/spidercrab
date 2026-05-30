@@ -96,6 +96,11 @@ public:
     {
         // Called ~30x/sec — drive the WebSocket server
         g_wsServer.Run();
+        
+        // Poll watched FX params and broadcast changes (~5 Hz)
+        if (g_cmdHandler) {
+            g_cmdHandler->PollParams();
+        }
     }
 
     void CloseNoReset() override { g_wsServer.Stop(); }

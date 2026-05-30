@@ -35,6 +35,7 @@ function App() {
     play,
     stop,
     getTransportState,
+    onEvent,
   } = useReaper();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
@@ -145,6 +146,7 @@ function App() {
             getFxParams={getFxParams}
             setFxParam={setFxParam}
             deleteFx={deleteFx}
+            onEvent={onEvent}
             onBack={handleBackFromParam}
           />
         ) : (
