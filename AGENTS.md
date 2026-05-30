@@ -336,6 +336,7 @@ When working as an isolated sub-agent (20-min cron, spawned task):
 8. **Update milestones** — when you add issues to a milestone or complete one, update the milestone state. When open=0 for a milestone, write integration tests, run them, and close the milestone only if tests pass.
 9. **No silent failures** — if you'\''re stuck, write to ~/blockers.md and move to the next issue. Don'\''t pretend it'\''s fine.
 10. **Evidence or nothing** — don'\''t close issues without proof. "Code compiles" is not proof.
+11. **Screenshot Verifier model override** — when spawning the Screenshot Verifier, always pass `model: "openrouter/moonshotai/kimi-k2.6"`. DeepSeek can't do vision. This must be explicit in every spawn command.
 
 ### Getting Unstuck
 If you're stuck:

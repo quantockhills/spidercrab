@@ -109,8 +109,9 @@ export function FxBrowser({
       if (selectedTrack === null) return;
       setAddingName(fx.name);
       try {
-        const cleaned = cleanFxName(fx.name);
-        const addedIndex = await addFx(selectedTrack, cleaned);
+        // Use the full FX name from enumeration (includes format prefix like "VST3: ReaEQ")
+        // TrackFX_AddByName requires the full name, not the cleaned display name
+        const addedIndex = await addFx(selectedTrack, fx.name);
         if (addedIndex >= 0) {
           setAddedFx((prev) => new Set(prev).add(fx.name));
           // Brief flash of success

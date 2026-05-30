@@ -94,15 +94,16 @@ async function testWsRoundtrip() {
 
   // Find ReaEQ
   var reaEQIdx = -1;
+  var reaEQFullName = '';
   for (var i = 0; i < fx.length; i++) {
-    if (fx[i].name && fx[i].name.indexOf('ReaEQ') !== -1) { reaEQIdx = i; break; }
+    if (fx[i].name && fx[i].name.indexOf('ReaEQ') !== -1) { reaEQIdx = i; reaEQFullName = fx[i].name; break; }
   }
   if (reaEQIdx === -1) { fail('ReaEQ not found in plugin list'); return; }
-  console.log('     ReaEQ at index ' + reaEQIdx);
+  console.log('     ReaEQ at index ' + reaEQIdx + ' (full name: "' + reaEQFullName + '")');
 
-  // Add FX to Track 1
+  // Add FX to Track 1 - use the full name from enumeration (includes format prefix like "VST3: ReaEQ")
   console.log('  4. Adding ReaEQ to track...');
-  var r4 = await wsCommand('fx/add', { trackIdx: 0, fxName: 'ReaEQ' });
+  var r4 = await wsCommand('fx/add', { trackIdx: 0, fxName: reaEQFullName });
   var fxIdx = (r4 && r4.payload && r4.payload.fxIdx);
   if (fxIdx !== undefined && fxIdx >= 0) {
     pass('fx/add: ReaEQ added at fxIdx=' + fxIdx);
