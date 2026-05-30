@@ -43,6 +43,7 @@ set(TEST_SOURCES
     ${WDL_SOURCES}
     test/test_main.cpp
     test/test_command_handler.cpp
+    test/test_frontend_server.cpp
     test/test_sha1_utils.cpp
     test/test_websocket.cpp
 )
