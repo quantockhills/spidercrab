@@ -110,6 +110,9 @@ export class WsClient {
     this.ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data) as WsResponse | WsEvent;
+        if (msg.type === 'event') {
+          console.log('[wsClient] event received:', msg.event, JSON.stringify(msg.payload).substring(0, 100));
+        }
 
         if (msg.type === 'response' && msg.id && this.pendingCommands.has(msg.id)) {
           const pending = this.pendingCommands.get(msg.id)!;
@@ -176,6 +179,7 @@ export class WsClient {
       this.handlers.set(pattern, new Set());
     }
     this.handlers.get(pattern)!.add(handler);
+    console.log('[wsClient] registered handler for:', pattern);
     return () => this.handlers.get(pattern)?.delete(handler);
   }
 

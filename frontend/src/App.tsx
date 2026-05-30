@@ -36,6 +36,7 @@ function App() {
     stop,
     getTransportState,
     onEvent,
+    updateTrack,
   } = useReaper();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
@@ -61,18 +62,11 @@ function App() {
     const unsubTrack = onEvent('event:track_state_changed', (msg: any) => {
       const { trackIdx, muted, soloed, armed } = msg.payload || {};
       if (trackIdx !== undefined) {
-        setTracks((prev) =>
-          prev.map((t) =>
-            t.index === trackIdx
-              ? {
-                  ...t,
-                  muted: muted !== undefined ? muted : t.muted,
-                  soloed: soloed !== undefined ? soloed : t.soloed,
-                  armed: armed !== undefined ? armed : t.armed,
-                }
-              : t,
-          ),
-        );
+        const updates: Record<string, boolean> = {};
+        if (muted !== undefined) updates.muted = muted;
+        if (soloed !== undefined) updates.soloed = soloed;
+        if (armed !== undefined) updates.armed = armed;
+        updateTrack(trackIdx, updates as any);
       }
     });
     const unsubList = onEvent('event:track_list_changed', () => {

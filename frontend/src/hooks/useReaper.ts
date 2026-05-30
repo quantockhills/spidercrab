@@ -213,6 +213,13 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return clientRef.current.on(pattern, handler);
   }, []);
 
+  // Update a single track's state (used by real-time event handlers)
+  const updateTrack = useCallback((trackIdx: number, updates: Partial<Omit<Track, 'index'>>) => {
+    setTracks((prev) =>
+      prev.map((t) => (t.index === trackIdx ? { ...t, ...updates } : t)),
+    );
+  }, []);
+
   return {
     connected,
     tracks,
@@ -238,5 +245,6 @@ export function useReaper(opts: UseReaperOptions = {}) {
     sendSampleToTrack,
     refreshFxCache,
     onEvent,
+    updateTrack,
   };
 }
