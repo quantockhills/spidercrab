@@ -156,37 +156,43 @@ public:
     void SetSurfaceMute(MediaTrack* trackid, bool mute) override
     {
         int trackIdx = CSurf_TrackToID(trackid, false) - 1;
-        std::string msg = "{\"type\":\"event\",";
-        msg += "\"event\":\"track_state_changed\",";
-        msg += "\"payload\":{";
-        msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
-        msg += "\"muted\":" + std::string(mute ? "true" : "false");
-        msg += "}}";
-        g_wsServer.Broadcast(msg);
+        if (trackIdx >= 0) {
+            std::string msg = "{\"type\":\"event\",";
+            msg += "\"event\":\"track_state_changed\",";
+            msg += "\"payload\":{";
+            msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+            msg += "\"muted\":" + std::string(mute ? "true" : "false");
+            msg += "}}";
+            g_wsServer.Broadcast(msg);
+        }
     }
 
     void SetSurfaceSolo(MediaTrack* trackid, bool solo) override
     {
         int trackIdx = CSurf_TrackToID(trackid, false) - 1;
-        std::string msg = "{\"type\":\"event\",";
-        msg += "\"event\":\"track_state_changed\",";
-        msg += "\"payload\":{";
-        msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
-        msg += "\"soloed\":" + std::string(solo ? "true" : "false");
-        msg += "}}";
-        g_wsServer.Broadcast(msg);
+        if (trackIdx >= 0) {
+            std::string msg = "{\"type\":\"event\",";
+            msg += "\"event\":\"track_state_changed\",";
+            msg += "\"payload\":{";
+            msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+            msg += "\"soloed\":" + std::string(solo ? "true" : "false");
+            msg += "}}";
+            g_wsServer.Broadcast(msg);
+        }
     }
 
     void SetSurfaceRecArm(MediaTrack* trackid, bool recarm) override
     {
         int trackIdx = CSurf_TrackToID(trackid, false) - 1;
-        std::string msg = "{\"type\":\"event\",";
-        msg += "\"event\":\"track_state_changed\",";
-        msg += "\"payload\":{";
-        msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
-        msg += "\"armed\":" + std::string(recarm ? "true" : "false");
-        msg += "}}";
-        g_wsServer.Broadcast(msg);
+        if (trackIdx >= 0) {
+            std::string msg = "{\"type\":\"event\",";
+            msg += "\"event\":\"track_state_changed\",";
+            msg += "\"payload\":{";
+            msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+            msg += "\"armed\":" + std::string(recarm ? "true" : "false");
+            msg += "}}";
+            g_wsServer.Broadcast(msg);
+        }
     }
 
     void SetPlayState(bool play, bool pause, bool rec) override
