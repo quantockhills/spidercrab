@@ -13,33 +13,24 @@ extension/cmake-build*/
 .DS_Store
 Thumbs.db
 
-# Dependencies
+# Node
 frontend/node_modules/
-
-# Sysroot (generated from downloaded .deb packages)
-/tmp/sysroot/
-
-# Reaper portable install (can be re-downloaded)
-~/reaper-portable/
-
-# Compiled extensions in UserPlugins
-~/reaper-portable/UserPlugins/*.so
+frontend/dist/
 
 # Logs
 *.log
-/tmp/reaper-*.log
-/tmp/reaper-*.txt
 
-# Cloned library repos in docs/ (too large for the repo)
-docs/helgobox/
-
-# Environment
+# Env
 .env
 .env.local
 __pycache__/
-frontend/test-results/
 
-# E2E test artifacts (screenshots, video)
+# Test artifacts
+frontend/test-results/
 gui_testing/
-# Extracted theme assets (keep only .ReaperThemeZip files)
-design/original-theme/everforest-extracted/
+
+# Cloned docs (too large)
+docs/helgobox/
+
+# Sysroot
+/tmp/sysroot/
