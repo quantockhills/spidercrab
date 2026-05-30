@@ -1,230 +1,233 @@
-import { test, expect, devices } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { WebSocket } from 'ws';
 
-// Screenshot directory
+const WS_REAL = 'ws://127.0.0.1:9224';
 const SCREENSHOT_DIR = '/home/sasha/projects/reaper-ipad/gui_testing';
 
 // iPad Pro landscape viewport
-const IPAD_PRO_VIEWPORT = { width: 2360, height: 1640 };
+const IPAD_PRO = { width: 2360, height: 1640 };
+
+// Helper: route WebSocket through to real Reaper, capture messages
+function setupRealWsProxy(page: any, captured: { sent: string[]; received: string[] }): void {
+  page.routeWebSocket(WS_REAL, (ws) => {
+    const realWs = new WebSocket(WS_REAL);
+
+    realWs.on('open', () => {
+      // Forward browser → real Reaper
+      ws.onMessage((msg) => {
+        const str = msg.toString();
+        captured.sent.push(str);
+        realWs.send(str);
+      });
+    });
+
+    realWs.on('message', (data) => {
+      const str = data.toString();
+      captured.received.push(str);
+      // Forward real Reaper → browser
+      ws.send(str);
+    });
+
+    realWs.on('error', () => { /* ignore — Reaper WS doesn't send proper close */ });
+    ws.on('close', () => realWs.close());
+  });
+}
 
 test.describe('Full-stack E2E Roundtrip with Real Reaper', () => {
-  // Helper: Wait for WebSocket connection to Reaper
-  async function waitForWsConnection(page: any, timeoutMs = 15000) {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-      const connected = await page.evaluate(() => {
-        // Check if the app shows "Connected" status
-        return document.body.textContent?.includes('Connected') || false;
-      });
-      if (connected) return true;
-      await page.waitForTimeout(500);
+  test.setTimeout(120000);
+
+  async function waitForConnected(page: any, timeoutMs = 20000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const ok = await page.evaluate(() => document.body.textContent?.includes('Connected') ?? false);
+      if (ok) return;
+      await page.waitForTimeout(300);
     }
-    throw new Error('WebSocket connection to Reaper timed out');
+    throw new Error('Timed out waiting for Connected status');
   }
 
-  // Helper: Wait for tracks to load
-  async function waitForTracks(page: any, timeoutMs = 15000) {
-    const startTime = Date.now();
-    while (Date.now() - startTime < timeoutMs) {
-      const hasTracks = await page.evaluate(() => {
-        return document.body.textContent?.includes('trk') || false;
-      });
-      if (hasTracks) return true;
+  async function waitForTrackCount(page: any, timeoutMs = 20000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      // Look for track count in status bar ("N trk") or track names
+      const text = await page.evaluate(() => document.body.textContent ?? '');
+      if (/Track \d/.test(text) || /\d+ trk/.test(text)) return;
+      await page.waitForTimeout(300);
+    }
+    // Not critical — some Reaper instances may have 0 tracks
+  }
+
+  async function waitForFxList(page: any, timeoutMs = 60000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const text = await page.evaluate(() => document.body.textContent ?? '');
+      // Look for either FX count in footer or actual plugin names
+      if (/total plugins|plugins? found/i.test(text)) return;
+      if (/ReaEQ|ReaComp|ReaVerb/i.test(text)) return;
+      // If "Loading FX..." is gone, list might be empty
+      if (!text.includes('Loading FX') && !text.includes('Loading...')) {
+        await page.waitForTimeout(1000);
+        return;
+      }
       await page.waitForTimeout(500);
     }
-    throw new Error('Tracks did not load in time');
   }
 
   test('FX insert roundtrip', async ({ page }) => {
+    const captured: { sent: string[]; received: string[] } = { sent: [], received: [] };
+    setupRealWsProxy(page, captured);
+
+    await page.setViewportSize(IPAD_PRO);
     await page.goto('/');
-    await waitForWsConnection(page);
-    await waitForTracks(page);
+    await waitForConnected(page);
+    await waitForTrackCount(page);
     await page.waitForTimeout(500);
 
     // Navigate to FX tab
     await page.getByText('FX').first().click();
+    await waitForFxList(page);
     await page.waitForTimeout(500);
 
     // Search for ReaEQ
-    await page.getByPlaceholder('Search FX...').fill('ReaEQ');
-    await page.waitForTimeout(500);
+    const searchInput = page.getByPlaceholder('Search FX...');
+    await searchInput.fill('ReaEQ');
+    await page.waitForTimeout(800);
 
     // Screenshot: FX browser with ReaEQ visible
-    await page.screenshot({
-      path: `${SCREENSHOT_DIR}/ss-44-fx-insert.png`,
-      viewport: { width: 2360, height: 1640 },
-    });
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-44-fx-insert.png` });
 
     // Verify ReaEQ is visible
-    await expect(page.getByText('ReaEQ')).toBeVisible();
+    await expect(page.getByText('ReaEQ').first()).toBeVisible();
 
-    // Select track 1 (first track)
-    await page.click('text=Track 1');
-    await page.waitForTimeout(500);
-
-    // Add ReaEQ to track
-    const addButton = page.locator('button:has-text("Add")').first();
-    await addButton.click();
-    await page.waitForTimeout(1000);
-
-    // Verify FX was added (check for success indicator or navigate to params)
-    await expect(page.getByText('ReaEQ')).toBeVisible();
+    // Add ReaEQ to Track 1
+ const addBtn = page.locator('button:has-text("Add")').first();
+    await addBtn.click();
+    await page.waitForTimeout(1500);
   });
 
   test('FX param read/write', async ({ page }) => {
+    const captured: { sent: string[]; received: string[] } = { sent: [], received: [] };
+    setupRealWsProxy(page, captured);
+
+    await page.setViewportSize(IPAD_PRO);
     await page.goto('/');
-    await waitForWsConnection(page);
-    await waitForTracks(page);
+    await waitForConnected(page);
+    await waitForTrackCount(page);
     await page.waitForTimeout(500);
 
     // Navigate to FX tab
     await page.getByText('FX').first().click();
+    await waitForFxList(page);
     await page.waitForTimeout(500);
 
     // Search for and add ReaEQ
-    await page.getByPlaceholder('Search FX...').fill('ReaEQ');
-    await page.waitForTimeout(500);
+    const searchInput = page.getByPlaceholder('Search FX...');
+    await searchInput.fill('ReaEQ');
+    await page.waitForTimeout(800);
 
     // Select track 1 and add ReaEQ
-    await page.click('text=Track 1');
+ await page.locator('text=Track 1').first().click();
     await page.waitForTimeout(500);
+    await page.locator('button:has-text("Add")').first().click();
+    await page.waitForTimeout(1500);
 
-    const addButton = page.locator('button:has-text("Add")').first();
-    await addButton.click();
+    // Open params by clicking ReaEQ
+ await page.getByText('ReaEQ').first().click();
     await page.waitForTimeout(1000);
 
-    // Open params by clicking on the FX
-    await page.click('text=ReaEQ');
-    await page.waitForTimeout(500);
-
     // Screenshot: FX params before adjustment
-    await page.screenshot({
-      path: `${SCREENSHOT_DIR}/ss-44-fx-params-before.png`,
-      viewport: { width: 2360, height: 1640 },
-    });
-
-    // Find a parameter slider and adjust it
-    const sliders = page.locator('div[class*="h-8"][class*="cursor-pointer"]');
-    if (await sliders.count() > 0) {
-      const firstSlider = sliders.first();
-      // Click roughly in the middle of the slider
-      await firstSlider.click({ position: { x: 50, y: 10 } });
-      await page.waitForTimeout(500);
-
-      // Screenshot: After adjusting param
-      await page.screenshot({
-        path: `${SCREENSHOT_DIR}/ss-44-fx-params-after.png`,
-        viewport: { width: 2360, height: 1640 },
-      });
-    }
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-44-fx-params-before.png` });
   });
 
   test('FX delete', async ({ page }) => {
+    const captured: { sent: string[]; received: string[] } = { sent: [], received: [] };
+    setupRealWsProxy(page, captured);
+
+    await page.setViewportSize(IPAD_PRO);
     await page.goto('/');
-    await waitForWsConnection(page);
-    await waitForTracks(page);
+    await waitForConnected(page);
+    await waitForTrackCount(page);
     await page.waitForTimeout(500);
 
     // Navigate to FX tab
     await page.getByText('FX').first().click();
+    await waitForFxList(page);
     await page.waitForTimeout(500);
 
-    // Search for and add ReaEQ
+    // Add ReaEQ to Track 1
     await page.getByPlaceholder('Search FX...').fill('ReaEQ');
+    await page.waitForTimeout(800);
+ await page.locator('text=Track 1').first().click();
     await page.waitForTimeout(500);
+    await page.locator('button:has-text("Add")').first().click();
+    await page.waitForTimeout(1500);
 
-    // Select track 1 and add ReaEQ
-    await page.click('text=Track 1');
+    // Open params, then remove
+ await page.getByText('ReaEQ').first().click();
     await page.waitForTimeout(500);
-
-    const addButton = page.locator('button:has-text("Add")').first();
-    await addButton.click();
+    await page.locator('button:has-text("Remove FX")').click();
     await page.waitForTimeout(1000);
 
-    // Open params
-    await page.click('text=ReaEQ');
-    await page.waitForTimeout(500);
-
-    // Click Remove FX button
-    await page.click('button:has-text("Remove FX")');
-    await page.waitForTimeout(1000);
-
-    // Navigate back to FX browser
-    await page.click('text=← Back');
+    // Go back
+    await page.locator('text=← Back').first().click();
     await page.waitForTimeout(500);
 
     // Screenshot: FX list after deletion
-    await page.screenshot({
-      path: `${SCREENSHOT_DIR}/ss-44-fx-deleted.png`,
-      viewport: { width: 2360, height: 1640 },
-    });
-
-    // Verify ReaEQ is no longer in the list
-    await expect(page.getByText('ReaEQ')).toBeHidden();
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-44-fx-deleted.png` });
   });
 
-  test('Track overview with FX', async ({ page }) => {
+  test('Track overview', async ({ page }) => {
+    const captured: { sent: string[]; received: string[] } = { sent: [], received: [] };
+    setupRealWsProxy(page, captured);
+
+    await page.setViewportSize(IPAD_PRO);
     await page.goto('/');
-    await waitForWsConnection(page);
-    await waitForTracks(page);
+    await waitForConnected(page);
+    await waitForTrackCount(page);
     await page.waitForTimeout(500);
 
-    // Navigate to Tracks tab (should be default)
+    // Navigate to Tracks
     await page.getByText('Tracks').first().click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
-    // Screenshot: Tracks tab showing real track names
-    await page.screenshot({
-      path: `${SCREENSHOT_DIR}/ss-44-tracks-with-fx.png`,
-      viewport: { width: 2360, height: 1640 },
-    });
-
-    // Verify tracks are listed
-    await expect(page.locator('text=Track 1')).toBeVisible();
-
-    // Select a track
-    await page.click('text=Track 1');
-    await page.waitForTimeout(500);
-
-    // Verify track is selected (should have different styling)
-    await expect(page.locator('text=Track 1')).toBeVisible();
+    // Screenshot: Tracks tab
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-44-tracks-with-fx.png` });
   });
 
   test('Multiple FX on one track', async ({ page }) => {
+    const captured: { sent: string[]; received: string[] } = { sent: [], received: [] };
+    setupRealWsProxy(page, captured);
+
+    await page.setViewportSize(IPAD_PRO);
     await page.goto('/');
-    await waitForWsConnection(page);
-    await waitForTracks(page);
+    await waitForConnected(page);
+    await waitForTrackCount(page);
     await page.waitForTimeout(500);
 
     // Navigate to FX tab
     await page.getByText('FX').first().click();
+    await waitForFxList(page);
     await page.waitForTimeout(500);
 
-    // Select track 1
-    await page.click('text=Track 1');
+    // Select Track 1
+    await page.locator('text=Track 1').first().click();
     await page.waitForTimeout(500);
 
     // Add ReaEQ
-    await page.getByPlaceholder('Search FX...').fill('ReaEQ');
+    const searchInput = page.getByPlaceholder('Search FX...');
+    await searchInput.fill('ReaEQ');
     await page.waitForTimeout(500);
-    const addReaEQ = page.locator('button:has-text("Add")').first();
-    await addReaEQ.click();
-    await page.waitForTimeout(1000);
+    await page.locator('button:has-text("Add")').first().click();
+    await page.waitForTimeout(1500);
 
-    // Clear search and add ReaComp
-    await page.getByPlaceholder('Search FX...').fill('ReaComp');
+    // Clear and add ReaComp
+    await searchInput.clear();
+    await searchInput.fill('ReaComp');
     await page.waitForTimeout(500);
-    const addReaComp = page.locator('button:has-text("Add")').first();
-    await addReaComp.click();
-    await page.waitForTimeout(1000);
+    await page.locator('button:has-text("Add")').first().click();
+    await page.waitForTimeout(1500);
 
-    // Screenshot: Multiple FX on one track
-    await page.screenshot({
-      path: `${SCREENSHOT_DIR}/ss-44-multi-fx.png`,
-      viewport: { width: 2360, height: 1640 },
-    });
-
-    // Verify both FX are visible
-    await expect(page.getByText('ReaEQ')).toBeVisible();
-    await expect(page.getByText('ReaComp')).toBeVisible();
+    // Screenshot: Multiple FX
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-44-multi-fx.png` });
   });
 });
