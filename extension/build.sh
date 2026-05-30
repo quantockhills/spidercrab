@@ -94,6 +94,8 @@ SRC="$SRC $WDL_DIR/jnetlib/listen.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/connection.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/util.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/asyncdns.cpp"
+SRC="$SRC $WDL_DIR/jnetlib/webserver.cpp"
+SRC="$SRC $WDL_DIR/jnetlib/httpserv.cpp"
 
 OUT="$SCRIPT_DIR/build/reaper-ipad-ext$SUFFIX"
 

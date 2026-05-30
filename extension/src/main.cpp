@@ -53,8 +53,16 @@
 #include <cstdlib>
 #include <cstring>
 
+#include <string>
 #include "command_handler.h"
 #include "websocket_server.h"
+#include "frontend_server.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 // ============================================================
 // REAPER Extension: reaper-ipad-ext
@@ -71,9 +79,44 @@
 
 // --- Global state ---
 static WebSocketServer       g_wsServer;
+static FrontendWebServer     g_httpServer;
 static CommandHandler*       g_cmdHandler = nullptr;
 static reaper_plugin_info_t* g_pluginInfo = nullptr;
 static int                   g_port       = 9224; // default port (matching reamo convention)
+static int                   g_httpPort   = 5173;
+
+// Helper: find the frontend dist directory relative to this extension's location
+static bool FindFrontendDist(std::string& outPath)
+{
+#ifdef _WIN32
+    HMODULE hm = nullptr;
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCSTR)&FindFrontendDist, &hm)) {
+        char path[MAX_PATH] = {0};
+        GetModuleFileNameA(hm, path, MAX_PATH);
+        std::string spath(path);
+        size_t sep = spath.find_last_of("\\");
+        if (sep != std::string::npos) {
+            outPath = spath.substr(0, sep) + "\\frontend";
+            return true;
+        }
+    }
+#else
+    Dl_info info;
+    if (dladdr((void*)&FindFrontendDist, &info)) {
+        std::string spath(info.dli_fname);
+        size_t sep = spath.find_last_of("/");
+        if (sep != std::string::npos) {
+            // Extension is in UserPlugins/, frontend is in UserPlugins/frontend/
+            outPath = spath.substr(0, sep) + "/frontend";
+            return true;
+        }
+    }
+#endif
+    // Fallback: try cwd/frontend/
+    outPath = "frontend";
+    return false;
+}
 
 // --- Our control surface implementation ---
 class iPadControlSurface : public IReaperControlSurface {
@@ -94,8 +137,9 @@ public:
 
     void Run() override
     {
-        // Called ~30x/sec — drive the WebSocket server
+        // Called ~30x/sec — drive the WebSocket + HTTP servers
         g_wsServer.Run();
+        g_httpServer.run();
         
         // Poll watched FX params and broadcast changes (~5 Hz)
         if (g_cmdHandler) {
@@ -103,7 +147,7 @@ public:
         }
     }
 
-    void CloseNoReset() override { g_wsServer.Stop(); }
+    void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }
 
     // Optional: handle FX param changes from Reaper so we can push
     // updates to connected clients
@@ -152,6 +196,20 @@ static reaper_csurf_reg_t g_csurfReg = { "REAPER_IPAD", "Reaper iPad Remote Cont
                 fprintf(stderr, msg);
             } else {
                 fprintf(stderr, "[reaper-ipad] Failed to start WebSocket server\n");
+            }
+
+            // Start HTTP server for frontend
+            std::string frontendPath;
+            FindFrontendDist(frontendPath);
+            fprintf(stderr, "[reaper-ipad] Frontend path: %s\n", frontendPath.c_str());
+            g_httpServer.SetWebRoot(frontendPath);
+            bool httpOk = g_httpServer.addListenPort(g_httpPort);
+            if (httpOk) {
+                fprintf(stderr, "[reaper-ipad] Frontend server on http://<your-ip>:%d\n", g_httpPort);
+            } else {
+                fprintf(stderr, "[reaper-ipad] Frontend server on http://<your-ip>:%d (port busy?)\n", g_httpPort);
+                g_httpPort = g_httpPort + 1;
+                g_httpServer.addListenPort(g_httpPort);
             }
         }
 
@@ -276,6 +334,20 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
             fprintf(stderr, "[reaper-ipad] WebSocket server started on port %d\n", g_port);
         } else {
             fprintf(stderr, "[reaper-ipad] Failed to start WebSocket server\n");
+        }
+
+        // Start HTTP server for frontend
+        std::string frontendPath;
+        FindFrontendDist(frontendPath);
+        fprintf(stderr, "[reaper-ipad] Frontend path: %s\n", frontendPath.c_str());
+        g_httpServer.SetWebRoot(frontendPath);
+        bool httpOk = g_httpServer.addListenPort(g_httpPort);
+        if (httpOk) {
+            fprintf(stderr, "[reaper-ipad] Frontend server on http://<your-ip>:%d\n", g_httpPort);
+        } else {
+            fprintf(stderr, "[reaper-ipad] Frontend server on http://<your-ip>:%d (port busy?)\n", g_httpPort);
+            g_httpPort = g_httpPort + 1;
+            g_httpServer.addListenPort(g_httpPort);
         }
     }
 
