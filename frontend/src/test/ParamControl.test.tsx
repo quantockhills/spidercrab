@@ -17,6 +17,7 @@ function renderParamControl(props: Partial<Parameters<typeof ParamControl>[0]> =
   const getFxParams = vi.fn().mockResolvedValue(mockParams);
   const setFxParam = vi.fn().mockResolvedValue(true);
   const deleteFx = vi.fn().mockResolvedValue(true);
+  const onEvent = vi.fn().mockReturnValue(() => {});
   const onBack = vi.fn();
 
   const utils = render(
@@ -28,12 +29,13 @@ function renderParamControl(props: Partial<Parameters<typeof ParamControl>[0]> =
       getFxParams={getFxParams}
       setFxParam={setFxParam}
       deleteFx={deleteFx}
+      onEvent={onEvent}
       onBack={onBack}
       {...props}
     />,
   );
 
-  return { ...utils, getFxParams, setFxParam, deleteFx, onBack };
+  return { ...utils, getFxParams, setFxParam, deleteFx, onEvent, onBack };
 }
 
 // ── Tests ────────────────────────────────────────────────────
@@ -59,6 +61,7 @@ describe('ParamControl', () => {
         getFxParams={getFxParams}
         setFxParam={vi.fn()}
         deleteFx={vi.fn()}
+        onEvent={vi.fn().mockReturnValue(() => {})}
         onBack={vi.fn()}
       />,
     );
@@ -117,6 +120,7 @@ describe('ParamControl', () => {
         getFxParams={getFxParams}
         setFxParam={vi.fn()}
         deleteFx={vi.fn()}
+        onEvent={vi.fn().mockReturnValue(() => {})}
         onBack={vi.fn()}
       />,
     );
@@ -137,6 +141,7 @@ describe('ParamControl', () => {
         getFxParams={getFxParams}
         setFxParam={vi.fn()}
         deleteFx={vi.fn()}
+        onEvent={vi.fn().mockReturnValue(() => {})}
         onBack={vi.fn()}
       />,
     );

@@ -182,7 +182,10 @@ describe('FxBrowser', () => {
     });
 
     fireEvent.click(screen.getByText('ReaEQ'));
-    expect(onSelectFx).toHaveBeenCalledWith(0, 0, mockFx[0].name);
+
+    await waitFor(() => {
+      expect(onSelectFx).toHaveBeenCalledWith(0, 0, mockFx[0].name);
+    });
   });
 
   it('handles enumerate failure gracefully', async () => {
