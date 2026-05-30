@@ -1,6 +1,6 @@
 # AGENTS.md — Project Operating Manual
 
-This file is the single source of truth for the `reaper-ipad` project.
+This file is the single source of truth for the `spidercrab` project.
 Read this on every session start. Update it when decisions change.
 
 ---
@@ -17,7 +17,7 @@ Read this on every session start. Update it when decisions change.
 
 ## 📋 Daily Routine
 
-**Background worker:** An hourly cron job (`reaper-ipad autonomous worker`) runs silently
+**Background worker:** An hourly cron job (`spidercrab autonomous worker`) runs silently
 in isolated sessions, picks the next open issue, works on it, commits, and pushes.
 It does NOT announce to Telegram — progress appears as commits and Gitea comments.
 The daily check-in (10am UTC) is separate and handles the summary/flagging.
@@ -25,7 +25,7 @@ The daily check-in (10am UTC) is separate and handles the summary/flagging.
 **Once per day, or at session start:**
 1. Check **Gitea issues** for anything new or updated:
    ```
-   tea issues list --repo madhav/reaper-ipad
+   tea issues list --repo madhav/spidercrab
    ```
 2. Ask Tamura: _"Does AGENTS.md need updates?"_ — or proactively update if things clearly changed.
 3. Check what we were last working on (the last open issue or the TODO.md Now section).
@@ -114,11 +114,11 @@ If you're in an autonomous work cycle and Phase 1 MVP is done, exit immediately.
 
 **Useful commands:**
 ```bash
-tea issues list --repo madhav/reaper-ipad
-tea issues show --repo madhav/reaper-ipad <N>
-tea issues create --repo madhav/reaper-ipad --title "..." --labels "feature"
-tea issues close --repo madhav/reaper-ipad <N>
-tea pr create --repo madhav/reaper-ipad
+tea issues list --repo madhav/spidercrab
+tea issues show --repo madhav/spidercrab <N>
+tea issues create --repo madhav/spidercrab --title "..." --labels "feature"
+tea issues close --repo madhav/spidercrab <N>
+tea pr create --repo madhav/spidercrab
 ```
 
 ### Development
@@ -422,7 +422,7 @@ IDEAS.md and TODO.md are kept in the repo as legacy references but **ideas and t
 ## 🔄 Session Startup Checklist
 
 1. [ ] Check if Gitea is running (`curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/`)
-2. [ ] List open issues (`tea issues list --repo madhav/reaper-ipad`)
+2. [ ] List open issues (`tea issues list --repo madhav/spidercrab`)
 3. [ ] Greet Tamura, let them know what's open
 4. [ ] Ask if AGENTS.md needs updates
 5. [ ] Pick up from the top-priority open issue

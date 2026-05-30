@@ -1,4 +1,4 @@
-# 🎛️ reaper-ipad
+# 🎛️ spidercrab
 
 Touch-friendly REAPER remote control for iPad — browse FX, tweak parameters in real-time, all over WiFi.
 
@@ -28,13 +28,13 @@ Touch-friendly REAPER remote control for iPad — browse FX, tweak parameters in
 
 ### Windows
 
-1. **Download** the [latest release](http://localhost:3000/madhav/reaper-ipad/releases)
+1. **Download** the [latest release](http://localhost:3000/madhav/spidercrab/releases)
 2. **Extract** `reaper_ipad_ext.dll` → `C:\Users\you\AppData\Roaming\REAPER\UserPlugins\`
 3. **Extract** `frontend/` folder → `C:\Users\you\AppData\Roaming\REAPER\UserPlugins\frontend\`
 4. **Launch REAPER** — check console for:
    ```
-   [reaper-ipad] WebSocket server started on port 9224
-   [reaper-ipad] Frontend server on http://<your-ip>:5173
+   [spidercrab] WebSocket server started on port 9224
+   [spidercrab] Frontend server on http://<your-ip>:5173
    ```
 5. **Open** `http://REAPER-PC-IP:5173` on your iPad — done
 
@@ -104,7 +104,7 @@ cd extension && bash build.sh
 TARGET=windows bash build.sh
 
 # Deploy to REAPER
-cp extension/build/reaper-ipad-ext.so ~/reaper-portable/Plugins/
+cp extension/build/spidercrab-ext.so ~/reaper-portable/Plugins/
 
 # Frontend dev server
 cd frontend && npm run dev
@@ -149,7 +149,7 @@ Includes AddressSanitizer + UBSan — catches memory bugs at runtime.
 ## Project Structure
 
 ```
-reaper-ipad/
+spidercrab/
 ├── extension/              # C++ REAPER extension
 │   ├── src/
 │   │   ├── main.cpp               # Entry point + control surface
