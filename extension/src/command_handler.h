@@ -81,8 +81,8 @@ public:
     // Broadcast a track state change event (mute/solo/arm) to all WS clients
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
 
-    // Real-time param change polling (Issue #52)
-    void PollParams();
+    // Real-time FX param change via CSURF_EXT callback (Issue #58)
+    void OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx, double value);
     void SetWatchedFX(int trackIdx, int fxIdx);
     void ClearWatchedFX();
 
@@ -97,12 +97,9 @@ private:
     std::string m_fxCache;
     bool        m_fxCacheValid = false;
 
-    // Real-time param change tracking (Issue #52)
+    // Watched FX for callback-based param change filtering (Issue #58)
     int         m_watchedTrackIdx = -1;
     int         m_watchedFxIdx    = -1;
-    int         m_watchedNumParams = 0;
-    double*     m_watchedParamValues = nullptr;  // heap-allocated array
-    int         m_pollSkipCounter = 0;  // poll every N calls to reduce CPU
 
     // Run the actual EnumInstalledFX loop (no response, just populate cache)
     // Returns the JSON string of the FX list

@@ -140,11 +140,6 @@ public:
         // Called ~30x/sec — drive the WebSocket + HTTP servers
         g_wsServer.Run();
         g_httpServer.run();
-        
-        // Poll watched FX params and broadcast changes (~5 Hz)
-        if (g_cmdHandler) {
-            g_cmdHandler->PollParams();
-        }
     }
 
     void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }
@@ -219,10 +214,76 @@ public:
     int Extended(int call, void* parm1, void* parm2, void* parm3) override
     {
         if (call == CSURF_EXT_SETFXCHANGE) {
-            // FX were added/deleted/reordered
-            // Could broadcast to clients
+            // FX were added/deleted/reordered on a track
+            MediaTrack* track = (MediaTrack*)parm1;
+            if (track) {
+                int trackIdx = CSurf_TrackToID(track, false) - 1;
+                if (trackIdx >= 0) {
+                    std::string msg = "{\"type\":\"event\",";
+                    msg += "\"event\":\"fx_list_changed\",";
+                    msg += "\"payload\":{";
+                    msg += "\"trackIdx\":" + std::to_string(trackIdx);
+                    msg += "}}";
+                    g_wsServer.Broadcast(msg);
+                }
+            }
             return 1;
         }
+
+        if (call == CSURF_EXT_SETFXPARAM) {
+            // FX parameter changed (user, automation, playback)
+            MediaTrack* track = (MediaTrack*)parm1;
+            int packed     = parm2 ? *(int*)parm2 : 0;
+            int fxIdx      = packed >> 16;
+            int paramIdx   = packed & 0xFFFF;
+            double value   = parm3 ? *(double*)parm3 : 0.0;
+            if (track && g_cmdHandler) {
+                g_cmdHandler->OnFxParamChanged(track, fxIdx, paramIdx, value);
+            }
+            return 1;
+        }
+
+        if (call == CSURF_EXT_SETFXENABLED) {
+            // FX bypass state changed
+            MediaTrack* track = (MediaTrack*)parm1;
+            int fxIdx  = parm2 ? *(int*)parm2 : 0;
+            int en     = parm3 ? *(int*)parm3 : 1;
+            bool enabled = (en != 0);
+            if (track) {
+                int trackIdx = CSurf_TrackToID(track, false) - 1;
+                if (trackIdx >= 0) {
+                    std::string msg = "{\"type\":\"event\",";
+                    msg += "\"event\":\"fx_enabled_changed\",";
+                    msg += "\"payload\":{";
+                    msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+                    msg += "\"fxIdx\":" + std::to_string(fxIdx) + ",";
+                    msg += "\"enabled\":" + std::string(enabled ? "true" : "false");
+                    msg += "}}";
+                    g_wsServer.Broadcast(msg);
+                }
+            }
+            return 1;
+        }
+
+        if (call == CSURF_EXT_TRACKFX_PRESET_CHANGED) {
+            // FX preset changed
+            MediaTrack* track = (MediaTrack*)parm1;
+            int fxIdx = parm2 ? *(int*)parm2 : 0;
+            if (track) {
+                int trackIdx = CSurf_TrackToID(track, false) - 1;
+                if (trackIdx >= 0) {
+                    std::string msg = "{\"type\":\"event\",";
+                    msg += "\"event\":\"fx_preset_changed\",";
+                    msg += "\"payload\":{";
+                    msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+                    msg += "\"fxIdx\":" + std::to_string(fxIdx);
+                    msg += "}}";
+                    g_wsServer.Broadcast(msg);
+                }
+            }
+            return 1;
+        }
+
         return 0;
     }
 };
