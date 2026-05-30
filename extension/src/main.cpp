@@ -151,36 +151,63 @@ public:
 
     // Optional: handle FX param changes from Reaper so we can push
     // updates to connected clients
-    // Called by REAPER when mute/solo/arm state changes (Issue #57)
-    // Broadcast to connected clients so the frontend updates in real-time
+    // Called by REAPER when mute/solo/arm/transport/track-list state changes.
+    // Broadcast to connected clients so the frontend updates in real-time.
     void SetSurfaceMute(MediaTrack* trackid, bool mute) override
     {
-        if (!g_cmdHandler) return;
         int trackIdx = CSurf_TrackToID(trackid, false) - 1;
-        if (trackIdx >= 0) {
-            g_cmdHandler->BroadcastTrackEvent(
-                "track_mute_changed", trackIdx, mute);
-        }
+        std::string msg = "{\"type\":\"event\",";
+        msg += "\"event\":\"track_state_changed\",";
+        msg += "\"payload\":{";
+        msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+        msg += "\"muted\":" + std::string(mute ? "true" : "false");
+        msg += "}}";
+        g_wsServer.Broadcast(msg);
     }
 
     void SetSurfaceSolo(MediaTrack* trackid, bool solo) override
     {
-        if (!g_cmdHandler) return;
         int trackIdx = CSurf_TrackToID(trackid, false) - 1;
-        if (trackIdx >= 0) {
-            g_cmdHandler->BroadcastTrackEvent(
-                "track_solo_changed", trackIdx, solo);
-        }
+        std::string msg = "{\"type\":\"event\",";
+        msg += "\"event\":\"track_state_changed\",";
+        msg += "\"payload\":{";
+        msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+        msg += "\"soloed\":" + std::string(solo ? "true" : "false");
+        msg += "}}";
+        g_wsServer.Broadcast(msg);
     }
 
     void SetSurfaceRecArm(MediaTrack* trackid, bool recarm) override
     {
-        if (!g_cmdHandler) return;
         int trackIdx = CSurf_TrackToID(trackid, false) - 1;
-        if (trackIdx >= 0) {
-            g_cmdHandler->BroadcastTrackEvent(
-                "track_arm_changed", trackIdx, recarm);
-        }
+        std::string msg = "{\"type\":\"event\",";
+        msg += "\"event\":\"track_state_changed\",";
+        msg += "\"payload\":{";
+        msg += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+        msg += "\"armed\":" + std::string(recarm ? "true" : "false");
+        msg += "}}";
+        g_wsServer.Broadcast(msg);
+    }
+
+    void SetPlayState(bool play, bool pause, bool rec) override
+    {
+        std::string msg = "{\"type\":\"event\",";
+        msg += "\"event\":\"transport_changed\",";
+        msg += "\"payload\":{";
+        msg += "\"playing\":" + std::string(play ? "true" : "false") + ",";
+        msg += "\"paused\":" + std::string(pause ? "true" : "false") + ",";
+        msg += "\"recording\":" + std::string(rec ? "true" : "false");
+        msg += "}}";
+        g_wsServer.Broadcast(msg);
+    }
+
+    void SetTrackListChange() override
+    {
+        std::string msg = "{\"type\":\"event\",";
+        msg += "\"event\":\"track_list_changed\",";
+        msg += "\"payload\":{}";
+        msg += "}";
+        g_wsServer.Broadcast(msg);
     }
 
     int Extended(int call, void* parm1, void* parm2, void* parm3) override
