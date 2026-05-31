@@ -17,27 +17,25 @@ jobs:
       - name: Download REAPER portable
         shell: pwsh
         run: |
-          Invoke-WebRequest -Uri "https://www.reaper.fm/files/7.x/reaper7xx_x64-install.exe" -OutFile reaper-install.exe
-          Start-Process reaper-install.exe -ArgumentList "/S","/PORTABLE","/D=${{ github.workspace }}\extension\test" -Wait
+          $reaperDir = "${{ github.workspace }}\extension\test\reaper-portable"
+          New-Item -ItemType Directory -Force $reaperDir | Out-Null
+          Invoke-WebRequest -Uri "https://www.reaper.fm/files/7.x/reaper733_x64-install.exe" -OutFile $env:TEMP\reaper-install.exe
+          Start-Process $env:TEMP\reaper-install.exe -ArgumentList "/S","/PORTABLE","/D=$reaperDir" -Wait
+          Write-Host "REAPER installed to $reaperDir"
+
+      - name: Install LLVM
+        run: choco install llvm -y --version=19.1.7 --no-progress
 
       - name: Build & Deploy DLL
         shell: pwsh
         working-directory: extension/test
         run: |
-          # Claude's deploy_and_test.ps1 expects clang-cl with vcvars env
-          # GitHub runners have VS 2022; fix the path if needed
-          $vsPath = (Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory | Select-Object -First 1).FullName
-          $vcvars = "$vsPath\VC\Auxiliary\Build\vcvarsall.bat"
-          if (-not (Test-Path $vcvars)) {
-            $vcvars = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
-          }
-          # Install LLVM if missing
-          if (-not (Get-Command clang-cl -ErrorAction SilentlyContinue)) {
-            choco install llvm -y --version=19.1.7
-          }
-          # Run Claude's script with correct VCVARS
-          $env:VCVARS_OVERRIDE = $vcvars
-          (Get-Content deploy_and_test.ps1) -replace 'C:\\Program Files \(x86\)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvarsall\.bat', $vcvars | Set-Content deploy_and_test.ps1
+          $vs = (Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory | Select-Object -First 1).FullName
+          $vcvars = "$vs\VC\Auxiliary\Build\vcvarsall.bat"
+          (Get-Content deploy_and_test.ps1) -replace `
+            'C:\\Program Files \(x86\)\\Microsoft Visual Studio\\2022\\BuildTools', `
+            $vs.Replace('\','\\') `
+          | Set-Content deploy_and_test.ps1
           ./deploy_and_test.ps1 -DeployOnly -SkipFrontend
 
       - name: Run Integration Tests
