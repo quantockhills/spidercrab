@@ -105,6 +105,7 @@ function App() {
         fxIdx,
         fxName,
       });
+      setActiveTab('fx');
     },
     [tracks],
   );
