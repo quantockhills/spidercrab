@@ -30,32 +30,8 @@ frontend/test-results/
 gui_testing/
 extension/build-test/
 
-# Portable REAPER install in test/
-extension/test/reaper.exe
-extension/test/reaper.ini
-extension/test/reaper-install*.ini
-extension/test/reaper-install*.txt
-extension/test/reaper-license.rk
-extension/test/reaper-reginfo2.ini
-extension/test/reaper-fxtags.ini
-extension/test/reaper-jsfx.ini
-extension/test/reaper-midihw.ini
-extension/test/reaper-mouse.ini
-extension/test/reaper-vstplugins64.ini
-extension/test/REAPER-wndpos.ini
-extension/test/whatsnew.txt
-extension/test/EULA.txt
-extension/test/ColorThemes/
-extension/test/Data/
-extension/test/Docs/
-extension/test/Effects/
-extension/test/KeyMaps/
-extension/test/MIDINoteNames/
-extension/test/OSC/
-extension/test/Plugins/
-extension/test/Scripts/
-extension/test/presets/
-extension/test/UserPlugins/
+# Portable REAPER install in test/reaper-portable/
+extension/test/reaper-portable/
 
 # Cloned docs (too large)
 docs/helgobox/
