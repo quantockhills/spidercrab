@@ -40,6 +40,15 @@
 #define REAPERAPI_WANT_CreateMIDIOutput
 #define REAPERAPI_WANT_GetMaxMidiOutputs
 
+// CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
+// Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.
+// _WINSOCKAPI_ prevents windows.h from pulling in the old winsock.h.
+#ifdef _WIN32
+#define _WINSOCKAPI_
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
 #include "reaper_plugin.h"
 #include "reaper_plugin_functions.h"
 

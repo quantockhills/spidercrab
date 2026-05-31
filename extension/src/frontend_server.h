@@ -4,8 +4,16 @@
 
 #pragma once
 
+// Windows: include winsock2.h before WDL jnetlib for SOCKET type
+#ifdef _WIN32
+#define _WINSOCKAPI_
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
+
 #include "websocket_server.h"
 #include <WDL/jnetlib/webserver.h>
+#include <WDL/wdlstring.h>
 #include <WDL/wdlstring.h>
 #include <cstdio>
 #include <cstring>

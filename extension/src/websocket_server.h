@@ -1,6 +1,12 @@
 #pragma once
 
 // WDL/SWELL headers must come before C++ stdlib to avoid min/max macro conflicts
+// Windows: include winsock2.h before windows.h/WDL for SOCKET type
+#ifdef _WIN32
+#define _WINSOCKAPI_
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
 #include <WDL/jnetlib/jnetlib.h>
 #include <WDL/ptrlist.h>
 #include <WDL/wdlcstring.h>
