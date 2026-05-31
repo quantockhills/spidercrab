@@ -5,9 +5,10 @@
 #include <mutex>
 #include <string>
 
-// Forward declare REAPER types (included from reaper_plugin.h)
-struct MediaTrack;
-struct ReaProject;
+// Forward declare REAPER types — must match reaper_plugin.h which uses 'class',
+// not 'struct'. MSVC ABI mangles them differently causing linker errors.
+class MediaTrack;
+class ReaProject;
 
 // Reaper API function pointers (loaded via REAPERAPI_LoadAPI)
 struct ReaperAPI {
@@ -78,8 +79,9 @@ public:
     void PreCacheFX();
 
     // Real-time event broadcasting (Issue #57)
-    // Broadcast a track state change event (mute/solo/arm) to all WS clients
+    // Broadcast a track state change event (mute/solo/arm/volume) to all WS clients
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
+    void BroadcastTrackEvent(const std::string& eventType, int trackIdx, double value);
 
     // Real-time FX param change via CSURF_EXT callback (Issue #58)
     void OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx, double value);
@@ -121,6 +123,7 @@ private:
     void HandleSetTrackSolo(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackArm(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackSelected(int clientId, const std::string& id, const std::string& params);
+    void HandleSetTrackVolume(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — sample/media
     void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -295,6 +296,11 @@ TEST(JsonStringTest, EmptyString)
 struct MockTrack {
     int         idx;
     std::string name;
+    double      volume = 0.75;
+    bool        muted  = false;
+    int         soloed = 0;
+    int         armed  = 0;
+    int         selected = 0;
     struct MockFX {
         int                    idx;
         std::string            name;
@@ -438,7 +444,36 @@ static bool mock_TrackFX_Delete(MediaTrack* track, int fx)
     return true;
 }
 
-static void* mock_GetSetMediaTrackInfo(MediaTrack*, const char*, void*) { return nullptr; }
+static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmname, void* setNewValue)
+{
+    if (!g_mock || !parmname) return nullptr;
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(trackPtr)) - 1;
+    if (idx < 0 || idx >= (int)g_mock->tracks.size()) return nullptr;
+    auto& t = g_mock->tracks[idx];
+    std::string name(parmname);
+
+    if (name == "D_VOL") {
+        if (setNewValue) t.volume = *(double*)setNewValue;
+        return &t.volume;
+    }
+    if (name == "B_MUTE") {
+        if (setNewValue) t.muted = *(bool*)setNewValue;
+        return &t.muted;
+    }
+    if (name == "I_SOLO") {
+        if (setNewValue) t.soloed = *(int*)setNewValue;
+        return &t.soloed;
+    }
+    if (name == "I_RECARM") {
+        if (setNewValue) t.armed = *(int*)setNewValue;
+        return &t.armed;
+    }
+    if (name == "I_SELECTED") {
+        if (setNewValue) t.selected = *(int*)setNewValue;
+        return &t.selected;
+    }
+    return nullptr;
+}
 
 // ---- Mock EnumInstalledFX ----
 
@@ -504,8 +539,8 @@ TEST(FXRoundtripTest, GetTrackFXReturnsSpecificNames)
     MockState state;
     MockTrack t;
     t.name = "Guitar";
-    MockTrack::MockFX f1{ 0, "ReaEQ", { "Frequency", "Gain", "Q" }, { 1000.0, 0.0, 1.0 }, { 20.0, -24.0, 0.01 }, { 20000.0, 24.0, 10.0 }, { 1000.0, 0.0, 1.0 } };
-    MockTrack::MockFX f2{ 1, "ReaComp", { "Threshold", "Ratio", "Attack", "Release" }, { -18.0, 4.0, 10.0, 100.0 }, { -60.0, 1.0, 0.1, 1.0 }, { 0.0, 20.0, 300.0, 1000.0 }, { -18.0, 4.0, 10.0, 100.0 } };
+    MockTrack::MockFX f1{ 0, "ReaEQ", { "Frequency", "Gain", "Q" }, { 0.5, 0.5, 0.5 }, { 20.0, -24.0, 0.01 }, { 20000.0, 24.0, 10.0 }, { 1000.0, 0.0, 1.0 } };
+    MockTrack::MockFX f2{ 1, "ReaComp", { "Threshold", "Ratio", "Attack", "Release" }, { 0.5, 0.5, 0.5, 0.5 }, { -60.0, 1.0, 0.1, 1.0 }, { 0.0, 20.0, 300.0, 1000.0 }, { -18.0, 4.0, 10.0, 100.0 } };
     t.fx = { f1, f2 };
     state.tracks = { t };
 
@@ -570,7 +605,7 @@ TEST(FXRoundtripTest, GetFXParamsReturnsSpecificParamNames)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency", "Gain", "Q" },
-        { 1000.0, -3.0, 0.7 },
+        { 0.5, 0.5, 0.5 },  // normalized values
         { 20.0, -24.0, 0.01 },
         { 20000.0, 24.0, 10.0 },
         { 1000.0, 0.0, 1.0 } });
@@ -586,9 +621,13 @@ TEST(FXRoundtripTest, GetFXParamsReturnsSpecificParamNames)
     EXPECT_NE(resp.find("\"Frequency\""), std::string::npos);
     EXPECT_NE(resp.find("\"Gain\""), std::string::npos);
     EXPECT_NE(resp.find("\"Q\""), std::string::npos);
-    EXPECT_NE(resp.find("\"value\":1000"), std::string::npos);
-    EXPECT_NE(resp.find("\"value\":-3"), std::string::npos);
-    EXPECT_NE(resp.find("\"value\":0.7"), std::string::npos);
+    // After conversion: actualVal = min + normalized * (max-min)
+    // Freq: 20 + 0.5*(20000-20) = 10010
+    EXPECT_NE(resp.find("\"value\":10010"), std::string::npos);
+    // Gain: -24 + 0.5*(24-(-24)) = 0
+    EXPECT_NE(resp.find("\"value\":0"), std::string::npos);
+    // Q: 0.01 + 0.5*(10-0.01) = 5.005
+    EXPECT_NE(resp.find("\"value\":5.005"), std::string::npos);
     EXPECT_EQ(resp.find("\"error\""), std::string::npos);
 }
 
@@ -598,7 +637,7 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency", "Gain" },
-        { 1000.0, 0.0 },
+        { 0.5, 0.0 },  // normalized values
         { 20.0, -24.0 },
         { 20000.0, 24.0 },
         { 1000.0, 0.0 } });
@@ -607,7 +646,8 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    // Set Frequency to 5000.0
+    // Set Frequency to 5000.0 (actual display value)
+    // Backend converts: normalized = (5000-20)/(20000-20) ≈ 0.24925
     handler->HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"set1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"set\":true"), std::string::npos);
@@ -616,9 +656,10 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     responses.clear();
     handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"get1"})");
     ASSERT_EQ(responses.size(), 1u);
+    // Frequency should be ~5000 (may have minor float rounding via normalized round-trip)
     EXPECT_NE(responses[0].find("\"value\":5000"), std::string::npos);
-    // Gain should still be 0.0
-    EXPECT_NE(responses[0].find("\"value\":0"), std::string::npos);
+    // Gain should still be -24 (normalized=0.0 → actual=-24)
+    EXPECT_NE(responses[0].find("\"value\":-24"), std::string::npos);
 }
 
 TEST(FXRoundtripTest, AddFXThenListIncludesIt)
@@ -690,7 +731,7 @@ TEST(FXRoundtripTest, ParamMinMaxMidAreCorrect)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency" },
-        { 1000.0 },
+        { 0.5 },  // normalized
         { 20.0 },
         { 20000.0 },
         { 1000.0 } });
@@ -766,11 +807,13 @@ TEST(SampleBrowserTest, GetDirectoryReturnsEntries)
     // don't have a WebSocket server connected, we can't capture the response.
     // Instead, create a test directory and verify JSON parsing works.
     
-    // Create temp directory with known contents
-    system("mkdir -p /tmp/_sample_test && touch /tmp/_sample_test/a.wav /tmp/_sample_test/b.wav");
-    
+    // Create temp directory with known contents (cross-platform)
+    fs::path testDir = fs::temp_directory_path() / "_sample_test";
+    fs::create_directories(testDir);
+    { std::ofstream(testDir / "a.wav").close(); }
+    { std::ofstream(testDir / "b.wav").close(); }
+
     // Verify directory listing works
-    std::string testDir = "/tmp/_sample_test";
     bool foundA = false, foundB = false;
     for (const auto& entry : fs::directory_iterator(testDir)) {
         std::string name = entry.path().filename().string();
@@ -779,9 +822,9 @@ TEST(SampleBrowserTest, GetDirectoryReturnsEntries)
     }
     EXPECT_TRUE(foundA);
     EXPECT_TRUE(foundB);
-    
+
     // Cleanup
-    system("rm -rf /tmp/_sample_test");
+    fs::remove_all(testDir);
 }
 
 TEST(SampleBrowserTest, SendToTrackNoApi)
@@ -1003,6 +1046,156 @@ TEST(FxEnumCacheTest, DifferentHandlerHasOwnCache)
 //   - Protocol integrity
 // ============================================================
 
+// ============================================================
+// Volume tests (Issue #66)
+// ============================================================
+
+TEST(VolumeTest, HandleGetTracksReturnsActualVolume)
+{
+    // Mock tracks with specific volumes
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.volume = 1.0;
+
+    MockTrack t1;
+    t1.name = "Snare";
+    t1.volume = 0.5;
+
+    MockTrack t2;
+    t2.name = "Bass";
+    t2.volume = 0.85;
+
+    state.tracks = { t0, t1, t2 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"vol1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify volume values are read from mock, not hardcoded
+    // Track 0: volume=1.0
+    // We need to find the volume fields for each track in the JSON array
+    // The response format is: {"tracks":[{...},{...},{...}]}
+    // Each track has: "index":N,...,"volume":V
+    EXPECT_NE(resp.find("\"index\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"index\":1"), std::string::npos);
+    EXPECT_NE(resp.find("\"index\":2"), std::string::npos);
+
+    EXPECT_NE(resp.find("\"volume\":1"), std::string::npos)
+        << "Track 0 should have volume 1.0";
+    EXPECT_NE(resp.find("\"volume\":0.5"), std::string::npos)
+        << "Track 1 should have volume 0.5";
+    EXPECT_NE(resp.find("\"volume\":0.85"), std::string::npos)
+        << "Track 2 should have volume 0.85";
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+}
+
+TEST(VolumeTest, HandleGetTracksDefaultVolumeIsReasonable)
+{
+    // When no specific volume is set, the mock default is 0.75
+    MockState state;
+    MockTrack t0;
+    t0.name = "Default";
+    // volume not set — default 0.75
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"vol2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"volume\":0.75"), std::string::npos);
+}
+
+TEST(VolumeTest, HandleSetTrackVolumeReturnsSuccess)
+{
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.volume = 0.5;
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set volume to 0.85
+    std::string cmd = R"({"type":"command","command":"track/setVolume","payload":{"trackIdx":0,"volume":0.85},"id":"setvol1"})";
+    handler->HandleMessage(1, cmd);
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have success:true and the volume value
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"volume\":0.85"), std::string::npos);
+}
+
+TEST(VolumeTest, SetVolumeThenGetTracksShowsNewValue)
+{
+    // Round-trip test: set volume, then get tracks and verify the new value
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.volume = 0.5;
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // First get — verify initial volume
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"get1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"volume\":0.5"), std::string::npos);
+
+    // Set volume to 1.0 (max)
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"track/setVolume","payload":{"trackIdx":0,"volume":1.0},"id":"setvol2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"volume\":1.0"), std::string::npos)
+        << "Volume should be reflected in setVolume response";
+
+    // Get tracks again — should see updated volume (via mock state change)
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"get2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"volume\":1"), std::string::npos);
+}
+
+TEST(VolumeTest, SetVolumeZero)
+{
+    // Volume 0 should be valid (silent track)
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.volume = 0.5;
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"track/setVolume","payload":{"trackIdx":0,"volume":0.0},"id":"setvol3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"volume\":0"), std::string::npos);
+}
+
+TEST(VolumeTest, SetVolumeInvalidTrackReturnsError)
+{
+    MockState state;
+    state.tracks = {}; // No tracks
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"track/setVolume","payload":{"trackIdx":0,"volume":0.5},"id":"badvol"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
 TEST(Phase1MVPTest, FullTrackRoundTrip)
 {
     // Set up mock with 3 tracks and varying properties
@@ -1010,15 +1203,18 @@ TEST(Phase1MVPTest, FullTrackRoundTrip)
 
     MockTrack t0;
     t0.name = "Kick";
+    t0.volume = 1.0;
     t0.fx.push_back({ 0, "ReaEQ", {"Freq"}, {100.0}, {20.0}, {20000.0}, {1000.0} });
 
     MockTrack t1;
     t1.name = "Snare";
+    t1.volume = 0.7;
     t1.fx.push_back({ 0, "ReaComp", {"Thresh"}, {-18.0}, {-60.0}, {0.0}, {-18.0} });
     t1.fx.push_back({ 1, "ReaDelay", {}, {}, {}, {}, {} });
 
     MockTrack t2;
     t2.name = "Hat";
+    t2.volume = 0.5;
     // No FX
 
     state.tracks = { t0, t1, t2 };
@@ -1039,6 +1235,10 @@ TEST(Phase1MVPTest, FullTrackRoundTrip)
     EXPECT_NE(tracksResp.find("\"index\":0"), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":1"), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":2"), std::string::npos);
+    // Verify volume values are correct
+    EXPECT_NE(tracksResp.find("\"volume\":1"), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"volume\":0.7"), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"volume\":0.5"), std::string::npos);
     EXPECT_EQ(tracksResp.find("\"error\""), std::string::npos);
 
     // Step 2: Get FX for track 0 (should have ReaEQ)
@@ -1068,7 +1268,7 @@ TEST(Phase1MVPTest, FullFxParamRoundTrip)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         {"Frequency", "Gain", "Q"},
-        {1000.0, -3.0, 0.7},
+        {0.5, 0.5, 0.5},  // normalized values
         {20.0, -24.0, 0.01},
         {20000.0, 24.0, 10.0},
         {1000.0, 0.0, 1.0}
@@ -1082,12 +1282,13 @@ TEST(Phase1MVPTest, FullFxParamRoundTrip)
     handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"fx1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"Frequency\""), std::string::npos);
-    EXPECT_NE(responses[0].find("\"value\":1000"), std::string::npos);
+    // Freq: 20 + 0.5*(20000-20) = 10010
+    EXPECT_NE(responses[0].find("\"value\":10010"), std::string::npos);
     EXPECT_NE(responses[0].find("\"min\":20"), std::string::npos);
     EXPECT_NE(responses[0].find("\"max\":20000"), std::string::npos);
     EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
 
-    // Step 2: Set Frequency to 5000
+    // Step 2: Set Frequency to 5000 (actual display value)
     responses.clear();
     handler->HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"fx2"})");
     ASSERT_EQ(responses.size(), 1u);
@@ -1098,8 +1299,8 @@ TEST(Phase1MVPTest, FullFxParamRoundTrip)
     handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"fx3"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"value\":5000"), std::string::npos);
-    // Gain should still be -3.0
-    EXPECT_NE(responses[0].find("\"value\":-3"), std::string::npos);
+    // Gain: -24 + 0.5*(24-(-24)) = 0
+    EXPECT_NE(responses[0].find("\"value\":0"), std::string::npos);
 }
 
 TEST(Phase1MVPTest, PreCacheFXPopulatesCache)

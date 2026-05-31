@@ -5,7 +5,7 @@ import json, os, sys, time, requests, argparse
 GITEA_URL = "http://localhost:3000"
 GITEA_REPO = "madhav/spidercrab"
 GITEA_TOKEN = os.environ.get("GITEA_TOKEN", "ef561d4c39461c83ee861d1f48010ceec71ac7b2")
-GITHUB_REPO = "madhav/spidercrab"
+GITHUB_REPO = "quantockhills/spidercrab"
 
 def gitea(path):
     r = requests.get(f"{GITEA_URL}/api/v1/repos/{GITEA_REPO}/{path}",

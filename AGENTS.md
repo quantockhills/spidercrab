@@ -366,9 +366,9 @@ If you're stuck:
 | Frontend testing | Vitest | Fast, Vite-native, React Testing Library |
 | C++ testing | Google Test | Industry standard, CMake FetchContent for auto-download |
 | Linting | clang-tidy (C++), ESLint (React) | Catch issues early |
-| Build | bash scripts + CMake | bash for daily dev, CMake for tests + cross-compile |
+| Build | bash scripts + CMake | bash for daily dev, CMake for tests + cross-compile (MSVC on Win32) |
 | Communication | JSON over WebSocket | Reamo-compatible protocol |
-| Dev platform | Linux first, cross-compile to Windows later | We're on Linux; Windows .dll via MinGW later |
+| Dev platform | Linux first, Windows via MSVC or clang-cl | REAPER SDK requires MSVC C++ ABI on Win32 (reaper_plugin.h:22); MinGW explicitly unsupported |
 | Task tracking | Gitea issues + tea CLI | Self-hosted, full GitHub-like features, CLI-friendly |
 | Code formatting | clang-format (WebKit style) | Consistent C++ without debate |
 

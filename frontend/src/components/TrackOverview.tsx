@@ -23,14 +23,32 @@ function volumeToDb(vol: number): string {
   return `${dB.toFixed(1)}dB`;
 }
 
-/** Render a simple fader bar (visual only — real touch slider via CSS) */
-function VolumeBar({ volume }: { volume: number }) {
+/** Interactive volume fader with slider and visual bar */
+function VolumeBar({ volume, onChange }: { volume: number; onChange?: (value: number) => void }) {
   const pct = Math.min(volume * 100, 100);
   return (
-    <div className="relative w-24 h-5 bg-[var(--bg-tertiary)] overflow-hidden">
-      <div
-        className="absolute inset-y-0 left-0 bg-[var(--accent-green)]/50 transition-all duration-75"
-        style={{ width: `${pct}%` }}
+    <div className="relative w-24 h-5">
+      {/* Visual bar background */}
+      <div className="absolute inset-0 bg-[var(--bg-tertiary)] overflow-hidden pointer-events-none">
+        <div
+          className="absolute inset-y-0 left-0 bg-[var(--accent-green)]/50"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      {/* Invisible slider overlaid on top */}
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        value={volume}
+        onChange={(e) => {
+          const val = parseFloat(e.target.value);
+          if (onChange) onChange(val);
+        }}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        aria-label="Track volume"
+        data-testid="track-volume-slider"
       />
     </div>
   );
@@ -48,6 +66,7 @@ export function TrackOverview({
   onToggleMute,
   onToggleSolo,
   onToggleArm,
+  onVolumeChange,
   onRefresh,
   onPlay,
   onStop,
@@ -201,6 +220,7 @@ export function TrackOverview({
                 onToggleMute={() => onToggleMute(track.index)}
                 onToggleSolo={() => onToggleSolo(track.index)}
                 onToggleArm={() => onToggleArm(track.index)}
+                onVolumeChange={onVolumeChange ? (v) => onVolumeChange(track.index, v) : undefined}
               />
               {/* FX grid cards under the track row */}
               {getTrackFx && onSelectFx && trackFxMap[track.index]?.length > 0 && (
@@ -245,6 +265,7 @@ interface TrackRowProps {
   onToggleMute: () => void;
   onToggleSolo: () => void;
   onToggleArm: () => void;
+  onVolumeChange?: (volume: number) => void;
 }
 
 function TrackRow({
@@ -254,6 +275,7 @@ function TrackRow({
   onToggleMute,
   onToggleSolo,
   onToggleArm,
+  onVolumeChange,
 }: TrackRowProps) {
   return (
     <div
@@ -282,7 +304,7 @@ function TrackRow({
       </div>
 
       {/* Volume bar */}
-      <VolumeBar volume={track.volume} />
+      <VolumeBar volume={track.volume} onChange={onVolumeChange} />
 
       {/* Volume dB */}
       <span className="text-[11px] text-[var(--text-secondary)] w-14 text-right tabular-nums">

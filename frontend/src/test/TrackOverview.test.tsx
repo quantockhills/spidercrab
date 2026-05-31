@@ -123,6 +123,73 @@ describe('TrackOverview — FX grid cards', () => {
     });
   });
 
+  // ── Volume slider tests (Issue #66) ──
+
+  function getSliders() {
+    return screen.getAllByTestId('track-volume-slider');
+  }
+
+  it('shows VolumeBar reflecting track volume', () => {
+    renderTrackOverview();
+
+    // Each track row should have a volume slider element
+    const sliders = getSliders();
+    expect(sliders).toHaveLength(2); // 2 tracks
+
+    // Track 0 has volume 0.8, Track 1 has volume 0.7
+    expect((sliders[0] as HTMLInputElement).value).toBe('0.8');
+    expect((sliders[1] as HTMLInputElement).value).toBe('0.7');
+  });
+
+  it('calls onVolumeChange when volume slider is changed', () => {
+    const onVolumeChange = vi.fn();
+    renderTrackOverview({ onVolumeChange });
+
+    const sliders = getSliders();
+    expect(sliders).toHaveLength(2);
+
+    // Change volume of track 0 to 0.5
+    fireEvent.change(sliders[0], { target: { value: '0.5' } });
+
+    expect(onVolumeChange).toHaveBeenCalledOnce();
+    expect(onVolumeChange).toHaveBeenCalledWith(0, 0.5);
+  });
+
+  it('calls onVolumeChange with correct track index for each slider', () => {
+    const onVolumeChange = vi.fn();
+    renderTrackOverview({ onVolumeChange });
+
+    const sliders = getSliders();
+
+    // Change volume of track 1 to 0.2
+    fireEvent.change(sliders[1], { target: { value: '0.2' } });
+
+    expect(onVolumeChange).toHaveBeenCalledOnce();
+    expect(onVolumeChange).toHaveBeenCalledWith(1, 0.2);
+  });
+
+  it('volume slider has correct attributes (min=0, max=1, step=0.01)', () => {
+    renderTrackOverview();
+
+    const slider = getSliders()[0] as HTMLInputElement;
+    expect(slider.min).toBe('0');
+    expect(slider.max).toBe('1');
+    expect(slider.step).toBe('0.01');
+  });
+
+  it('does not crash when onVolumeChange is not provided', () => {
+    // onVolumeChange is optional — should not crash if omitted
+    renderTrackOverview();
+
+    const sliders = getSliders();
+    expect(sliders).toHaveLength(2);
+
+    // Change should not throw even without callback
+    expect(() => {
+      fireEvent.change(sliders[0], { target: { value: '0.3' } });
+    }).not.toThrow();
+  });
+
   it('does not render FX section when getTrackFx and onSelectFx are not provided', async () => {
     render(
       <TrackOverview

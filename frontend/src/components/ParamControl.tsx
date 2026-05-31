@@ -246,7 +246,7 @@ function ParamSlider({ param, onChange }: ParamSliderProps) {
 
   // Double-tap to reset to mid value
   const handleDoubleTap = useCallback(() => {
-    const midValue = param.mid >= param.min && param.mid <= param.max ? param.mid : 0.5;
+    const midValue = param.mid >= param.min && param.mid <= param.max ? param.mid : (param.min + param.max) / 2;
     setLocalValue(midValue);
     onChange(midValue);
   }, [param.mid, param.min, param.max, onChange]);
@@ -296,10 +296,10 @@ function ParamSlider({ param, onChange }: ParamSliderProps) {
 function formatParamValue(value: number, paramName: string): string {
   const lower = paramName.toLowerCase();
 
+  // Value is now the actual display value (converted from normalized by backend)
+  // For volume/gain/dB params: value IS the dB value
   if (lower.includes('db') || lower.includes('gain') || lower.includes('volume')) {
-    // 0-1 normalized volume → dB approximation
-    const db = value <= 0 ? -60 : 20 * Math.log10(Math.max(value, 0.001));
-    return `${db.toFixed(1)} dB`;
+    return `${value.toFixed(1)} dB`;
   }
 
   if (lower.includes('hz') || lower.includes('freq') || lower.includes('cutoff')) {
@@ -312,7 +312,7 @@ function formatParamValue(value: number, paramName: string): string {
   }
 
   if (lower.includes('%') || lower.includes('wet') || lower.includes('dry') || lower.includes('mix')) {
-    return `${(value * 100).toFixed(0)}%`;
+    return `${value.toFixed(0)}%`;
   }
 
   if (lower.includes('q') || lower.includes('ratio')) {
@@ -320,12 +320,12 @@ function formatParamValue(value: number, paramName: string): string {
   }
 
   if (lower.includes('pan') || lower.includes('balance')) {
-    const pct = ((value - 0.5) * 200).toFixed(0);
+    const pct = value.toFixed(0);
     const side = parseFloat(pct) < 0 ? 'L' : parseFloat(pct) > 0 ? 'R' : 'C';
     return `${pct}% ${side}`;
   }
 
-  // Default: show normalized or raw
+  // Default: show actual value
   if (value > 100 || value < -100) {
     return value.toFixed(0);
   }

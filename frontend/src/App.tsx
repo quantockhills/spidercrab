@@ -23,6 +23,7 @@ function App() {
     toggleTrackSolo,
     toggleTrackArm,
     selectTrack,
+    setTrackVolume,
     enumerateFx,
     getTrackFx,
     getFxParams,
@@ -94,6 +95,10 @@ function App() {
   const handleToggleArm = useCallback(async (index: number) => {
     await toggleTrackArm(index);
   }, [toggleTrackArm]);
+
+  const handleVolumeChange = useCallback(async (index: number, volume: number) => {
+    await setTrackVolume(index, volume);
+  }, [setTrackVolume]);
 
   // ── FX / Param navigation ──
   const handleSelectFx = useCallback(
@@ -193,6 +198,7 @@ function App() {
             onToggleMute={handleToggleMute}
             onToggleSolo={handleToggleSolo}
             onToggleArm={handleToggleArm}
+            onVolumeChange={handleVolumeChange}
             onRefresh={refreshTracks}
             onPlay={play}
             onStop={stop}

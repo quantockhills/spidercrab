@@ -1,0 +1,56 @@
+name: Windows Build & Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Download REAPER portable
+        shell: pwsh
+        run: |
+          $reaperDir = "${{ github.workspace }}\extension\test\reaper-portable"
+          New-Item -ItemType Directory -Force $reaperDir | Out-Null
+          Invoke-WebRequest -Uri "https://www.reaper.fm/files/7.x/reaper733_x64-install.exe" -OutFile $env:TEMP\reaper-install.exe
+          Start-Process $env:TEMP\reaper-install.exe -ArgumentList "/S","/PORTABLE","/D=$reaperDir" -Wait
+          Write-Host "REAPER installed to $reaperDir"
+
+      - name: Install LLVM
+        run: choco install llvm -y --version=19.1.7 --no-progress
+
+      - name: Build & Deploy DLL
+        shell: pwsh
+        working-directory: extension/test
+        run: |
+          $vs = (Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory | Select-Object -First 1).FullName
+          $vcvars = "$vs\VC\Auxiliary\Build\vcvarsall.bat"
+          (Get-Content deploy_and_test.ps1) -replace `
+            'C:\\Program Files \(x86\)\\Microsoft Visual Studio\\2022\\BuildTools', `
+            $vs.Replace('\','\\') `
+          | Set-Content deploy_and_test.ps1
+          ./deploy_and_test.ps1 -DeployOnly
+
+      - name: Run Integration Tests
+        shell: pwsh
+        working-directory: extension/test
+        run: ./deploy_and_test.ps1 -TestOnly
+
+      - name: Stop REAPER
+        if: always()
+        shell: pwsh
+        run: Get-Process "reaper" -ErrorAction SilentlyContinue | Stop-Process -Force

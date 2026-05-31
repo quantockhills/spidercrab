@@ -77,13 +77,13 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(reaper-ipad-test ${TEST_SOURCES})
-target_link_libraries(reaper-ipad-test PRIVATE
-    gtest
-    gtest_main
-    pthread
-    dl
-)
-target_compile_definitions(reaper-ipad-test PRIVATE PTHREAD=1)
+target_link_libraries(reaper-ipad-test PRIVATE gtest gtest_main)
+if(UNIX)
+    target_link_libraries(reaper-ipad-test PRIVATE pthread dl)
+    target_compile_definitions(reaper-ipad-test PRIVATE PTHREAD=1)
+elseif(WIN32)
+    target_link_libraries(reaper-ipad-test PRIVATE ws2_32)
+endif()
 target_compile_options(reaper-ipad-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
 # Register test with CTest

@@ -28,9 +28,15 @@ __pycache__/
 # Test artifacts
 frontend/test-results/
 gui_testing/
+extension/build-test/
+
+# Portable REAPER install in test/reaper-portable/
+extension/test/reaper-portable/
 
 # Cloned docs (too large)
 docs/helgobox/
 
 # Sysroot
 /tmp/sysroot/
+
+extension/test/reaper-recentfx.ini

@@ -52,9 +52,9 @@ static std::string json_string(const char* s)
     return "\"" + json_escape(s ? s : "") + "\"";
 }
 
-// Forward declare REAPER types
-struct MediaTrack;
-struct ReaProject;
+// Forward declare REAPER types — must match reaper_plugin.h ('class', not 'struct')
+class MediaTrack;
+class ReaProject;
 
 static std::string json_string(const std::string& s)
 {
@@ -287,6 +287,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleSetTrackArm(clientId, id, message);
         } else if (command == "track/setSelected") {
             HandleSetTrackSelected(clientId, id, message);
+        } else if (command == "track/setVolume") {
+            HandleSetTrackVolume(clientId, id, message);
         } else if (command == "sample/getDirectory") {
             HandleSampleGetDirectory(clientId, id, message);
         } else if (command == "sample/sendToTrack") {
@@ -353,9 +355,10 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, i) : nullptr;
         if (!track) continue;
         if (i > 0) tracksJson += ",";
-        
+
         // Read actual state from Reaper (setNewValue=nullptr = read mode)
         bool muted = false, soloed = false, armed = false;
+        double volume = 0.75; // sane default if API unavailable
         if (m_api.GetSetMediaTrackInfo) {
             bool* mp = (bool*)m_api.GetSetMediaTrackInfo(track, "B_MUTE", nullptr);
             if (mp) muted = *mp;
@@ -363,8 +366,10 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (sp) soloed = (*sp != 0);
             int* ap = (int*)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr);
             if (ap) armed = (*ap != 0);
+            double* vp = (double*)m_api.GetSetMediaTrackInfo(track, "D_VOL", nullptr);
+            if (vp) volume = *vp;
         }
-        
+
         tracksJson += "{";
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
         tracksJson += json_string("name") + ":" + json_string("Track " + std::to_string(i + 1)) + ",";
@@ -373,7 +378,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
         tracksJson += json_string("soloed") + ":" + std::string(soloed ? "true" : "false") + ",";
         tracksJson += json_string("armed") + ":" + std::string(armed ? "true" : "false") + ",";
-        tracksJson += json_string("volume") + ":0.75";
+        tracksJson += json_string("volume") + ":" + std::to_string(volume);
         tracksJson += "}";
     }
     tracksJson += "]";
@@ -444,13 +449,17 @@ void CommandHandler::HandleGetFXParams(
             paramsList += ",";
         double minVal = 0, maxVal = 0, midVal = 0;
         double val       = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
+        // TrackFX_GetParamEx returns the normalized value (0.0-1.0) but fills
+        // minVal/maxVal with the actual display range (e.g. -150 to 0 for volume).
+        // Convert to the actual display value so the frontend doesn't need to.
+        double actualVal = minVal + val * (maxVal - minVal);
         char   name[256] = { 0 };
         m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
 
         paramsList += "{";
         paramsList += json_string("index") + ":" + std::to_string(i) + ",";
         paramsList += json_string("name") + ":" + json_string(name) + ",";
-        paramsList += json_string("value") + ":" + std::to_string(val) + ",";
+        paramsList += json_string("value") + ":" + std::to_string(actualVal) + ",";
         paramsList += json_string("min") + ":" + std::to_string(minVal) + ",";
         paramsList += json_string("max") + ":" + std::to_string(maxVal) + ",";
         paramsList += json_string("mid") + ":" + std::to_string(midVal);
@@ -492,7 +501,13 @@ void CommandHandler::HandleSetFXParam(
         return;
     }
 
-    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, value);
+    // Convert the actual display value back to normalized (0.0-1.0) for TrackFX_SetParam
+    double minVal = 0, maxVal = 0, midVal = 0;
+    if (m_api.TrackFX_GetParamEx) {
+        m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
+    }
+    double normalizedVal = (value - minVal) / (maxVal - minVal);
+    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, normalizedVal);
     SendResponse(
         clientId, id, success, "{\"set\":" + std::string(success ? "true" : "false") + "}");
 }
@@ -757,6 +772,9 @@ void CommandHandler::HandleSetTrackSelected(
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
+    // Only SetTrackSelected — safe because it's a standalone user action
+    // (I_SELECTED crash trigger is only during concurrent FX/media operations).
+    // REAPER's own web interface uses the same approach via SET/TRACK/SEL.
     int selected = (selectedStr == "true" || selectedStr == "1") ? 1 : 0;
     m_api.GetSetMediaTrackInfo(track, "I_SELECTED", &selected);
     SendResponse(clientId, id, true,
@@ -875,36 +893,31 @@ void CommandHandler::HandleSampleSendToTrack(
         return;
     }
 
-    // Select the target track if specified
-    if (!trackIdxStr.empty() && m_api.GetSetMediaTrackInfo) {
+    // Track-specific insert (avoid I_SELECTED — known crash trigger)
+    int insertResult = 0;
+    bool trackSpecific = false;
+
+    if (!trackIdxStr.empty() && m_api.CountTracks) {
         int trackIdx = atoi(trackIdxStr.c_str());
-        if (m_api.CountTracks && trackIdx >= 0 && trackIdx < m_api.CountTracks(nullptr)) {
-            MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
-            if (track) {
-                // Deselect all tracks first
-                for (int i = 0; i < m_api.CountTracks(nullptr); i++) {
-                    MediaTrack* t = m_api.GetTrack(nullptr, i);
-                    if (t && t != track) {
-                        int zero = 0;
-                        m_api.GetSetMediaTrackInfo(t, "I_SELECTED", &zero);
-                    }
-                }
-                // Select target track
-                int one = 1;
-                m_api.GetSetMediaTrackInfo(track, "I_SELECTED", &one);
-            }
+        if (trackIdx >= 0 && trackIdx < m_api.CountTracks(nullptr)) {
+            // Use InsertMedia with mode=512 to target absolute track index
+            int insertFlags = 512 | (trackIdx << 16);
+            insertResult = m_api.InsertMedia(filePath.c_str(), insertFlags);
+            trackSpecific = true;
         }
     }
 
-    // InsertMedia mode: 512|0 = add media to absolute track index (trackIdx goes in high word)
-    int result = m_api.InsertMedia(filePath.c_str(), 0);
+    if (!trackSpecific) {
+        // No track specified — insert at current track
+        insertResult = m_api.InsertMedia(filePath.c_str(), 0);
+    }
 
-    if (result > 0) {
+    if (insertResult > 0) {
         SendResponse(clientId, id, true,
-            "{\"inserted\":true,\"result\":" + std::to_string(result) + "}");
+            "{\"inserted\":true,\"result\":" + std::to_string(insertResult) + "}");
     } else {
         SendResponse(clientId, id, false,
-            "{\"error\":\"InsertMedia returned " + std::to_string(result) + "\"}");
+            "{\"error\":\"InsertMedia returned " + std::to_string(insertResult) + "\"}");
     }
 }
 
@@ -930,7 +943,56 @@ void CommandHandler::BroadcastTrackEvent(
     }
 }
 
+void CommandHandler::BroadcastTrackEvent(
+    const std::string& eventType, int trackIdx, double value)
+{
+    std::string event = "{";
+    event += "\"type\":\"event\",";
+    event += "\"event\":\"" + json_escape(eventType) + "\",";
+    event += "\"payload\":{";
+    event += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+    event += "\"value\":" + std::to_string(value);
+    event += "}}";
+
+    if (m_broadcastCb) {
+        m_broadcastCb(event);
+    } else if (m_ws) {
+        m_ws->Broadcast(event);
+    }
+}
+
 // ============================================================
+// HandleSetTrackVolume (Issue #66)
+// ============================================================
+
+void CommandHandler::HandleSetTrackVolume(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string volumeStr   = parser.getString("volume");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+    double volume = atof(volumeStr.c_str());
+    // Clamp volume to valid range 0.0-1.0
+    if (volume < 0.0) volume = 0.0;
+    if (volume > 1.0) volume = 1.0;
+    m_api.GetSetMediaTrackInfo(track, "D_VOL", &volume);
+    // Broadcast volume change event for real-time updates
+    BroadcastTrackEvent("track_volume_changed", trackIdx, volume);
+    SendResponse(clientId, id, true,
+        "{\"volume\":" + std::to_string(volume) + "}");
+}
+
 // ============================================================
 // Real-time FX param change via CSURF_EXT callback (Issue #58)
 // ============================================================
@@ -973,6 +1035,8 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     if (m_api.TrackFX_GetParamEx) {
         m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
     }
+    // Convert normalized to actual display value (consistent with HandleGetFXParams)
+    double actualVal = minVal + value * (maxVal - minVal);
 
     std::string event = "{";
     event += "\"type\":\"event\",";
@@ -983,7 +1047,7 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     event += "\"params\":[{";
     event += "\"index\":" + std::to_string(paramIdx) + ",";
     event += "\"name\":\"" + json_escape(name) + "\",";
-    event += "\"value\":" + std::to_string(value) + ",";
+    event += "\"value\":" + std::to_string(actualVal) + ",";
     event += "\"min\":" + std::to_string(minVal) + ",";
     event += "\"max\":" + std::to_string(maxVal) + ",";
     event += "\"mid\":" + std::to_string(midVal);
