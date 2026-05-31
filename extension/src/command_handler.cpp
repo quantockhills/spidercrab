@@ -757,6 +757,9 @@ void CommandHandler::HandleSetTrackSelected(
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
+    // Only SetTrackSelected — safe because it's a standalone user action
+    // (I_SELECTED crash trigger is only during concurrent FX/media operations).
+    // REAPER's own web interface uses the same approach via SET/TRACK/SEL.
     int selected = (selectedStr == "true" || selectedStr == "1") ? 1 : 0;
     m_api.GetSetMediaTrackInfo(track, "I_SELECTED", &selected);
     SendResponse(clientId, id, true,

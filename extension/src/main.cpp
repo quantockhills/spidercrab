@@ -380,8 +380,8 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     
     if (!rec) {
         DebugLog("Plugin unload");
-        JNL::close_socketlib();
         g_wsServer.Stop();
+        JNL::close_socketlib();
         delete g_cmdHandler;
         g_cmdHandler = nullptr;
         delete g_surface;
