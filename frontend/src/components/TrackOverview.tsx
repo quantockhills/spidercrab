@@ -8,13 +8,13 @@ interface TrackOverviewProps {
   onToggleMute: (index: number) => void;
   onToggleSolo: (index: number) => void;
   onToggleArm: (index: number) => void;
+  onVolumeChange?: (trackIdx: number, volume: number) => void;
   onAddTrack?: () => Promise<boolean>;
   onRefresh: () => void;
   onPlay?: () => Promise<boolean>;
   onStop?: () => Promise<boolean>;
   onRecord?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
-  onAddTrack?: () => Promise<boolean>;
   getTrackFx?: (trackIdx: number) => Promise<FxInfo[]>;
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
 }
@@ -70,7 +70,6 @@ export function TrackOverview({
   onToggleSolo,
   onToggleArm,
   onVolumeChange,
-  onAddTrack,
   onRefresh,
   onPlay,
   onStop,
