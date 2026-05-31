@@ -287,6 +287,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleSetTrackArm(clientId, id, message);
         } else if (command == "track/setSelected") {
             HandleSetTrackSelected(clientId, id, message);
+        } else if (command == "track/setVolume") {
+            HandleSetTrackVolume(clientId, id, message);
         } else if (command == "sample/getDirectory") {
             HandleSampleGetDirectory(clientId, id, message);
         } else if (command == "sample/sendToTrack") {
@@ -353,9 +355,10 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, i) : nullptr;
         if (!track) continue;
         if (i > 0) tracksJson += ",";
-        
+
         // Read actual state from Reaper (setNewValue=nullptr = read mode)
         bool muted = false, soloed = false, armed = false;
+        double volume = 0.75; // sane default if API unavailable
         if (m_api.GetSetMediaTrackInfo) {
             bool* mp = (bool*)m_api.GetSetMediaTrackInfo(track, "B_MUTE", nullptr);
             if (mp) muted = *mp;
@@ -363,8 +366,10 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (sp) soloed = (*sp != 0);
             int* ap = (int*)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr);
             if (ap) armed = (*ap != 0);
+            double* vp = (double*)m_api.GetSetMediaTrackInfo(track, "D_VOL", nullptr);
+            if (vp) volume = *vp;
         }
-        
+
         tracksJson += "{";
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
         tracksJson += json_string("name") + ":" + json_string("Track " + std::to_string(i + 1)) + ",";
@@ -373,7 +378,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
         tracksJson += json_string("soloed") + ":" + std::string(soloed ? "true" : "false") + ",";
         tracksJson += json_string("armed") + ":" + std::string(armed ? "true" : "false") + ",";
-        tracksJson += json_string("volume") + ":0.75";
+        tracksJson += json_string("volume") + ":" + std::to_string(volume);
         tracksJson += "}";
     }
     tracksJson += "]";
@@ -938,7 +943,56 @@ void CommandHandler::BroadcastTrackEvent(
     }
 }
 
+void CommandHandler::BroadcastTrackEvent(
+    const std::string& eventType, int trackIdx, double value)
+{
+    std::string event = "{";
+    event += "\"type\":\"event\",";
+    event += "\"event\":\"" + json_escape(eventType) + "\",";
+    event += "\"payload\":{";
+    event += "\"trackIdx\":" + std::to_string(trackIdx) + ",";
+    event += "\"value\":" + std::to_string(value);
+    event += "}}";
+
+    if (m_broadcastCb) {
+        m_broadcastCb(event);
+    } else if (m_ws) {
+        m_ws->Broadcast(event);
+    }
+}
+
 // ============================================================
+// HandleSetTrackVolume (Issue #66)
+// ============================================================
+
+void CommandHandler::HandleSetTrackVolume(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string volumeStr   = parser.getString("volume");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+    double volume = atof(volumeStr.c_str());
+    // Clamp volume to valid range 0.0-1.0
+    if (volume < 0.0) volume = 0.0;
+    if (volume > 1.0) volume = 1.0;
+    m_api.GetSetMediaTrackInfo(track, "D_VOL", &volume);
+    // Broadcast volume change event for real-time updates
+    BroadcastTrackEvent("track_volume_changed", trackIdx, volume);
+    SendResponse(clientId, id, true,
+        "{\"volume\":" + std::to_string(volume) + "}");
+}
+
 // ============================================================
 // Real-time FX param change via CSURF_EXT callback (Issue #58)
 // ============================================================

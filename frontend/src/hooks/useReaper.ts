@@ -165,6 +165,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return ok;
   }, [tracks, setTrackArm, refreshTracks]);
 
+  const setTrackVolume = useCallback(async (trackIdx: number, volume: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/setVolume', { trackIdx, volume });
+    return resp.success;
+  }, []);
+
   // Sample browser commands
   const getDirectory = useCallback(async (path: string): Promise<{entries: DirEntry[]}> => {
     if (!clientRef.current) return {entries: []};
@@ -234,6 +240,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     setTrackSolo,
     setTrackArm,
     setTrackSelected,
+    setTrackVolume,
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,

@@ -79,8 +79,9 @@ public:
     void PreCacheFX();
 
     // Real-time event broadcasting (Issue #57)
-    // Broadcast a track state change event (mute/solo/arm) to all WS clients
+    // Broadcast a track state change event (mute/solo/arm/volume) to all WS clients
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
+    void BroadcastTrackEvent(const std::string& eventType, int trackIdx, double value);
 
     // Real-time FX param change via CSURF_EXT callback (Issue #58)
     void OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx, double value);
@@ -122,6 +123,7 @@ private:
     void HandleSetTrackSolo(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackArm(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackSelected(int clientId, const std::string& id, const std::string& params);
+    void HandleSetTrackVolume(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — sample/media
     void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);
