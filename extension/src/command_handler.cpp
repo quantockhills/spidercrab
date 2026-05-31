@@ -875,24 +875,31 @@ void CommandHandler::HandleSampleSendToTrack(
         return;
     }
 
-    // Select the target track if specified
-    if (!trackIdxStr.empty() && m_api.GetSetMediaTrackInfo) {
-        int trackIdx = atoi(trackIdxStr.c_str());
-        if (m_api.CountTracks && trackIdx >= 0 && trackIdx < m_api.CountTracks(nullptr)) {
-            MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
-            if (track) {
-                // Deselect all tracks first
-        // Avoid I_SELECTED (known crash trigger on Reaper).
-        // Use InsertMedia with mode=512 to target absolute track index.
-        int insertFlags = 512 | (trackIdx << 16);
-        int result = m_api.InsertMedia(filePath.c_str(), insertFlags);
+    // Track-specific insert (avoid I_SELECTED — known crash trigger)
+    int insertResult = 0;
+    bool trackSpecific = false;
 
-    if (result > 0) {
+    if (!trackIdxStr.empty() && m_api.CountTracks) {
+        int trackIdx = atoi(trackIdxStr.c_str());
+        if (trackIdx >= 0 && trackIdx < m_api.CountTracks(nullptr)) {
+            // Use InsertMedia with mode=512 to target absolute track index
+            int insertFlags = 512 | (trackIdx << 16);
+            insertResult = m_api.InsertMedia(filePath.c_str(), insertFlags);
+            trackSpecific = true;
+        }
+    }
+
+    if (!trackSpecific) {
+        // No track specified — insert at current track
+        insertResult = m_api.InsertMedia(filePath.c_str(), 0);
+    }
+
+    if (insertResult > 0) {
         SendResponse(clientId, id, true,
-            "{\"inserted\":true,\"result\":" + std::to_string(result) + "}");
+            "{\"inserted\":true,\"result\":" + std::to_string(insertResult) + "}");
     } else {
         SendResponse(clientId, id, false,
-            "{\"error\":\"InsertMedia returned " + std::to_string(result) + "\"}");
+            "{\"error\":\"InsertMedia returned " + std::to_string(insertResult) + "\"}");
     }
 }
 
