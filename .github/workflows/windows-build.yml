@@ -10,33 +10,14 @@ on:
 jobs:
   build-and-test:
     runs-on: windows-2022
-    defaults:
-      run:
-        shell: powershell
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSVC + LLVM
-        uses: ilammy/setup-msvc-dev-cmd@v1
-
-      - name: Install LLVM (clang-cl)
-        run: choco install llvm -y --version=19.1.7
-      
-      - name: Add LLVM to PATH
-        run: echo "C:\Program Files\LLVM\bin" | Out-File -Append -FilePath $env:GITHUB_PATH
-
-      - name: Fix VCVARS path for Claude's script
-        run: |
-          $find = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools"
-          $replace = (Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory | Select-Object -First 1).FullName
-          (Get-Content extension\test\deploy_and_test.ps1) -replace [regex]::Escape($find), $replace | Set-Content extension\test\deploy_and_test.ps1
-          Write-Host "VCVARS path patched: $replace"
-
-      - name: Download REAPER portable
-        run: |
-          curl -L -o reaper-install.exe "https://www.reaper.fm/files/7.x/reaper7xx_x64-install.exe"
-          reaper-install.exe /S /PORTABLE /D="${{ github.workspace }}\extension\test"
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Build frontend
         working-directory: frontend
@@ -44,14 +25,38 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build DLL & Deploy
-        working-directory: extension\test
-        run: ./deploy_and_test.ps1 -DeployOnly -SkipFrontend
+      - name: Download REAPER portable
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://www.reaper.fm/files/7.x/reaper7xx_x64-install.exe" -OutFile reaper-install.exe
+          Start-Process reaper-install.exe -ArgumentList "/S","/PORTABLE","/D=${{ github.workspace }}\extension\test" -Wait
+
+      - name: Build & Deploy DLL
+        shell: pwsh
+        working-directory: extension/test
+        run: |
+          # Claude's deploy_and_test.ps1 expects clang-cl with vcvars env
+          # GitHub runners have VS 2022; fix the path if needed
+          $vsPath = (Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory | Select-Object -First 1).FullName
+          $vcvars = "$vsPath\VC\Auxiliary\Build\vcvarsall.bat"
+          if (-not (Test-Path $vcvars)) {
+            $vcvars = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvarsall.bat"
+          }
+          # Install LLVM if missing
+          if (-not (Get-Command clang-cl -ErrorAction SilentlyContinue)) {
+            choco install llvm -y --version=19.1.7
+          }
+          # Run Claude's script with correct VCVARS
+          $env:VCVARS_OVERRIDE = $vcvars
+          (Get-Content deploy_and_test.ps1) -replace 'C:\\Program Files \(x86\)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvarsall\.bat', $vcvars | Set-Content deploy_and_test.ps1
+          ./deploy_and_test.ps1 -DeployOnly -SkipFrontend
 
       - name: Run Integration Tests
-        working-directory: extension\test
+        shell: pwsh
+        working-directory: extension/test
         run: ./deploy_and_test.ps1 -TestOnly
 
       - name: Stop REAPER
         if: always()
+        shell: pwsh
         run: Get-Process "reaper" -ErrorAction SilentlyContinue | Stop-Process -Force
