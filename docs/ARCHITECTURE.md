@@ -52,7 +52,8 @@ surface interface (`IReaperControlSurface`) is C++ virtual methods.
   require native code for the Run() callback (~30x/sec polling)
 
 C++17 gives us direct access to the full Reaper API, zero FFI overhead, and
-the simplest cross-compilation story (just retarget the toolchain).
+a straightforward build story (Linux with GCC, Windows requires MSVC or clang-cl —
+SReaper SDK explicitly requires MSVC C++ ABI on Win32).
 
 ## Why Hand-Rolled WebSocket?
 
