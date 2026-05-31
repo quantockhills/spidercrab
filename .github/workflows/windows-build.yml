@@ -14,6 +14,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       - name: Download REAPER portable
         shell: pwsh
         run: |
@@ -36,7 +47,7 @@ jobs:
             'C:\\Program Files \(x86\)\\Microsoft Visual Studio\\2022\\BuildTools', `
             $vs.Replace('\','\\') `
           | Set-Content deploy_and_test.ps1
-          ./deploy_and_test.ps1 -DeployOnly -SkipFrontend
+          ./deploy_and_test.ps1 -DeployOnly
 
       - name: Run Integration Tests
         shell: pwsh
