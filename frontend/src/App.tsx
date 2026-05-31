@@ -4,6 +4,7 @@ import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
 import { ParamControl } from './components/ParamControl';
 import { SampleBrowser } from './components/SampleBrowser';
+import { SessionView } from './components/SessionView';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'settings';
 
@@ -37,6 +38,10 @@ function App() {
     getTransportState,
     onEvent,
     updateTrack,
+    matrix,
+    getMatrix,
+    triggerSlot,
+    triggerScene,
   } = useReaper();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
@@ -72,11 +77,16 @@ function App() {
     const unsubList = onEvent('event:track_list_changed', () => {
       refreshTracks();
     });
+    const unsubSlot = onEvent('event:slotStateChanged', () => {
+      // Refresh matrix state on any slot change
+      getMatrix();
+    });
     return () => {
       unsubTrack();
       unsubList();
+      unsubSlot();
     };
-  }, [onEvent, refreshTracks]);
+  }, [onEvent, refreshTracks, getMatrix]);
 
   const handleSelectTrack = useCallback((index: number) => {
     setSelectedTrack(index);
@@ -149,13 +159,28 @@ function App() {
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-hidden">
         {activeTab === 'media' && (
-          <SampleBrowser
-            tracks={tracks}
-            selectedTrack={selectedTrack}
-            getDirectory={getDirectory}
-            sendSampleToTrack={sendSampleToTrack}
-            onBack={() => setActiveTab('tracks')}
-          />
+          <div className="flex h-full">
+            {/* Left: Sample Browser */}
+            <div className="w-1/2 min-w-0 border-r border-[var(--border)]">
+              <SampleBrowser
+                tracks={tracks}
+                selectedTrack={selectedTrack}
+                getDirectory={getDirectory}
+                sendSampleToTrack={sendSampleToTrack}
+                onBack={() => setActiveTab('tracks')}
+              />
+            </div>
+            {/* Right: Session View */}
+            <div className="w-1/2 min-w-0">
+              <SessionView
+                matrix={matrix}
+                getMatrix={getMatrix}
+                triggerSlot={triggerSlot}
+                triggerScene={triggerScene}
+                onEvent={onEvent}
+              />
+            </div>
+          </div>
         )}
 
         {activeTab === 'fx' && (paramView ? (

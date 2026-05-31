@@ -35,6 +35,23 @@ export interface DirEntry {
   size: number;
 }
 
+// ── Playtime 2 / Clip Matrix types ──
+
+export interface ClipSlot {
+  column: number;
+  row: number;
+  state: 'empty' | 'stopped' | 'playing' | 'recording';
+  color: string;
+  name: string;
+  clipType: 'none' | 'audio' | 'midi';
+}
+
+export interface MatrixData {
+  columns: number;
+  rows: number;
+  slots: ClipSlot[];
+}
+
 export interface FxParam {
   index: number;
   name: string;
@@ -203,6 +220,54 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return resp.success;
   }, []);
 
+  // ── Playtime 2 / Clip Matrix commands (Issue #61) ──
+
+  const [matrix, setMatrix] = useState<MatrixData | null>(null);
+
+  const getMatrix = useCallback(async (): Promise<MatrixData | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('matrix/getAll');
+      const data = resp.payload as MatrixData;
+      setMatrix(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const triggerSlot = useCallback(async (column: number, row: number): Promise<ClipSlot | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('matrix/triggerSlot', { column, row });
+      return (resp.payload as any)?.slot as ClipSlot ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const triggerScene = useCallback(async (row: number): Promise<ClipSlot[] | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('matrix/triggerScene', { row });
+      return (resp.payload as any)?.slots as ClipSlot[] ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const updateMatrixSlot = useCallback((column: number, row: number, updates: Partial<ClipSlot>) => {
+    setMatrix((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        slots: prev.slots.map((s) =>
+          s.column === column && s.row === row ? { ...s, ...updates } : s
+        ),
+      };
+    });
+  }, []);
+
   const selectTrack = useCallback(async (trackIdx: number): Promise<boolean> => {
     return await setTrackSelected(trackIdx, true);
   }, [setTrackSelected]);
@@ -224,6 +289,11 @@ export function useReaper(opts: UseReaperOptions = {}) {
     connected,
     tracks,
     refreshTracks,
+    matrix,
+    getMatrix,
+    triggerSlot,
+    triggerScene,
+    updateMatrixSlot,
     getTrackFx,
     getFxParams,
     setFxParam,
