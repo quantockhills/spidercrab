@@ -8,6 +8,7 @@ interface TrackOverviewProps {
   onToggleMute: (index: number) => void;
   onToggleSolo: (index: number) => void;
   onToggleArm: (index: number) => void;
+  onAddTrack?: () => Promise<boolean>;
   onRefresh: () => void;
   onPlay?: () => Promise<boolean>;
   onStop?: () => Promise<boolean>;
@@ -69,6 +70,7 @@ export function TrackOverview({
   onToggleSolo,
   onToggleArm,
   onVolumeChange,
+  onAddTrack,
   onRefresh,
   onPlay,
   onStop,
@@ -202,6 +204,15 @@ export function TrackOverview({
           Tracks {tracks.length > 0 ? `(${tracks.length})` : ''}
         </h2>
         <div className="flex gap-2">
+          {onAddTrack && (
+            <button
+              data-testid="add-track-button"
+              onClick={onAddTrack}
+              className="text-xs px-2 py-1 bg-[var(--accent-green)]/25 text-[var(--accent-green)] active:brightness-95"
+            >
+              + Track
+            </button>
+          )}
           <button
             onClick={() => setCollapsed(!collapsed)}
             className="text-xs px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] active:brightness-95"
@@ -218,7 +229,7 @@ export function TrackOverview({
             </button>
           )}
           <button
-            onClick={onRefresh}
+            onClick={() => onRefresh()}
             className="p-2 hover:bg-[var(--bg-tertiary)] active:brightness-95 transition-colors text-sm"
             title="Refresh tracks"
           >
@@ -232,6 +243,7 @@ export function TrackOverview({
         <div className="flex flex-col items-center justify-center flex-1 text-[var(--text-secondary)] space-y-3">
           <div className="text-5xl">🎛️</div>
           <p className="text-sm">No tracks loaded</p>
+<<<<<<< HEAD
           {onAddTrack && (
             <button
               onClick={onAddTrack}
@@ -246,6 +258,25 @@ export function TrackOverview({
           >
             Refresh
           </button>
+=======
+          <div className="flex gap-2">
+            {onAddTrack && (
+              <button
+                data-testid="add-track-empty"
+                onClick={onAddTrack}
+                className="px-5 py-2.5 bg-[var(--accent-green)]/25 text-[var(--accent-green)] text-sm active:brightness-95 transition-colors"
+              >
+                + Add Track
+              </button>
+            )}
+            <button
+              onClick={onRefresh}
+              className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:brightness-95 transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+>>>>>>> github/master
         </div>
       ) : collapsed ? (
         <div className="flex-1 flex items-center justify-center text-[var(--text-secondary)] text-sm">
