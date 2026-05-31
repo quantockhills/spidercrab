@@ -11,15 +11,21 @@ BREW_PREFIX="/home/linuxbrew/.linuxbrew"
 export PATH="$BREW_PREFIX/bin:$BREW_PREFIX/opt/binutils/bin:$PATH"
 
 if [ "$TARGET" = "windows" ]; then
-    echo "=== WINDOWS BUILD (MinGW GCC) ==="
-    MINGW_DIR="$BREW_PREFIX/opt/mingw-w64/toolchain-x86_64"
-    CXX="$MINGW_DIR/bin/x86_64-w64-mingw32-g++"
-    CXXFLAGS="-std=c++17 -fvisibility=default -O2 -DNDEBUG"
-    CXXFLAGS="$CXXFLAGS -D_WIN32 -DWDL_NO_JPEG"
-    CXXFLAGS="$CXXFLAGS -Wall -Wextra -Wno-unused-parameter"
+    echo "=== WINDOWS BUILD (clang-cl + xwin) ==="
+    XWIN="/home/sasha/.xwin"
+    if [ ! -d "$XWIN" ]; then
+        echo "ERROR: xwin not found. Install via xwin --accept-license splat --output ~/.xwin"
+        exit 1
+    fi
+    CXX="$BREW_PREFIX/bin/clang-cl"
+    CXXFLAGS="--target=x86_64-pc-windows-msvc /std:c++17 /O2 /DNDEBUG /EHsc"
+    CXXFLAGS="$CXXFLAGS /D_WIN32 /DWIN32_LEAN_AND_MEAN /DWDL_NO_JPEG /W0"
+    CXXFLAGS="$CXXFLAGS /I$XWIN/crt/include /I$XWIN/sdk/include/ucrt"
+    CXXFLAGS="$CXXFLAGS /I$XWIN/sdk/include/shared /I$XWIN/sdk/include/um"
+    # Force winsock2.h before windows.h for SOCKET type
+    CXXFLAGS="$CXXFLAGS -FI/tmp/force_winsock.h"
     SUFFIX=".dll"
     SYSROOT_FLAGS=""
-    LINK_FLAGS="-shared -static-libgcc -static-libstdc++ -static -lws2_32 -lpthread"
 else
     CXX="$BREW_PREFIX/bin/g++"
     if [ "$BUILD_TYPE" = "debug" ]; then
@@ -71,11 +77,36 @@ echo "CXX: $CXX"
 echo "Output: $OUT"
 echo ""
 
-$CXX $CXXFLAGS $SYSROOT_FLAGS $INCLUDES \
-    -o "$OUT" \
-    $SRC \
-    $LINK_FLAGS \
-    2>&1
+# Pre-create forced winsock include
+echo '#include <winsock2.h>
+#include <ws2tcpip.h>' > /tmp/force_winsock.h
+
+if [ "$TARGET" = "windows" ]; then
+    # Windows: compile each source with clang-cl, link with lld-link
+    rm -rf "$SCRIPT_DIR/build/obj"
+    mkdir -p "$SCRIPT_DIR/build/obj"
+    OBJ_FILES=""
+    for src in $SRC; do
+        obj="$SCRIPT_DIR/build/obj/$(basename $src .cpp).obj"
+        echo "  CC $(basename $src)"
+        $CXX $CXXFLAGS $INCLUDES -c "$src" -Fo"$obj" 2>&1
+        OBJ_FILES="$OBJ_FILES $obj"
+    done
+    echo "  LD $(basename $OUT)"
+    clang-cl --target=x86_64-pc-windows-msvc $OBJ_FILES -fuse-ld=lld \
+        -o "$OUT" /link /dll \
+        /libpath:"$XWIN/crt/lib/x86_64" \
+        /libpath:"$XWIN/sdk/lib/um/x86_64" \
+        /libpath:"$XWIN/sdk/lib/ucrt/x86_64" \
+        libcmt.lib kernel32.lib user32.lib ws2_32.lib 2>&1
+    rm -rf "$SCRIPT_DIR/build/obj"
+else
+    $CXX $CXXFLAGS $SYSROOT_FLAGS $INCLUDES \
+        -o "$OUT" \
+        $SRC \
+        $LINK_FLAGS \
+        2>&1
+fi
 
 echo ""
 echo "✅ Build successful: $OUT"

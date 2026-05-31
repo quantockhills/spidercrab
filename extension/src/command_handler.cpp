@@ -509,6 +509,7 @@ void CommandHandler::HandleSetFXParam(
         m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
     }
     double normalizedVal = (value - minVal) / (maxVal - minVal);
+    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, normalizedVal);
     // Read back the actual value REAPER committed (fixes slider jumping due to
     // normalization precision loss or stepped params)
     double committedVal = value;
