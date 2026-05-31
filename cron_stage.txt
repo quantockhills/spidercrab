@@ -1,1 +1,28 @@
-Phase 1 MVP complete
+# Blockers — spidercrab playtime worker (2026-05-31 23:04 UTC)
+
+## Status: #61 substantially complete — needs manual verification
+
+### Issue #61 — Clip launcher with Playtime 2
+✅ Research doc (from #62)
+✅ playtime_api.h — HB_* function pointer declarations
+✅ playtime_state.h — Thread-safe 8×8 SlotState (mutex-protected)
+✅ playtime_midi.h — Push 2 MIDI note injection (baseNote 36 + row*8 + col)
+✅ HandleMatrixGetAll/GetSlot/TriggerSlot/TriggerScene — real state (not mock)
+✅ BroadcastMatrixEvent — slotStateChanged pushed to all WS clients
+✅ SessionView.tsx — 8×8 grid, scene launch, transport bar (play/stop/record)
+✅ App.tsx — integrated in Media tab alongside SampleBrowser
+✅ useReaper.ts — matrix/record/volume/addTrack hooks
+✅ Transport record — CSurf_OnRecord + Main_OnCommand + GetPlayState readback
+✅ Merged with master (conflicts resolved)
+✅ C++: 162 tests pass | Frontend: 95 tests pass | make check: green
+✅ Pushed to origin | Commented on issue
+
+### Remaining for #61 close
+- ⏸️ VERIFICATION BLOCKER: requires live Playtime 2 running in REAPER
+  to test end-to-end. The Playtime 2 C API only exposes 3 functions
+  (FindFirstInstance, CreateClipMatrix, ShowOrHidePlaytime) — no clip
+  slot query/trigger API. Current implementation uses local state.
+- Drag-drop clip reordering (future feature)
+- Final verification with actual Playtime 2
+
+### Next: #63 MIDI step sequencer (depends on #61 being at least structurally complete)

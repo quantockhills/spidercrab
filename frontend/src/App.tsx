@@ -5,6 +5,7 @@ import { FxBrowser } from './components/FxBrowser';
 import { ParamControl } from './components/ParamControl';
 import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
+import { SequencerView } from './components/SequencerView';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'settings';
 
@@ -45,9 +46,17 @@ function App() {
     getMatrix,
     triggerSlot,
     triggerScene,
+    sequencer,
+    getSequencer,
+    toggleStep,
+    setStep,
+    seqClearAll,
+    seqSetLength,
+    seqSetBaseNote,
   } = useReaper();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
+  const [sessionMode, setSessionMode] = useState<'session' | 'sequencer'>('session');
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
 
   // Param control navigation state
@@ -179,19 +188,54 @@ function App() {
                 onBack={() => setActiveTab('tracks')}
               />
             </div>
-            {/* Right: Session View */}
-            <div className="w-1/2 min-w-0">
-              <SessionView
-                matrix={matrix}
-                getMatrix={getMatrix}
-                triggerSlot={triggerSlot}
-                triggerScene={triggerScene}
-                onEvent={onEvent}
-                onPlay={play}
-                onStop={stop}
-                onRecord={record}
-                onGetTransportState={getTransportState}
-              />
+            {/* Right: Session View / Sequencer */}
+            <div className="w-1/2 min-w-0 flex flex-col">
+              {/* Mode toggle */}
+              <div className="flex border-b border-[var(--border)]">
+                <button
+                  onClick={() => setSessionMode('session')}
+                  className={`flex-1 py-1.5 text-[10px] font-medium transition-colors ${
+                    sessionMode === 'session'
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                  }`}
+                >
+                  Session
+                </button>
+                <button
+                  onClick={() => setSessionMode('sequencer')}
+                  className={`flex-1 py-1.5 text-[10px] font-medium transition-colors ${
+                    sessionMode === 'sequencer'
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                  }`}
+                >
+                  Sequencer
+                </button>
+              </div>
+              {sessionMode === 'session' ? (
+                <SessionView
+                  matrix={matrix}
+                  getMatrix={getMatrix}
+                  triggerSlot={triggerSlot}
+                  triggerScene={triggerScene}
+                  onEvent={onEvent}
+                  onPlay={play}
+                  onStop={stop}
+                  onRecord={record}
+                  onGetTransportState={getTransportState}
+                />
+              ) : (
+                <SequencerView
+                  sequencer={sequencer}
+                  getSequencer={getSequencer}
+                  toggleStep={toggleStep}
+                  setStep={setStep}
+                  clearAll={seqClearAll}
+                  setLength={seqSetLength}
+                  setBaseNote={seqSetBaseNote}
+                />
+              )}
             </div>
           </div>
         )}

@@ -306,6 +306,20 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleMatrixTriggerSlot(clientId, id, message);
         } else if (command == "matrix/triggerScene") {
             HandleMatrixTriggerScene(clientId, id, message);
+        } else if (command == "sequencer/getAll") {
+            HandleSequencerGetAll(clientId, id, message);
+        } else if (command == "sequencer/toggleStep") {
+            HandleSequencerToggleStep(clientId, id, message);
+        } else if (command == "sequencer/setStep") {
+            HandleSequencerSetStep(clientId, id, message);
+        } else if (command == "sequencer/clearAll") {
+            HandleSequencerClearAll(clientId, id, message);
+        } else if (command == "sequencer/setLength") {
+            HandleSequencerSetLength(clientId, id, message);
+        } else if (command == "sequencer/setBaseNote") {
+            HandleSequencerSetBaseNote(clientId, id, message);
+        } else if (command == "sequencer/getPlayhead") {
+            HandleSequencerGetPlayhead(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -1213,6 +1227,143 @@ void CommandHandler::BroadcastTrackEvent(
     } else if (m_ws) {
         m_ws->Broadcast(event);
     }
+}
+
+// ============================================================
+// Step sequencer command handlers (Issue #63)
+// ============================================================
+
+void CommandHandler::HandleSequencerGetAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    std::string payload = "{";
+    payload += json_string("columns") + ":" + std::to_string(m_sequencerState.columns()) + ",";
+    payload += json_string("rows") + ":" + std::to_string(m_sequencerState.rows()) + ",";
+    payload += json_string("length") + ":" + std::to_string(m_sequencerState.length()) + ",";
+    payload += json_string("baseNote") + ":" + std::to_string(m_sequencerState.baseNote()) + ",";
+    payload += json_string("playhead") + ":" + std::to_string(m_sequencerState.playheadPosition()) + ",";
+    payload += json_string("steps") + ":" + m_sequencerState.getAllSteps();
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSequencerToggleStep(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_sequencerState.columns() ||
+        row < 0 || row >= m_sequencerState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Step out of range\"}");
+        return;
+    }
+
+    bool newState = m_sequencerState.toggleStep(col, row);
+    StepData step = m_sequencerState.getStep(col, row);
+
+    std::string payload = "{";
+    payload += json_string("column") + ":" + std::to_string(col) + ",";
+    payload += json_string("row") + ":" + std::to_string(row) + ",";
+    payload += json_string("active") + ":" + (newState ? "true" : "false") + ",";
+    payload += json_string("velocity") + ":" + std::to_string(step.velocity) + ",";
+    payload += json_string("note") + ":" + std::to_string(step.note);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSequencerSetStep(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr    = parser.getString("column");
+    std::string rowStr    = parser.getString("row");
+    std::string activeStr = parser.getString("active");
+    std::string velStr    = parser.getString("velocity");
+    int col    = atoi(colStr.c_str());
+    int row    = atoi(rowStr.c_str());
+    bool active = (activeStr == "true");
+    int velocity = velStr.empty() ? 100 : atoi(velStr.c_str());
+
+    if (col < 0 || col >= m_sequencerState.columns() ||
+        row < 0 || row >= m_sequencerState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Step out of range\"}");
+        return;
+    }
+
+    m_sequencerState.setStep(col, row, active, velocity);
+    StepData step = m_sequencerState.getStep(col, row);
+
+    std::string payload = "{";
+    payload += json_string("column") + ":" + std::to_string(col) + ",";
+    payload += json_string("row") + ":" + std::to_string(row) + ",";
+    payload += json_string("active") + ":" + (step.active ? "true" : "false") + ",";
+    payload += json_string("velocity") + ":" + std::to_string(step.velocity);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSequencerClearAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    m_sequencerState.clearAll();
+    SendResponse(clientId, id, true, "{\"cleared\":true}");
+}
+
+void CommandHandler::HandleSequencerSetLength(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string lenStr = parser.getString("length");
+    int len = atoi(lenStr.c_str());
+    if (len < 1 || len > 64) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Length must be 1-64\"}");
+        return;
+    }
+    m_sequencerState.setLength(len);
+    SendResponse(clientId, id, true,
+        "{\"length\":" + std::to_string(len) + "}");
+}
+
+void CommandHandler::HandleSequencerSetBaseNote(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string noteStr = parser.getString("note");
+    int note = atoi(noteStr.c_str());
+    if (note < 0 || note > 127) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Note must be 0-127\"}");
+        return;
+    }
+    m_sequencerState.setBaseNote(note);
+    SendResponse(clientId, id, true,
+        "{\"baseNote\":" + std::to_string(note) + "}");
+}
+
+void CommandHandler::HandleSequencerGetPlayhead(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    int pos = m_sequencerState.playheadPosition();
+    int len = m_sequencerState.length();
+    std::string payload = "{";
+    payload += json_string("playhead") + ":" + std::to_string(pos) + ",";
+    payload += json_string("length") + ":" + std::to_string(len);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
 }
 
 // ============================================================

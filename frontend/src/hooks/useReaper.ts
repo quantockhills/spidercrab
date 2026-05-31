@@ -61,6 +61,23 @@ export interface FxParam {
   mid: number;
 }
 
+export interface StepData {
+  column: number;
+  row: number;
+  active: boolean;
+  velocity: number;
+  note: number;
+}
+
+export interface SequencerData {
+  columns: number;
+  rows: number;
+  length: number;
+  baseNote: number;
+  playhead: number;
+  steps: StepData[];
+}
+
 export function useReaper(opts: UseReaperOptions = {}) {
   const clientRef = useRef<WsClient | null>(null);
   const [connected, setConnected] = useState(false);
@@ -275,6 +292,100 @@ export function useReaper(opts: UseReaperOptions = {}) {
     }
   }, []);
 
+  // ── Step Sequencer commands (Issue #63) ──
+
+  const [sequencer, setSequencer] = useState<SequencerData | null>(null);
+
+  const getSequencer = useCallback(async (): Promise<SequencerData | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('sequencer/getAll');
+      const data = resp.payload as SequencerData;
+      setSequencer(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const toggleStep = useCallback(async (column: number, row: number): Promise<StepData | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('sequencer/toggleStep', { column, row });
+      const data = resp.payload as StepData;
+      // Optimistic update
+      setSequencer((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          steps: prev.steps.map((s) =>
+            s.column === column && s.row === row ? { ...s, active: data.active, velocity: data.velocity } : s
+          ),
+        };
+      });
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const setStep = useCallback(async (column: number, row: number, active: boolean, velocity: number = 100): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    try {
+      await clientRef.current.send('sequencer/setStep', { column, row, active, velocity });
+      setSequencer((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          steps: prev.steps.map((s) =>
+            s.column === column && s.row === row ? { ...s, active, velocity } : s
+          ),
+        };
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const seqClearAll = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    try {
+      await clientRef.current.send('sequencer/clearAll');
+      setSequencer((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          steps: prev.steps.map((s) => ({ ...s, active: false })),
+        };
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const seqSetLength = useCallback(async (length: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    try {
+      await clientRef.current.send('sequencer/setLength', { length });
+      setSequencer((prev) => prev ? { ...prev, length } : prev);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const seqSetBaseNote = useCallback(async (note: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    try {
+      await clientRef.current.send('sequencer/setBaseNote', { note });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   const updateMatrixSlot = useCallback((column: number, row: number, updates: Partial<ClipSlot>) => {
     setMatrix((prev) => {
       if (!prev) return prev;
@@ -313,6 +424,14 @@ export function useReaper(opts: UseReaperOptions = {}) {
     triggerSlot,
     triggerScene,
     updateMatrixSlot,
+    // Step sequencer (Issue #63)
+    sequencer,
+    getSequencer,
+    toggleStep,
+    setStep,
+    seqClearAll,
+    seqSetLength,
+    seqSetBaseNote,
     getTrackFx,
     getFxParams,
     setFxParam,

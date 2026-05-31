@@ -3,6 +3,7 @@
 #include "playtime_api.h"
 #include "playtime_state.h"
 #include "playtime_midi.h"
+#include "sequencer_state.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -123,6 +124,9 @@ private:
     PlaytimeState m_playtimeState;
     PlaytimeMidi  m_playtimeMidi;
 
+    // Step sequencer state (Issue #63)
+    SequencerState m_sequencerState;
+
     // Run the actual EnumInstalledFX loop (no response, just populate cache)
     // Returns the JSON string of the FX list
     std::string RunFXEnumeration();
@@ -164,4 +168,13 @@ private:
     void HandleMatrixGetSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixTriggerSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixTriggerScene(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — step sequencer (Issue #63)
+    void HandleSequencerGetAll(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerToggleStep(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerSetStep(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerClearAll(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerSetLength(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerSetBaseNote(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerGetPlayhead(int clientId, const std::string& id, const std::string& params);
 };
