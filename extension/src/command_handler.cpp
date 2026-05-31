@@ -6,6 +6,9 @@
 #include <sstream>
 namespace fs = std::filesystem;
 
+// Global Playtime 2 API state (defined here, declared extern in playtime_api.h)
+PlaytimeApi g_playtimeApi;
+
 // Minimal JSON builder (no dependencies)
 static std::string json_escape(const std::string& s)
 {
@@ -291,6 +294,14 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleSampleGetDirectory(clientId, id, message);
         } else if (command == "sample/sendToTrack") {
             HandleSampleSendToTrack(clientId, id, message);
+        } else if (command == "matrix/getAll") {
+            HandleMatrixGetAll(clientId, id, message);
+        } else if (command == "matrix/getSlot") {
+            HandleMatrixGetSlot(clientId, id, message);
+        } else if (command == "matrix/triggerSlot") {
+            HandleMatrixTriggerSlot(clientId, id, message);
+        } else if (command == "matrix/triggerScene") {
+            HandleMatrixTriggerScene(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -846,6 +857,133 @@ void CommandHandler::HandleSampleGetDirectory(
     std::string payload = "{";
     payload += json_string("path") + ":" + json_string(path) + ",";
     payload += json_string("entries") + ":" + entries;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Playtime 2 / clip matrix command handlers (Issue #61)
+//
+// Phase 1 MVP: placeholder implementations that return mock
+// data structure. Actual Playtime 2 API integration comes
+// in Phase 2 via HB_* functions declared in playtime_api.h.
+// ============================================================
+
+static std::string buildEmptySlots(int columns, int rows)
+{
+    std::string slots = "[";
+    for (int r = 0; r < rows; r++) {
+        for (int c = 0; c < columns; c++) {
+            if (r > 0 || c > 0) slots += ",";
+            slots += "{";
+            slots += json_string("column") + ":" + std::to_string(c) + ",";
+            slots += json_string("row") + ":" + std::to_string(r) + ",";
+            slots += json_string("state") + ":" + json_string("empty");
+            slots += "}";
+        }
+    }
+    slots += "]";
+    return slots;
+}
+
+void CommandHandler::HandleMatrixGetAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    int columns = 8;
+    int rows    = 8;
+
+    if (isPlaytimeAvailable()) {
+        // Phase 2: query actual Playtime matrix
+        fprintf(stderr, "[reaper-ipad] Playtime 2 available — Phase 2 will query real matrix\n");
+    }
+
+    std::string payload = "{";
+    payload += json_string("columns") + ":" + std::to_string(columns) + ",";
+    payload += json_string("rows") + ":" + std::to_string(rows) + ",";
+    payload += json_string("slots") + ":" + buildEmptySlots(columns, rows);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleMatrixGetSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    std::string payload = "{";
+    payload += json_string("column") + ":" + std::to_string(col) + ",";
+    payload += json_string("row") + ":" + std::to_string(row) + ",";
+    payload += json_string("state") + ":" + json_string("empty");
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleMatrixTriggerSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    fprintf(stderr,
+        "[reaper-ipad] matrix/triggerSlot: column=%d row=%d (placeholder)\n", col, row);
+
+    std::string payload = "{";
+    payload += json_string("triggered") + ":true,";
+    payload += json_string("column") + ":" + std::to_string(col) + ",";
+    payload += json_string("row") + ":" + std::to_string(row);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleMatrixTriggerScene(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rowStr = parser.getString("row");
+
+    if (rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'row' parameter\"}");
+        return;
+    }
+
+    int row = atoi(rowStr.c_str());
+
+    fprintf(stderr,
+        "[reaper-ipad] matrix/triggerScene: row=%d (placeholder)\n", row);
+
+    std::string payload = "{";
+    payload += json_string("triggered") + ":true,";
+    payload += json_string("row") + ":" + std::to_string(row);
     payload += "}";
 
     SendResponse(clientId, id, true, payload);

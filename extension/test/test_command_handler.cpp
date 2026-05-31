@@ -1409,3 +1409,317 @@ TEST(FxEnumCacheTest, EnumerateReturnsFormatCorrectly)
     EXPECT_NE(resp.find("\"AU\""), std::string::npos);
 }
 
+// ============================================================
+// Playtime 2 / clip matrix command tests (Issue #61)
+// ============================================================
+
+TEST(MatrixTest, GetAllReturnsStructure)
+{
+    // Test that matrix/getAll returns a properly structured response
+    // with columns, rows, and a slots array containing 64 entries
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/getAll","id":"m1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify success
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify structure: columns:8, rows:8
+    EXPECT_NE(resp.find("\"columns\":8"), std::string::npos);
+    EXPECT_NE(resp.find("\"rows\":8"), std::string::npos);
+
+    // Verify slots array has 64 entries (8*8)
+    // Each slot has "column", "row", "state" fields
+    // Count "state" occurrences — should be 64
+    size_t pos = 0;
+    int slotCount = 0;
+    while ((pos = resp.find("\"state\"", pos)) != std::string::npos) {
+        slotCount++;
+        pos++;
+    }
+    EXPECT_EQ(slotCount, 64);
+
+    // Verify the first slot structure
+    EXPECT_NE(resp.find("\"column\":0,\"row\":0,\"state\":\"empty\""), std::string::npos);
+    // Verify the last slot structure
+    EXPECT_NE(resp.find("\"column\":7,\"row\":7,\"state\":\"empty\""), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSlotWithValidParamsReturnsSuccess)
+{
+    // Test that matrix/triggerSlot with valid column and row returns success
+    // and includes the triggered slot coordinates in the response
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":3,"row":5},"id":"m2"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify success
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify triggered flag and coordinates
+    EXPECT_NE(resp.find("\"triggered\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"column\":3"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":5"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSlotMissingParamsReturnsError)
+{
+    // Test that matrix/triggerSlot without column/row params returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // No payload at all
+    std::string cmd = R"({"type":"command","command":"matrix/triggerSlot","id":"m3"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify failure
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'column' or 'row' parameter"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, GetSlotWithValidParamsReturnsSlot)
+{
+    // Test that matrix/getSlot with valid column and row returns slot state
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/getSlot","payload":{"column":2,"row":4},"id":"m4"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify success
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify slot structure
+    EXPECT_NE(resp.find("\"column\":2"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":4"), std::string::npos);
+    EXPECT_NE(resp.find("\"state\":\"empty\""), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, GetSlotMissingParamsReturnsError)
+{
+    // Test that matrix/getSlot without column/row params returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/getSlot","payload":{},"id":"m5"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify failure
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'column' or 'row' parameter"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSceneWithValidRowReturnsSuccess)
+{
+    // Test that matrix/triggerScene with a valid row returns success
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/triggerScene","payload":{"row":2},"id":"m6"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify success
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify triggered flag and row
+    EXPECT_NE(resp.find("\"triggered\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":2"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSceneMissingRowReturnsError)
+{
+    // Test that matrix/triggerScene without row param returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/triggerScene","payload":{},"id":"m7"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify failure
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'row' parameter"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, GetAllResponseJsonIsValid)
+{
+    // Comprehensive validation that the matrix/getAll response is
+    // valid, well-formed JSON
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Also verify Phase1MVP-style that all matrix commands produce valid JSON
+    struct CmdCheck {
+        const char* cmd;
+        const char* desc;
+    };
+
+    CmdCheck commands[] = {
+        {R"({"type":"command","command":"matrix/getAll","id":"v1"})", "matrix/getAll"},
+        {R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":0},"id":"v2"})", "matrix/getSlot"},
+        {R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"v3"})", "matrix/triggerSlot"},
+        {R"({"type":"command","command":"matrix/triggerScene","payload":{"row":0},"id":"v4"})", "matrix/triggerScene"},
+        {R"({"type":"command","command":"matrix/triggerSlot","id":"v5"})", "matrix/triggerSlot (invalid)"},
+        {R"({"type":"command","command":"matrix/getSlot","payload":{},"id":"v6"})", "matrix/getSlot (invalid)"},
+    };
+
+    for (const auto& cc : commands) {
+        responses.clear();
+        handler->HandleMessage(1, cc.cmd);
+        ASSERT_EQ(responses.size(), 1u) << "Command " << cc.desc << " should produce 1 response";
+
+        const std::string& resp = responses[0];
+
+        // Verify balanced braces
+        int depth = 0;
+        for (char c : resp) {
+            if (c == '{') depth++;
+            if (c == '}') depth--;
+        }
+        EXPECT_EQ(depth, 0) << "Unbalanced JSON for " << cc.desc;
+
+        // Verify starts and ends with braces
+        EXPECT_EQ(resp.front(), '{') << cc.desc;
+        EXPECT_EQ(resp.back(), '}') << cc.desc;
+
+        // Verify has type field
+        EXPECT_NE(resp.find("\"type\""), std::string::npos) << cc.desc;
+    }
+}
+
+TEST(MatrixTest, GetAllResponseContentValidation)
+{
+    // Verify that all 64 slots in matrix/getAll have correct content
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1, R"({"type":"command","command":"matrix/getAll","id":"v"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify every column 0..7 and row 0..7 pair is present
+    for (int c = 0; c < 8; c++) {
+        for (int r = 0; r < 8; r++) {
+            std::string expected = "\"column\":" + std::to_string(c)
+                + ",\"row\":" + std::to_string(r)
+                + ",\"state\":\"empty\"";
+            EXPECT_NE(resp.find(expected), std::string::npos)
+                << "Missing slot at column=" << c << " row=" << r;
+        }
+    }
+}
+

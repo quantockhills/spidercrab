@@ -1,5 +1,6 @@
 #pragma once
 #include "websocket_server.h"
+#include "playtime_api.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -135,4 +136,10 @@ private:
     void HandleSetFXParam(int clientId, const std::string& id, const std::string& params);
     void HandleAddFX(int clientId, const std::string& id, const std::string& params);
     void HandleDeleteFX(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — Playtime 2 / clip matrix
+    void HandleMatrixGetAll(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixGetSlot(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixTriggerSlot(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixTriggerScene(int clientId, const std::string& id, const std::string& params);
 };
