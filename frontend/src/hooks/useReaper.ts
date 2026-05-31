@@ -191,6 +191,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return resp.success;
   }, []);
 
+  const record = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('transport/record');
+    return resp.success;
+  }, []);
+
   const getTransportState = useCallback(async (): Promise<{playing: boolean; recording: boolean}> => {
     if (!clientRef.current) return {playing: false, recording: false};
     const resp = await clientRef.current.send('transport/getState');
@@ -240,6 +246,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     selectTrack,
     play,
     stop,
+    record,
     getTransportState,
     getDirectory,
     sendSampleToTrack,
