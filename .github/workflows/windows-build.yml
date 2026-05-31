@@ -10,63 +10,48 @@ on:
 jobs:
   build-and-test:
     runs-on: windows-2022
+    defaults:
+      run:
+        shell: powershell
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSVC
+      - name: Setup MSVC + LLVM
         uses: ilammy/setup-msvc-dev-cmd@v1
 
-      - name: Download REAPER
+      - name: Install LLVM (clang-cl)
+        run: choco install llvm -y --version=19.1.7
+      
+      - name: Add LLVM to PATH
+        run: echo "C:\Program Files\LLVM\bin" | Out-File -Append -FilePath $env:GITHUB_PATH
+
+      - name: Fix VCVARS path for Claude's script
         run: |
-          # 7.x always points to latest REAPER 7.x
+          $find = "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools"
+          $replace = (Get-ChildItem "C:\Program Files\Microsoft Visual Studio\2022" -Directory | Select-Object -First 1).FullName
+          (Get-Content extension\test\deploy_and_test.ps1) -replace [regex]::Escape($find), $replace | Set-Content extension\test\deploy_and_test.ps1
+          Write-Host "VCVARS path patched: $replace"
+
+      - name: Download REAPER portable
+        run: |
           curl -L -o reaper-install.exe "https://www.reaper.fm/files/7.x/reaper7xx_x64-install.exe"
-          reaper-install.exe /S /PORTABLE /D=C:\reaper
-          mkdir C:\reaper\UserPlugins
+          reaper-install.exe /S /PORTABLE /D="${{ github.workspace }}\extension\test"
 
-      - name: Build DLL
-        working-directory: extension
+      - name: Build frontend
+        working-directory: frontend
         run: |
-          cl /nologo /O2 /EHsc /std:c++17 /D_WIN32 /DWDL_NO_JPEG /DNDEBUG ^
-            /I..\docs\reaper-sdk\sdk /I..\docs\WDL /I..\docs\WDL\WDL ^
-            /I..\docs\WDL\WDL\jnetlib /I..\docs\WDL\WDL\eel2 ^
-            /I..\docs\WDL\WDL\swell ^
-            src\main.cpp src\websocket_server.cpp src\command_handler.cpp ^
-            src\sha1_utils.cpp ..\docs\WDL\WDL\jnetlib\listen.cpp ^
-            ..\docs\WDL\WDL\jnetlib\connection.cpp ^
-            ..\docs\WDL\WDL\jnetlib\util.cpp ^
-            ..\docs\WDL\WDL\jnetlib\asyncdns.cpp ^
-            ..\docs\WDL\WDL\jnetlib\webserver.cpp ^
-            ..\docs\WDL\WDL\jnetlib\httpserv.cpp ^
-            /link /DLL /OUT:build\reaper_spidercrab.dll ^
-            ws2_32.lib kernel32.lib user32.lib shell32.lib
+          npm ci
+          npm run build
 
-      - name: Deploy DLL
-        run: |
-          mkdir -Force C:\reaper\UserPlugins\frontend
-          copy extension\build\reaper_spidercrab.dll C:\reaper\UserPlugins\
-          copy frontend\dist\* C:\reaper\UserPlugins\frontend\
+      - name: Build DLL & Deploy
+        working-directory: extension\test
+        run: ./deploy_and_test.ps1 -DeployOnly -SkipFrontend
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Start REAPER & Run Headless Test
-        run: |
-          Start-Process -NoNewWindow -FilePath C:\reaper\reaper.exe -ArgumentList "-newinst","-nosplash","-new"
-          # Wait for WS port
-          $timeout = 30
-          do {
-            Start-Sleep -Seconds 1
-            $timeout--
-            $ws = Test-NetConnection -ComputerName 127.0.0.1 -Port 9224 -InformationLevel Quiet -WarningAction SilentlyContinue
-          } while (-not $ws -and $timeout -gt 0)
-          if (-not $ws) { throw "WebSocket server did not start" }
-          Write-Host "WebSocket server ready"
-          # Run a basic transport test
-          python3 extension/test/quick_connection_test.py 9224
+      - name: Run Integration Tests
+        working-directory: extension\test
+        run: ./deploy_and_test.ps1 -TestOnly
 
       - name: Stop REAPER
         if: always()
-        run: taskkill /f /im reaper.exe 2>$null
+        run: Get-Process "reaper" -ErrorAction SilentlyContinue | Stop-Process -Force
