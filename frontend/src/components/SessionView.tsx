@@ -7,6 +7,10 @@ interface SessionViewProps {
   triggerSlot: (column: number, row: number) => Promise<ClipSlot | null>;
   triggerScene: (row: number) => Promise<ClipSlot[] | null>;
   onEvent?: (pattern: string, handler: (data: any) => void) => () => void;
+  onPlay?: () => Promise<boolean>;
+  onStop?: () => Promise<boolean>;
+  onRecord?: () => Promise<boolean>;
+  onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
 }
 
 /** Map slot state to CSS class name */
@@ -35,9 +39,15 @@ export function SessionView({
   triggerSlot,
   triggerScene,
   onEvent,
+  onPlay,
+  onStop,
+  onRecord,
+  onGetTransportState,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [recording, setRecording] = useState(false);
   const initializedRef = useRef(false);
 
   // Load matrix on mount if not provided
@@ -48,6 +58,16 @@ export function SessionView({
     }
   }, [getMatrix]);
 
+  // Load initial transport state on mount
+  useEffect(() => {
+    if (onGetTransportState) {
+      onGetTransportState().then(state => {
+        setPlaying(state.playing);
+        setRecording(state.recording);
+      });
+    }
+  }, [onGetTransportState]);
+
   // Subscribe to slotStateChanged events for real-time updates
   useEffect(() => {
     if (!onEvent) return;
@@ -57,6 +77,31 @@ export function SessionView({
     });
     return unsub;
   }, [onEvent]);
+
+  const handlePlay = useCallback(async () => {
+    if (onPlay) {
+      const ok = await onPlay();
+      if (ok) setPlaying(true);
+    }
+  }, [onPlay]);
+
+  const handleStop = useCallback(async () => {
+    if (onStop) {
+      const ok = await onStop();
+      if (ok) {
+        setPlaying(false);
+        setRecording(false);
+      }
+    }
+  }, [onStop]);
+
+  const handleRecord = useCallback(async () => {
+    if (onRecord) {
+      await onRecord();
+      // Toggle recording state locally (the backend returns actual state)
+      setRecording(prev => !prev);
+    }
+  }, [onRecord]);
 
   const handleSlotTap = useCallback(async (col: number, row: number) => {
     await triggerSlot(col, row);
@@ -123,6 +168,42 @@ export function SessionView({
         <span className="flex items-center gap-1">
           <span className="w-2.5 h-2.5 rounded-sm bg-[var(--accent-red)]" /> Recording
         </span>
+      </div>
+
+      {/* Transport bar */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)]/50">
+        <button
+          onClick={handlePlay}
+          className={`flex items-center justify-center w-8 h-8 rounded text-sm font-bold transition-all active:brightness-90 ${
+            playing
+              ? 'bg-[var(--accent-green)] text-black'
+              : 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+          }`}
+          title="Play"
+          aria-label="Play"
+        >
+          ▶
+        </button>
+        <button
+          onClick={handleStop}
+          className="flex items-center justify-center w-8 h-8 rounded text-sm font-bold bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] active:brightness-90 transition-all"
+          title="Stop"
+          aria-label="Stop"
+        >
+          ■
+        </button>
+        <button
+          onClick={handleRecord}
+          className={`flex items-center justify-center w-8 h-8 rounded text-sm font-bold transition-all active:brightness-90 ${
+            recording
+              ? 'bg-[var(--accent-red)] text-black animate-pulse'
+              : 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+          }`}
+          title="Record"
+          aria-label="Record"
+        >
+          ●
+        </button>
       </div>
 
       {/* Grid area */}

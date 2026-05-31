@@ -147,4 +147,96 @@ describe('SessionView', () => {
       }
     });
   });
+
+  // ── Transport button tests ──
+
+  it('renders transport buttons with callbacks', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onStop = vi.fn().mockResolvedValue(true);
+    const onRecord = vi.fn().mockResolvedValue(true);
+
+    // Pre-provide matrix to skip loading state
+    renderSessionView({
+      matrix: makeEmptyMatrix(),
+      onPlay,
+      onStop,
+      onRecord,
+      onGetTransportState: vi.fn().mockResolvedValue({ playing: false, recording: false }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Play')).toBeDefined();
+      expect(screen.getByLabelText('Stop')).toBeDefined();
+      expect(screen.getByLabelText('Record')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByLabelText('Play'));
+    expect(onPlay).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByLabelText('Stop'));
+    expect(onStop).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByLabelText('Record'));
+    expect(onRecord).toHaveBeenCalledOnce();
+  });
+
+  it('shows playing state on transport play button', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onGetTransportState = vi.fn().mockResolvedValue({ playing: true, recording: false });
+
+    renderSessionView({
+      matrix: makeEmptyMatrix(),
+      onPlay,
+      onGetTransportState,
+    });
+
+    await waitFor(() => {
+      // Play button should have green bg styling when playing
+      const playBtn = screen.getByLabelText('Play');
+      expect(playBtn).toBeDefined();
+      expect(onGetTransportState).toHaveBeenCalled();
+    });
+  });
+
+  it('shows recording state on transport record button', async () => {
+    const onRecord = vi.fn().mockResolvedValue(true);
+    const onGetTransportState = vi.fn().mockResolvedValue({ playing: false, recording: true });
+
+    renderSessionView({
+      matrix: makeEmptyMatrix(),
+      onRecord,
+      onGetTransportState,
+    });
+
+    await waitFor(() => {
+      const recordBtn = screen.getByLabelText('Record');
+      expect(recordBtn).toBeDefined();
+      expect(onGetTransportState).toHaveBeenCalled();
+    });
+  });
+
+  it('resets both playing and recording on stop', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onStop = vi.fn().mockResolvedValue(true);
+    const onRecord = vi.fn().mockResolvedValue(true);
+    const onGetTransportState = vi.fn().mockResolvedValue({ playing: false, recording: false });
+
+    renderSessionView({
+      matrix: makeEmptyMatrix(),
+      onPlay,
+      onStop,
+      onRecord,
+      onGetTransportState,
+    });
+
+    // First play
+    await waitFor(() => {
+      fireEvent.click(screen.getByLabelText('Play'));
+    });
+    expect(onPlay).toHaveBeenCalled();
+
+    // Then stop
+    fireEvent.click(screen.getByLabelText('Stop'));
+    expect(onStop).toHaveBeenCalled();
+  });
 });

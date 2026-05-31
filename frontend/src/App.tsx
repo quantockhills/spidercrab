@@ -35,6 +35,7 @@ function App() {
     refreshFxCache,
     play,
     stop,
+    record,
     getTransportState,
     onEvent,
     updateTrack,
@@ -178,6 +179,10 @@ function App() {
                 triggerSlot={triggerSlot}
                 triggerScene={triggerScene}
                 onEvent={onEvent}
+                onPlay={play}
+                onStop={stop}
+                onRecord={record}
+                onGetTransportState={getTransportState}
               />
             </div>
           </div>

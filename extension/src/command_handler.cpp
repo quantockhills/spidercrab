@@ -278,6 +278,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandlePlay(clientId, id, message);
         } else if (command == "transport/stop") {
             HandleStop(clientId, id, message);
+        } else if (command == "transport/record") {
+            HandleRecord(clientId, id, message);
         } else if (command == "fx/enumerate") {
             HandleEnumerateFX(clientId, id, message);
         } else if (command == "fx/refreshCache") {
@@ -800,6 +802,24 @@ void CommandHandler::HandleStop(int clientId, const std::string& id, const std::
     } else if (m_api.Main_OnCommand) {
         m_api.Main_OnCommand(1016, 0); // 1016 = Transport: Stop (fallback)
         SendResponse(clientId, id, true, "{\"stopped\":true}");
+    } else {
+        SendResponse(clientId, id, false, "{\"error\":\"Transport API not loaded\"}");
+    }
+}
+
+void CommandHandler::HandleRecord(int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    if (m_api.Main_OnCommand) {
+        m_api.Main_OnCommand(1013, 0); // 1013 = Transport: Record (toggle)
+        // Read actual state after toggling
+        bool recording = false;
+        if (m_api.GetPlayState) {
+            int state = m_api.GetPlayState();
+            recording = (state & 4) != 0;
+        }
+        SendResponse(clientId, id, true,
+            "{\"recording\":" + std::string(recording ? "true" : "false") + "}");
     } else {
         SendResponse(clientId, id, false, "{\"error\":\"Transport API not loaded\"}");
     }
