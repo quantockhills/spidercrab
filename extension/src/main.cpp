@@ -52,8 +52,34 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
+#include <sys/stat.h>
 
 #include <string>
+
+// === Debug logging ===
+static void DebugLog(const char* msg)
+{
+    // Always write to stderr (visible in REAPER's debug console)
+    fprintf(stderr, "[spidercrab] %s\n", msg);
+    fflush(stderr);
+    
+    // Also try writing to a file in multiple locations
+    const char* paths[] = {
+        "/home/sasha/projects/reaper-ipad/extension/spidercrab.log",
+        "/tmp/spidercrab.log",
+        "Z:\\tmp\\spidercrab.log"
+    };
+    for (int i = 0; i < 3; i++) {
+        FILE* f = fopen(paths[i], "a");
+        if (f) {
+            fprintf(f, "[spidercrab] %s\n", msg);
+            fclose(f);
+            break;
+        }
+    }
+}
+
 #include "command_handler.h"
 #include "websocket_server.h"
 #include "frontend_server.h"
@@ -90,7 +116,7 @@ static bool FindFrontendDist(std::string& outPath)
 {
 #ifdef _WIN32
     HMODULE hm = nullptr;
-    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
             (LPCSTR)&FindFrontendDist, &hm)) {
         char path[MAX_PATH] = {0};
         GetModuleFileNameA(hm, path, MAX_PATH);
@@ -140,9 +166,10 @@ public:
         // Called ~30x/sec — drive the WebSocket + HTTP servers
         g_wsServer.Run();
         g_httpServer.run();
+        static int rcnt; if ((++rcnt % 30) == 1) DebugLog("Run() tick");
     }
 
-    void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }
+    void CloseNoReset() override { g_wsServer.Stop(); }
 
     // Optional: handle FX param changes from Reaper so we can push
     // updates to connected clients
@@ -329,13 +356,26 @@ static reaper_csurf_reg_t g_csurfReg = { "REAPER_IPAD", "Reaper iPad Remote Cont
             FindFrontendDist(frontendPath);
             fprintf(stderr, "[reaper-ipad] Frontend path: %s\n", frontendPath.c_str());
             g_httpServer.SetWebRoot(frontendPath);
-            bool httpOk = g_httpServer.addListenPort(g_httpPort);
-            if (httpOk) {
-                fprintf(stderr, "[reaper-ipad] Frontend server on http://<your-ip>:%d\n", g_httpPort);
+            fprintf(stderr, "[spidercrab] Frontend path set: %s\n", frontendPath.c_str());
+            fflush(stderr);
+            int httpResult = g_httpServer.addListenPort(g_httpPort);
+            fprintf(stderr, "[spidercrab] addListenPort returned: %d\n", httpResult);
+            if (httpResult == 0) {
+                fprintf(stderr, "[spidercrab] HTTP server started on port %d\n", g_httpPort);
             } else {
-                fprintf(stderr, "[reaper-ipad] Frontend server on http://<your-ip>:%d (port busy?)\n", g_httpPort);
+                fprintf(stderr, "[spidercrab] HTTP server port %d bind failed: %d\n", g_httpPort, httpResult);
+            }
+            fflush(stderr);
+            if (httpResult != 0) {
                 g_httpPort = g_httpPort + 1;
-                g_httpServer.addListenPort(g_httpPort);
+                int httpResult2 = g_httpServer.addListenPort(g_httpPort);
+                fprintf(stderr, "[spidercrab] addListenPort(port+1) returned: %d\n", httpResult2);
+                if (httpResult2 == 0) {
+                    fprintf(stderr, "[spidercrab] HTTP server started on port %d\n", g_httpPort);
+                } else {
+                    fprintf(stderr, "[spidercrab] HTTP server port %d also failed: %d\n", g_httpPort, httpResult2);
+                }
+                fflush(stderr);
             }
         }
 
@@ -354,8 +394,10 @@ extern "C" {
 REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     REAPER_PLUGIN_HINSTANCE hInstance, reaper_plugin_info_t* rec)
 {
+    DebugLog("Entry point called");
+    
     if (!rec) {
-        // Plugin unload
+        DebugLog("Plugin unload");
         g_wsServer.Stop();
         delete g_cmdHandler;
         g_cmdHandler = nullptr;
@@ -364,7 +406,7 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         return 0;
     }
 
-    // Check version compatibility
+    DebugLog("API version check");
     if (rec->caller_version != REAPER_PLUGIN_VERSION) {
         return 0;
     }
@@ -374,10 +416,12 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     int loadResult = REAPERAPI_LoadAPI(rec->GetFunc);
     if (loadResult != 0) {
         char buf[256];
-        snprintf(buf, sizeof(buf), "[reaper-ipad] Failed to load API: %d\n", loadResult);
-        fprintf(stderr, buf);
+        snprintf(buf, sizeof(buf), "Failed to load API: %d", loadResult);
+        DebugLog(buf);
         return 0;
     }
+
+    DebugLog("API loaded successfully");
 
     // Read port from ExtState (persistent config)
     char portStr[32] = { 0 };
@@ -467,13 +511,37 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         FindFrontendDist(frontendPath);
         fprintf(stderr, "[reaper-ipad] Frontend path: %s\n", frontendPath.c_str());
         g_httpServer.SetWebRoot(frontendPath);
-        bool httpOk = g_httpServer.addListenPort(g_httpPort);
-        if (httpOk) {
-            fprintf(stderr, "[reaper-ipad] Frontend server on http://<your-ip>:%d\n", g_httpPort);
-        } else {
-            fprintf(stderr, "[reaper-ipad] Frontend server on http://<your-ip>:%d (port busy?)\n", g_httpPort);
-            g_httpPort = g_httpPort + 1;
-            g_httpServer.addListenPort(g_httpPort);
+        {
+            const char* tmp = getenv("TEMP");
+            if (!tmp) tmp = getenv("TMP");
+            if (!tmp) tmp = "C:\\";
+            char logpath[512];
+            snprintf(logpath, sizeof(logpath), "%s\\http_debug.txt", tmp);
+            FILE* logf = fopen(logpath, "w");
+            if (logf) {
+                fprintf(logf, "[spidercrab] Frontend path set: %s\n", frontendPath.c_str());
+                fflush(logf);
+                int httpResult = g_httpServer.addListenPort(g_httpPort);
+                fprintf(logf, "[spidercrab] addListenPort returned: %d\n", httpResult);
+                if (httpResult == 0) {
+                    fprintf(logf, "[spidercrab] HTTP server started on port %d\n", g_httpPort);
+                } else {
+                    fprintf(logf, "[spidercrab] HTTP server port %d bind failed: %d\n", g_httpPort, httpResult);
+                    g_httpPort = g_httpPort + 1;
+                    int httpResult2 = g_httpServer.addListenPort(g_httpPort);
+                    fprintf(logf, "[spidercrab] addListenPort(port+1) returned: %d\n", httpResult2);
+                    if (httpResult2 == 0) {
+                        fprintf(logf, "[spidercrab] HTTP server started on port %d\n", g_httpPort);
+                    } else {
+                        fprintf(logf, "[spidercrab] HTTP server port %d also failed: %d\n", g_httpPort, httpResult2);
+                    }
+                }
+                fflush(logf);
+                fclose(logf);
+            } else {
+                fprintf(stderr, "[spidercrab] FAILED fopen(%s): errno=%d\n", logpath, errno);
+                fflush(stderr);
+            }
         }
     }
 
