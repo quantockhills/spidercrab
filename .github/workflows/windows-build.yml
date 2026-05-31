@@ -1,0 +1,72 @@
+name: Windows Build & Test
+
+on:
+  push:
+    branches: [master, feat/windows-cross-compile, feat/clip-launcher-playtime]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/setup-msvc-dev-cmd@v1
+
+      - name: Download REAPER
+        run: |
+          # 7.x always points to latest REAPER 7.x
+          curl -L -o reaper-install.exe "https://www.reaper.fm/files/7.x/reaper7xx_x64-install.exe"
+          reaper-install.exe /S /PORTABLE /D=C:\reaper
+          mkdir C:\reaper\UserPlugins
+
+      - name: Build DLL
+        working-directory: extension
+        run: |
+          cl /nologo /O2 /EHsc /std:c++17 /D_WIN32 /DWDL_NO_JPEG /DNDEBUG ^
+            /I..\docs\reaper-sdk\sdk /I..\docs\WDL /I..\docs\WDL\WDL ^
+            /I..\docs\WDL\WDL\jnetlib /I..\docs\WDL\WDL\eel2 ^
+            /I..\docs\WDL\WDL\swell ^
+            src\main.cpp src\websocket_server.cpp src\command_handler.cpp ^
+            src\sha1_utils.cpp ..\docs\WDL\WDL\jnetlib\listen.cpp ^
+            ..\docs\WDL\WDL\jnetlib\connection.cpp ^
+            ..\docs\WDL\WDL\jnetlib\util.cpp ^
+            ..\docs\WDL\WDL\jnetlib\asyncdns.cpp ^
+            ..\docs\WDL\WDL\jnetlib\webserver.cpp ^
+            ..\docs\WDL\WDL\jnetlib\httpserv.cpp ^
+            /link /DLL /OUT:build\reaper_spidercrab.dll ^
+            ws2_32.lib kernel32.lib user32.lib shell32.lib
+
+      - name: Deploy DLL
+        run: |
+          mkdir -Force C:\reaper\UserPlugins\frontend
+          copy extension\build\reaper_spidercrab.dll C:\reaper\UserPlugins\
+          copy frontend\dist\* C:\reaper\UserPlugins\frontend\
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Start REAPER & Run Headless Test
+        run: |
+          Start-Process -NoNewWindow -FilePath C:\reaper\reaper.exe -ArgumentList "-newinst","-nosplash","-new"
+          # Wait for WS port
+          $timeout = 30
+          do {
+            Start-Sleep -Seconds 1
+            $timeout--
+            $ws = Test-NetConnection -ComputerName 127.0.0.1 -Port 9224 -InformationLevel Quiet -WarningAction SilentlyContinue
+          } while (-not $ws -and $timeout -gt 0)
+          if (-not $ws) { throw "WebSocket server did not start" }
+          Write-Host "WebSocket server ready"
+          # Run a basic transport test
+          python3 extension/test/quick_connection_test.py 9224
+
+      - name: Stop REAPER
+        if: always()
+        run: taskkill /f /im reaper.exe 2>$null
