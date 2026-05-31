@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -766,11 +767,13 @@ TEST(SampleBrowserTest, GetDirectoryReturnsEntries)
     // don't have a WebSocket server connected, we can't capture the response.
     // Instead, create a test directory and verify JSON parsing works.
     
-    // Create temp directory with known contents
-    system("mkdir -p /tmp/_sample_test && touch /tmp/_sample_test/a.wav /tmp/_sample_test/b.wav");
-    
+    // Create temp directory with known contents (cross-platform)
+    fs::path testDir = fs::temp_directory_path() / "_sample_test";
+    fs::create_directories(testDir);
+    { std::ofstream(testDir / "a.wav").close(); }
+    { std::ofstream(testDir / "b.wav").close(); }
+
     // Verify directory listing works
-    std::string testDir = "/tmp/_sample_test";
     bool foundA = false, foundB = false;
     for (const auto& entry : fs::directory_iterator(testDir)) {
         std::string name = entry.path().filename().string();
@@ -779,9 +782,9 @@ TEST(SampleBrowserTest, GetDirectoryReturnsEntries)
     }
     EXPECT_TRUE(foundA);
     EXPECT_TRUE(foundB);
-    
+
     // Cleanup
-    system("rm -rf /tmp/_sample_test");
+    fs::remove_all(testDir);
 }
 
 TEST(SampleBrowserTest, SendToTrackNoApi)

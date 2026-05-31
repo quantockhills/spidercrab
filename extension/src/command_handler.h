@@ -5,9 +5,10 @@
 #include <mutex>
 #include <string>
 
-// Forward declare REAPER types (included from reaper_plugin.h)
-struct MediaTrack;
-struct ReaProject;
+// Forward declare REAPER types — must match reaper_plugin.h which uses 'class',
+// not 'struct'. MSVC ABI mangles them differently causing linker errors.
+class MediaTrack;
+class ReaProject;
 
 // Reaper API function pointers (loaded via REAPERAPI_LoadAPI)
 struct ReaperAPI {

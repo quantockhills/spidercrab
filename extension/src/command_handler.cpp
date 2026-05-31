@@ -52,9 +52,9 @@ static std::string json_string(const char* s)
     return "\"" + json_escape(s ? s : "") + "\"";
 }
 
-// Forward declare REAPER types
-struct MediaTrack;
-struct ReaProject;
+// Forward declare REAPER types — must match reaper_plugin.h ('class', not 'struct')
+class MediaTrack;
+class ReaProject;
 
 static std::string json_string(const std::string& s)
 {

@@ -3,6 +3,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // ============================================================
 // Frontend web server tests
@@ -76,10 +79,17 @@ protected:
     void SetUp() override
     {
         // Create temp directory
+#ifdef _WIN32
+        char tmpBase[MAX_PATH];
+        GetTempPathA(MAX_PATH, tmpBase);
+        m_webRoot = std::string(tmpBase) + "frontend_test_" + std::to_string(GetCurrentProcessId()) + "\\";
+        CreateDirectoryA(m_webRoot.c_str(), nullptr);
+#else
         char tmp[] = "/tmp/frontend_test_XXXXXX";
         char* dir  = mkdtemp(tmp);
         ASSERT_NE(dir, nullptr);
         m_webRoot = std::string(dir) + "/";
+#endif
 
         // Create test files
         createFile("index.html", "<html><body>Hello</body></html>");
@@ -98,7 +108,12 @@ protected:
     void TearDown() override
     {
         // Cleanup
+#ifdef _WIN32
+        std::string dir = m_webRoot.substr(0, m_webRoot.size() - 1);
+        std::string cmd = "rmdir /s /q \"" + dir + "\"";
+#else
         std::string cmd = "rm -rf " + m_webRoot;
+#endif
         system(cmd.c_str());
     }
 
