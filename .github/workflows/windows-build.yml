@@ -1,10 +1,6 @@
 name: Windows Build & Test
 
 on:
-  push:
-    branches: [master, feat/windows-cross-compile, feat/clip-launcher-playtime]
-  pull_request:
-    branches: [master]
   workflow_dispatch:
 
 jobs:
