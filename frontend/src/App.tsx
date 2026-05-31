@@ -20,10 +20,12 @@ function App() {
     connected,
     tracks,
     refreshTracks,
+    addTrack,
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,
     selectTrack,
+    setTrackVolume,
     enumerateFx,
     getTrackFx,
     getFxParams,
@@ -106,6 +108,10 @@ function App() {
     await toggleTrackArm(index);
   }, [toggleTrackArm]);
 
+  const handleVolumeChange = useCallback(async (index: number, volume: number) => {
+    await setTrackVolume(index, volume);
+  }, [setTrackVolume]);
+
   // ── FX / Param navigation ──
   const handleSelectFx = useCallback(
     (trackIdx: number, fxIdx: number, fxName: string) => {
@@ -116,6 +122,8 @@ function App() {
         fxIdx,
         fxName,
       });
+      // Switch to FX tab so ParamControl appears (Issue #65)
+      setActiveTab('fx');
     },
     [tracks],
   );
@@ -221,9 +229,12 @@ function App() {
             onToggleMute={handleToggleMute}
             onToggleSolo={handleToggleSolo}
             onToggleArm={handleToggleArm}
+            onVolumeChange={handleVolumeChange}
+            onAddTrack={addTrack}
             onRefresh={refreshTracks}
             onPlay={play}
             onStop={stop}
+            onRecord={record}
             onGetTransportState={getTransportState}
             getTrackFx={getTrackFx}
             onSelectFx={handleSelectFx}

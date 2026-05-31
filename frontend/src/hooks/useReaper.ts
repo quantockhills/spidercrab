@@ -108,10 +108,10 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return (resp.payload as any).params as FxParam[];
   }, []);
 
-  const setFxParam = useCallback(async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<boolean> => {
-    if (!clientRef.current) return false;
+  const setFxParam = useCallback(async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<any> => {
+    if (!clientRef.current) return {};
     const resp = await clientRef.current.send('fx/setParam', { trackIdx, fxIdx, paramIdx, value });
-    return resp.success;
+    return resp;
   }, []);
 
   const addFx = useCallback(async (trackIdx: number, fxName: string): Promise<number> => {
@@ -133,6 +133,13 @@ export function useReaper(opts: UseReaperOptions = {}) {
   }, [getTracks]);
 
   // Track control commands (#26)
+  const addTrack = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/add');
+    if (resp.success) await refreshTracks();
+    return resp.success;
+  }, [refreshTracks]);
+
   const setTrackMute = useCallback(async (trackIdx: number, muted: boolean): Promise<boolean> => {
     if (!clientRef.current) return false;
     const resp = await clientRef.current.send('track/setMute', { trackIdx, muted: muted ? 'true' : 'false' });
@@ -181,6 +188,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     if (ok) await refreshTracks();
     return ok;
   }, [tracks, setTrackArm, refreshTracks]);
+
+  const setTrackVolume = useCallback(async (trackIdx: number, volume: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/setVolume', { trackIdx, volume });
+    return resp.success;
+  }, []);
 
   // Sample browser commands
   const getDirectory = useCallback(async (path: string): Promise<{entries: DirEntry[]}> => {
@@ -310,6 +323,8 @@ export function useReaper(opts: UseReaperOptions = {}) {
     setTrackSolo,
     setTrackArm,
     setTrackSelected,
+    setTrackVolume,
+    addTrack,
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,

@@ -53,6 +53,79 @@ function renderTrackOverview(props: Partial<Parameters<typeof TrackOverview>[0]>
 
 // ── Tests ────────────────────────────────────────────────────
 
+describe('TrackOverview — transport bar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows record button when onRecord is provided', () => {
+    renderTrackOverview({ onPlay: vi.fn(), onStop: vi.fn(), onRecord: vi.fn() });
+    expect(screen.getByTestId('transport-record')).toBeDefined();
+  });
+
+  it('does not show record button when onRecord is not provided', () => {
+    renderTrackOverview({ onPlay: vi.fn(), onStop: vi.fn() });
+    expect(screen.queryByTestId('transport-record')).toBeNull();
+  });
+
+  it('calls onRecord and updates isRecording state on record click', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onStop = vi.fn().mockResolvedValue(true);
+    const onRecord = vi.fn().mockResolvedValue(true);
+    const onGetTransportState = vi.fn().mockResolvedValue({ playing: false, recording: true });
+    renderTrackOverview({ onPlay, onStop, onRecord, onGetTransportState });
+
+    fireEvent.click(screen.getByTestId('transport-record'));
+
+    await waitFor(() => {
+      expect(onRecord).toHaveBeenCalledOnce();
+    });
+    expect(onGetTransportState).toHaveBeenCalledOnce();
+
+    // Should show recording status
+    await waitFor(() => {
+      expect(screen.getByText('Recording')).toBeDefined();
+    });
+  });
+
+  it('shows recording status when recording is active', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onStop = vi.fn().mockResolvedValue(true);
+    const onRecord = vi.fn().mockResolvedValue(true);
+    const onGetTransportState = vi.fn().mockResolvedValue({ playing: false, recording: true });
+    renderTrackOverview({ onPlay, onStop, onRecord, onGetTransportState });
+
+    fireEvent.click(screen.getByTestId('transport-record'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Recording')).toBeDefined();
+    });
+
+    // Record button should have active styling
+    const recordBtn = screen.getByTestId('transport-record');
+    expect(recordBtn.className).toContain('accent-red');
+  });
+
+  it('does not update state when onRecord fails', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onStop = vi.fn().mockResolvedValue(true);
+    const onRecord = vi.fn().mockResolvedValue(false);
+    const onGetTransportState = vi.fn();
+    renderTrackOverview({ onPlay, onStop, onRecord, onGetTransportState });
+
+    fireEvent.click(screen.getByTestId('transport-record'));
+
+    await waitFor(() => {
+      expect(onRecord).toHaveBeenCalledOnce();
+    });
+    // Should NOT call getTransportState when record fails
+    expect(onGetTransportState).not.toHaveBeenCalled();
+
+    // Status should remain Stopped
+    expect(screen.getByText('Stopped')).toBeDefined();
+  });
+});
+
 describe('TrackOverview — FX grid cards', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -122,6 +195,154 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.queryByText('Loading FX…')).toBeNull();
     });
   });
+
+  // ── Volume slider tests (Issue #66) ──
+
+  function getSliders() {
+    return screen.getAllByTestId('track-volume-slider');
+  }
+
+  it('shows VolumeBar reflecting track volume', () => {
+    renderTrackOverview();
+
+    // Each track row should have a volume slider element
+    const sliders = getSliders();
+    expect(sliders).toHaveLength(2); // 2 tracks
+
+    // Track 0 has volume 0.8, Track 1 has volume 0.7
+    expect((sliders[0] as HTMLInputElement).value).toBe('0.8');
+    expect((sliders[1] as HTMLInputElement).value).toBe('0.7');
+  });
+
+  it('calls onVolumeChange when volume slider is changed', () => {
+    const onVolumeChange = vi.fn();
+    renderTrackOverview({ onVolumeChange });
+
+    const sliders = getSliders();
+    expect(sliders).toHaveLength(2);
+
+    // Change volume of track 0 to 0.5
+    fireEvent.change(sliders[0], { target: { value: '0.5' } });
+
+    expect(onVolumeChange).toHaveBeenCalledOnce();
+    expect(onVolumeChange).toHaveBeenCalledWith(0, 0.5);
+  });
+
+  it('calls onVolumeChange with correct track index for each slider', () => {
+    const onVolumeChange = vi.fn();
+    renderTrackOverview({ onVolumeChange });
+
+    const sliders = getSliders();
+
+    // Change volume of track 1 to 0.2
+    fireEvent.change(sliders[1], { target: { value: '0.2' } });
+
+    expect(onVolumeChange).toHaveBeenCalledOnce();
+    expect(onVolumeChange).toHaveBeenCalledWith(1, 0.2);
+  });
+
+  it('volume slider has correct attributes (min=0, max=1, step=0.01)', () => {
+    renderTrackOverview();
+
+    const slider = getSliders()[0] as HTMLInputElement;
+    expect(slider.min).toBe('0');
+    expect(slider.max).toBe('1');
+    expect(slider.step).toBe('0.01');
+  });
+
+  it('does not crash when onVolumeChange is not provided', () => {
+    // onVolumeChange is optional — should not crash if omitted
+    renderTrackOverview();
+
+    const sliders = getSliders();
+    expect(sliders).toHaveLength(2);
+
+    // Change should not throw even without callback
+    expect(() => {
+      fireEvent.change(sliders[0], { target: { value: '0.3' } });
+    }).not.toThrow();
+  });
+
+  // ── Add Track button tests (Issue #67) ──
+
+  it('renders Add Track button in header when onAddTrack is provided', () => {
+    const onAddTrack = vi.fn();
+    renderTrackOverview({ onAddTrack });
+
+    const addBtn = screen.getByTestId('add-track-button');
+    expect(addBtn).toBeDefined();
+    expect(addBtn.textContent).toBe('+ Track');
+  });
+
+  it('calls onAddTrack when Add Track button is clicked', () => {
+    const onAddTrack = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onAddTrack });
+
+    fireEvent.click(screen.getByTestId('add-track-button'));
+    expect(onAddTrack).toHaveBeenCalledOnce();
+  });
+
+  it('does not render Add Track button when onAddTrack is not provided', () => {
+    renderTrackOverview();
+    expect(screen.queryByTestId('add-track-button')).toBeNull();
+  });
+
+  it('renders Add Track button on empty state when onAddTrack is provided', () => {
+    const onAddTrack = vi.fn();
+    render(
+      <TrackOverview
+        tracks={[]}
+        selectedTrack={null}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onAddTrack={onAddTrack}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const addBtn = screen.getByTestId('add-track-empty');
+    expect(addBtn).toBeDefined();
+    expect(addBtn.textContent).toBe('+ Add Track');
+  });
+
+  it('calls onAddTrack from empty state button', () => {
+    const onAddTrack = vi.fn().mockResolvedValue(true);
+    render(
+      <TrackOverview
+        tracks={[]}
+        selectedTrack={null}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onAddTrack={onAddTrack}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('add-track-empty'));
+    expect(onAddTrack).toHaveBeenCalledOnce();
+  });
+
+  it('does not render Add Track button on empty state when onAddTrack is omitted', () => {
+    render(
+      <TrackOverview
+        tracks={[]}
+        selectedTrack={null}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('add-track-empty')).toBeNull();
+  });
+
+  // ── Original test continues below ──
 
   it('does not render FX section when getTrackFx and onSelectFx are not provided', async () => {
     render(

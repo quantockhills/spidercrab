@@ -9,8 +9,8 @@ interface ParamControlProps {
   fxIdx: number;
   fxName: string;
   getFxParams: (trackIdx: number, fxIdx: number) => Promise<FxParam[]>;
-  setFxParam: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<boolean>;
-  deleteFx: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  setFxParam: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<any>;
+  deleteFx: (trackIdx: number, fxIdx: number) => Promise<any>;
   onEvent: (pattern: string, handler: (data: any) => void) => () => void;
   onBack: () => void;
 }
@@ -37,6 +37,7 @@ export function ParamControl({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const draggingParamRef = useRef<number | null>(null);
 
   // Load params on mount + subscribe to real-time updates
   useEffect(() => {
@@ -60,14 +61,17 @@ export function ParamControl({
   }, [trackIdx, fxIdx, getFxParams]);
 
   // Subscribe to real-time param change events (Issue #52)
+  // While dragging a param, ignore events for that param to avoid
+  // slider jumping (optimistic update vs server event race, Issue #73)
   useEffect(() => {
     const unsubscribe = onEvent('event:fx_param_changed', (msg: any) => {
       const { trackIdx: eventTrack, fxIdx: eventFx, params: changedParams } = msg.payload || {};
-      // Only update if this event is for the FX we're viewing
       if (eventTrack === trackIdx && eventFx === fxIdx && Array.isArray(changedParams)) {
         setParams((prev) =>
           prev.map((p) => {
             const changed = changedParams.find((cp: any) => cp.index === p.index);
+            // Skip event updates for the param currently being dragged
+            if (changed && draggingParamRef.current === p.index) return p;
             return changed ? { ...p, value: changed.value, min: changed.min, max: changed.max, mid: changed.mid } : p;
           }),
         );
@@ -78,11 +82,17 @@ export function ParamControl({
 
   const handleParamChange = useCallback(
     async (paramIdx: number, value: number) => {
-      // Optimistic update
+      // Optimistic update for immediate visual feedback
       setParams((prev) =>
         prev.map((p) => (p.index === paramIdx ? { ...p, value } : p)),
       );
-      await setFxParam(trackIdx, fxIdx, paramIdx, value);
+      const resp = await setFxParam(trackIdx, fxIdx, paramIdx, value);
+      // If server returned a committed value, use it (corrects rounding)
+      if (resp?.payload?.value !== undefined) {
+        setParams((prev) =>
+          prev.map((p) => (p.index === paramIdx ? { ...p, value: resp.payload.value as number } : p)),
+        );
+      }
     },
     [trackIdx, fxIdx, setFxParam],
   );
@@ -170,6 +180,7 @@ export function ParamControl({
                 key={param.index}
                 param={param}
                 onChange={(value) => handleParamChange(param.index, value)}
+                draggingParamRef={draggingParamRef}
               />
             ))}
           </div>
@@ -184,9 +195,10 @@ export function ParamControl({
 interface ParamSliderProps {
   param: FxParam;
   onChange: (value: number) => void;
+  draggingParamRef: React.MutableRefObject<number | null>;
 }
 
-function ParamSlider({ param, onChange }: ParamSliderProps) {
+function ParamSlider({ param, onChange, draggingParamRef }: ParamSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localValue, setLocalValue] = useState(param.value);
@@ -207,6 +219,7 @@ function ParamSlider({ param, onChange }: ParamSliderProps) {
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
+      draggingParamRef.current = param.index;
       setDragging(true);
 
       const slider = trackRef.current;
@@ -225,6 +238,7 @@ function ParamSlider({ param, onChange }: ParamSliderProps) {
 
       const handlePointerUp = (ev: PointerEvent) => {
         setDragging(false);
+        draggingParamRef.current = null;
         window.removeEventListener('pointermove', handlePointerMove);
         window.removeEventListener('pointerup', handlePointerUp);
 
@@ -246,7 +260,7 @@ function ParamSlider({ param, onChange }: ParamSliderProps) {
 
   // Double-tap to reset to mid value
   const handleDoubleTap = useCallback(() => {
-    const midValue = param.mid >= param.min && param.mid <= param.max ? param.mid : 0.5;
+    const midValue = param.mid >= param.min && param.mid <= param.max ? param.mid : (param.min + param.max) / 2;
     setLocalValue(midValue);
     onChange(midValue);
   }, [param.mid, param.min, param.max, onChange]);
@@ -296,10 +310,10 @@ function ParamSlider({ param, onChange }: ParamSliderProps) {
 function formatParamValue(value: number, paramName: string): string {
   const lower = paramName.toLowerCase();
 
+  // Value is now the actual display value (converted from normalized by backend)
+  // For volume/gain/dB params: value IS the dB value
   if (lower.includes('db') || lower.includes('gain') || lower.includes('volume')) {
-    // 0-1 normalized volume → dB approximation
-    const db = value <= 0 ? -60 : 20 * Math.log10(Math.max(value, 0.001));
-    return `${db.toFixed(1)} dB`;
+    return `${value.toFixed(1)} dB`;
   }
 
   if (lower.includes('hz') || lower.includes('freq') || lower.includes('cutoff')) {
@@ -312,7 +326,7 @@ function formatParamValue(value: number, paramName: string): string {
   }
 
   if (lower.includes('%') || lower.includes('wet') || lower.includes('dry') || lower.includes('mix')) {
-    return `${(value * 100).toFixed(0)}%`;
+    return `${value.toFixed(0)}%`;
   }
 
   if (lower.includes('q') || lower.includes('ratio')) {
@@ -320,12 +334,12 @@ function formatParamValue(value: number, paramName: string): string {
   }
 
   if (lower.includes('pan') || lower.includes('balance')) {
-    const pct = ((value - 0.5) * 200).toFixed(0);
+    const pct = value.toFixed(0);
     const side = parseFloat(pct) < 0 ? 'L' : parseFloat(pct) > 0 ? 'R' : 'C';
     return `${pct}% ${side}`;
   }
 
-  // Default: show normalized or raw
+  // Default: show actual value
   if (value > 100 || value < -100) {
     return value.toFixed(0);
   }
