@@ -80,14 +80,27 @@ export function ParamControl({
     return unsubscribe;
   }, [trackIdx, fxIdx, onEvent]);
 
+  const draggingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleParamChange = useCallback(
     async (paramIdx: number, value: number) => {
       // Optimistic update for immediate visual feedback
       setParams((prev) =>
         prev.map((p) => (p.index === paramIdx ? { ...p, value } : p)),
       );
+      
+      // Safety timeout: clear dragging ref after 2s even if no response
+      if (draggingTimeoutRef.current) clearTimeout(draggingTimeoutRef.current);
+      draggingTimeoutRef.current = setTimeout(() => {
+        draggingParamRef.current = null;
+        draggingTimeoutRef.current = null;
+      }, 2000);
+      
       const resp = await setFxParam(trackIdx, fxIdx, paramIdx, value);
-      // If server returned a committed value, use it (corrects rounding)
+      // Clear dragging ref after server responds — prevents stale events
+      // from overwriting before the response arrives
+      draggingParamRef.current = null;
+      // If server returned a committed value, use it (authoritative)
       if (resp?.payload?.value !== undefined) {
         setParams((prev) =>
           prev.map((p) => (p.index === paramIdx ? { ...p, value: resp.payload.value as number } : p)),
@@ -214,7 +227,7 @@ function ParamSlider({ param, onChange, draggingParamRef }: ParamSliderProps) {
   const pct = Math.max(0, Math.min(100, normalized * 100));
 
   // Format display value
-  const displayValue = formatParamValue(localValue, param.name);
+  const displayValue = formatParamValue(localValue, param.name, param.min, param.max);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -238,9 +251,12 @@ function ParamSlider({ param, onChange, draggingParamRef }: ParamSliderProps) {
 
       const handlePointerUp = (ev: PointerEvent) => {
         setDragging(false);
-        draggingParamRef.current = null;
         window.removeEventListener('pointermove', handlePointerMove);
         window.removeEventListener('pointerup', handlePointerUp);
+
+        // Don't clear draggingParamRef here — let handleParamChange clear it
+        // after the server response arrives. This prevents stale fx_param_changed
+        // events from overwriting the value before the response comes back.
 
         // If no movement happened, treat as a tap (jump to position)
         if (!didMove) {
@@ -307,10 +323,11 @@ function ParamSlider({ param, onChange, draggingParamRef }: ParamSliderProps) {
 
 // ── Display value formatting ──────────────────────────────────
 
-function formatParamValue(value: number, paramName: string): string {
+function formatParamValue(value: number, paramName: string, min: number, max: number): string {
   const lower = paramName.toLowerCase();
+  const range = max - min;
 
-  // Value is now the actual display value (converted from normalized by backend)
+  // Value is the actual display value (converted from normalized by backend)
   // For volume/gain/dB params: value IS the dB value
   if (lower.includes('db') || lower.includes('gain') || lower.includes('volume')) {
     return `${value.toFixed(1)} dB`;
@@ -325,8 +342,10 @@ function formatParamValue(value: number, paramName: string): string {
     return `${value.toFixed(1)} s`;
   }
 
+  // Percentage/bliend/mix params: if range is 0-1, scale to 0-100
   if (lower.includes('%') || lower.includes('wet') || lower.includes('dry') || lower.includes('mix')) {
-    return `${value.toFixed(0)}%`;
+    const pct = range <= 1 ? value * 100 : value;
+    return `${pct.toFixed(0)}%`;
   }
 
   if (lower.includes('q') || lower.includes('ratio')) {
@@ -340,6 +359,10 @@ function formatParamValue(value: number, paramName: string): string {
   }
 
   // Default: show actual value
+  // If range is 0-1, this is a normalized internal param — show 3 decimal places
+  if (range <= 1) {
+    return value.toFixed(3);
+  }
   if (value > 100 || value < -100) {
     return value.toFixed(0);
   }
