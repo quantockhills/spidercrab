@@ -52,32 +52,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <cerrno>
-#include <sys/stat.h>
 
 #include <string>
 
 // === Debug logging ===
 static void DebugLog(const char* msg)
 {
-    // Always write to stderr (visible in REAPER's debug console)
     fprintf(stderr, "[spidercrab] %s\n", msg);
     fflush(stderr);
-    
-    // Also try writing to a file in multiple locations
-    const char* paths[] = {
-        "/home/sasha/projects/reaper-ipad/extension/spidercrab.log",
-        "/tmp/spidercrab.log",
-        "Z:\\tmp\\spidercrab.log"
-    };
-    for (int i = 0; i < 3; i++) {
-        FILE* f = fopen(paths[i], "a");
-        if (f) {
-            fprintf(f, "[spidercrab] %s\n", msg);
-            fclose(f);
-            break;
-        }
-    }
 }
 
 #include "command_handler.h"
@@ -169,7 +151,7 @@ public:
         static int rcnt; if ((++rcnt % 30) == 1) DebugLog("Run() tick");
     }
 
-    void CloseNoReset() override { g_wsServer.Stop(); }
+    void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }
 
     // Optional: handle FX param changes from Reaper so we can push
     // updates to connected clients
