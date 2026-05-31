@@ -398,6 +398,7 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     
     if (!rec) {
         DebugLog("Plugin unload");
+        JNL::close_socketlib();
         g_wsServer.Stop();
         delete g_cmdHandler;
         g_cmdHandler = nullptr;
@@ -410,6 +411,8 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     if (rec->caller_version != REAPER_PLUGIN_VERSION) {
         return 0;
     }
+
+    JNL::open_socketlib();
 
     g_pluginInfo = rec;
 

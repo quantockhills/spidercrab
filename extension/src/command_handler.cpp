@@ -882,22 +882,10 @@ void CommandHandler::HandleSampleSendToTrack(
             MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
             if (track) {
                 // Deselect all tracks first
-                for (int i = 0; i < m_api.CountTracks(nullptr); i++) {
-                    MediaTrack* t = m_api.GetTrack(nullptr, i);
-                    if (t && t != track) {
-                        int zero = 0;
-                        m_api.GetSetMediaTrackInfo(t, "I_SELECTED", &zero);
-                    }
-                }
-                // Select target track
-                int one = 1;
-                m_api.GetSetMediaTrackInfo(track, "I_SELECTED", &one);
-            }
-        }
-    }
-
-    // InsertMedia mode: 512|0 = add media to absolute track index (trackIdx goes in high word)
-    int result = m_api.InsertMedia(filePath.c_str(), 0);
+        // Avoid I_SELECTED (known crash trigger on Reaper).
+        // Use InsertMedia with mode=512 to target absolute track index.
+        int insertFlags = 512 | (trackIdx << 16);
+        int result = m_api.InsertMedia(filePath.c_str(), insertFlags);
 
     if (result > 0) {
         SendResponse(clientId, id, true,
