@@ -243,22 +243,6 @@ export function TrackOverview({
         <div className="flex flex-col items-center justify-center flex-1 text-[var(--text-secondary)] space-y-3">
           <div className="text-5xl">🎛️</div>
           <p className="text-sm">No tracks loaded</p>
-<<<<<<< HEAD
-          {onAddTrack && (
-            <button
-              onClick={onAddTrack}
-              className="px-5 py-2.5 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:brightness-95 transition-colors"
-            >
-              + Add Track
-            </button>
-          )}
-          <button
-            onClick={onRefresh}
-            className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:brightness-95 transition-colors"
-          >
-            Refresh
-          </button>
-=======
           <div className="flex gap-2">
             {onAddTrack && (
               <button
@@ -276,7 +260,6 @@ export function TrackOverview({
               Refresh
             </button>
           </div>
->>>>>>> github/master
         </div>
       ) : collapsed ? (
         <div className="flex-1 flex items-center justify-center text-[var(--text-secondary)] text-sm">
