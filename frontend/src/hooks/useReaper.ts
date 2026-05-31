@@ -209,6 +209,15 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return resp.success;
   }, []);
 
+  const addTrack = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/add');
+    if (resp.success) {
+      await refreshTracks();
+    }
+    return resp.success;
+  }, [refreshTracks]);
+
   const selectTrack = useCallback(async (trackIdx: number): Promise<boolean> => {
     return await setTrackSelected(trackIdx, true);
   }, [setTrackSelected]);
@@ -241,6 +250,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     setTrackArm,
     setTrackSelected,
     setTrackVolume,
+    addTrack,
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,

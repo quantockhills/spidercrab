@@ -190,6 +190,87 @@ describe('TrackOverview — FX grid cards', () => {
     }).not.toThrow();
   });
 
+  // ── Add Track button tests (Issue #67) ──
+
+  it('renders Add Track button in header when onAddTrack is provided', () => {
+    const onAddTrack = vi.fn();
+    renderTrackOverview({ onAddTrack });
+
+    const addBtn = screen.getByTestId('add-track-button');
+    expect(addBtn).toBeDefined();
+    expect(addBtn.textContent).toBe('+ Track');
+  });
+
+  it('calls onAddTrack when Add Track button is clicked', () => {
+    const onAddTrack = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onAddTrack });
+
+    fireEvent.click(screen.getByTestId('add-track-button'));
+    expect(onAddTrack).toHaveBeenCalledOnce();
+  });
+
+  it('does not render Add Track button when onAddTrack is not provided', () => {
+    renderTrackOverview();
+    expect(screen.queryByTestId('add-track-button')).toBeNull();
+  });
+
+  it('renders Add Track button on empty state when onAddTrack is provided', () => {
+    const onAddTrack = vi.fn();
+    render(
+      <TrackOverview
+        tracks={[]}
+        selectedTrack={null}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onAddTrack={onAddTrack}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const addBtn = screen.getByTestId('add-track-empty');
+    expect(addBtn).toBeDefined();
+    expect(addBtn.textContent).toBe('+ Add Track');
+  });
+
+  it('calls onAddTrack from empty state button', () => {
+    const onAddTrack = vi.fn().mockResolvedValue(true);
+    render(
+      <TrackOverview
+        tracks={[]}
+        selectedTrack={null}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onAddTrack={onAddTrack}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('add-track-empty'));
+    expect(onAddTrack).toHaveBeenCalledOnce();
+  });
+
+  it('does not render Add Track button on empty state when onAddTrack is omitted', () => {
+    render(
+      <TrackOverview
+        tracks={[]}
+        selectedTrack={null}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('add-track-empty')).toBeNull();
+  });
+
+  // ── Original test continues below ──
+
   it('does not render FX section when getTrackFx and onSelectFx are not provided', async () => {
     render(
       <TrackOverview

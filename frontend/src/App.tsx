@@ -19,6 +19,7 @@ function App() {
     connected,
     tracks,
     refreshTracks,
+    addTrack,
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,
@@ -198,6 +199,7 @@ function App() {
             onToggleSolo={handleToggleSolo}
             onToggleArm={handleToggleArm}
             onVolumeChange={handleVolumeChange}
+            onAddTrack={addTrack}
             onRefresh={refreshTracks}
             onPlay={play}
             onStop={stop}
