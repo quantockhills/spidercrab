@@ -444,13 +444,17 @@ void CommandHandler::HandleGetFXParams(
             paramsList += ",";
         double minVal = 0, maxVal = 0, midVal = 0;
         double val       = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
+        // TrackFX_GetParamEx returns the normalized value (0.0-1.0) but fills
+        // minVal/maxVal with the actual display range (e.g. -150 to 0 for volume).
+        // Convert to the actual display value so the frontend doesn't need to.
+        double actualVal = minVal + val * (maxVal - minVal);
         char   name[256] = { 0 };
         m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
 
         paramsList += "{";
         paramsList += json_string("index") + ":" + std::to_string(i) + ",";
         paramsList += json_string("name") + ":" + json_string(name) + ",";
-        paramsList += json_string("value") + ":" + std::to_string(val) + ",";
+        paramsList += json_string("value") + ":" + std::to_string(actualVal) + ",";
         paramsList += json_string("min") + ":" + std::to_string(minVal) + ",";
         paramsList += json_string("max") + ":" + std::to_string(maxVal) + ",";
         paramsList += json_string("mid") + ":" + std::to_string(midVal);
@@ -492,7 +496,13 @@ void CommandHandler::HandleSetFXParam(
         return;
     }
 
-    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, value);
+    // Convert the actual display value back to normalized (0.0-1.0) for TrackFX_SetParam
+    double minVal = 0, maxVal = 0, midVal = 0;
+    if (m_api.TrackFX_GetParamEx) {
+        m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
+    }
+    double normalizedVal = (value - minVal) / (maxVal - minVal);
+    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, normalizedVal);
     SendResponse(
         clientId, id, success, "{\"set\":" + std::string(success ? "true" : "false") + "}");
 }
@@ -971,6 +981,8 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     if (m_api.TrackFX_GetParamEx) {
         m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
     }
+    // Convert normalized to actual display value (consistent with HandleGetFXParams)
+    double actualVal = minVal + value * (maxVal - minVal);
 
     std::string event = "{";
     event += "\"type\":\"event\",";
@@ -981,7 +993,7 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     event += "\"params\":[{";
     event += "\"index\":" + std::to_string(paramIdx) + ",";
     event += "\"name\":\"" + json_escape(name) + "\",";
-    event += "\"value\":" + std::to_string(value) + ",";
+    event += "\"value\":" + std::to_string(actualVal) + ",";
     event += "\"min\":" + std::to_string(minVal) + ",";
     event += "\"max\":" + std::to_string(maxVal) + ",";
     event += "\"mid\":" + std::to_string(midVal);

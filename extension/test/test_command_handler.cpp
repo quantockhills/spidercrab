@@ -505,8 +505,8 @@ TEST(FXRoundtripTest, GetTrackFXReturnsSpecificNames)
     MockState state;
     MockTrack t;
     t.name = "Guitar";
-    MockTrack::MockFX f1{ 0, "ReaEQ", { "Frequency", "Gain", "Q" }, { 1000.0, 0.0, 1.0 }, { 20.0, -24.0, 0.01 }, { 20000.0, 24.0, 10.0 }, { 1000.0, 0.0, 1.0 } };
-    MockTrack::MockFX f2{ 1, "ReaComp", { "Threshold", "Ratio", "Attack", "Release" }, { -18.0, 4.0, 10.0, 100.0 }, { -60.0, 1.0, 0.1, 1.0 }, { 0.0, 20.0, 300.0, 1000.0 }, { -18.0, 4.0, 10.0, 100.0 } };
+    MockTrack::MockFX f1{ 0, "ReaEQ", { "Frequency", "Gain", "Q" }, { 0.5, 0.5, 0.5 }, { 20.0, -24.0, 0.01 }, { 20000.0, 24.0, 10.0 }, { 1000.0, 0.0, 1.0 } };
+    MockTrack::MockFX f2{ 1, "ReaComp", { "Threshold", "Ratio", "Attack", "Release" }, { 0.5, 0.5, 0.5, 0.5 }, { -60.0, 1.0, 0.1, 1.0 }, { 0.0, 20.0, 300.0, 1000.0 }, { -18.0, 4.0, 10.0, 100.0 } };
     t.fx = { f1, f2 };
     state.tracks = { t };
 
@@ -571,7 +571,7 @@ TEST(FXRoundtripTest, GetFXParamsReturnsSpecificParamNames)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency", "Gain", "Q" },
-        { 1000.0, -3.0, 0.7 },
+        { 0.5, 0.5, 0.5 },  // normalized values
         { 20.0, -24.0, 0.01 },
         { 20000.0, 24.0, 10.0 },
         { 1000.0, 0.0, 1.0 } });
@@ -587,9 +587,13 @@ TEST(FXRoundtripTest, GetFXParamsReturnsSpecificParamNames)
     EXPECT_NE(resp.find("\"Frequency\""), std::string::npos);
     EXPECT_NE(resp.find("\"Gain\""), std::string::npos);
     EXPECT_NE(resp.find("\"Q\""), std::string::npos);
-    EXPECT_NE(resp.find("\"value\":1000"), std::string::npos);
-    EXPECT_NE(resp.find("\"value\":-3"), std::string::npos);
-    EXPECT_NE(resp.find("\"value\":0.7"), std::string::npos);
+    // After conversion: actualVal = min + normalized * (max-min)
+    // Freq: 20 + 0.5*(20000-20) = 10010
+    EXPECT_NE(resp.find("\"value\":10010"), std::string::npos);
+    // Gain: -24 + 0.5*(24-(-24)) = 0
+    EXPECT_NE(resp.find("\"value\":0"), std::string::npos);
+    // Q: 0.01 + 0.5*(10-0.01) = 5.005
+    EXPECT_NE(resp.find("\"value\":5.005"), std::string::npos);
     EXPECT_EQ(resp.find("\"error\""), std::string::npos);
 }
 
@@ -599,7 +603,7 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency", "Gain" },
-        { 1000.0, 0.0 },
+        { 0.5, 0.0 },  // normalized values
         { 20.0, -24.0 },
         { 20000.0, 24.0 },
         { 1000.0, 0.0 } });
@@ -608,7 +612,8 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    // Set Frequency to 5000.0
+    // Set Frequency to 5000.0 (actual display value)
+    // Backend converts: normalized = (5000-20)/(20000-20) ≈ 0.24925
     handler->HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"set1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"set\":true"), std::string::npos);
@@ -617,9 +622,10 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     responses.clear();
     handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"get1"})");
     ASSERT_EQ(responses.size(), 1u);
+    // Frequency should be ~5000 (may have minor float rounding via normalized round-trip)
     EXPECT_NE(responses[0].find("\"value\":5000"), std::string::npos);
-    // Gain should still be 0.0
-    EXPECT_NE(responses[0].find("\"value\":0"), std::string::npos);
+    // Gain should still be -24 (normalized=0.0 → actual=-24)
+    EXPECT_NE(responses[0].find("\"value\":-24"), std::string::npos);
 }
 
 TEST(FXRoundtripTest, AddFXThenListIncludesIt)
@@ -691,7 +697,7 @@ TEST(FXRoundtripTest, ParamMinMaxMidAreCorrect)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency" },
-        { 1000.0 },
+        { 0.5 },  // normalized
         { 20.0 },
         { 20000.0 },
         { 1000.0 } });
@@ -1071,7 +1077,7 @@ TEST(Phase1MVPTest, FullFxParamRoundTrip)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         {"Frequency", "Gain", "Q"},
-        {1000.0, -3.0, 0.7},
+        {0.5, 0.5, 0.5},  // normalized values
         {20.0, -24.0, 0.01},
         {20000.0, 24.0, 10.0},
         {1000.0, 0.0, 1.0}
@@ -1085,12 +1091,13 @@ TEST(Phase1MVPTest, FullFxParamRoundTrip)
     handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"fx1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"Frequency\""), std::string::npos);
-    EXPECT_NE(responses[0].find("\"value\":1000"), std::string::npos);
+    // Freq: 20 + 0.5*(20000-20) = 10010
+    EXPECT_NE(responses[0].find("\"value\":10010"), std::string::npos);
     EXPECT_NE(responses[0].find("\"min\":20"), std::string::npos);
     EXPECT_NE(responses[0].find("\"max\":20000"), std::string::npos);
     EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
 
-    // Step 2: Set Frequency to 5000
+    // Step 2: Set Frequency to 5000 (actual display value)
     responses.clear();
     handler->HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"fx2"})");
     ASSERT_EQ(responses.size(), 1u);
@@ -1101,8 +1108,8 @@ TEST(Phase1MVPTest, FullFxParamRoundTrip)
     handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"fx3"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"value\":5000"), std::string::npos);
-    // Gain should still be -3.0
-    EXPECT_NE(responses[0].find("\"value\":-3"), std::string::npos);
+    // Gain: -24 + 0.5*(24-(-24)) = 0
+    EXPECT_NE(responses[0].find("\"value\":0"), std::string::npos);
 }
 
 TEST(Phase1MVPTest, PreCacheFXPopulatesCache)
