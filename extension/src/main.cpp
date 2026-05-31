@@ -37,6 +37,8 @@
 #define REAPERAPI_WANT_EnumProjects
 #define REAPERAPI_WANT_InsertMedia
 #define REAPERAPI_WANT_EnumerateFiles
+#define REAPERAPI_WANT_CreateMIDIOutput
+#define REAPERAPI_WANT_GetMaxMidiOutputs
 
 #include "reaper_plugin.h"
 #include "reaper_plugin_functions.h"
@@ -459,6 +461,31 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         g_cmdHandler->PreCacheFX();
     }
 
+    // Initialize Playtime 2 API (resolves HB_* function pointers)
+    initPlaytimeApi(rec->GetFunc);
+
+    // Set up MIDI output for Playtime clip launcher
+    if (g_cmdHandler && CreateMIDIOutput) {
+        // Use the first MIDI output device
+        midi_Output* midiOut = CreateMIDIOutput(0, 1, nullptr);
+        if (midiOut) {
+            fprintf(stderr, "[reaper-ipad] MIDI output initialized for Playtime clip launcher\n");
+            g_cmdHandler->GetMidi().setSendFunc([](int status, int d1, int d2) {
+                static midi_Output* s_midiOut = nullptr;
+                if (!s_midiOut) {
+                    s_midiOut = CreateMIDIOutput(0, 1, nullptr);
+                }
+                if (s_midiOut) {
+                    s_midiOut->Send(status, d1, d2, -1);
+                }
+            });
+        } else {
+            fprintf(stderr, "[reaper-ipad] MIDI output creation failed (no devices?)\n");
+        }
+    } else if (g_cmdHandler) {
+        fprintf(stderr, "[reaper-ipad] MIDI output not available (CreateMIDIOutput not resolved)\n");
+    }
+
     // Set up WebSocket message handler
     g_wsServer.SetMessageCallback([&](int clientId, const std::string& msg) {
         if (g_cmdHandler) {
@@ -537,6 +564,9 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     if (g_cmdHandler) {
         g_cmdHandler->PreCacheFX();
     }
+
+    // Initialize Playtime 2 API (resolves HB_* function pointers)
+    initPlaytimeApi(rec->GetFunc);
 
     // Save extstate for next launch
     if (SetProjExtState) {

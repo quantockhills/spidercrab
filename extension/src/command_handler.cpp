@@ -865,44 +865,37 @@ void CommandHandler::HandleSampleGetDirectory(
 // ============================================================
 // Playtime 2 / clip matrix command handlers (Issue #61)
 //
-// Phase 1 MVP: placeholder implementations that return mock
-// data structure. Actual Playtime 2 API integration comes
-// in Phase 2 via HB_* functions declared in playtime_api.h.
+// Real implementation: tracks state in PlaytimeState, sends
+// MIDI via PlaytimeMidi, and pushes slotStateChanged events
+// over WebSocket to all connected clients.
+//
+// All handlers work without REAPER — when Playtime is not
+// available, they return sensible default data (8×8 empty grid)
+// and MIDI operations are no-ops.
 // ============================================================
-
-static std::string buildEmptySlots(int columns, int rows)
-{
-    std::string slots = "[";
-    for (int r = 0; r < rows; r++) {
-        for (int c = 0; c < columns; c++) {
-            if (r > 0 || c > 0) slots += ",";
-            slots += "{";
-            slots += json_string("column") + ":" + std::to_string(c) + ",";
-            slots += json_string("row") + ":" + std::to_string(r) + ",";
-            slots += json_string("state") + ":" + json_string("empty");
-            slots += "}";
-        }
-    }
-    slots += "]";
-    return slots;
-}
 
 void CommandHandler::HandleMatrixGetAll(
     int clientId, const std::string& id, const std::string& params)
 {
     (void)params;
-    int columns = 8;
-    int rows    = 8;
 
+    int      columns = m_playtimeState.columns();
+    int      rows    = m_playtimeState.rows();
+
+    // When Playtime is available, attempt to find the instance
+    // and sync state. For now, we track state locally.
     if (isPlaytimeAvailable()) {
-        // Phase 2: query actual Playtime matrix
-        fprintf(stderr, "[reaper-ipad] Playtime 2 available — Phase 2 will query real matrix\n");
+        int instance = m_playtimeState.findPlaytimeInstance();
+        if (instance >= 0) {
+            fprintf(stderr,
+                "[reaper-ipad] matrix/getAll: Playtime instance %d found\n", instance);
+        }
     }
 
     std::string payload = "{";
     payload += json_string("columns") + ":" + std::to_string(columns) + ",";
     payload += json_string("rows") + ":" + std::to_string(rows) + ",";
-    payload += json_string("slots") + ":" + buildEmptySlots(columns, rows);
+    payload += json_string("slots") + ":" + m_playtimeState.getAllSlots();
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
@@ -925,15 +918,13 @@ void CommandHandler::HandleMatrixGetSlot(
     int col = atoi(colStr.c_str());
     int row = atoi(rowStr.c_str());
 
-    std::string payload = "{";
-    payload += json_string("column") + ":" + std::to_string(col) + ",";
-    payload += json_string("row") + ":" + std::to_string(row) + ",";
-    payload += json_string("state") + ":" + json_string("empty");
-    payload += "}";
+    SlotState slot = m_playtimeState.getSlot(col, row);
 
-    SendResponse(clientId, id, true, payload);
+    SendResponse(clientId, id, true, slot.toJson());
 }
 
+// Toggle a slot between playing/stopped/empty.
+// Returns the new slot state as the response payload.
 void CommandHandler::HandleMatrixTriggerSlot(
     int clientId, const std::string& id, const std::string& params)
 {
@@ -951,18 +942,38 @@ void CommandHandler::HandleMatrixTriggerSlot(
     int col = atoi(colStr.c_str());
     int row = atoi(rowStr.c_str());
 
-    fprintf(stderr,
-        "[reaper-ipad] matrix/triggerSlot: column=%d row=%d (placeholder)\n", col, row);
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
 
-    std::string payload = "{";
-    payload += json_string("triggered") + ":true,";
-    payload += json_string("column") + ":" + std::to_string(col) + ",";
-    payload += json_string("row") + ":" + std::to_string(row);
-    payload += "}";
+    // Toggle: playing → stopped, otherwise → playing
+    SlotState current = m_playtimeState.getSlot(col, row);
+    std::string newState;
+    if (current.state == "playing") {
+        newState = "stopped";
+    } else {
+        newState = "playing";
+    }
 
-    SendResponse(clientId, id, true, payload);
+    m_playtimeState.setSlotState(col, row, newState);
+
+    // Send MIDI note if MIDI output is available
+    if (m_playtimeMidi.isAvailable()) {
+        m_playtimeMidi.triggerSlotViaMidi(col, row);
+    }
+
+    // Get updated slot and broadcast event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    std::string event = BuildSlotEvent(updated.toJson());
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
 }
 
+// Trigger (or stop) all slots in a given scene row.
 void CommandHandler::HandleMatrixTriggerScene(
     int clientId, const std::string& id, const std::string& params)
 {
@@ -978,15 +989,81 @@ void CommandHandler::HandleMatrixTriggerScene(
 
     int row = atoi(rowStr.c_str());
 
-    fprintf(stderr,
-        "[reaper-ipad] matrix/triggerScene: row=%d (placeholder)\n", row);
+    if (row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Row out of range\"}");
+        return;
+    }
+
+    int cols = m_playtimeState.columns();
+
+    // Toggle all slots in the row: set to "playing"
+    // (or "stopped" if already playing)
+    for (int c = 0; c < cols; c++) {
+        SlotState current = m_playtimeState.getSlot(c, row);
+        std::string newState;
+        if (current.state == "playing") {
+            newState = "stopped";
+        } else {
+            newState = "playing";
+        }
+        m_playtimeState.setSlotState(c, row, newState);
+
+        // Send MIDI note for each slot
+        if (m_playtimeMidi.isAvailable()) {
+            m_playtimeMidi.triggerSlotViaMidi(c, row);
+        }
+
+        // Broadcast event for each changed slot
+        SlotState updated = m_playtimeState.getSlot(c, row);
+        BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+    }
+
+    // Build response: return all slots in the scene row
+    std::string sceneSlots = "[";
+    for (int c = 0; c < cols; c++) {
+        if (c > 0) sceneSlots += ",";
+        sceneSlots += m_playtimeState.getSlot(c, row).toJson();
+    }
+    sceneSlots += "]";
 
     std::string payload = "{";
     payload += json_string("triggered") + ":true,";
-    payload += json_string("row") + ":" + std::to_string(row);
+    payload += json_string("row") + ":" + std::to_string(row) + ",";
+    payload += json_string("slots") + ":" + sceneSlots;
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Matrix event broadcasting helpers (Issue #61)
+// ============================================================
+
+std::string CommandHandler::BuildSlotEvent(const std::string& slotJson)
+{
+    std::string event = "{";
+    event += json_string("type") + ":" + json_string("event") + ",";
+    event += json_string("event") + ":" + json_string("matrix/slotStateChanged") + ",";
+    event += json_string("payload") + ":" + slotJson;
+    event += "}";
+    return event;
+}
+
+void CommandHandler::BroadcastMatrixEvent(
+    const std::string& eventType, const std::string& slotJson)
+{
+    std::string event = "{";
+    event += json_string("type") + ":" + json_string("event") + ",";
+    event += json_string("event") + ":" + json_string(eventType) + ",";
+    event += json_string("payload") + ":" + slotJson;
+    event += "}";
+
+    if (m_broadcastCb) {
+        m_broadcastCb(event);
+    } else if (m_ws) {
+        m_ws->Broadcast(event);
+    }
 }
 
 void CommandHandler::HandleSampleSendToTrack(

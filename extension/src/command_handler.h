@@ -1,6 +1,8 @@
 #pragma once
 #include "websocket_server.h"
 #include "playtime_api.h"
+#include "playtime_state.h"
+#include "playtime_midi.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -74,6 +76,12 @@ public:
     // Format a JSON response string (public for testing)
     static std::string FormatResponse(const std::string& id, bool success, const std::string& payload);
 
+    // Access the MIDI output helper (for setting up send function at startup)
+    PlaytimeMidi& GetMidi() { return m_playtimeMidi; }
+
+    // Access the playtime state (for tests)
+    PlaytimeState& GetPlaytimeState() { return m_playtimeState; }
+
     // Pre-populate FX cache at extension startup (avoids crash when
     // EnumInstalledFX is called from Chromium WS context due to X11/SWELL
     // display conflict). Safe to call before any WebSocket client connects.
@@ -82,6 +90,12 @@ public:
     // Real-time event broadcasting (Issue #57)
     // Broadcast a track state change event (mute/solo/arm) to all WS clients
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
+
+    // Broadcast a matrix slot state change event to all WS clients
+    void BroadcastMatrixEvent(const std::string& eventType, const std::string& slotJson);
+
+    // Build a WebSocket event JSON string for a slot state change
+    std::string BuildSlotEvent(const std::string& slotJson);
 
     // Real-time FX param change via CSURF_EXT callback (Issue #58)
     void OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx, double value);
@@ -102,6 +116,10 @@ private:
     // Watched FX for callback-based param change filtering (Issue #58)
     int         m_watchedTrackIdx = -1;
     int         m_watchedFxIdx    = -1;
+
+    // Playtime 2 clip launcher state (Issues #61)
+    PlaytimeState m_playtimeState;
+    PlaytimeMidi  m_playtimeMidi;
 
     // Run the actual EnumInstalledFX loop (no response, just populate cache)
     // Returns the JSON string of the FX list

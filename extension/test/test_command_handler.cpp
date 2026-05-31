@@ -1482,10 +1482,15 @@ TEST(MatrixTest, TriggerSlotWithValidParamsReturnsSuccess)
     EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
     EXPECT_EQ(resp.find("\"error\""), std::string::npos);
 
-    // Verify triggered flag and coordinates
-    EXPECT_NE(resp.find("\"triggered\":true"), std::string::npos);
+    // Verify slot state response includes coordinates and toggled state
     EXPECT_NE(resp.find("\"column\":3"), std::string::npos);
     EXPECT_NE(resp.find("\"row\":5"), std::string::npos);
+    // Slot was empty, after trigger it becomes "playing"
+    EXPECT_NE(resp.find("\"state\":\"playing\""), std::string::npos);
+    // Verify the full slot structure is present (color, name, clipType)
+    EXPECT_NE(resp.find("\"color\""), std::string::npos);
+    EXPECT_NE(resp.find("\"name\""), std::string::npos);
+    EXPECT_NE(resp.find("\"clipType\""), std::string::npos);
 
     // Verify balanced JSON
     int depth = 0;
@@ -1721,5 +1726,288 @@ TEST(MatrixTest, GetAllResponseContentValidation)
                 << "Missing slot at column=" << c << " row=" << r;
         }
     }
+}
+
+// ============================================================
+// Playtime 2 integration tests (Issue #61)
+// ============================================================
+
+TEST(MatrixTest, TriggerSlotTogglesState)
+{
+    // Test that triggering an empty slot sets it to "playing",
+    // and triggering again sets it back to "stopped"
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // First trigger: empty → playing
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
+
+    // Second trigger: playing → stopped
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
+
+    // Third trigger: stopped → playing
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSlotPreservesOtherSlots)
+{
+    // Test that triggering one slot doesn't affect other slots
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger slot (0,0)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Get slot (0,0) — should be playing
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":0},"id":"g1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+
+    // Get slot (7,7) — should still be empty
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":7,"row":7},"id":"g2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"empty\""), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSceneTogglesEntireRow)
+{
+    // Test that triggerScene toggles all 8 slots in the given row
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger scene row 1
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerScene","payload":{"row":1},"id":"s1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify all 8 slots in row 1 are now "playing"
+    EXPECT_NE(resp.find("\"triggered\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":1"), std::string::npos);
+    EXPECT_NE(resp.find("\"slots\""), std::string::npos);
+    for (int c = 0; c < 8; c++) {
+        std::string expected = "\"column\":" + std::to_string(c)
+            + ",\"row\":1,\"state\":\"playing\"";
+        EXPECT_NE(resp.find(expected), std::string::npos)
+            << "Expected row 1, column " << c << " to be playing";
+    }
+
+    // Get individual slot to confirm via getSlot
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":5,"row":1},"id":"gs"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+
+    // A different row should still be empty
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":0},"id":"gs2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"empty\""), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSlotOutOfRangeReturnsError)
+{
+    // Test that column/row out of range returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Column 99 out of range
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":99,"row":0},"id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Column or row out of range"), std::string::npos);
+
+    // Negative column
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":-1,"row":0},"id":"bad2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+
+    // Row 8 out of range (0-indexed, max 7)
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":8},"id":"bad3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSceneOutOfRangeReturnsError)
+{
+    // Test that row out of range returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerScene","payload":{"row":99},"id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Row out of range"), std::string::npos);
+}
+
+TEST(MatrixTest, SlotStateIncludesColorNameClipType)
+{
+    // Test that getSlot returns the full slot structure including
+    // color, name, and clipType fields
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":4,"row":6},"id":"gs"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // All default empty slot fields should be present
+    EXPECT_NE(resp.find("\"state\":\"empty\""), std::string::npos);
+    EXPECT_NE(resp.find("\"color\""), std::string::npos);
+    EXPECT_NE(resp.find("\"name\""), std::string::npos);
+    EXPECT_NE(resp.find("\"clipType\":\"none\""), std::string::npos);
+}
+
+TEST(MatrixTest, BroadcastMatrixEventViaCallback)
+{
+    // Test that BroadcastMatrixEvent sends through the broadcast callback
+    std::string captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured = msg;
+    });
+
+    std::string slotJson = R"({"column":1,"row":2,"state":"playing"})";
+    handler->BroadcastMatrixEvent("matrix/slotStateChanged", slotJson);
+
+    // Verify JSON structure
+    EXPECT_NE(captured.find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured.find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(captured.find("\"payload\":{\"column\":1,\"row\":2,\"state\":\"playing\"}"), std::string::npos);
+
+    // Verify balanced braces
+    int depth = 0;
+    for (char c : captured) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSlotBroadcastsEvent)
+{
+    // Test that triggering a slot sends a BroadcastMatrixEvent
+    // via the broadcast callback
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    // Also set response callback so we can track
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"t1"})");
+
+    // Should have both a response and a broadcast event
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_EQ(captured.size(), 1u);
+
+    // Verify broadcast event structure
+    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"state\":\"playing\""), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSceneBroadcastsEvents)
+{
+    // Test that triggering a scene broadcasts events for each slot
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerScene","payload":{"row":3},"id":"s1"})");
+
+    // Should have 1 response + 8 slot events (one per column in the row)
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_EQ(captured.size(), 8u);
+
+    // Each event should be for the correct row (3) and sequential columns
+    for (int c = 0; c < 8; c++) {
+        EXPECT_NE(captured[c].find("\"column\":" + std::to_string(c)), std::string::npos);
+        EXPECT_NE(captured[c].find("\"row\":3"), std::string::npos);
+        EXPECT_NE(captured[c].find("\"state\":\"playing\""), std::string::npos);
+    }
+}
+
+TEST(MatrixTest, BuildSlotEventReturnsValidEvent)
+{
+    // Test the BuildSlotEvent helper produces valid WebSocket event JSON
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+
+    std::string slotJson = R"({"column":0,"row":0,"state":"empty"})";
+    std::string event = handler->BuildSlotEvent(slotJson);
+
+    EXPECT_NE(event.find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(event.find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(event.find(slotJson), std::string::npos);
+
+    int depth = 0;
+    for (char c : event) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
 }
 
