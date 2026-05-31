@@ -509,9 +509,18 @@ void CommandHandler::HandleSetFXParam(
         m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
     }
     double normalizedVal = (value - minVal) / (maxVal - minVal);
-    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, normalizedVal);
+    // Read back the actual value REAPER committed (fixes slider jumping due to
+    // normalization precision loss or stepped params)
+    double committedVal = value;
+    if (success && m_api.TrackFX_GetParamEx) {
+        double actualMin = 0, actualMax = 0, actualMid = 0;
+        double normVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &actualMin, &actualMax, &actualMid);
+        committedVal = actualMin + normVal * (actualMax - actualMin);
+    }
     SendResponse(
-        clientId, id, success, "{\"set\":" + std::string(success ? "true" : "false") + "}");
+        clientId, id, success,
+        "{\"set\":" + std::string(success ? "true" : "false") + ","
+        "\"value\":" + std::to_string(committedVal) + "}");
 }
 
 void CommandHandler::HandleAddFX(int clientId, const std::string& id, const std::string& params)

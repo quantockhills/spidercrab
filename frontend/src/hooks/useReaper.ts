@@ -91,10 +91,10 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return (resp.payload as any).params as FxParam[];
   }, []);
 
-  const setFxParam = useCallback(async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<boolean> => {
-    if (!clientRef.current) return false;
+  const setFxParam = useCallback(async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<any> => {
+    if (!clientRef.current) return {};
     const resp = await clientRef.current.send('fx/setParam', { trackIdx, fxIdx, paramIdx, value });
-    return resp.success;
+    return resp;
   }, []);
 
   const addFx = useCallback(async (trackIdx: number, fxName: string): Promise<number> => {
