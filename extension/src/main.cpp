@@ -381,6 +381,7 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     if (!rec) {
         DebugLog("Plugin unload");
         g_wsServer.Stop();
+        g_httpServer.removeListenPort(g_httpPort);
         JNL::close_socketlib();
         delete g_cmdHandler;
         g_cmdHandler = nullptr;
