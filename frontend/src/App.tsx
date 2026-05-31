@@ -35,6 +35,7 @@ function App() {
     refreshFxCache,
     play,
     stop,
+    record,
     getTransportState,
     onEvent,
     updateTrack,
@@ -202,6 +203,7 @@ function App() {
             onRefresh={refreshTracks}
             onPlay={play}
             onStop={stop}
+            onRecord={record}
             onGetTransportState={getTransportState}
             getTrackFx={getTrackFx}
             onSelectFx={handleSelectFx}

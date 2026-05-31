@@ -53,6 +53,79 @@ function renderTrackOverview(props: Partial<Parameters<typeof TrackOverview>[0]>
 
 // ── Tests ────────────────────────────────────────────────────
 
+describe('TrackOverview — transport bar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows record button when onRecord is provided', () => {
+    renderTrackOverview({ onPlay: vi.fn(), onStop: vi.fn(), onRecord: vi.fn() });
+    expect(screen.getByTestId('transport-record')).toBeDefined();
+  });
+
+  it('does not show record button when onRecord is not provided', () => {
+    renderTrackOverview({ onPlay: vi.fn(), onStop: vi.fn() });
+    expect(screen.queryByTestId('transport-record')).toBeNull();
+  });
+
+  it('calls onRecord and updates isRecording state on record click', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onStop = vi.fn().mockResolvedValue(true);
+    const onRecord = vi.fn().mockResolvedValue(true);
+    const onGetTransportState = vi.fn().mockResolvedValue({ playing: false, recording: true });
+    renderTrackOverview({ onPlay, onStop, onRecord, onGetTransportState });
+
+    fireEvent.click(screen.getByTestId('transport-record'));
+
+    await waitFor(() => {
+      expect(onRecord).toHaveBeenCalledOnce();
+    });
+    expect(onGetTransportState).toHaveBeenCalledOnce();
+
+    // Should show recording status
+    await waitFor(() => {
+      expect(screen.getByText('Recording')).toBeDefined();
+    });
+  });
+
+  it('shows recording status when recording is active', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onStop = vi.fn().mockResolvedValue(true);
+    const onRecord = vi.fn().mockResolvedValue(true);
+    const onGetTransportState = vi.fn().mockResolvedValue({ playing: false, recording: true });
+    renderTrackOverview({ onPlay, onStop, onRecord, onGetTransportState });
+
+    fireEvent.click(screen.getByTestId('transport-record'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Recording')).toBeDefined();
+    });
+
+    // Record button should have active styling
+    const recordBtn = screen.getByTestId('transport-record');
+    expect(recordBtn.className).toContain('accent-red');
+  });
+
+  it('does not update state when onRecord fails', async () => {
+    const onPlay = vi.fn().mockResolvedValue(true);
+    const onStop = vi.fn().mockResolvedValue(true);
+    const onRecord = vi.fn().mockResolvedValue(false);
+    const onGetTransportState = vi.fn();
+    renderTrackOverview({ onPlay, onStop, onRecord, onGetTransportState });
+
+    fireEvent.click(screen.getByTestId('transport-record'));
+
+    await waitFor(() => {
+      expect(onRecord).toHaveBeenCalledOnce();
+    });
+    // Should NOT call getTransportState when record fails
+    expect(onGetTransportState).not.toHaveBeenCalled();
+
+    // Status should remain Stopped
+    expect(screen.getByText('Stopped')).toBeDefined();
+  });
+});
+
 describe('TrackOverview — FX grid cards', () => {
   beforeEach(() => {
     vi.clearAllMocks();

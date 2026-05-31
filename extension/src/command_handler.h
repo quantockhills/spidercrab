@@ -48,6 +48,7 @@ struct ReaperAPI {
     void (*Main_OnCommand)(int command, int flag) = nullptr;
     void (*CSurf_OnPlay)() = nullptr;
     void (*CSurf_OnStop)() = nullptr;
+    void (*CSurf_OnRecord)() = nullptr;
     int (*GetPlayState)() = nullptr;
 
     // Media/sample
@@ -115,6 +116,7 @@ private:
     void HandleGetTransport(int clientId, const std::string& id, const std::string& params);
     void HandlePlay(int clientId, const std::string& id, const std::string& params);
     void HandleStop(int clientId, const std::string& id, const std::string& params);
+    void HandleRecord(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — tracks
     void HandleAddTrack(int clientId, const std::string& id, const std::string& params);

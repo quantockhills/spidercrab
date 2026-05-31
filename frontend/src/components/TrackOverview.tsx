@@ -11,6 +11,7 @@ interface TrackOverviewProps {
   onRefresh: () => void;
   onPlay?: () => Promise<boolean>;
   onStop?: () => Promise<boolean>;
+  onRecord?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
   getTrackFx?: (trackIdx: number) => Promise<FxInfo[]>;
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
@@ -70,14 +71,26 @@ export function TrackOverview({
   onRefresh,
   onPlay,
   onStop,
+  onRecord,
   onGetTransportState,
   getTrackFx,
   onSelectFx,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [trackFxMap, setTrackFxMap] = useState<Record<number, FxInfo[]>>({});
   const [fxLoading, setFxLoading] = useState(false);
+
+  const handleRecord = useCallback(async () => {
+    if (!onRecord) return;
+    const ok = await onRecord();
+    if (ok && onGetTransportState) {
+      const state = await onGetTransportState();
+      setIsRecording(state.recording);
+      setIsPlaying(state.playing);
+    }
+  }, [onRecord, onGetTransportState]);
 
   // Fetch FX for all tracks on mount / when track list changes
   useEffect(() => {
@@ -147,12 +160,27 @@ export function TrackOverview({
           >
             ▶
           </button>
+          {onRecord && (
+            <button
+              data-testid="transport-record"
+              onClick={handleRecord}
+              className={`
+                w-16 h-10 text-sm font-semibold transition-colors active:brightness-95
+                ${isRecording
+                  ? 'bg-[var(--accent-red)]/40 text-[var(--accent-red)] ring-2 ring-[var(--accent-red)]/60'
+                  : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                }
+              `}
+            >
+              ●
+            </button>
+          )}
           <button
             data-testid="transport-stop"
             onClick={handleStop}
             className={`
               w-16 h-10 text-sm font-semibold transition-colors active:brightness-95
-              ${!isPlaying
+              ${!isPlaying && !isRecording
                 ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
                 : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
               }
@@ -161,7 +189,7 @@ export function TrackOverview({
             ■
           </button>
           <span className="text-[11px] text-[var(--text-secondary)] w-20 text-center">
-            {isPlaying ? 'Playing' : 'Stopped'}
+            {isRecording ? 'Recording' : isPlaying ? 'Playing' : 'Stopped'}
           </span>
         </div>
       )}

@@ -1342,6 +1342,88 @@ TEST(Phase1MVPTest, PreCacheFXPopulatesCache)
     EXPECT_EQ(g_mockEnumCallCount, callsAfterPrecache);
 }
 
+// ============================================================
+// HandleRecord tests (Issue #69)
+// ============================================================
+
+namespace {
+// Track whether CSurf_OnRecord was called
+static bool  g_recordCalled  = false;
+static int   g_mainOnCommandCalled = -1;
+
+static void mock_CSurf_OnRecord() { g_recordCalled = true; }
+} // anonymous namespace
+
+TEST(TransportRecordTest, RecordUsesCSurfOnRecordWhenAvailable)
+{
+    g_recordCalled         = false;
+    g_mainOnCommandCalled  = -1;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Patch CSurf_OnRecord into the API
+    ReaperAPI api;
+    api.CSurf_OnRecord = mock_CSurf_OnRecord;
+    api.Main_OnCommand = [](int cmd, int) { g_mainOnCommandCalled = cmd; };
+    handler->SetApi(api);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"transport/record","id":"rec1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_TRUE(g_recordCalled) << "CSurf_OnRecord should have been called";
+    EXPECT_EQ(g_mainOnCommandCalled, -1) << "Main_OnCommand should NOT be called when CSurf_OnRecord is available";
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"recording\":true"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(TransportRecordTest, RecordFallsBackToMainOnCommand)
+{
+    g_recordCalled         = false;
+    g_mainOnCommandCalled  = -1;
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Only set Main_OnCommand, no CSurf_OnRecord
+    ReaperAPI api;
+    api.Main_OnCommand = [](int cmd, int) { g_mainOnCommandCalled = cmd; };
+    handler->SetApi(api);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"transport/record","id":"rec2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_FALSE(g_recordCalled) << "CSurf_OnRecord should not have been called";
+    EXPECT_EQ(g_mainOnCommandCalled, 1013) << "Main_OnCommand should be called with 1013 (Transport: Record)";
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+}
+
+TEST(TransportRecordTest, RecordReturnsErrorWhenNoApi)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    // Neither CSurf_OnRecord nor Main_OnCommand is set
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"transport/record","id":"rec3"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
 TEST(Phase1MVPTest, UnknownCommandReturnsError)
 {
     MockState state;
@@ -1413,6 +1495,7 @@ TEST(Phase1MVPTest, ResponseJsonIsAlwaysValid)
         {R"({"type":"command","command":"sample/getDirectory","payload":{"path":"/tmp"},"id":"v7"})", "sample/getDirectory"},
         {R"({"type":"command","command":"transport/play","id":"v8"})", "transport/play"},
         {R"({"type":"command","command":"transport/stop","id":"v9"})", "transport/stop"},
+        {R"({"type":"command","command":"transport/record","id":"v9a"})", "transport/record"},
         {R"({"type":"command","command":"unknown/X","id":"v10"})", "unknown command"},
     };
 
