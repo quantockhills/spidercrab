@@ -105,6 +105,8 @@ function App() {
         fxIdx,
         fxName,
       });
+      // Switch to FX tab so ParamControl appears (Issue #65)
+      setActiveTab('fx');
     },
     [tracks],
   );
