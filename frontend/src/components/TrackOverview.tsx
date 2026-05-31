@@ -13,6 +13,7 @@ interface TrackOverviewProps {
   onStop?: () => Promise<boolean>;
   onRecord?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
+  onAddTrack?: () => Promise<boolean>;
   getTrackFx?: (trackIdx: number) => Promise<FxInfo[]>;
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
 }
@@ -73,6 +74,7 @@ export function TrackOverview({
   onStop,
   onRecord,
   onGetTransportState,
+  onAddTrack,
   getTrackFx,
   onSelectFx,
 }: TrackOverviewProps) {
@@ -206,6 +208,15 @@ export function TrackOverview({
           >
             {collapsed ? 'Expand' : 'Collapse'}
           </button>
+          {onAddTrack && (
+            <button
+              onClick={onAddTrack}
+              className="px-2 py-1 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-xs active:brightness-95 transition-colors"
+              title="Add new track"
+            >
+              + Track
+            </button>
+          )}
           <button
             onClick={onRefresh}
             className="p-2 hover:bg-[var(--bg-tertiary)] active:brightness-95 transition-colors text-sm"
@@ -221,6 +232,14 @@ export function TrackOverview({
         <div className="flex flex-col items-center justify-center flex-1 text-[var(--text-secondary)] space-y-3">
           <div className="text-5xl">🎛️</div>
           <p className="text-sm">No tracks loaded</p>
+          {onAddTrack && (
+            <button
+              onClick={onAddTrack}
+              className="px-5 py-2.5 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:brightness-95 transition-colors"
+            >
+              + Add Track
+            </button>
+          )}
           <button
             onClick={onRefresh}
             className="px-5 py-2.5 bg-[var(--bg-tertiary)] text-sm active:brightness-95 transition-colors"

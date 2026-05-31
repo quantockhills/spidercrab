@@ -23,6 +23,7 @@ function App() {
     toggleTrackSolo,
     toggleTrackArm,
     selectTrack,
+    addTrack,
     setTrackVolume,
     enumerateFx,
     getTrackFx,
@@ -206,6 +207,7 @@ function App() {
             onRecord={record}
             onGetTransportState={getTransportState}
             getTrackFx={getTrackFx}
+            onAddTrack={addTrack}
             onSelectFx={handleSelectFx}
           />
         )}

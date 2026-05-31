@@ -116,6 +116,13 @@ export function useReaper(opts: UseReaperOptions = {}) {
   }, [getTracks]);
 
   // Track control commands (#26)
+  const addTrack = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/add');
+    if (resp.success) await refreshTracks();
+    return resp.success;
+  }, [refreshTracks]);
+
   const setTrackMute = useCallback(async (trackIdx: number, muted: boolean): Promise<boolean> => {
     if (!clientRef.current) return false;
     const resp = await clientRef.current.send('track/setMute', { trackIdx, muted: muted ? 'true' : 'false' });
@@ -247,6 +254,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     setTrackArm,
     setTrackSelected,
     setTrackVolume,
+    addTrack,
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,
