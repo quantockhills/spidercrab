@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useTheme } from './hooks/useTheme';
 import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
@@ -7,6 +8,7 @@ import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
+import ErrorBoundary from './components/ErrorBoundary';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 
@@ -38,6 +40,7 @@ function App() {
     deleteFx,
     getDirectory,
     sendSampleToTrack,
+    isRefreshingFx,
     refreshFxCache,
     play,
     stop,
@@ -61,6 +64,8 @@ function App() {
     seqSetLength,
     seqSetBaseNote,
   } = useReaper();
+
+  const { preference, isDark, setTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
   const [sessionMode, setSessionMode] = useState<'session' | 'sequencer'>('session');
@@ -201,6 +206,7 @@ function App() {
 
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-hidden">
+        <ErrorBoundary>
         {activeTab === 'media' && (
           <SampleBrowser
             tracks={tracks}
@@ -341,12 +347,50 @@ function App() {
               >
                 Refresh Tracks
               </button>
-              <button
-                onClick={() => refreshFxCache()}
-                className="w-full py-2.5 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:brightness-95 transition-colors"
-              >
-                Refresh Plugin List
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={() => refreshFxCache()}
+                  disabled={isRefreshingFx}
+                  className={`w-full py-2.5 text-sm active:brightness-95 transition-colors flex items-center justify-center gap-2 ${
+                    isRefreshingFx
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] cursor-not-allowed'
+                      : 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+                  }`}
+                >
+                  {isRefreshingFx && (
+                    <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {isRefreshingFx ? 'Refreshing...' : 'Refresh Plugin List'}
+                </button>
+                {isRefreshingFx && (
+                  <p className="text-[11px] text-[var(--text-secondary)] text-center">
+                    Scanning installed plugins...
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Theme section */}
+            <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Theme</h3>
+              <div className="flex gap-2">
+                {(['light', 'dark', 'system'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`flex-1 py-2.5 text-sm transition-colors active:brightness-95 ${
+                      preference === t
+                        ? 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                    }`}
+                  >
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] text-center">
+                {isDark ? 'Dark mode active' : 'Light mode active'}
+              </p>
             </div>
 
             {/* FX Chain path setting */}
@@ -375,6 +419,7 @@ function App() {
             </div>
           </div>
         )}
+        </ErrorBoundary>
       </main>
 
       {/* ── Tab Bar ── */}

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { render, fireEvent, screen } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
 import App from '../App';
@@ -136,5 +136,146 @@ describe('Design System — Everforest pastel + Inter font', () => {
     expect(fxSource).not.toContain('#7EC8A0');
     expect(fxSource).not.toContain('#C49EC8');
     expect(fxSource).not.toContain('#D48A9E');
+  });
+});
+
+describe('Dark Mode — Everforest Dark palette + theme toggle', () => {
+  // ── Dark palette CSS variables ────────────────────────────
+
+  it('defines .dark CSS class with Everforest Dark palette in index.css', () => {
+    expect(cssRaw).toContain('.dark');
+    expect(cssRaw).toContain('--bg-primary: #2D353B');
+    expect(cssRaw).toContain('--bg-secondary: #343F44');
+    expect(cssRaw).toContain('--bg-tertiary: #3D484D');
+    expect(cssRaw).toContain('--text-primary: #D3C6AA');
+    expect(cssRaw).toContain('--text-secondary: #859289');
+    expect(cssRaw).toContain('--accent-orange: #E69875');
+    expect(cssRaw).toContain('--border: #475258');
+  });
+
+  it('defines dark format-badge CSS variables in .dark block', () => {
+    expect(cssRaw).toContain('--format-vst2: #83C092');
+    expect(cssRaw).toContain('--format-clap: #A68DBA');
+    expect(cssRaw).toContain('--format-dx: #C47D94');
+  });
+
+  it('defines dark scrollbar thumb color', () => {
+    expect(cssRaw).toContain('.dark ::-webkit-scrollbar-thumb');
+    expect(cssRaw).toContain('background: #5A666A');
+  });
+
+  it('defines transition properties for smooth theme switching', () => {
+    expect(cssRaw).toContain('transition-duration: 200ms');
+    expect(cssRaw).toContain('transition-property: background-color, border-color, color, fill, stroke');
+  });
+
+  it('supports [data-theme="dark"] as alternative selector', () => {
+    expect(cssRaw).toContain('[data-theme="dark"]');
+  });
+
+  // ── Flash prevention in index.html ────────────────────────
+
+  it('includes inline script in index.html to prevent flash', () => {
+    const htmlPath = path.resolve(__dirname, '../../index.html');
+    const htmlRaw = fs.readFileSync(htmlPath, 'utf-8');
+    expect(htmlRaw).toContain('spidercrab-theme');
+    expect(htmlRaw).toContain('prefers-color-scheme: dark');
+    expect(htmlRaw).toContain('classList.add(\'dark\')');
+  });
+
+  // ── Theme toggle UI in Settings ───────────────────────────
+
+  it('renders theme toggle buttons in Settings tab', () => {
+    renderApp();
+    // Click Settings tab
+    const settingsTab = screen.getByText('Settings');
+    fireEvent.click(settingsTab);
+
+    expect(screen.getByText('Light')).toBeDefined();
+    expect(screen.getByText('Dark')).toBeDefined();
+    expect(screen.getByText('System')).toBeDefined();
+  });
+
+  it('shows current theme status in Settings tab', () => {
+    renderApp();
+    const settingsTab = screen.getByText('Settings');
+    fireEvent.click(settingsTab);
+
+    // One of these should be visible based on system preference
+    const statusMsg = screen.queryByText(/Light mode active|Dark mode active/);
+    expect(statusMsg).not.toBeNull();
+  });
+
+  // ── useTheme hook exports ─────────────────────────────────
+
+  it('useTheme module exports a function', () => {
+    // Dynamic import to verify the module exists and exports useTheme
+    const modPath = path.resolve(__dirname, '../hooks/useTheme.ts');
+    const modRaw = fs.readFileSync(modPath, 'utf-8');
+    expect(modRaw).toContain('export function useTheme');
+    expect(modRaw).toContain('STORAGE_KEY');
+    expect(modRaw).toContain('localStorage');
+  });
+});
+
+// ── Integration: theme class on html element ───────────────
+
+describe('Theme class application', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.classList.remove('dark');
+  });
+
+  it('useTheme hook applies .dark class to html element when preference is dark', () => {
+    localStorage.setItem('spidercrab-theme', 'dark');
+    renderApp();
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it('useTheme hook removes .dark class from html element when preference is light', () => {
+    localStorage.setItem('spidercrab-theme', 'light');
+    renderApp();
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+  });
+
+  it('persists theme preference to localStorage', () => {
+    renderApp();
+    const settingsTab = screen.getByText('Settings');
+    fireEvent.click(settingsTab);
+
+    const darkBtn = screen.getByText('Dark');
+    fireEvent.click(darkBtn);
+
+    expect(localStorage.getItem('spidercrab-theme')).toBe('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it('toggles theme when clicking Light button', () => {
+    localStorage.setItem('spidercrab-theme', 'dark');
+    renderApp();
+    const settingsTab = screen.getByText('Settings');
+    fireEvent.click(settingsTab);
+
+    const lightBtn = screen.getByText('Light');
+    fireEvent.click(lightBtn);
+
+    expect(localStorage.getItem('spidercrab-theme')).toBe('light');
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+  });
+
+  it('renders with correct theme status after toggle', () => {
+    renderApp();
+    const settingsTab = screen.getByText('Settings');
+    fireEvent.click(settingsTab);
+
+    const darkBtn = screen.getByText('Dark');
+    fireEvent.click(darkBtn);
+
+    expect(screen.getByText('Dark mode active')).toBeDefined();
+
+    const lightBtn = screen.getByText('Light');
+    fireEvent.click(lightBtn);
+
+    expect(screen.getByText('Light mode active')).toBeDefined();
   });
 });

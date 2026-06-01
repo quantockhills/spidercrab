@@ -12,6 +12,16 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Inter:ital,wght@0,400;0,600;1,400&family=Inter+Mono:wght@400;600&display=swap"
       rel="stylesheet"
     />
+    <script>
+      // Prevent flash of light theme when dark mode is preferred
+      (function() {
+        var theme = null;
+        try { theme = localStorage.getItem('spidercrab-theme'); } catch(e) {}
+        if (theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -313,10 +313,17 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return (resp.payload as Record<string, unknown>) as {playing: boolean; recording: boolean} || {playing: false, recording: false};
   }, []);
 
+  const [isRefreshingFx, setIsRefreshingFx] = useState(false);
+
   const refreshFxCache = useCallback(async (): Promise<boolean> => {
     if (!clientRef.current) return false;
-    const resp = await clientRef.current.send('fx/refreshCache', {}, 65000);
-    return resp.success;
+    setIsRefreshingFx(true);
+    try {
+      const resp = await clientRef.current.send('fx/refreshCache', {}, 65000);
+      return resp.success;
+    } finally {
+      setIsRefreshingFx(false);
+    }
   }, []);
 
   // ── Playtime 2 / Clip Matrix commands (Issue #61) ──
@@ -481,6 +488,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
   return {
     connected,
     tracks,
+    isRefreshingFx,
     refreshTracks,
     matrix,
     getMatrix,
