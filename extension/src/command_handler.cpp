@@ -1682,38 +1682,32 @@ void CommandHandler::HandleFxChainGetDirectory(
     }
 
     std::string chains = "[";
-    bool first = true;
+    std::string dirs   = "[";
+    bool firstChain = true;
+    bool firstDir   = true;
 
     try {
         for (const auto& entry : fs::directory_iterator(path)) {
-            std::string name = entry.path().filename().string();
-            if (name.empty() || name[0] == '.')
-                continue;
-
-            if (!first) chains += ",";
-            first = false;
-
             if (entry.is_directory()) {
-                chains += "{";
-                chains += json_string("name") + ":" + json_string(name) + ",";
-                chains += json_string("type") + ":\"dir\"";
-                chains += "}";
+                std::string dname = entry.path().filename().string();
+                if (!firstDir) dirs += ",";
+                firstDir = false;
+                dirs += json_string(dname);
             } else if (entry.is_regular_file()) {
-                // Only include .RfxChain files (case-insensitive)
+                std::string name = entry.path().filename().string();
                 std::string ext;
                 size_t dotPos = name.rfind('.');
-                if (dotPos == std::string::npos)
-                    continue;
+                if (dotPos == std::string::npos) continue;
                 ext = name.substr(dotPos);
                 std::string lowerExt;
                 for (char c : ext) lowerExt += tolower((unsigned char)c);
-                if (lowerExt != ".rfxchain")
-                    continue;
+                if (lowerExt != ".rfxchain") continue;
 
+                if (!firstChain) chains += ",";
+                firstChain = false;
                 uintmax_t fileSize = fs::file_size(entry.path());
                 chains += "{";
                 chains += json_string("name") + ":" + json_string(name) + ",";
-                chains += json_string("type") + ":\"file\",";
                 chains += json_string("size") + ":" + std::to_string(fileSize);
                 chains += "}";
             }
@@ -1725,10 +1719,12 @@ void CommandHandler::HandleFxChainGetDirectory(
     }
 
     chains += "]";
+    dirs   += "]";
 
     std::string payload = "{";
-    payload += json_string("path") + ":" + json_string(path) + ",";
-    payload += json_string("chains") + ":" + chains;
+    payload += json_string("path")   + ":" + json_string(path) + ",";
+    payload += json_string("chains") + ":" + chains + ",";
+    payload += json_string("dirs")   + ":" + dirs;
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
@@ -1760,15 +1756,14 @@ void CommandHandler::HandleFxChainSave(
         return;
     }
 
-    // Get track state chunk (64KB buffer should be enough)
-    char chunkBuf[65536] = {0};
-    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf, sizeof(chunkBuf), false);
+    std::vector<char> chunkBuf(4 * 1024 * 1024, 0);
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf.data(), (int)chunkBuf.size(), false);
     if (!gotChunk || chunkBuf[0] == 0) {
         SendResponse(clientId, id, false, "{\"error\":\"Failed to get track state chunk\"}");
         return;
     }
 
-    std::string chunk(chunkBuf);
+    std::string chunk(chunkBuf.data());
     std::string fxChain = extractFxChainFromChunk(chunk);
     if (fxChain.empty()) {
         SendResponse(clientId, id, false, "{\"error\":\"No FX chain found on track\"}");
@@ -1853,28 +1848,33 @@ void CommandHandler::HandleFxChainLoad(
         return;
     }
 
-    // Get current track chunk
-    char chunkBuf[65536] = {0};
-    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf, sizeof(chunkBuf), false);
+    // Get current track chunk — use heap buffer; 64KB is too small for tracks with plugins
+    const int CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
+    std::vector<char> chunkBuf(CHUNK_SIZE, 0);
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf.data(), CHUNK_SIZE, false);
     if (!gotChunk || chunkBuf[0] == 0) {
         SendResponse(clientId, id, false, "{\"error\":\"Failed to get track state chunk\"}");
         return;
     }
 
-    std::string currentChunk(chunkBuf);
+    std::string currentChunk(chunkBuf.data());
     std::string newChunk;
 
     bool append = (modeStr == "append");
 
-    // Ensure the loaded content is a proper FXCHAIN section
-    // It might contain just <FXCHAIN>...</FXCHAIN> or might be a full track chunk
+    // REAPER's native .RfxChain files contain just the raw body (no outer tag).
+    // The track chunk expects a full <FXCHAIN\n...\n> block.
+    // If the file already has a <FXCHAIN wrapper (e.g. saved by this app), extract it.
+    // Otherwise wrap the raw body.
     std::string loadedFxChain;
     std::string extracted = extractFxChainFromChunk(fxChain);
     if (!extracted.empty()) {
         loadedFxChain = extracted;
     } else {
-        // Assume the file is already an FXCHAIN section
-        loadedFxChain = fxChain;
+        // Raw body — wrap it so replaceFxChainInChunk can splice it correctly
+        loadedFxChain = "<FXCHAIN\n" + fxChain;
+        if (loadedFxChain.back() != '\n') loadedFxChain += '\n';
+        loadedFxChain += '>';
     }
 
     if (append) {

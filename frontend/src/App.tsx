@@ -299,6 +299,7 @@ function App() {
             fxChainLoad={fxChainLoad}
             fxChainGetInfo={fxChainGetInfo}
             onBack={handleBackFromFxChains}
+            initialPath={fxChainPath || undefined}
           />
         ) : (
           <FxBrowser
@@ -407,7 +408,7 @@ function App() {
                 type="text"
                 value={fxChainPath}
                 onChange={(e) => setFxChainPath(e.target.value)}
-                placeholder="Path to FXChains folder (e.g. C:\\Users\\...\\REAPER\\FXChains)"
+                placeholder="Path to FXChains folder (e.g. C:\Users\...\REAPER\FXChains)"
                 className="w-full px-3 py-2 bg-[var(--bg-secondary)] text-sm
                   text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
                   outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
