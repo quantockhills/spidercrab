@@ -7,12 +7,13 @@ import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
 
-type Tab = 'media' | 'fx' | 'tracks' | 'settings';
+type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'media',   label: 'Media',   icon: '📂' },
   { id: 'fx',      label: 'FX',      icon: '🎛️' },
   { id: 'tracks',  label: 'Tracks',  icon: '🎚️' },
+  { id: 'clips',   label: 'Playtime',   icon: '🎹' },
   { id: 'settings',label: 'Settings',icon: '⚙️' },
 ];
 
@@ -177,42 +178,41 @@ function App() {
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-hidden">
         {activeTab === 'media' && (
-          <div className="flex h-full">
-            {/* Left: Sample Browser */}
-            <div className="w-1/2 min-w-0 border-r border-[var(--border)]">
-              <SampleBrowser
-                tracks={tracks}
-                selectedTrack={selectedTrack}
-                getDirectory={getDirectory}
-                sendSampleToTrack={sendSampleToTrack}
-                onBack={() => setActiveTab('tracks')}
-              />
+          <SampleBrowser
+            tracks={tracks}
+            selectedTrack={selectedTrack}
+            getDirectory={getDirectory}
+            sendSampleToTrack={sendSampleToTrack}
+            onBack={() => setActiveTab('tracks')}
+          />
+        )}
+
+        {activeTab === 'clips' && (
+          <div className="flex flex-col h-full">
+            {/* Mode toggle */}
+            <div className="flex border-b border-[var(--border)]">
+              <button
+                onClick={() => setSessionMode('session')}
+                className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                  sessionMode === 'session'
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                Session
+              </button>
+              <button
+                onClick={() => setSessionMode('sequencer')}
+                className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                  sessionMode === 'sequencer'
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                Sequencer
+              </button>
             </div>
-            {/* Right: Session View / Sequencer */}
-            <div className="w-1/2 min-w-0 flex flex-col">
-              {/* Mode toggle */}
-              <div className="flex border-b border-[var(--border)]">
-                <button
-                  onClick={() => setSessionMode('session')}
-                  className={`flex-1 py-1.5 text-[10px] font-medium transition-colors ${
-                    sessionMode === 'session'
-                      ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
-                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
-                  }`}
-                >
-                  Session
-                </button>
-                <button
-                  onClick={() => setSessionMode('sequencer')}
-                  className={`flex-1 py-1.5 text-[10px] font-medium transition-colors ${
-                    sessionMode === 'sequencer'
-                      ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
-                      : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
-                  }`}
-                >
-                  Sequencer
-                </button>
-              </div>
+            <div className="flex-1 overflow-hidden">
               {sessionMode === 'session' ? (
                 <SessionView
                   matrix={matrix}
