@@ -25,7 +25,6 @@
 - Gitea-based issue tracking with autonomous CI pipeline
 
 ### Known Issues (Phase 2)
-- No volume/pan faders
 - Track names show "Track N" (no real names yet)
 - Several secondary controls below 44px touch target minimum
 - Reaper headless startup can be unstable

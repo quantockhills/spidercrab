@@ -40,3 +40,11 @@ docs/helgobox/
 /tmp/sysroot/
 
 extension/test/reaper-recentfx.ini
+
+# Workspace config (do not commit)
+.openclaw/
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md

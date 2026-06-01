@@ -4,13 +4,17 @@ import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
 import { ParamControl } from './components/ParamControl';
 import { SampleBrowser } from './components/SampleBrowser';
+import { SessionView } from './components/SessionView';
+import { SequencerView } from './components/SequencerView';
+import { FxChainBrowser } from './components/FxChainBrowser';
 
-type Tab = 'media' | 'fx' | 'tracks' | 'settings';
+type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'media',   label: 'Media',   icon: '📂' },
   { id: 'fx',      label: 'FX',      icon: '🎛️' },
   { id: 'tracks',  label: 'Tracks',  icon: '🎚️' },
+  { id: 'clips',   label: 'Playtime',   icon: '🎹' },
   { id: 'settings',label: 'Settings',icon: '⚙️' },
 ];
 
@@ -25,6 +29,7 @@ function App() {
     toggleTrackArm,
     selectTrack,
     setTrackVolume,
+    setTrackPan,
     enumerateFx,
     getTrackFx,
     getFxParams,
@@ -40,10 +45,29 @@ function App() {
     getTransportState,
     onEvent,
     updateTrack,
+    fxChainGetDirectory,
+    fxChainSave,
+    fxChainLoad,
+    fxChainGetInfo,
+    matrix,
+    getMatrix,
+    triggerSlot,
+    triggerScene,
+    sequencer,
+    getSequencer,
+    toggleStep,
+    setStep,
+    seqClearAll,
+    seqSetLength,
+    seqSetBaseNote,
   } = useReaper();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
+  const [sessionMode, setSessionMode] = useState<'session' | 'sequencer'>('session');
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
+
+  // FX chain browser state (Issue #7)
+  const [fxChainView, setFxChainView] = useState(false);
 
   // Param control navigation state
   const [paramView, setParamView] = useState<{
@@ -77,11 +101,16 @@ function App() {
     const unsubList = onEvent('event:track_list_changed', () => {
       refreshTracks();
     });
+    const unsubSlot = onEvent('event:slotStateChanged', () => {
+      // Refresh matrix state on any slot change
+      getMatrix();
+    });
     return () => {
       unsubTrack();
       unsubList();
+      unsubSlot();
     };
-  }, [onEvent, refreshTracks, updateTrack]);
+  }, [onEvent, refreshTracks, updateTrack, getMatrix]);
 
   const handleSelectTrack = useCallback((index: number) => {
     setSelectedTrack(index);
@@ -104,6 +133,10 @@ function App() {
     await setTrackVolume(index, volume);
   }, [setTrackVolume]);
 
+  const handlePanChange = useCallback(async (index: number, pan: number) => {
+    await setTrackPan(index, pan);
+  }, [setTrackPan]);
+
   // ── FX / Param navigation ──
   const handleSelectFx = useCallback(
     (trackIdx: number, fxIdx: number, fxName: string) => {
@@ -125,7 +158,16 @@ function App() {
   }, []);
 
   const handleBackFromFxBrowser = useCallback(() => {
+    setFxChainView(false);
     setActiveTab('tracks');
+  }, []);
+
+  const handleOpenFxChains = useCallback(() => {
+    setFxChainView(true);
+  }, []);
+
+  const handleBackFromFxChains = useCallback(() => {
+    setFxChainView(false);
   }, []);
 
   return (
@@ -169,6 +211,59 @@ function App() {
           />
         )}
 
+        {activeTab === 'clips' && (
+          <div className="flex flex-col h-full">
+            {/* Mode toggle */}
+            <div className="flex border-b border-[var(--border)]">
+              <button
+                onClick={() => setSessionMode('session')}
+                className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                  sessionMode === 'session'
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                Session
+              </button>
+              <button
+                onClick={() => setSessionMode('sequencer')}
+                className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                  sessionMode === 'sequencer'
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                }`}
+              >
+                Sequencer
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {sessionMode === 'session' ? (
+                <SessionView
+                  matrix={matrix}
+                  getMatrix={getMatrix}
+                  triggerSlot={triggerSlot}
+                  triggerScene={triggerScene}
+                  onEvent={onEvent}
+                  onPlay={play}
+                  onStop={stop}
+                  onRecord={record}
+                  onGetTransportState={getTransportState}
+                />
+              ) : (
+                <SequencerView
+                  sequencer={sequencer}
+                  getSequencer={getSequencer}
+                  toggleStep={toggleStep}
+                  setStep={setStep}
+                  clearAll={seqClearAll}
+                  setLength={seqSetLength}
+                  setBaseNote={seqSetBaseNote}
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'fx' && (paramView ? (
           <ParamControl
             key={`${paramView.trackIdx}-${paramView.fxIdx}`}
@@ -182,6 +277,16 @@ function App() {
             onEvent={onEvent}
             onBack={handleBackFromParam}
           />
+        ) : fxChainView ? (
+          <FxChainBrowser
+            tracks={tracks}
+            selectedTrack={selectedTrack}
+            fxChainGetDirectory={fxChainGetDirectory}
+            fxChainSave={fxChainSave}
+            fxChainLoad={fxChainLoad}
+            fxChainGetInfo={fxChainGetInfo}
+            onBack={handleBackFromFxChains}
+          />
         ) : (
           <FxBrowser
             tracks={tracks}
@@ -191,6 +296,7 @@ function App() {
             addFx={addFx}
             onSelectFx={handleSelectFx}
             onBack={handleBackFromFxBrowser}
+            onOpenFxChains={handleOpenFxChains}
           />
         ))}
 
@@ -203,6 +309,7 @@ function App() {
             onToggleSolo={handleToggleSolo}
             onToggleArm={handleToggleArm}
             onVolumeChange={handleVolumeChange}
+            onPanChange={handlePanChange}
             onAddTrack={addTrack}
             onRefresh={refreshTracks}
             onPlay={play}

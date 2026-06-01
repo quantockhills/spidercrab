@@ -11,6 +11,7 @@ interface FxBrowserProps {
   addFx: (trackIdx: number, fxName: string) => Promise<number>;
   onSelectFx: (trackIdx: number, fxIdx: number, fxName: string) => void;
   onBack: () => void;
+  onOpenFxChains?: () => void;
 }
 
 interface FxInfo {
@@ -40,6 +41,7 @@ export function FxBrowser({
   addFx,
   onSelectFx,
   onBack,
+  onOpenFxChains,
 }: FxBrowserProps) {
   const [allFx, setAllFx] = useState<EnumeratedFx[]>([]);
   const [loading, setLoading] = useState(true);
@@ -174,6 +176,14 @@ export function FxBrowser({
             FX Browser
           </h2>
         </div>
+        {onOpenFxChains && (
+          <button
+            onClick={onOpenFxChains}
+            className="text-xs px-2.5 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            🔗 Chains
+          </button>
+        )}
         {selectedTrackName && (
           <span className="text-xs text-[var(--text-secondary)]">
             Target: <span className="text-[var(--text-primary)]">{selectedTrackName}</span>

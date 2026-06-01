@@ -6,6 +6,9 @@
 #include <sstream>
 namespace fs = std::filesystem;
 
+// Global Playtime 2 API state (defined here, declared extern in playtime_api.h)
+PlaytimeApi g_playtimeApi;
+
 // Minimal JSON builder (no dependencies)
 static std::string json_escape(const std::string& s)
 {
@@ -291,10 +294,42 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleSetTrackSelected(clientId, id, message);
         } else if (command == "track/setVolume") {
             HandleSetTrackVolume(clientId, id, message);
+        } else if (command == "track/setPan") {
+            HandleSetTrackPan(clientId, id, message);
         } else if (command == "sample/getDirectory") {
             HandleSampleGetDirectory(clientId, id, message);
         } else if (command == "sample/sendToTrack") {
             HandleSampleSendToTrack(clientId, id, message);
+        } else if (command == "matrix/getAll") {
+            HandleMatrixGetAll(clientId, id, message);
+        } else if (command == "matrix/getSlot") {
+            HandleMatrixGetSlot(clientId, id, message);
+        } else if (command == "matrix/triggerSlot") {
+            HandleMatrixTriggerSlot(clientId, id, message);
+        } else if (command == "matrix/triggerScene") {
+            HandleMatrixTriggerScene(clientId, id, message);
+        } else if (command == "sequencer/getAll") {
+            HandleSequencerGetAll(clientId, id, message);
+        } else if (command == "sequencer/toggleStep") {
+            HandleSequencerToggleStep(clientId, id, message);
+        } else if (command == "sequencer/setStep") {
+            HandleSequencerSetStep(clientId, id, message);
+        } else if (command == "sequencer/clearAll") {
+            HandleSequencerClearAll(clientId, id, message);
+        } else if (command == "sequencer/setLength") {
+            HandleSequencerSetLength(clientId, id, message);
+        } else if (command == "sequencer/setBaseNote") {
+            HandleSequencerSetBaseNote(clientId, id, message);
+        } else if (command == "sequencer/getPlayhead") {
+            HandleSequencerGetPlayhead(clientId, id, message);
+        } else if (command == "fxchain/getDirectory") {
+            HandleFxChainGetDirectory(clientId, id, message);
+        } else if (command == "fxchain/save") {
+            HandleFxChainSave(clientId, id, message);
+        } else if (command == "fxchain/load") {
+            HandleFxChainLoad(clientId, id, message);
+        } else if (command == "fxchain/getInfo") {
+            HandleFxChainGetInfo(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -361,6 +396,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         // Read actual state from Reaper (setNewValue=nullptr = read mode)
         bool muted = false, soloed = false, armed = false;
         double volume = 0.75; // sane default if API unavailable
+        double pan = 0.0;  // sane default if API unavailable
         if (m_api.GetSetMediaTrackInfo) {
             bool* mp = (bool*)m_api.GetSetMediaTrackInfo(track, "B_MUTE", nullptr);
             if (mp) muted = *mp;
@@ -370,6 +406,8 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (ap) armed = (*ap != 0);
             double* vp = (double*)m_api.GetSetMediaTrackInfo(track, "D_VOL", nullptr);
             if (vp) volume = *vp;
+            double* pp = (double*)m_api.GetSetMediaTrackInfo(track, "D_PAN", nullptr);
+            if (pp) pan = *pp;
         }
 
         tracksJson += "{";
@@ -380,7 +418,8 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
         tracksJson += json_string("soloed") + ":" + std::string(soloed ? "true" : "false") + ",";
         tracksJson += json_string("armed") + ":" + std::string(armed ? "true" : "false") + ",";
-        tracksJson += json_string("volume") + ":" + std::to_string(volume);
+        tracksJson += json_string("volume") + ":" + std::to_string(volume) + ",";
+        tracksJson += json_string("pan") + ":" + std::to_string(pan);
         tracksJson += "}";
     }
     tracksJson += "]";
@@ -547,8 +586,8 @@ void CommandHandler::HandleSetFXParam(
     // Read back the actual value REAPER committed (fixes slider jumping due to
     // normalization precision loss or stepped params)
     double committedVal = value;
+    double actualMin = 0, actualMax = 0, actualMid = 0;
     if (success && m_api.TrackFX_GetParamEx) {
-        double actualMin = 0, actualMax = 0, actualMid = 0;
         double normVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &actualMin, &actualMax, &actualMid);
         committedVal = actualMin + normVal * (actualMax - actualMin);
     }
@@ -870,10 +909,23 @@ void CommandHandler::HandleRecord(int clientId, const std::string& id, const std
     (void)params;
     if (m_api.CSurf_OnRecord) {
         m_api.CSurf_OnRecord();
-        SendResponse(clientId, id, true, "{\"recording\":true}");
+        // Read actual state after toggling; assume true if GetPlayState unavailable
+        bool recording = true;
+        if (m_api.GetPlayState) {
+            int state = m_api.GetPlayState();
+            recording = (state & 4) != 0;
+        }
+        SendResponse(clientId, id, true,
+            "{\"recording\":" + std::string(recording ? "true" : "false") + "}");
     } else if (m_api.Main_OnCommand) {
         m_api.Main_OnCommand(1013, 0); // 1013 = Transport: Record (fallback)
-        SendResponse(clientId, id, true, "{\"recording\":true}");
+        bool recording = true;
+        if (m_api.GetPlayState) {
+            int state = m_api.GetPlayState();
+            recording = (state & 4) != 0;
+        }
+        SendResponse(clientId, id, true,
+            "{\"recording\":" + std::string(recording ? "true" : "false") + "}");
     } else {
         SendResponse(clientId, id, false, "{\"error\":\"Transport API not loaded\"}");
     }
@@ -934,6 +986,210 @@ void CommandHandler::HandleSampleGetDirectory(
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Playtime 2 / clip matrix command handlers (Issue #61)
+//
+// Real implementation: tracks state in PlaytimeState, sends
+// MIDI via PlaytimeMidi, and pushes slotStateChanged events
+// over WebSocket to all connected clients.
+//
+// All handlers work without REAPER — when Playtime is not
+// available, they return sensible default data (8×8 empty grid)
+// and MIDI operations are no-ops.
+// ============================================================
+
+void CommandHandler::HandleMatrixGetAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    int      columns = m_playtimeState.columns();
+    int      rows    = m_playtimeState.rows();
+
+    // When Playtime is available, attempt to find the instance
+    // and sync state. For now, we track state locally.
+    if (isPlaytimeAvailable()) {
+        int instance = m_playtimeState.findPlaytimeInstance();
+        if (instance >= 0) {
+            fprintf(stderr,
+                "[reaper-ipad] matrix/getAll: Playtime instance %d found\n", instance);
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("columns") + ":" + std::to_string(columns) + ",";
+    payload += json_string("rows") + ":" + std::to_string(rows) + ",";
+    payload += json_string("slots") + ":" + m_playtimeState.getAllSlots();
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleMatrixGetSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    SlotState slot = m_playtimeState.getSlot(col, row);
+
+    SendResponse(clientId, id, true, slot.toJson());
+}
+
+// Toggle a slot between playing/stopped/empty.
+// Returns the new slot state as the response payload.
+void CommandHandler::HandleMatrixTriggerSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Toggle: playing → stopped, otherwise → playing
+    SlotState current = m_playtimeState.getSlot(col, row);
+    std::string newState;
+    if (current.state == "playing") {
+        newState = "stopped";
+    } else {
+        newState = "playing";
+    }
+
+    m_playtimeState.setSlotState(col, row, newState);
+
+    // Send MIDI note if MIDI output is available
+    if (m_playtimeMidi.isAvailable()) {
+        m_playtimeMidi.triggerSlotViaMidi(col, row);
+    }
+
+    // Get updated slot and broadcast event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    std::string event = BuildSlotEvent(updated.toJson());
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// Trigger (or stop) all slots in a given scene row.
+void CommandHandler::HandleMatrixTriggerScene(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rowStr = parser.getString("row");
+
+    if (rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'row' parameter\"}");
+        return;
+    }
+
+    int row = atoi(rowStr.c_str());
+
+    if (row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Row out of range\"}");
+        return;
+    }
+
+    int cols = m_playtimeState.columns();
+
+    // Toggle all slots in the row: set to "playing"
+    // (or "stopped" if already playing)
+    for (int c = 0; c < cols; c++) {
+        SlotState current = m_playtimeState.getSlot(c, row);
+        std::string newState;
+        if (current.state == "playing") {
+            newState = "stopped";
+        } else {
+            newState = "playing";
+        }
+        m_playtimeState.setSlotState(c, row, newState);
+
+        // Send MIDI note for each slot
+        if (m_playtimeMidi.isAvailable()) {
+            m_playtimeMidi.triggerSlotViaMidi(c, row);
+        }
+
+        // Broadcast event for each changed slot
+        SlotState updated = m_playtimeState.getSlot(c, row);
+        BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+    }
+
+    // Build response: return all slots in the scene row
+    std::string sceneSlots = "[";
+    for (int c = 0; c < cols; c++) {
+        if (c > 0) sceneSlots += ",";
+        sceneSlots += m_playtimeState.getSlot(c, row).toJson();
+    }
+    sceneSlots += "]";
+
+    std::string payload = "{";
+    payload += json_string("triggered") + ":true,";
+    payload += json_string("row") + ":" + std::to_string(row) + ",";
+    payload += json_string("slots") + ":" + sceneSlots;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Matrix event broadcasting helpers (Issue #61)
+// ============================================================
+
+std::string CommandHandler::BuildSlotEvent(const std::string& slotJson)
+{
+    std::string event = "{";
+    event += json_string("type") + ":" + json_string("event") + ",";
+    event += json_string("event") + ":" + json_string("matrix/slotStateChanged") + ",";
+    event += json_string("payload") + ":" + slotJson;
+    event += "}";
+    return event;
+}
+
+void CommandHandler::BroadcastMatrixEvent(
+    const std::string& eventType, const std::string& slotJson)
+{
+    std::string event = "{";
+    event += json_string("type") + ":" + json_string("event") + ",";
+    event += json_string("event") + ":" + json_string(eventType) + ",";
+    event += json_string("payload") + ":" + slotJson;
+    event += "}";
+
+    if (m_broadcastCb) {
+        m_broadcastCb(event);
+    } else if (m_ws) {
+        m_ws->Broadcast(event);
+    }
 }
 
 void CommandHandler::HandleSampleSendToTrack(
@@ -1032,6 +1288,143 @@ void CommandHandler::BroadcastTrackEvent(
 }
 
 // ============================================================
+// Step sequencer command handlers (Issue #63)
+// ============================================================
+
+void CommandHandler::HandleSequencerGetAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    std::string payload = "{";
+    payload += json_string("columns") + ":" + std::to_string(m_sequencerState.columns()) + ",";
+    payload += json_string("rows") + ":" + std::to_string(m_sequencerState.rows()) + ",";
+    payload += json_string("length") + ":" + std::to_string(m_sequencerState.length()) + ",";
+    payload += json_string("baseNote") + ":" + std::to_string(m_sequencerState.baseNote()) + ",";
+    payload += json_string("playhead") + ":" + std::to_string(m_sequencerState.playheadPosition()) + ",";
+    payload += json_string("steps") + ":" + m_sequencerState.getAllSteps();
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSequencerToggleStep(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_sequencerState.columns() ||
+        row < 0 || row >= m_sequencerState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Step out of range\"}");
+        return;
+    }
+
+    bool newState = m_sequencerState.toggleStep(col, row);
+    StepData step = m_sequencerState.getStep(col, row);
+
+    std::string payload = "{";
+    payload += json_string("column") + ":" + std::to_string(col) + ",";
+    payload += json_string("row") + ":" + std::to_string(row) + ",";
+    payload += json_string("active") + ":" + (newState ? "true" : "false") + ",";
+    payload += json_string("velocity") + ":" + std::to_string(step.velocity) + ",";
+    payload += json_string("note") + ":" + std::to_string(step.note);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSequencerSetStep(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr    = parser.getString("column");
+    std::string rowStr    = parser.getString("row");
+    std::string activeStr = parser.getString("active");
+    std::string velStr    = parser.getString("velocity");
+    int col    = atoi(colStr.c_str());
+    int row    = atoi(rowStr.c_str());
+    bool active = (activeStr == "true");
+    int velocity = velStr.empty() ? 100 : atoi(velStr.c_str());
+
+    if (col < 0 || col >= m_sequencerState.columns() ||
+        row < 0 || row >= m_sequencerState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Step out of range\"}");
+        return;
+    }
+
+    m_sequencerState.setStep(col, row, active, velocity);
+    StepData step = m_sequencerState.getStep(col, row);
+
+    std::string payload = "{";
+    payload += json_string("column") + ":" + std::to_string(col) + ",";
+    payload += json_string("row") + ":" + std::to_string(row) + ",";
+    payload += json_string("active") + ":" + (step.active ? "true" : "false") + ",";
+    payload += json_string("velocity") + ":" + std::to_string(step.velocity);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSequencerClearAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    m_sequencerState.clearAll();
+    SendResponse(clientId, id, true, "{\"cleared\":true}");
+}
+
+void CommandHandler::HandleSequencerSetLength(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string lenStr = parser.getString("length");
+    int len = atoi(lenStr.c_str());
+    if (len < 1 || len > 64) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Length must be 1-64\"}");
+        return;
+    }
+    m_sequencerState.setLength(len);
+    SendResponse(clientId, id, true,
+        "{\"length\":" + std::to_string(len) + "}");
+}
+
+void CommandHandler::HandleSequencerSetBaseNote(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string noteStr = parser.getString("note");
+    int note = atoi(noteStr.c_str());
+    if (note < 0 || note > 127) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Note must be 0-127\"}");
+        return;
+    }
+    m_sequencerState.setBaseNote(note);
+    SendResponse(clientId, id, true,
+        "{\"baseNote\":" + std::to_string(note) + "}");
+}
+
+void CommandHandler::HandleSequencerGetPlayhead(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    int pos = m_sequencerState.playheadPosition();
+    int len = m_sequencerState.length();
+    std::string payload = "{";
+    payload += json_string("playhead") + ":" + std::to_string(pos) + ",";
+    payload += json_string("length") + ":" + std::to_string(len);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
 // HandleSetTrackVolume (Issue #66)
 // ============================================================
 
@@ -1061,6 +1454,563 @@ void CommandHandler::HandleSetTrackVolume(
     BroadcastTrackEvent("track_volume_changed", trackIdx, volume);
     SendResponse(clientId, id, true,
         "{\"volume\":" + std::to_string(volume) + "}");
+}
+
+// ============================================================
+// HandleSetTrackPan (Issue #53)
+// ============================================================
+
+void CommandHandler::HandleSetTrackPan(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string panStr      = parser.getString("pan");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+    double pan = atof(panStr.c_str());
+    // Clamp pan to valid range -1.0 to 1.0
+    if (pan < -1.0) pan = -1.0;
+    if (pan > 1.0) pan = 1.0;
+    m_api.GetSetMediaTrackInfo(track, "D_PAN", &pan);
+    // Broadcast pan change event for real-time updates
+    BroadcastTrackEvent("track_pan_changed", trackIdx, pan);
+    SendResponse(clientId, id, true,
+        "{\"pan\":" + std::to_string(pan) + "}");
+}
+
+// ============================================================
+// FX chain save/load commands (Issue #7)
+//
+// REAPER stores FX chains as .RfxChain files. These are
+// extracted from the track state chunk (GetTrackStateChunk)
+// which returns the full RPPXML track state containing a
+// <FXCHAIN>...</FXCHAIN> section.
+//
+// Save: extract <FXCHAIN>...</FXCHAIN> from track chunk, write to file
+// Load: read .RfxChain file, replace <FXCHAIN> in current track chunk
+// ============================================================
+
+// Helper: Find the <FXCHAIN> section in a track chunk and extract it
+// Returns empty string if not found
+static std::string extractFxChainFromChunk(const std::string& chunk)
+{
+    size_t start = chunk.find("<FXCHAIN");
+    if (start == std::string::npos)
+        return "";
+
+    // REAPER RPPXML format: sections open with <TAG... (no > on opening line)
+    // and close with > on its own line. Count depth to find matching close.
+    int depth = 0;
+    size_t pos = start;
+    while (pos < chunk.size()) {
+        size_t openAngle = chunk.find('<', pos);
+        size_t closeAngle = chunk.find('>', pos);
+        if (openAngle == std::string::npos && closeAngle == std::string::npos)
+            break;
+
+        if (closeAngle != std::string::npos && (openAngle == std::string::npos || closeAngle < openAngle)) {
+            // '>' encountered — close one level
+            depth--;
+            if (depth == 0) {
+                // Found the closing > for FXCHAIN
+                return chunk.substr(start, closeAngle - start + 1);
+            }
+            pos = closeAngle + 1;
+        } else if (openAngle != std::string::npos) {
+            // '<' encountered — check if it's a section opener or closer
+            // REAPER sections: <TAG ... (no > on same line) or > (close) or /> (self-close)
+            if (openAngle + 1 < chunk.size() && chunk[openAngle + 1] == '/') {
+                // Closing tag like </FOO>
+                size_t endTag = chunk.find('>', openAngle);
+                if (endTag != std::string::npos) {
+                    // This is NOT REAPER's format, but handle gracefully
+                    pos = endTag + 1;
+                } else {
+                    pos = openAngle + 1;
+                }
+            } else {
+                // Opening tag like <FOO or self-closing like <FOO ... />
+                size_t endTag = chunk.find('>', openAngle);
+                if (endTag != std::string::npos) {
+                    // It's <TAG...> or <TAG ... />
+                    std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                    // Trim trailing whitespace
+                    while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                        tagContent.pop_back();
+                    if (!tagContent.empty() && tagContent.back() == '/') {
+                        // Self-closing tag <... /> — no depth change
+                        pos = endTag + 1;
+                    } else {
+                        // Regular opening tag
+                        depth++;
+                        pos = endTag + 1;
+                    }
+                } else {
+                    // <TAG without > on same line — REAPER section opener
+                    depth++;
+                    pos = openAngle + 1;
+                }
+            }
+        }
+    }
+    return "";
+}
+
+// Helper: Replace the <FXCHAIN> section in a track chunk
+// REAPER RPPXML format: <FXCHAIN...>...> (opening tag has no >, closing is standalone >)
+static std::string replaceFxChainInChunk(const std::string& chunk, const std::string& newFxChain)
+{
+    size_t start = chunk.find("<FXCHAIN");
+    if (start == std::string::npos) {
+        // No existing FXCHAIN — find the matching close > of the track section
+        // and insert before it, or append at end
+        size_t trackOpen = chunk.find("<TRACK");
+        size_t trackClose = std::string::npos;
+        if (trackOpen != std::string::npos) {
+            // Find the closing > of the TRACK section
+            int depth = 0;
+            size_t pos = trackOpen;
+            while (pos < chunk.size()) {
+                size_t openAngle = chunk.find('<', pos);
+                size_t closeAngle = chunk.find('>', pos);
+                if (closeAngle == std::string::npos) break;
+                if (openAngle == std::string::npos || closeAngle < openAngle) {
+                    depth--;
+                    if (depth == 0) { trackClose = closeAngle; break; }
+                    pos = closeAngle + 1;
+                } else {
+                    // Check if self-closing
+                    size_t endTag = chunk.find('>', openAngle);
+                    if (endTag != std::string::npos) {
+                        std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                        while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                            tagContent.pop_back();
+                        if (tagContent.empty() || tagContent.back() != '/') {
+                            depth++;
+                        }
+                        pos = endTag + 1;
+                    } else {
+                        depth++;
+                        pos = openAngle + 1;
+                    }
+                }
+            }
+        }
+        if (trackClose != std::string::npos) {
+            std::string result = chunk.substr(0, trackClose);
+            result += newFxChain;
+            result += "\n";
+            result += chunk.substr(trackClose);
+            return result;
+        }
+        // Fallback: append at end
+        return chunk + "\n" + newFxChain;
+    }
+
+    // Find the matching closing > for this FXCHAIN section
+    int depth = 0;
+    size_t pos = start;
+    size_t fxChainEnd = std::string::npos;
+    while (pos < chunk.size()) {
+        size_t openAngle = chunk.find('<', pos);
+        size_t closeAngle = chunk.find('>', pos);
+        if (closeAngle == std::string::npos) break;
+
+        if (openAngle == std::string::npos || closeAngle < openAngle) {
+            depth--;
+            if (depth == 0) { fxChainEnd = closeAngle; break; }
+            pos = closeAngle + 1;
+        } else {
+            // Opening tag
+            size_t endTag = chunk.find('>', openAngle);
+            if (endTag != std::string::npos) {
+                std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                    tagContent.pop_back();
+                if (!tagContent.empty() && tagContent.back() != '/') {
+                    depth++;
+                }
+                pos = endTag + 1;
+            } else {
+                depth++;
+                pos = openAngle + 1;
+            }
+        }
+    }
+
+    if (fxChainEnd != std::string::npos) {
+        std::string result = chunk.substr(0, start);
+        result += newFxChain;
+        result += "\n";
+        result += chunk.substr(fxChainEnd);
+        return result;
+    }
+
+    // Fallback: replace from start to end
+    return chunk + "\n" + newFxChain;
+}
+
+void CommandHandler::HandleFxChainGetDirectory(
+    int clientId, const std::string& id, const std::string& params)
+{
+    // Extract "path" from payload
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string path = parser.getString("path");
+    if (path.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+        return;
+    }
+
+    std::string chains = "[";
+    bool first = true;
+
+    try {
+        for (const auto& entry : fs::directory_iterator(path)) {
+            if (!entry.is_regular_file())
+                continue;
+            std::string name = entry.path().filename().string();
+            // Only include .RfxChain files (case-insensitive extension check)
+            std::string ext;
+            size_t dotPos = name.rfind('.');
+            if (dotPos == std::string::npos)
+                continue;
+            ext = name.substr(dotPos);
+            std::string lowerExt;
+            for (char c : ext) lowerExt += tolower((unsigned char)c);
+            if (lowerExt != ".rfxchain")
+                continue;
+
+            if (!first) chains += ",";
+            first = false;
+
+            uintmax_t fileSize = fs::file_size(entry.path());
+            chains += "{";
+            chains += json_string("name") + ":" + json_string(name) + ",";
+            chains += json_string("size") + ":" + std::to_string(fileSize);
+            chains += "}";
+        }
+    } catch (const fs::filesystem_error& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    chains += "]";
+
+    std::string payload = "{";
+    payload += json_string("path") + ":" + json_string(path) + ",";
+    payload += json_string("chains") + ":" + chains;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleFxChainSave(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string filePath    = parser.getString("filePath");
+
+    if (trackIdxStr.empty() || filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'filePath' parameter\"}");
+        return;
+    }
+
+    int         trackIdx = atoi(trackIdxStr.c_str());
+    MediaTrack* track    = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    // Get track state chunk (64KB buffer should be enough)
+    char chunkBuf[65536] = {0};
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf, sizeof(chunkBuf), false);
+    if (!gotChunk || chunkBuf[0] == 0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Failed to get track state chunk\"}");
+        return;
+    }
+
+    std::string chunk(chunkBuf);
+    std::string fxChain = extractFxChainFromChunk(chunk);
+    if (fxChain.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"No FX chain found on track\"}");
+        return;
+    }
+
+    // Write the FX chain to file
+    // Ensure parent directory exists
+    try {
+        fs::path parentDir = fs::path(filePath).parent_path();
+        if (!parentDir.empty() && !fs::exists(parentDir)) {
+            fs::create_directories(parentDir);
+        }
+
+        FILE* f = fopen(filePath.c_str(), "w");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("Failed to open file for writing: " + filePath) + "}");
+            return;
+        }
+        fwrite(fxChain.c_str(), 1, fxChain.size(), f);
+        fclose(f);
+
+        SendResponse(clientId, id, true,
+            "{\"saved\":true,\"filePath\":" + json_string(filePath) + "}");
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+    }
+}
+
+void CommandHandler::HandleFxChainLoad(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string filePath    = parser.getString("filePath");
+    std::string modeStr     = parser.getString("mode"); // "replace" (default) or "append"
+
+    if (trackIdxStr.empty() || filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'filePath' parameter\"}");
+        return;
+    }
+
+    int         trackIdx = atoi(trackIdxStr.c_str());
+    MediaTrack* track    = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    // Read the .RfxChain file
+    std::string fxChain;
+    try {
+        FILE* f = fopen(filePath.c_str(), "r");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("File not found: " + filePath) + "}");
+            return;
+        }
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            fxChain.append(buf, nread);
+        }
+        fclose(f);
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    if (fxChain.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Empty FX chain file\"}");
+        return;
+    }
+
+    // Get current track chunk
+    char chunkBuf[65536] = {0};
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf, sizeof(chunkBuf), false);
+    if (!gotChunk || chunkBuf[0] == 0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Failed to get track state chunk\"}");
+        return;
+    }
+
+    std::string currentChunk(chunkBuf);
+    std::string newChunk;
+
+    bool append = (modeStr == "append");
+
+    // Ensure the loaded content is a proper FXCHAIN section
+    // It might contain just <FXCHAIN>...</FXCHAIN> or might be a full track chunk
+    std::string loadedFxChain;
+    std::string extracted = extractFxChainFromChunk(fxChain);
+    if (!extracted.empty()) {
+        loadedFxChain = extracted;
+    } else {
+        // Assume the file is already an FXCHAIN section
+        loadedFxChain = fxChain;
+    }
+
+    if (append) {
+        // Append: load current FX chain, append new FX to it
+        std::string currentFxChain = extractFxChainFromChunk(currentChunk);
+        if (!currentFxChain.empty()) {
+            // Merge: take the opening <FXCHAIN...> from current, add the
+            // <ITEM> entries from loaded, find the closing > of FXCHAIN
+            // REAPER format: <FXCHAIN\n  ...\n  <ITEM ...>\n>
+            // The closing > is on its own line after all ITEMs
+            size_t currentClose = currentFxChain.rfind('\n');
+            if (currentClose != std::string::npos && currentClose > 0) {
+                // Trim trailing whitespace from the line before last
+                size_t trim = currentClose;
+                while (trim > 0 && (currentFxChain[trim-1] == ' ' || currentFxChain[trim-1] == '\t' || currentFxChain[trim-1] == '\n' || currentFxChain[trim-1] == '\r'))
+                    trim--;
+                // The closing > is on the last line - everything before it is the FX list
+                // Check if the last non-empty line is just ">"
+                size_t lastLineStart = currentFxChain.rfind('\n', currentClose - 1);
+                if (lastLineStart == std::string::npos) lastLineStart = 0;
+                std::string lastLine = currentFxChain.substr(lastLineStart, currentClose - lastLineStart);
+                // Trim whitespace from last line
+                size_t first = lastLine.find_first_not_of(" \t\n\r");
+                if (first != std::string::npos && lastLine[first] == '>') {
+                    // The closing > is on its own line - use everything before it
+                    currentClose = lastLineStart;
+                }
+            }
+            
+            // Find ITEM entries in the loaded chain
+            size_t loadedStart = loadedFxChain.find("<ITEM");
+            if (loadedStart != std::string::npos && currentClose != std::string::npos) {
+                std::string merged = currentFxChain.substr(0, currentClose);
+                // Add the new ITEM entries (without the opening <FXCHAIN and closing >)
+                merged += loadedFxChain.substr(loadedStart);
+                newChunk = replaceFxChainInChunk(currentChunk, merged);
+            } else {
+                newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+            }
+        } else {
+            newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+        }
+    } else {
+        // Replace: just swap the FXCHAIN section
+        newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+    }
+
+    // Write the new track state chunk
+    bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
+    if (ok) {
+        SendResponse(clientId, id, true,
+            "{\"loaded\":true,\"filePath\":" + json_string(filePath) + ",\"append\":"
+                + (append ? "true" : "false") + "}");
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to set track state chunk\"}");
+    }
+}
+
+void CommandHandler::HandleFxChainGetInfo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string filePath = parser.getString("filePath");
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'filePath' parameter\"}");
+        return;
+    }
+
+    // Read the .RfxChain file
+    std::string content;
+    try {
+        FILE* f = fopen(filePath.c_str(), "r");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("File not found: " + filePath) + "}");
+            return;
+        }
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            content.append(buf, nread);
+        }
+        fclose(f);
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    // Parse the FXCHAIN: count ITEM entries and extract names
+    int fxCount = 0;
+    std::string fxNames = "[";
+    size_t pos = 0;
+    bool first = true;
+
+    while ((pos = content.find("<ITEM", pos)) != std::string::npos) {
+        fxCount++;
+        size_t nameStart = content.find("NAME", pos);
+        if (nameStart != std::string::npos && nameStart < content.find(">", pos)) {
+            // NAME="..."
+            size_t quote1 = content.find('"', nameStart);
+            if (quote1 != std::string::npos) {
+                size_t quote2 = content.find('"', quote1 + 1);
+                if (quote2 != std::string::npos) {
+                    std::string fxName = content.substr(quote1 + 1, quote2 - quote1 - 1);
+                    if (!first) fxNames += ",";
+                    first = false;
+                    fxNames += json_string(fxName);
+                }
+            }
+        }
+        // Move past this ITEM
+        size_t itemClose = content.find(">", pos);
+        if (itemClose != std::string::npos) {
+            // Move past the rest of this ITEM block — find VST / JS or the next ITEM
+            size_t nextItem = content.find("<ITEM", pos + 5);
+            if (nextItem != std::string::npos) {
+                pos = nextItem;
+            } else {
+                // Last item - find the end of the FXCHAIN section
+                size_t fxChainClose = content.find("</FXCHAIN>", pos);
+                if (fxChainClose != std::string::npos) {
+                    pos = fxChainClose;
+                } else {
+                    pos = content.size();
+                }
+            }
+        } else {
+            pos++;
+        }
+    }
+    fxNames += "]";
+
+    // Get file info
+    uintmax_t fileSize = 0;
+    try {
+        fileSize = fs::file_size(filePath);
+    } catch (...) {
+        fileSize = 0;
+    }
+
+    std::string payload = "{";
+    payload += json_string("filePath") + ":" + json_string(filePath) + ",";
+    payload += json_string("fxCount") + ":" + std::to_string(fxCount) + ",";
+    payload += json_string("fxNames") + ":" + fxNames + ",";
+    payload += json_string("fileSize") + ":" + std::to_string(fileSize);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
 }
 
 // ============================================================

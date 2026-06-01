@@ -9,6 +9,7 @@ interface TrackOverviewProps {
   onToggleSolo: (index: number) => void;
   onToggleArm: (index: number) => void;
   onVolumeChange?: (trackIdx: number, volume: number) => void;
+  onPanChange?: (trackIdx: number, pan: number) => void;
   onAddTrack?: () => Promise<boolean>;
   onRefresh: () => void;
   onPlay?: () => Promise<boolean>;
@@ -57,6 +58,70 @@ function VolumeBar({ volume, onChange }: { volume: number; onChange?: (value: nu
   );
 }
 
+/** Pan control: horizontal slider -1 to 1, with center position indicator */
+function PanBar({ pan, onChange }: { pan: number; onChange?: (value: number) => void }) {
+  // Normalize -1..1 to 0..100 for bar width
+  const pct = Math.round(Math.abs(pan) * 100);
+  const isLeft = pan < -0.05;
+  const isRight = pan > 0.05;
+  const isCenter = !isLeft && !isRight;
+
+  let label: string;
+  if (isCenter) {
+    label = 'C';
+  } else if (isLeft) {
+    label = `L ${pct}%`;
+  } else {
+    label = `R ${pct}%`;
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {/* Visual pan indicator */}
+      <div className="relative w-16 h-5">
+        {/* Background track */}
+        <div className="absolute inset-0 bg-[var(--bg-tertiary)] overflow-hidden">
+          {/* Center line */}
+          <div className="absolute top-0 bottom-0 left-1/2 w-[1px] bg-[var(--text-secondary)]/30" />
+          {/* Left fill (hard-left = full left fill) */}
+          {isLeft && (
+            <div
+              className="absolute inset-y-0 right-1/2 bg-[var(--accent-orange)]/40"
+              style={{ width: `${pct}%` }}
+            />
+          )}
+          {/* Right fill (hard-right = full right fill) */}
+          {isRight && (
+            <div
+              className="absolute inset-y-0 left-1/2 bg-[var(--accent-orange)]/40"
+              style={{ width: `${pct}%` }}
+            />
+          )}
+        </div>
+        {/* Invisible slider overlaid on top */}
+        <input
+          type="range"
+          min="-1"
+          max="1"
+          step="0.01"
+          value={pan}
+          onChange={(e) => {
+            const val = parseFloat(e.target.value);
+            if (onChange) onChange(val);
+          }}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          aria-label="Track pan"
+          data-testid="track-pan-slider"
+        />
+      </div>
+      {/* Pan label */}
+      <span data-testid="pan-label" className="text-[11px] text-[var(--text-secondary)] w-10 text-center tabular-nums">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 /** Clean FX name for display (strip format prefix like "VST3: ") */
 function cleanFxName(name: string): string {
   return name.replace(/^(VST3?i?:\s*|CLAPi?:\s*|AUi?:\s*|DX:\s*|JS:\s*)/, '');
@@ -70,6 +135,7 @@ export function TrackOverview({
   onToggleSolo,
   onToggleArm,
   onVolumeChange,
+  onPanChange,
   onRefresh,
   onPlay,
   onStop,
@@ -281,6 +347,7 @@ export function TrackOverview({
                 onToggleSolo={() => onToggleSolo(track.index)}
                 onToggleArm={() => onToggleArm(track.index)}
                 onVolumeChange={onVolumeChange ? (v) => onVolumeChange(track.index, v) : undefined}
+                onPanChange={onPanChange ? (v) => onPanChange(track.index, v) : undefined}
               />
               {/* FX grid cards under the track row */}
               {getTrackFx && onSelectFx && trackFxMap[track.index]?.length > 0 && (
@@ -326,6 +393,7 @@ interface TrackRowProps {
   onToggleSolo: () => void;
   onToggleArm: () => void;
   onVolumeChange?: (volume: number) => void;
+  onPanChange?: (pan: number) => void;
 }
 
 function TrackRow({
@@ -336,6 +404,7 @@ function TrackRow({
   onToggleSolo,
   onToggleArm,
   onVolumeChange,
+  onPanChange,
 }: TrackRowProps) {
   return (
     <div
@@ -370,6 +439,9 @@ function TrackRow({
       <span className="text-[11px] text-[var(--text-secondary)] w-14 text-right tabular-nums">
         {volumeToDb(track.volume)}
       </span>
+
+      {/* Pan control */}
+      <PanBar pan={track.pan} onChange={onPanChange} />
 
       {/* Control buttons */}
       <div className="flex gap-1.5 flex-shrink-0">

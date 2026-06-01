@@ -15,6 +15,7 @@ export interface Track {
   soloed: boolean;
   armed: boolean;
   volume: number;
+  pan: number;
 }
 
 export interface FxInfo {
@@ -35,6 +36,37 @@ export interface DirEntry {
   size: number;
 }
 
+// ── FX Chain types (Issue #7) ──
+
+export interface FxChainEntry {
+  name: string;
+  size: number;
+}
+
+export interface FxChainInfo {
+  filePath: string;
+  fxCount: number;
+  fxNames: string[];
+  fileSize: number;
+}
+
+// ── Playtime 2 / Clip Matrix types ──
+
+export interface ClipSlot {
+  column: number;
+  row: number;
+  state: 'empty' | 'stopped' | 'playing' | 'recording';
+  color: string;
+  name: string;
+  clipType: 'none' | 'audio' | 'midi';
+}
+
+export interface MatrixData {
+  columns: number;
+  rows: number;
+  slots: ClipSlot[];
+}
+
 export interface FxParam {
   index: number;
   name: string;
@@ -43,6 +75,23 @@ export interface FxParam {
   max: number;
   mid: number;
   formatted?: string;
+}
+
+export interface StepData {
+  column: number;
+  row: number;
+  active: boolean;
+  velocity: number;
+  note: number;
+}
+
+export interface SequencerData {
+  columns: number;
+  rows: number;
+  length: number;
+  baseNote: number;
+  playhead: number;
+  steps: StepData[];
 }
 
 export function useReaper(opts: UseReaperOptions = {}) {
@@ -181,6 +230,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return resp.success;
   }, []);
 
+  const setTrackPan = useCallback(async (trackIdx: number, pan: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/setPan', { trackIdx, pan });
+    return resp.success;
+  }, []);
+
   // Sample browser commands
   const getDirectory = useCallback(async (path: string): Promise<{entries: DirEntry[]}> => {
     if (!clientRef.current) return {entries: []};
@@ -192,6 +247,36 @@ export function useReaper(opts: UseReaperOptions = {}) {
     if (!clientRef.current) return false;
     const resp = await clientRef.current.send('sample/sendToTrack', { path, trackIdx });
     return resp.success;
+  }, []);
+
+  // ── FX Chain commands (Issue #7) ──
+
+  const fxChainGetDirectory = useCallback(async (path: string): Promise<{chains: FxChainEntry[]}> => {
+    if (!clientRef.current) return {chains: []};
+    const resp = await clientRef.current.send('fxchain/getDirectory', { path });
+    return resp.payload as {chains: FxChainEntry[]};
+  }, []);
+
+  const fxChainSave = useCallback(async (trackIdx: number, filePath: string): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('fxchain/save', { trackIdx, filePath });
+    return resp.success;
+  }, []);
+
+  const fxChainLoad = useCallback(async (trackIdx: number, filePath: string, mode: 'replace' | 'append' = 'replace'): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('fxchain/load', { trackIdx, filePath, mode });
+    return resp.success;
+  }, []);
+
+  const fxChainGetInfo = useCallback(async (filePath: string): Promise<FxChainInfo | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('fxchain/getInfo', { filePath });
+      return resp.payload as unknown as FxChainInfo;
+    } catch {
+      return null;
+    }
   }, []);
 
   // Transport commands
@@ -225,6 +310,148 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return resp.success;
   }, []);
 
+  // ── Playtime 2 / Clip Matrix commands (Issue #61) ──
+
+  const [matrix, setMatrix] = useState<MatrixData | null>(null);
+
+  const getMatrix = useCallback(async (): Promise<MatrixData | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('matrix/getAll');
+      const data = resp.payload as MatrixData;
+      setMatrix(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const triggerSlot = useCallback(async (column: number, row: number): Promise<ClipSlot | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('matrix/triggerSlot', { column, row });
+      return (resp.payload as any)?.slot as ClipSlot ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const triggerScene = useCallback(async (row: number): Promise<ClipSlot[] | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('matrix/triggerScene', { row });
+      return (resp.payload as any)?.slots as ClipSlot[] ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // ── Step Sequencer commands (Issue #63) ──
+
+  const [sequencer, setSequencer] = useState<SequencerData | null>(null);
+
+  const getSequencer = useCallback(async (): Promise<SequencerData | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('sequencer/getAll');
+      const data = resp.payload as SequencerData;
+      setSequencer(data);
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const toggleStep = useCallback(async (column: number, row: number): Promise<StepData | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('sequencer/toggleStep', { column, row });
+      const data = resp.payload as StepData;
+      // Optimistic update
+      setSequencer((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          steps: prev.steps.map((s) =>
+            s.column === column && s.row === row ? { ...s, active: data.active, velocity: data.velocity } : s
+          ),
+        };
+      });
+      return data;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const setStep = useCallback(async (column: number, row: number, active: boolean, velocity: number = 100): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    try {
+      await clientRef.current.send('sequencer/setStep', { column, row, active, velocity });
+      setSequencer((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          steps: prev.steps.map((s) =>
+            s.column === column && s.row === row ? { ...s, active, velocity } : s
+          ),
+        };
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const seqClearAll = useCallback(async (): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    try {
+      await clientRef.current.send('sequencer/clearAll');
+      setSequencer((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          steps: prev.steps.map((s) => ({ ...s, active: false })),
+        };
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const seqSetLength = useCallback(async (length: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    try {
+      await clientRef.current.send('sequencer/setLength', { length });
+      setSequencer((prev) => prev ? { ...prev, length } : prev);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const seqSetBaseNote = useCallback(async (note: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    try {
+      await clientRef.current.send('sequencer/setBaseNote', { note });
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const updateMatrixSlot = useCallback((column: number, row: number, updates: Partial<ClipSlot>) => {
+    setMatrix((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        slots: prev.slots.map((s) =>
+          s.column === column && s.row === row ? { ...s, ...updates } : s
+        ),
+      };
+    });
+  }, []);
+
   const selectTrack = useCallback(async (trackIdx: number): Promise<boolean> => {
     return await setTrackSelected(trackIdx, true);
   }, [setTrackSelected]);
@@ -246,6 +473,19 @@ export function useReaper(opts: UseReaperOptions = {}) {
     connected,
     tracks,
     refreshTracks,
+    matrix,
+    getMatrix,
+    triggerSlot,
+    triggerScene,
+    updateMatrixSlot,
+    // Step sequencer (Issue #63)
+    sequencer,
+    getSequencer,
+    toggleStep,
+    setStep,
+    seqClearAll,
+    seqSetLength,
+    seqSetBaseNote,
     getTrackFx,
     getFxParams,
     setFxParam,
@@ -257,6 +497,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     setTrackArm,
     setTrackSelected,
     setTrackVolume,
+    setTrackPan,
     addTrack,
     toggleTrackMute,
     toggleTrackSolo,
@@ -271,5 +512,9 @@ export function useReaper(opts: UseReaperOptions = {}) {
     refreshFxCache,
     onEvent,
     updateTrack,
+    fxChainGetDirectory,
+    fxChainSave,
+    fxChainLoad,
+    fxChainGetInfo,
   };
 }

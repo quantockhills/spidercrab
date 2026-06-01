@@ -6,7 +6,128 @@
 #include "../src/sha1_utils.h"
 
 // ============================================================
-// SHA-1 hash tests
+// Streaming SHA-1 API tests
+// ============================================================
+
+TEST(StreamingSha1Test, InitZeroesContext)
+{
+    Sha1Context ctx;
+    memset(&ctx, 0xFF, sizeof(ctx));
+    sha1_init(&ctx);
+    EXPECT_EQ(ctx.h[0], 0x67452301u);
+    EXPECT_EQ(ctx.h[4], 0xC3D2E1F0u);
+    EXPECT_EQ(ctx.blockLen, 0u);
+    EXPECT_EQ(ctx.bitCount, 0u);
+}
+
+TEST(StreamingSha1Test, Rfc6455KnownVector)
+{
+    // RFC 6455 §4.2.2 known vector via streaming API
+    std::string key   = "dGhlIHNhbXBsZSBub25jZQ==";
+    std::string magic = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+    Sha1Context ctx;
+    sha1_init(&ctx);
+    sha1_update(&ctx,
+                reinterpret_cast<const unsigned char*>(magic.data()),
+                magic.size());
+    unsigned char hash[20];
+    sha1_final(&ctx, hash);
+
+    std::string acceptKey = base64_encode(hash, 20);
+    EXPECT_EQ(acceptKey, "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
+}
+
+TEST(StreamingSha1Test, MultiUpdateSameAsSingle)
+{
+    // Splitting input across multiple sha1_update calls should produce
+    // the same result as a single call.
+    std::string input = "The quick brown fox jumps over the lazy dog";
+
+    // Single-shot via sha1_hash
+    unsigned char hashSingle[20];
+    sha1_hash(reinterpret_cast<const unsigned char*>(input.data()),
+              input.size(), hashSingle);
+
+    // Multi-update via streaming API
+    Sha1Context ctx;
+    sha1_init(&ctx);
+    sha1_update(&ctx,
+                reinterpret_cast<const unsigned char*>(input.data()), 10);
+    sha1_update(&ctx,
+                reinterpret_cast<const unsigned char*>(input.data() + 10), 10);
+    sha1_update(&ctx,
+                reinterpret_cast<const unsigned char*>(input.data() + 20),
+                input.size() - 20);
+    unsigned char hashMulti[20];
+    sha1_final(&ctx, hashMulti);
+
+    for (int i = 0; i < 20; i++)
+        EXPECT_EQ(hashSingle[i], hashMulti[i]);
+}
+
+TEST(StreamingSha1Test, ByteByByte)
+{
+    // Feeding one byte at a time must produce the same result
+    std::string input = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+    unsigned char hashSingle[20];
+    sha1_hash(reinterpret_cast<const unsigned char*>(input.data()),
+              input.size(), hashSingle);
+
+    Sha1Context ctx;
+    sha1_init(&ctx);
+    for (size_t i = 0; i < input.size(); i++) {
+        sha1_update(&ctx,
+                    reinterpret_cast<const unsigned char*>(&input[i]), 1);
+    }
+    unsigned char hashByte[20];
+    sha1_final(&ctx, hashByte);
+
+    for (int i = 0; i < 20; i++)
+        EXPECT_EQ(hashSingle[i], hashByte[i]);
+}
+
+TEST(StreamingSha1Test, EmptyInput)
+{
+    Sha1Context ctx;
+    sha1_init(&ctx);
+    unsigned char hash[20];
+    sha1_final(&ctx, hash);
+
+    // Should match one-shot sha1_hash on empty input
+    unsigned char hashExpected[20];
+    sha1_hash(reinterpret_cast<const unsigned char*>(""), 0, hashExpected);
+    for (int i = 0; i < 20; i++)
+        EXPECT_EQ(hash[i], hashExpected[i]);
+}
+
+TEST(StreamingSha1Test, CrossBlockBoundary)
+{
+    // Feed 100 bytes in 3 chunks to exercise partial-block buffering
+    std::string input(100, 'D');
+
+    unsigned char hashExpected[20];
+    sha1_hash(reinterpret_cast<const unsigned char*>(input.data()),
+              input.size(), hashExpected);
+
+    Sha1Context ctx;
+    sha1_init(&ctx);
+    sha1_update(&ctx,
+                reinterpret_cast<const unsigned char*>(input.data()), 30);
+    sha1_update(&ctx,
+                reinterpret_cast<const unsigned char*>(input.data() + 30), 30);
+    sha1_update(&ctx,
+                reinterpret_cast<const unsigned char*>(input.data() + 60), 40);
+    unsigned char hashStream[20];
+    sha1_final(&ctx, hashStream);
+
+    for (int i = 0; i < 20; i++)
+        EXPECT_EQ(hashExpected[i], hashStream[i]);
+}
+
+// ============================================================
+// SHA-1 hash tests (legacy one-shot API)
 // ============================================================
 
 TEST(SHA1Test, Rfc6455KnownVector)

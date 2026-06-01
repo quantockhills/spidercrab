@@ -1,5 +1,9 @@
 #pragma once
 #include "websocket_server.h"
+#include "playtime_api.h"
+#include "playtime_state.h"
+#include "playtime_midi.h"
+#include "sequencer_state.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -55,6 +59,11 @@ struct ReaperAPI {
     // Media/sample
     int (*InsertMedia)(const char* file, int mode) = nullptr;
     const char* (*EnumerateFiles)(const char* path, int fileindex) = nullptr;
+
+    // Track state chunk (for FX chain save/load)
+    bool (*GetTrackStateChunk)(MediaTrack* track, char* strNeedBig, int strNeedBig_sz, bool isundoOptional)
+        = nullptr;
+    bool (*SetTrackStateChunk)(MediaTrack* track, const char* str, bool isundoOptional) = nullptr;
 };
 
 class CommandHandler {
@@ -75,6 +84,12 @@ public:
     // Format a JSON response string (public for testing)
     static std::string FormatResponse(const std::string& id, bool success, const std::string& payload);
 
+    // Access the MIDI output helper (for setting up send function at startup)
+    PlaytimeMidi& GetMidi() { return m_playtimeMidi; }
+
+    // Access the playtime state (for tests)
+    PlaytimeState& GetPlaytimeState() { return m_playtimeState; }
+
     // Pre-populate FX cache at extension startup (avoids crash when
     // EnumInstalledFX is called from Chromium WS context due to X11/SWELL
     // display conflict). Safe to call before any WebSocket client connects.
@@ -84,6 +99,12 @@ public:
     // Broadcast a track state change event (mute/solo/arm/volume) to all WS clients
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, double value);
+
+    // Broadcast a matrix slot state change event to all WS clients
+    void BroadcastMatrixEvent(const std::string& eventType, const std::string& slotJson);
+
+    // Build a WebSocket event JSON string for a slot state change
+    std::string BuildSlotEvent(const std::string& slotJson);
 
     // Real-time FX param change via CSURF_EXT callback (Issue #58)
     void OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx, double value);
@@ -104,6 +125,13 @@ private:
     // Watched FX for callback-based param change filtering (Issue #58)
     int         m_watchedTrackIdx = -1;
     int         m_watchedFxIdx    = -1;
+
+    // Playtime 2 clip launcher state (Issues #61)
+    PlaytimeState m_playtimeState;
+    PlaytimeMidi  m_playtimeMidi;
+
+    // Step sequencer state (Issue #63)
+    SequencerState m_sequencerState;
 
     // Track the last param we set ourselves, so we can suppress
     // REAPER's OnFxParamChanged talkback (Issue #73)
@@ -131,10 +159,17 @@ private:
     void HandleSetTrackArm(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackSelected(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackVolume(int clientId, const std::string& id, const std::string& params);
+    void HandleSetTrackPan(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — sample/media
     void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);
     void HandleSampleSendToTrack(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — FX chain save/load (Issue #7)
+    void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainSave(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainLoad(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainGetInfo(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX
     void HandleEnumerateFX(int clientId, const std::string& id, const std::string& params);
@@ -144,4 +179,19 @@ private:
     void HandleSetFXParam(int clientId, const std::string& id, const std::string& params);
     void HandleAddFX(int clientId, const std::string& id, const std::string& params);
     void HandleDeleteFX(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — Playtime 2 / clip matrix
+    void HandleMatrixGetAll(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixGetSlot(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixTriggerSlot(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixTriggerScene(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — step sequencer (Issue #63)
+    void HandleSequencerGetAll(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerToggleStep(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerSetStep(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerClearAll(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerSetLength(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerSetBaseNote(int clientId, const std::string& id, const std::string& params);
+    void HandleSequencerGetPlayhead(int clientId, const std::string& id, const std::string& params);
 };

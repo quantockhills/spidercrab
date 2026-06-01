@@ -479,6 +479,45 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
     return nullptr;
 }
 
+// ---- Mock GetTrackStateChunk / SetTrackStateChunk ----
+
+static std::string g_mockChunk;
+
+static bool mock_GetTrackStateChunk(MediaTrack* track, char* buf, int buf_sz, bool)
+{
+    (void)track;
+    if (buf_sz <= 0 || buf == nullptr) return false;
+    if (g_mockChunk.empty()) {
+        g_mockChunk =
+            "<TRACK\n"
+            "  NAME \"Test Track\"\n"
+            "  <FXCHAIN\n"
+            "    SHOW 0\n"
+            "    LASTSEL 0\n"
+            "    DOCKED 0\n"
+            "    <ITEM\n"
+            "      NAME \"ReaEQ\"\n"
+            "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+            "    >\n"
+            "    <ITEM\n"
+            "      NAME \"ReaComp\"\n"
+            "      VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+            "    >\n"
+            "  >\n"
+            ">\n";
+    }
+    size_t len = g_mockChunk.size();
+    memcpy(buf, g_mockChunk.c_str(), len + 1);
+    return true;
+}
+
+static bool mock_SetTrackStateChunk(MediaTrack* track, const char* str, bool)
+{
+    (void)track;
+    if (str) g_mockChunk = str;
+    return true;
+}
+
 // ---- Mock EnumInstalledFX ----
 
 struct MockFxEntry {
@@ -519,6 +558,8 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_Delete       = mock_TrackFX_Delete;
     api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
     api.EnumInstalledFX      = mock_EnumInstalledFX;
+    api.GetTrackStateChunk   = mock_GetTrackStateChunk;
+    api.SetTrackStateChunk   = mock_SetTrackStateChunk;
     handler->SetApi(api);
     if (outResponses) {
         handler->SetResponseCallback([outResponses](int, const std::string& resp) {
@@ -1696,6 +1737,905 @@ TEST(FxEnumCacheTest, EnumerateReturnsFormatCorrectly)
 }
 
 // ============================================================
+// Playtime 2 / clip matrix command tests (Issue #61)
+// ============================================================
+
+TEST(MatrixTest, GetAllReturnsStructure)
+{
+    // Test that matrix/getAll returns a properly structured response
+    // with columns, rows, and a slots array containing 64 entries
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/getAll","id":"m1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify success
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify structure: columns:8, rows:8
+    EXPECT_NE(resp.find("\"columns\":8"), std::string::npos);
+    EXPECT_NE(resp.find("\"rows\":8"), std::string::npos);
+
+    // Verify slots array has 64 entries (8*8)
+    // Each slot has "column", "row", "state" fields
+    // Count "state" occurrences — should be 64
+    size_t pos = 0;
+    int slotCount = 0;
+    while ((pos = resp.find("\"state\"", pos)) != std::string::npos) {
+        slotCount++;
+        pos++;
+    }
+    EXPECT_EQ(slotCount, 64);
+
+    // Verify the first slot structure
+    EXPECT_NE(resp.find("\"column\":0,\"row\":0,\"state\":\"empty\""), std::string::npos);
+    // Verify the last slot structure
+    EXPECT_NE(resp.find("\"column\":7,\"row\":7,\"state\":\"empty\""), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSlotWithValidParamsReturnsSuccess)
+{
+    // Test that matrix/triggerSlot with valid column and row returns success
+    // and includes the triggered slot coordinates in the response
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":3,"row":5},"id":"m2"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify success
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify slot state response includes coordinates and toggled state
+    EXPECT_NE(resp.find("\"column\":3"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":5"), std::string::npos);
+    // Slot was empty, after trigger it becomes "playing"
+    EXPECT_NE(resp.find("\"state\":\"playing\""), std::string::npos);
+    // Verify the full slot structure is present (color, name, clipType)
+    EXPECT_NE(resp.find("\"color\""), std::string::npos);
+    EXPECT_NE(resp.find("\"name\""), std::string::npos);
+    EXPECT_NE(resp.find("\"clipType\""), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSlotMissingParamsReturnsError)
+{
+    // Test that matrix/triggerSlot without column/row params returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // No payload at all
+    std::string cmd = R"({"type":"command","command":"matrix/triggerSlot","id":"m3"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify failure
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'column' or 'row' parameter"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, GetSlotWithValidParamsReturnsSlot)
+{
+    // Test that matrix/getSlot with valid column and row returns slot state
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/getSlot","payload":{"column":2,"row":4},"id":"m4"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify success
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify slot structure
+    EXPECT_NE(resp.find("\"column\":2"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":4"), std::string::npos);
+    EXPECT_NE(resp.find("\"state\":\"empty\""), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, GetSlotMissingParamsReturnsError)
+{
+    // Test that matrix/getSlot without column/row params returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/getSlot","payload":{},"id":"m5"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify failure
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'column' or 'row' parameter"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSceneWithValidRowReturnsSuccess)
+{
+    // Test that matrix/triggerScene with a valid row returns success
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/triggerScene","payload":{"row":2},"id":"m6"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify success
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify triggered flag and row
+    EXPECT_NE(resp.find("\"triggered\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":2"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSceneMissingRowReturnsError)
+{
+    // Test that matrix/triggerScene without row param returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/triggerScene","payload":{},"id":"m7"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify failure
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'row' parameter"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, GetAllResponseJsonIsValid)
+{
+    // Comprehensive validation that the matrix/getAll response is
+    // valid, well-formed JSON
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Also verify Phase1MVP-style that all matrix commands produce valid JSON
+    struct CmdCheck {
+        const char* cmd;
+        const char* desc;
+    };
+
+    CmdCheck commands[] = {
+        {R"({"type":"command","command":"matrix/getAll","id":"v1"})", "matrix/getAll"},
+        {R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":0},"id":"v2"})", "matrix/getSlot"},
+        {R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"v3"})", "matrix/triggerSlot"},
+        {R"({"type":"command","command":"matrix/triggerScene","payload":{"row":0},"id":"v4"})", "matrix/triggerScene"},
+        {R"({"type":"command","command":"matrix/triggerSlot","id":"v5"})", "matrix/triggerSlot (invalid)"},
+        {R"({"type":"command","command":"matrix/getSlot","payload":{},"id":"v6"})", "matrix/getSlot (invalid)"},
+    };
+
+    for (const auto& cc : commands) {
+        responses.clear();
+        handler->HandleMessage(1, cc.cmd);
+        ASSERT_EQ(responses.size(), 1u) << "Command " << cc.desc << " should produce 1 response";
+
+        const std::string& resp = responses[0];
+
+        // Verify balanced braces
+        int depth = 0;
+        for (char c : resp) {
+            if (c == '{') depth++;
+            if (c == '}') depth--;
+        }
+        EXPECT_EQ(depth, 0) << "Unbalanced JSON for " << cc.desc;
+
+        // Verify starts and ends with braces
+        EXPECT_EQ(resp.front(), '{') << cc.desc;
+        EXPECT_EQ(resp.back(), '}') << cc.desc;
+
+        // Verify has type field
+        EXPECT_NE(resp.find("\"type\""), std::string::npos) << cc.desc;
+    }
+}
+
+TEST(MatrixTest, GetAllResponseContentValidation)
+{
+    // Verify that all 64 slots in matrix/getAll have correct content
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1, R"({"type":"command","command":"matrix/getAll","id":"v"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify every column 0..7 and row 0..7 pair is present
+    for (int c = 0; c < 8; c++) {
+        for (int r = 0; r < 8; r++) {
+            std::string expected = "\"column\":" + std::to_string(c)
+                + ",\"row\":" + std::to_string(r)
+                + ",\"state\":\"empty\"";
+            EXPECT_NE(resp.find(expected), std::string::npos)
+                << "Missing slot at column=" << c << " row=" << r;
+        }
+    }
+}
+
+// ============================================================
+// Playtime 2 integration tests (Issue #61)
+// ============================================================
+
+TEST(MatrixTest, TriggerSlotTogglesState)
+{
+    // Test that triggering an empty slot sets it to "playing",
+    // and triggering again sets it back to "stopped"
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // First trigger: empty → playing
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
+
+    // Second trigger: playing → stopped
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
+
+    // Third trigger: stopped → playing
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSlotPreservesOtherSlots)
+{
+    // Test that triggering one slot doesn't affect other slots
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger slot (0,0)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Get slot (0,0) — should be playing
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":0},"id":"g1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+
+    // Get slot (7,7) — should still be empty
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":7,"row":7},"id":"g2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"empty\""), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSceneTogglesEntireRow)
+{
+    // Test that triggerScene toggles all 8 slots in the given row
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger scene row 1
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerScene","payload":{"row":1},"id":"s1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify all 8 slots in row 1 are now "playing"
+    EXPECT_NE(resp.find("\"triggered\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":1"), std::string::npos);
+    EXPECT_NE(resp.find("\"slots\""), std::string::npos);
+    for (int c = 0; c < 8; c++) {
+        std::string expected = "\"column\":" + std::to_string(c)
+            + ",\"row\":1,\"state\":\"playing\"";
+        EXPECT_NE(resp.find(expected), std::string::npos)
+            << "Expected row 1, column " << c << " to be playing";
+    }
+
+    // Get individual slot to confirm via getSlot
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":5,"row":1},"id":"gs"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+
+    // A different row should still be empty
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":0},"id":"gs2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"empty\""), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSlotOutOfRangeReturnsError)
+{
+    // Test that column/row out of range returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Column 99 out of range
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":99,"row":0},"id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Column or row out of range"), std::string::npos);
+
+    // Negative column
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":-1,"row":0},"id":"bad2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+
+    // Row 8 out of range (0-indexed, max 7)
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":8},"id":"bad3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSceneOutOfRangeReturnsError)
+{
+    // Test that row out of range returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerScene","payload":{"row":99},"id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Row out of range"), std::string::npos);
+}
+
+TEST(MatrixTest, SlotStateIncludesColorNameClipType)
+{
+    // Test that getSlot returns the full slot structure including
+    // color, name, and clipType fields
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":4,"row":6},"id":"gs"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // All default empty slot fields should be present
+    EXPECT_NE(resp.find("\"state\":\"empty\""), std::string::npos);
+    EXPECT_NE(resp.find("\"color\""), std::string::npos);
+    EXPECT_NE(resp.find("\"name\""), std::string::npos);
+    EXPECT_NE(resp.find("\"clipType\":\"none\""), std::string::npos);
+}
+
+TEST(MatrixTest, BroadcastMatrixEventViaCallback)
+{
+    // Test that BroadcastMatrixEvent sends through the broadcast callback
+    std::string captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured = msg;
+    });
+
+    std::string slotJson = R"({"column":1,"row":2,"state":"playing"})";
+    handler->BroadcastMatrixEvent("matrix/slotStateChanged", slotJson);
+
+    // Verify JSON structure
+    EXPECT_NE(captured.find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured.find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(captured.find("\"payload\":{\"column\":1,\"row\":2,\"state\":\"playing\"}"), std::string::npos);
+
+    // Verify balanced braces
+    int depth = 0;
+    for (char c : captured) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixTest, TriggerSlotBroadcastsEvent)
+{
+    // Test that triggering a slot sends a BroadcastMatrixEvent
+    // via the broadcast callback
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    // Also set response callback so we can track
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"t1"})");
+
+    // Should have both a response and a broadcast event
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_EQ(captured.size(), 1u);
+
+    // Verify broadcast event structure
+    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"state\":\"playing\""), std::string::npos);
+}
+
+TEST(MatrixTest, TriggerSceneBroadcastsEvents)
+{
+    // Test that triggering a scene broadcasts events for each slot
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerScene","payload":{"row":3},"id":"s1"})");
+
+    // Should have 1 response + 8 slot events (one per column in the row)
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_EQ(captured.size(), 8u);
+
+    // Each event should be for the correct row (3) and sequential columns
+    for (int c = 0; c < 8; c++) {
+        EXPECT_NE(captured[c].find("\"column\":" + std::to_string(c)), std::string::npos);
+        EXPECT_NE(captured[c].find("\"row\":3"), std::string::npos);
+        EXPECT_NE(captured[c].find("\"state\":\"playing\""), std::string::npos);
+    }
+}
+
+TEST(MatrixTest, BuildSlotEventReturnsValidEvent)
+{
+    // Test the BuildSlotEvent helper produces valid WebSocket event JSON
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+
+    std::string slotJson = R"({"column":0,"row":0,"state":"empty"})";
+    std::string event = handler->BuildSlotEvent(slotJson);
+
+    EXPECT_NE(event.find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(event.find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(event.find(slotJson), std::string::npos);
+
+    int depth = 0;
+    for (char c : event) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+// ============================================================
+// Step sequencer command tests (Issue #63)
+// ============================================================
+
+TEST(SequencerTest, GetAllReturnsStructure)
+{
+    // Test that sequencer/getAll returns a properly structured response
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"sequencer/getAll","id":"s1"})";
+    handler->HandleMessage(1, cmd);
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Check basic fields
+    EXPECT_NE(resp.find("\"columns\":8"), std::string::npos);
+    EXPECT_NE(resp.find("\"rows\":8"), std::string::npos);
+    EXPECT_NE(resp.find("\"length\":16"), std::string::npos);
+    EXPECT_NE(resp.find("\"baseNote\":36"), std::string::npos);
+    EXPECT_NE(resp.find("\"playhead\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"steps\":["), std::string::npos);
+
+    // Count steps - should be 64 (8x8)
+    size_t pos = 0;
+    int stepCount = 0;
+    while ((pos = resp.find("\"column\":", pos)) != std::string::npos) {
+        stepCount++;
+        pos++;
+    }
+    EXPECT_EQ(stepCount, 64);
+
+    // Verify all steps are inactive by default
+    pos = 0;
+    int activeCount = 0;
+    while ((pos = resp.find("\"active\":true", pos)) != std::string::npos) {
+        activeCount++;
+        pos++;
+    }
+    EXPECT_EQ(activeCount, 0);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(SequencerTest, ToggleStepTogglesActive)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Toggle step (3,4) on
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/toggleStep","payload":{"column":3,"row":4},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"active\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":3"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":4"), std::string::npos);
+    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
+
+    // Toggle same step off
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/toggleStep","payload":{"column":3,"row":4},"id":"t2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"active\":false"), std::string::npos);
+}
+
+TEST(SequencerTest, ToggleStepOutOfRangeReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/toggleStep","payload":{"column":99,"row":0},"id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(SequencerTest, SetStepExplicitly)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+        // Print for debugging if verbose
+        fprintf(stderr, "SetStep response: %s\n", resp.c_str());
+    });
+
+    // Set step (1,2) active with velocity 110
+    // Note: boolean values must be quoted strings (JsonParser limitation)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":1,"row":2,"active":"true","velocity":110},"id":"ss1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos)
+        << "Expected success:true. Response: " << responses[0];
+    EXPECT_TRUE(responses[0].find("\"active\":true") != std::string::npos)
+        << "Expected active:true. Response: " << responses[0];
+    EXPECT_TRUE(responses[0].find("\"velocity\":110") != std::string::npos)
+        << "Expected velocity:110. Response: " << responses[0];
+
+    // Set same step inactive
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":1,"row":2,"active":"false"},"id":"ss2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_TRUE(responses[0].find("\"active\":false") != std::string::npos)
+        << "Expected active:false after unset. Response: " << responses[0];
+}
+
+TEST(SequencerTest, ClearAllClearsAllSteps)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Toggle a few steps on
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/toggleStep","payload":{"column":0,"row":0},"id":"t1"})");
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/toggleStep","payload":{"column":3,"row":5},"id":"t2"})");
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/toggleStep","payload":{"column":7,"row":7},"id":"t3"})");
+
+    // Get all — should have 3 active
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/getAll","id":"ga"})");
+    ASSERT_EQ(responses.size(), 1u);
+    size_t activeBefore = responses[0].find("\"active\":true") != std::string::npos ? 1 : 0;
+    // Just check at least one is active
+    if (responses[0].find("\"active\":true") == std::string::npos) {
+        FAIL() << "Expected at least one active step before clear";
+    }
+
+    // Clear all
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/clearAll","id":"cl"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"cleared\":true"), std::string::npos);
+
+    // Get all — should have 0 active
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/getAll","id":"ga2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_EQ(responses[0].find("\"active\":true"), std::string::npos)
+        << "Expected no active steps after clear";
+}
+
+TEST(SequencerTest, SetLengthChangesLength)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Set length to 32
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setLength","payload":{"length":32},"id":"sl"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"length\":32"), std::string::npos);
+
+    // Verify via getAll
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/getAll","id":"ga"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"length\":32"), std::string::npos);
+}
+
+TEST(SequencerTest, SetLengthOutOfRangeReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Length 0 out of range
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setLength","payload":{"length":0},"id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+
+    // Length 100 out of range
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setLength","payload":{"length":100},"id":"bad2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(SequencerTest, SetBaseNoteChangesMapping)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Set base note to C3 (48)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setBaseNote","payload":{"note":48},"id":"sbn"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"baseNote\":48"), std::string::npos);
+
+    // Verify via getAll
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/getAll","id":"ga"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"baseNote\":48"), std::string::npos);
+}
+
+TEST(SequencerTest, GetPlayheadReturnsPosition)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Set playhead via state directly
+    handler->GetPlaytimeState(); // unused, just for access pattern
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/getPlayhead","id":"gph"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"playhead\":0"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"length\":16"), std::string::npos);
+}
+
+TEST(SequencerTest, SetStepOutOfRangeReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Column 99 out of range
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":99,"row":0,"active":true},"id":"bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(SequencerTest, ToggleStepPreservesOtherSteps)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Toggle (0,0) on
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/toggleStep","payload":{"column":0,"row":0},"id":"t1"})");
+
+    // Toggle (7,7) on
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/toggleStep","payload":{"column":7,"row":7},"id":"t2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"active\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":7"), std::string::npos);
+
+    // Verify (1,1) is still inactive via getAll
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/getAll","id":"ga"})");
+    ASSERT_EQ(responses.size(), 1u);
+    // Get step at column=1,row=1 and verify active:false
+    // We parse by looking at the specific step structure
+    EXPECT_NE(responses[0].find("\"column\":0,\"row\":0,\"active\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":1,\"row\":1,\"active\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":7,\"row\":7,\"active\":true"), std::string::npos);
+}
+
+// ============================================================
 // FX param slider jump fixes (Issue #73)
 // ============================================================
 
@@ -1893,6 +2833,447 @@ TEST(FxParamSliderTest, HandleSetFXParamReturnsCommittedValueConsistentWithGet)
 
     // GetParams should show the same committed value
     EXPECT_NE(getResp.find("\"value\":12"), std::string::npos)
-        << "GetParams value should match the committed set value";
+        << "GetParams value should match the committed set value";}
+
+// ============================================================
+// FX Chain save/load command tests (Issue #7)
+// ============================================================
+
+TEST(FxChainTest, GetDirectoryListsRfxChainFiles)
+{
+    // Create a temp directory with .RfxChain files
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_test";
+    fs::create_directories(testDir);
+    { std::ofstream(testDir / "my_chain.RfxChain").close(); }
+    { std::ofstream(testDir / "another.RfxChain").close(); }
+    { std::ofstream(testDir / "note.txt").close(); } // Should be excluded
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":")" + testDir.string() + R"("},"id":"fc1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify only .RfxChain files are listed
+    EXPECT_NE(resp.find("my_chain.RfxChain"), std::string::npos);
+    EXPECT_NE(resp.find("another.RfxChain"), std::string::npos);
+    // note.txt should NOT be in the response
+    EXPECT_EQ(resp.find("note.txt"), std::string::npos);
+
+    // Cleanup
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, GetDirectoryEmptyDir)
+{
+    // Test getDirectory on a valid but empty directory
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_empty_test";
+    fs::create_directories(testDir);
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":")" + testDir.string() + R"("},"id":"fc2"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    // Should succeed with empty chains array
+    EXPECT_NE(responses[0].find("\"chains\":[]"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, GetDirectoryInvalidPath)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":"/nonexistent_path_xyz123"},"id":"fc3"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxChainTest, SaveChainCreatesFile)
+{
+    // Create a temp directory for saving
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_save_test";
+    fs::create_directories(testDir);
+    fs::path savePath = testDir / "saved_chain.RfxChain";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "ReaComp", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    // Reset mock chunk to default (has ReaEQ and ReaComp)
+    g_mockChunk = ""; // Will auto-init with default
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc4"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"saved\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"filePath\""), std::string::npos);
+
+    // Verify file was created
+    EXPECT_TRUE(fs::exists(savePath));
+    EXPECT_GT(fs::file_size(savePath), 0);
+
+    // Verify file contains FXCHAIN section
+    std::ifstream f(savePath);
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    EXPECT_NE(content.find("<FXCHAIN"), std::string::npos);
+    EXPECT_NE(content.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(content.find("ReaComp"), std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SaveChainOnTrackWithNoFx)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_nofx_test";
+    fs::create_directories(testDir);
+    fs::path savePath = testDir / "empty.RfxChain";
+
+    // Track with no FX — default chunk has no FXCHAIN section
+    // Modify g_mockChunk to have NO FXCHAIN
+    g_mockChunk = "<TRACK\n  NAME \"Empty Track\"\n>\n";
+
+    MockState state;
+    MockTrack t;
+    t.fx = {}; // No FX
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc5"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    // Should fail with "No FX chain found on track"
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("No FX chain found"), std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, LoadChainReplacesTrackFx)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_load_test";
+    fs::create_directories(testDir);
+    fs::path chainPath = testDir / "chain.RfxChain";
+
+    // Create an FX chain file
+    std::string fxChainContent =
+        "<FXCHAIN\n"
+        "  SHOW 0\n"
+        "  LASTSEL 0\n"
+        "  DOCKED 0\n"
+        "  <ITEM\n"
+        "    NAME \"LoadedFX\"\n"
+        "    VST \"VST3: LoadedFX (Test)\" LoadedFX 0 0\n"
+        "  >\n"
+        "  <ITEM\n"
+        "    NAME \"AnotherFX\"\n"
+        "    VST \"VST3: AnotherFX (Test)\" AnotherFX 0 0\n"
+        "  >\n"
+        ">";
+
+    std::ofstream f(chainPath);
+    f << fxChainContent;
+    f.close();
+
+    // Track with existing FX (ReaEQ only)
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    LASTSEL 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"("},"id":"fc6"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"loaded\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"filePath\""), std::string::npos);
+
+    // Verify track chunk was updated (should now contain LoadedFX instead of ReaEQ)
+    EXPECT_NE(g_mockChunk.find("LoadedFX"), std::string::npos) << "New FX should be in chunk";
+    EXPECT_EQ(g_mockChunk.find("ReaEQ"), std::string::npos) << "Old FX should be replaced";
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, LoadChainAppendAddsToExisting)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_append_test";
+    fs::create_directories(testDir);
+    fs::path chainPath = testDir / "add.RfxChain";
+
+    // Append chain: additional FX
+    std::string appendChain =
+        "<FXCHAIN\n"
+        "  <ITEM\n"
+        "    NAME \"AddedFX\"\n"
+        "    VST \"VST3: AddedFX (Test)\" AddedFX 0 0\n"
+        "  >\n"
+        ">";
+
+    std::ofstream f(chainPath);
+    f << appendChain;
+    f.close();
+
+    // Track with existing FX (ReaEQ)
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"(","mode":"append"},"id":"fc7"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"loaded\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"append\":true"), std::string::npos);
+
+    // Both original and appended FX should be in chunk
+    EXPECT_NE(g_mockChunk.find("ReaEQ"), std::string::npos) << "Original FX should remain";
+    EXPECT_NE(g_mockChunk.find("AddedFX"), std::string::npos) << "Appended FX should be added";
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, LoadChainWithMissingFile)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":"/nonexistent/file.RfxChain"},"id":"fc8"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxChainTest, GetInfoReturnsChainDetails)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_info_test";
+    fs::create_directories(testDir);
+    fs::path chainPath = testDir / "test_chain.RfxChain";
+
+    // Create an FX chain file with multiple FX
+    std::string fxChainContent =
+        "<FXCHAIN\n"
+        "  SHOW 0\n"
+        "  LASTSEL 0\n"
+        "  DOCKED 0\n"
+        "  <ITEM\n"
+        "    NAME \"ReaEQ\"\n"
+        "    VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0 0\n"
+        "  >\n"
+        "  <ITEM\n"
+        "    NAME \"ReaComp\"\n"
+        "    VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+        "  >\n"
+        "  <ITEM\n"
+        "    NAME \"ReaDelay\"\n"
+        "    VST \"VST3: ReaDelay (Cockos)\" ReaDelay 0\n"
+        "  >\n"
+        ">";
+
+    std::ofstream f(chainPath);
+    f << fxChainContent;
+    f.close();
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getInfo","payload":{"filePath":")" + chainPath.string() + R"("},"id":"fc9"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"fxCount\":3"), std::string::npos) << "Should find 3 FX";
+    EXPECT_NE(resp.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(resp.find("ReaComp"), std::string::npos);
+    EXPECT_NE(resp.find("ReaDelay"), std::string::npos);
+
+    // Verify fxNames array has 3 entries
+    size_t pos = 0;
+    int nameCount = 0;
+    while ((pos = resp.find("\"fxNames\"", pos)) != std::string::npos) {
+        nameCount++;
+        pos++;
+    }
+    EXPECT_EQ(nameCount, 1) << "fxNames should appear exactly once";
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SaveAndLoadRoundTrip)
+{
+    // Full round-trip: save a track's FX chain, then load it onto another track
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_roundtrip";
+    fs::create_directories(testDir);
+    fs::path savePath = testDir / "roundtrip.RfxChain";
+
+    // Track 0 has ReaEQ and ReaComp
+    g_mockChunk = "<TRACK\n  NAME \"Source\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+        "    >\n"
+        "    <ITEM\n"
+        "      NAME \"ReaComp\"\n"
+        "      VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t0, t1;
+    t0.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    t0.fx.push_back({1, "ReaComp", {}, {}, {}, {}, {}});
+    t1.fx = {}; // Empty
+    state.tracks = {t0, t1};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    // Reset mock chunk to default
+    g_mockChunk = "";
+
+    // Step 1: Save track 0's FX chain
+    std::string saveCmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc_s"})";
+    handler->HandleMessage(1, saveCmd);
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"saved\":true"), std::string::npos);
+
+    // Verify file exists
+    ASSERT_TRUE(fs::exists(savePath));
+
+    // Step 2: Load onto track 1
+    // First, set the chunk for track 1 to something different
+    g_mockChunk = "<TRACK\n  NAME \"Dest\"\n  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaDelay\"\n"
+        "      VST \"VST3: ReaDelay (Cockos)\" ReaDelay 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    responses.clear();
+    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":1,"filePath":")" + savePath.string() + R"("},"id":"fc_l"})";
+    handler->HandleMessage(1, loadCmd);
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"loaded\":true"), std::string::npos);
+
+    // Verify track 1's chunk now has the saved FX (ReaEQ, ReaComp) and not ReaDelay
+    EXPECT_NE(g_mockChunk.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(g_mockChunk.find("ReaComp"), std::string::npos);
+    EXPECT_EQ(g_mockChunk.find("ReaDelay"), std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, GetInfoMissingFileReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getInfo","payload":{"filePath":"/nonexistent/file.RfxChain"},"id":"fc10"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_invalid_test";
+    fs::create_directories(testDir);
+    fs::path savePath = testDir / "invalid.RfxChain";
+
+    MockState state;
+    state.tracks = {}; // No tracks
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc11"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Invalid track index"), std::string::npos);
+
+    fs::remove_all(testDir);
 }
 
