@@ -13,16 +13,6 @@ interface SessionViewProps {
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
 }
 
-/** Map slot state to CSS class name */
-function stateClass(state: ClipSlot['state']): string {
-  switch (state) {
-    case 'empty':     return 'slot-empty';
-    case 'stopped':   return 'slot-stopped';
-    case 'playing':   return 'slot-playing';
-    case 'recording': return 'slot-recording';
-  }
-}
-
 /** Map slot state to display color hex (for the cell accent) */
 function stateColor(state: ClipSlot['state']): string {
   switch (state) {
@@ -71,7 +61,7 @@ export function SessionView({
   // Subscribe to slotStateChanged events for real-time updates
   useEffect(() => {
     if (!onEvent) return;
-    const unsub = onEvent('event:slotStateChanged', (msg: any) => {
+    const unsub = onEvent('event:slotStateChanged', (_msg: any) => {
       // Matrix state is managed externally via the prop — parent re-renders
       // This hook allows future integration for optimistic UI updates
     });

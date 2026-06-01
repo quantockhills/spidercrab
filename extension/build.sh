@@ -18,13 +18,19 @@ if [ "$TARGET" = "windows" ]; then
         exit 1
     fi
     CXX="$BREW_PREFIX/bin/clang-cl"
-    CXXFLAGS="--target=x86_64-pc-windows-msvc /std:c++17 /O2 /DNDEBUG /EHsc"
+    if [ "$BUILD_TYPE" = "debug" ]; then
+        echo "=== DEBUG BUILD ==="
+        CXXFLAGS="--target=x86_64-pc-windows-msvc /std:c++17 /Od /EHsc -DDEBUG=1 -g"
+        SUFFIX="-debug.dll"
+    else
+        CXXFLAGS="--target=x86_64-pc-windows-msvc /std:c++17 /O2 /DNDEBUG /EHsc"
+        SUFFIX=".dll"
+    fi
     CXXFLAGS="$CXXFLAGS /D_WIN32 /DWIN32_LEAN_AND_MEAN /DWDL_NO_JPEG /W0"
     CXXFLAGS="$CXXFLAGS /I$XWIN/crt/include /I$XWIN/sdk/include/ucrt"
     CXXFLAGS="$CXXFLAGS /I$XWIN/sdk/include/shared /I$XWIN/sdk/include/um"
     # Force winsock2.h before windows.h for SOCKET type
     CXXFLAGS="$CXXFLAGS -FI/tmp/force_winsock.h"
-    SUFFIX=".dll"
     SYSROOT_FLAGS=""
 else
     CXX="$BREW_PREFIX/bin/g++"
@@ -70,7 +76,7 @@ SRC="$SRC $WDL_DIR/jnetlib/asyncdns.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/webserver.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/httpserv.cpp"
 
-OUT="$SCRIPT_DIR/build/reaper-spidercrab$SUFFIX"
+OUT="$SCRIPT_DIR/build/reaper_spidercrab$SUFFIX"
 mkdir -p "$SCRIPT_DIR/build"
 
 echo "CXX: $CXX"

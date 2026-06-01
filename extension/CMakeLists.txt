@@ -53,6 +53,7 @@ set(TEST_SOURCES
 # ============================================================
 add_library(reaper-spidercrab SHARED ${EXTENSION_SOURCES})
 set_target_properties(reaper-spidercrab PROPERTIES
+    OUTPUT_NAME reaper_spidercrab
     PREFIX ""
     SUFFIX ".so"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"

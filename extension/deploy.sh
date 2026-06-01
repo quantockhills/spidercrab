@@ -16,10 +16,16 @@ echo ""
 echo "=== Deploying to Reaper ==="
 # Must be named reaper_*.so (underscores, not hyphens) and in Plugins/
 mkdir -p "$HOME/reaper-portable/Plugins"
-cp "$SCRIPT_DIR/build/reaper-spidercrab${SUFFIX}" "$HOME/reaper-portable/Plugins/reaper_spidercrab.so"
+cp "$SCRIPT_DIR/build/reaper_spidercrab${SUFFIX}" "$HOME/reaper-portable/Plugins/reaper_spidercrab.so"
 
 echo "Deployed to: $HOME/reaper-portable/Plugins/reaper_spidercrab.so"
 ls -lh "$HOME/reaper-portable/Plugins/reaper_spidercrab.so"
+
+# Also deploy to the user config directory (Reaper may load from here instead)
+if [ -d "$HOME/.config/REAPER/UserPlugins" ]; then
+  cp "$SCRIPT_DIR/build/reaper_spidercrab${SUFFIX}" "$HOME/.config/REAPER/UserPlugins/reaper_spidercrab.so"
+  echo "Also deployed to: $HOME/.config/REAPER/UserPlugins/reaper_spidercrab.so"
+fi
 
 if [ "$BUILD_TYPE" = "debug" ]; then
     echo ""
