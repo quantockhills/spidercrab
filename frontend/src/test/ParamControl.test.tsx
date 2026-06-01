@@ -15,7 +15,7 @@ const mockParams: FxParam[] = [
 // ── Helpers ──────────────────────────────────────────────────
 
 function renderParamControl(props: Partial<Parameters<typeof ParamControl>[0]> = {}) {
-  const getFxParams = vi.fn().mockResolvedValue(mockParams);
+  const getFxParams = vi.fn().mockResolvedValue({params: mockParams, total: mockParams.length, offset: 0, limit: 32});
   const setFxParam = vi.fn().mockResolvedValue(true);
   const deleteFx = vi.fn().mockResolvedValue(true);
   const onEvent = vi.fn().mockReturnValue(() => {});
@@ -48,7 +48,7 @@ describe('ParamControl', () => {
 
   it('calls getFxParams on mount', () => {
     const { getFxParams } = renderParamControl();
-    expect(getFxParams).toHaveBeenCalledWith(0, 0);
+    expect(getFxParams).toHaveBeenCalledWith(0, 0, 0, 32);
   });
 
   it('shows loading state initially', () => {
@@ -111,7 +111,7 @@ describe('ParamControl', () => {
   });
 
   it('shows empty state when no params', async () => {
-    const getFxParams = vi.fn().mockResolvedValue([]);
+    const getFxParams = vi.fn().mockResolvedValue({params: [], total: 0, offset: 0, limit: 32});
     render(
       <ParamControl
         trackIdx={0}

@@ -474,8 +474,12 @@ void CommandHandler::HandleGetFXParams(
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
+    std::string offsetStr   = parser.getString("offset");
+    std::string limitStr    = parser.getString("limit");
     int         trackIdx    = atoi(trackIdxStr.c_str());
     int         fxIdx       = atoi(fxIdxStr.c_str());
+    int         offset      = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
+    int         limit       = limitStr.empty() ? 32 : atoi(limitStr.c_str());
 
     MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
@@ -484,9 +488,10 @@ void CommandHandler::HandleGetFXParams(
     }
 
     int         numParams  = m_api.TrackFX_GetNumParams(track, fxIdx);
+    int         endIdx     = std::min(numParams, offset + limit);
     std::string paramsList = "[";
-    for (int i = 0; i < numParams; i++) {
-        if (i > 0)
+    for (int i = offset; i < endIdx; i++) {
+        if (i > offset)
             paramsList += ",";
         double minVal = 0, maxVal = 0, midVal = 0;
         double val       = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
@@ -524,7 +529,10 @@ void CommandHandler::HandleGetFXParams(
 
     SendResponse(clientId, id, true,
         "{\"trackIdx\":" + std::to_string(trackIdx) + ",\"fxIdx\":" + std::to_string(fxIdx)
-            + ",\"params\":" + paramsList + "}");
+            + ",\"params\":" + paramsList
+            + ",\"total\":" + std::to_string(numParams)
+            + ",\"offset\":" + std::to_string(offset)
+            + ",\"limit\":" + std::to_string(limit) + "}");
 }
 
 void CommandHandler::HandleSetFXParam(

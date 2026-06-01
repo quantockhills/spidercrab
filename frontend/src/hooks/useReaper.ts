@@ -137,10 +137,19 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return (resp.payload as PayloadMap).fx as FxInfo[];
   }, []);
 
-  const getFxParams = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxParam[]> => {
-    if (!clientRef.current) return [];
-    const resp = await clientRef.current.send('fx/getParams', { trackIdx, fxIdx }, 30000);
-    return (resp.payload as PayloadMap).params as FxParam[];
+  const getFxParams = useCallback(async (trackIdx: number, fxIdx: number, offset?: number, limit?: number): Promise<{params: FxParam[]; total: number; offset: number; limit: number}> => {
+    if (!clientRef.current) return {params: [], total: 0, offset: 0, limit: 32};
+    const payload: Record<string, unknown> = { trackIdx, fxIdx };
+    if (offset !== undefined) payload.offset = offset;
+    if (limit !== undefined) payload.limit = limit;
+    const resp = await clientRef.current.send('fx/getParams', payload, 30000);
+    const p = resp.payload as PayloadMap;
+    return {
+      params: p.params as FxParam[],
+      total: p.total as number,
+      offset: p.offset as number,
+      limit: p.limit as number,
+    };
   }, []);
 
   const setFxParam = useCallback(async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<import('../lib/wsClient').WsResponse> => {
