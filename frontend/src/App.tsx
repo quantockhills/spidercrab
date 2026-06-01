@@ -8,6 +8,7 @@ import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
+import ErrorBoundary from './components/ErrorBoundary';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 
@@ -205,6 +206,7 @@ function App() {
 
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-hidden">
+        <ErrorBoundary>
         {activeTab === 'media' && (
           <SampleBrowser
             tracks={tracks}
@@ -392,6 +394,7 @@ function App() {
             </div>
           </div>
         )}
+        </ErrorBoundary>
       </main>
 
       {/* ── Tab Bar ── */}
