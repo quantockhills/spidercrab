@@ -24,7 +24,7 @@ const mockFx: Record<number, FxInfo[]> = {
 function setupMockReaper() {
   const mockGetTrackFx = vi.fn().mockImplementation(async (trackIdx: number) => mockFx[trackIdx] || []);
   const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-  const mockGetFxParams = vi.fn().mockResolvedValue([]);
+  const mockGetFxParams = vi.fn().mockResolvedValue({params: [], total: 0, offset: 0, limit: 32});
   const mockSetFxParam = vi.fn().mockResolvedValue(true);
   const mockDeleteFx = vi.fn().mockResolvedValue(true);
 

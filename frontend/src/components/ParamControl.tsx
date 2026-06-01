@@ -39,26 +39,40 @@ export function ParamControl({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [paramOffset, setParamOffset] = useState(0);
+  const [totalParams, setTotalParams] = useState(0);
+  const PAGE_SIZE = 32;
   const draggingParamRef = useRef<number | null>(null);
 
   // Load params on mount + subscribe to real-time updates
-  useEffect(() => {
-    let cancelled = false;
-    getFxParams(trackIdx, fxIdx)
-      .then((p) => {
-        if (!cancelled) {
-          setParams(p);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load parameters');
-          setLoading(false);
-        }
-      });
-    return () => { cancelled = true; };
+  const loadParams = useCallback(async (offset: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await getFxParams(trackIdx, fxIdx, offset, PAGE_SIZE);
+      setParams(result.params);
+      setTotalParams(result.total);
+      setParamOffset(result.offset);
+      setLoading(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load parameters');
+      setLoading(false);
+    }
   }, [trackIdx, fxIdx, getFxParams]);
+
+  useEffect(() => {
+    loadParams(0);
+  }, [loadParams]);
+
+  const goNextPage = useCallback(() => {
+    const next = paramOffset + PAGE_SIZE;
+    if (next < totalParams) loadParams(next);
+  }, [paramOffset, totalParams, loadParams]);
+
+  const goPrevPage = useCallback(() => {
+    const prev = Math.max(0, paramOffset - PAGE_SIZE);
+    loadParams(prev);
+  }, [paramOffset, loadParams]);
 
   // Subscribe to real-time param change events (Issue #52)
   // While dragging a param, ignore events for that param to avoid
@@ -220,17 +234,43 @@ export function ParamControl({
             <p className="text-xs">This plugin has no parameters exposed</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {params.map((param) => (
-              <ParamSlider
-                key={param.index}
-                param={param}
-                onChange={(value) => handleParamChange(param.index, value)}
-                onDragStart={startDragging}
-                onDragEnd={finishDragging}
-              />
-            ))}
-          </div>
+          <>
+            {/* Page indicator */}
+            {totalParams > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-2 pb-2">
+                <button
+                  onClick={goPrevPage}
+                  disabled={paramOffset === 0}
+                  className="px-3 py-1.5 text-xs font-medium bg-[var(--bg-tertiary)]
+                    text-[var(--text-secondary)] disabled:opacity-30 active:brightness-95"
+                >
+                  ← Prev
+                </button>
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {paramOffset + 1}–{Math.min(paramOffset + PAGE_SIZE, totalParams)} of {totalParams}
+                </span>
+                <button
+                  onClick={goNextPage}
+                  disabled={paramOffset + PAGE_SIZE >= totalParams}
+                  className="px-3 py-1.5 text-xs font-medium bg-[var(--bg-tertiary)]
+                    text-[var(--text-secondary)] disabled:opacity-30 active:brightness-95"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
+            <div className="space-y-3">
+              {params.map((param) => (
+                <ParamSlider
+                  key={param.index}
+                  param={param}
+                  onChange={(value) => handleParamChange(param.index, value)}
+                  onDragStart={startDragging}
+                  onDragEnd={finishDragging}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>
