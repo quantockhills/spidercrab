@@ -194,4 +194,7 @@ private:
     void HandleSequencerSetLength(int clientId, const std::string& id, const std::string& params);
     void HandleSequencerSetBaseNote(int clientId, const std::string& id, const std::string& params);
     void HandleSequencerGetPlayhead(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — Playtime 2 (Issue #81)
+    void HandlePlaytimeIsAvailable(int clientId, const std::string& id, const std::string& params);
 };
