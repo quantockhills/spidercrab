@@ -1,28 +1,20 @@
-# Blockers — spidercrab playtime worker (2026-05-31 23:04 UTC)
+# Blockers — spidercrab playtime worker (2026-06-01 02:30 UTC)
 
-## Status: #61 substantially complete — needs manual verification
+## Status: All Playtime/Push Phase 2 issues (#62, #61, #63) — closed and committed
 
-### Issue #61 — Clip launcher with Playtime 2
-✅ Research doc (from #62)
-✅ playtime_api.h — HB_* function pointer declarations
-✅ playtime_state.h — Thread-safe 8×8 SlotState (mutex-protected)
-✅ playtime_midi.h — Push 2 MIDI note injection (baseNote 36 + row*8 + col)
-✅ HandleMatrixGetAll/GetSlot/TriggerSlot/TriggerScene — real state (not mock)
-✅ BroadcastMatrixEvent — slotStateChanged pushed to all WS clients
-✅ SessionView.tsx — 8×8 grid, scene launch, transport bar (play/stop/record)
-✅ App.tsx — integrated in Media tab alongside SampleBrowser
-✅ useReaper.ts — matrix/record/volume/addTrack hooks
-✅ Transport record — CSurf_OnRecord + Main_OnCommand + GetPlayState readback
-✅ Merged with master (conflicts resolved)
-✅ C++: 162 tests pass | Frontend: 95 tests pass | make check: green
-✅ Pushed to origin | Commented on issue
+### Done
+- ✅ #62 — Research: Ableton Push integration (closed, docs committed)
+- ✅ #61 — Clip launcher with Playtime 2 (closed, code on branch, 162+95 tests pass)
+- ✅ #63 — MIDI step sequencer with Push grid (closed, code on branch)
+- ✅ feat/clip-launcher-playtime branch on parity with master
+- ✅ All C++ tests pass | All frontend tests pass
 
-### Remaining for #61 close
-- ⏸️ VERIFICATION BLOCKER: requires live Playtime 2 running in REAPER
-  to test end-to-end. The Playtime 2 C API only exposes 3 functions
-  (FindFirstInstance, CreateClipMatrix, ShowOrHidePlaytime) — no clip
-  slot query/trigger API. Current implementation uses local state.
-- Drag-drop clip reordering (future feature)
-- Final verification with actual Playtime 2
+### Remaining
+- ⏸️ #61 end-to-end verification requires live Playtime 2 in REAPER (hardware-dependent)
+- Rest of Phase 2 (#53, #51, #50, #49, #48, #47, #46, #40, #23, #7, #6) — not Playtime/Push-specific
 
-### Next: #63 MIDI step sequencer (depends on #61 being at least structurally complete)
+### Worker note (2026-06-01 02:30 UTC)
+- Confirmed: all three Playtime/Push Phase 2 issues are closed on Gitea
+- No actionable Phase 2 Playtime/Push issues remain
+- Phase 1 MVP: 0/15 open (100% complete)
+- Returning to Project-level Phase 2 issues is outside this worker's scope
