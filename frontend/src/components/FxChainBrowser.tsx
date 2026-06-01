@@ -11,10 +11,10 @@ interface FxChainBrowserProps {
   fxChainLoad: (trackIdx: number, filePath: string, mode?: 'replace' | 'append') => Promise<boolean>;
   fxChainGetInfo: (filePath: string) => Promise<FxChainInfo | null>;
   onBack: () => void;
+  initialPath?: string;
 }
 
-// Default chain directory — REAPER's FXChains folder or user-specified
-const DEFAULT_CHAIN_DIR = '/tmp'; // Will be configurable via settings
+const DEFAULT_CHAIN_DIR = '/tmp';
 
 // ── Component ─────────────────────────────────────────────────
 
@@ -26,8 +26,9 @@ export function FxChainBrowser({
   fxChainLoad,
   fxChainGetInfo,
   onBack,
+  initialPath,
 }: FxChainBrowserProps) {
-  const [currentPath, setCurrentPath] = useState<string>(DEFAULT_CHAIN_DIR);
+  const [currentPath, setCurrentPath] = useState<string>(initialPath || DEFAULT_CHAIN_DIR);
   const [chains, setChains] = useState<FxChainEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
