@@ -28,6 +28,7 @@ function App() {
     toggleTrackArm,
     selectTrack,
     setTrackVolume,
+    setTrackPan,
     enumerateFx,
     getTrackFx,
     getFxParams,
@@ -121,6 +122,10 @@ function App() {
   const handleVolumeChange = useCallback(async (index: number, volume: number) => {
     await setTrackVolume(index, volume);
   }, [setTrackVolume]);
+
+  const handlePanChange = useCallback(async (index: number, pan: number) => {
+    await setTrackPan(index, pan);
+  }, [setTrackPan]);
 
   // ── FX / Param navigation ──
   const handleSelectFx = useCallback(
@@ -274,6 +279,7 @@ function App() {
             onToggleSolo={handleToggleSolo}
             onToggleArm={handleToggleArm}
             onVolumeChange={handleVolumeChange}
+            onPanChange={handlePanChange}
             onAddTrack={addTrack}
             onRefresh={refreshTracks}
             onPlay={play}
