@@ -1686,28 +1686,37 @@ void CommandHandler::HandleFxChainGetDirectory(
 
     try {
         for (const auto& entry : fs::directory_iterator(path)) {
-            if (!entry.is_regular_file())
-                continue;
             std::string name = entry.path().filename().string();
-            // Only include .RfxChain files (case-insensitive extension check)
-            std::string ext;
-            size_t dotPos = name.rfind('.');
-            if (dotPos == std::string::npos)
-                continue;
-            ext = name.substr(dotPos);
-            std::string lowerExt;
-            for (char c : ext) lowerExt += tolower((unsigned char)c);
-            if (lowerExt != ".rfxchain")
+            if (name.empty() || name[0] == '.')
                 continue;
 
             if (!first) chains += ",";
             first = false;
 
-            uintmax_t fileSize = fs::file_size(entry.path());
-            chains += "{";
-            chains += json_string("name") + ":" + json_string(name) + ",";
-            chains += json_string("size") + ":" + std::to_string(fileSize);
-            chains += "}";
+            if (entry.is_directory()) {
+                chains += "{";
+                chains += json_string("name") + ":" + json_string(name) + ",";
+                chains += json_string("type") + ":\"dir\"";
+                chains += "}";
+            } else if (entry.is_regular_file()) {
+                // Only include .RfxChain files (case-insensitive)
+                std::string ext;
+                size_t dotPos = name.rfind('.');
+                if (dotPos == std::string::npos)
+                    continue;
+                ext = name.substr(dotPos);
+                std::string lowerExt;
+                for (char c : ext) lowerExt += tolower((unsigned char)c);
+                if (lowerExt != ".rfxchain")
+                    continue;
+
+                uintmax_t fileSize = fs::file_size(entry.path());
+                chains += "{";
+                chains += json_string("name") + ":" + json_string(name) + ",";
+                chains += json_string("type") + ":\"file\",";
+                chains += json_string("size") + ":" + std::to_string(fileSize);
+                chains += "}";
+            }
         }
     } catch (const fs::filesystem_error& e) {
         SendResponse(clientId, id, false,

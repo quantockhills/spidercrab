@@ -41,6 +41,17 @@ export function FxChainBrowser({
   const [loadedFiles, setLoadedFiles] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'browse' | 'save'>('browse');
 
+  const handleNavigate = useCallback((entry: FxChainEntry) => {
+    if (entry.type === 'dir') {
+      if (entry.name === '..') {
+        const parent = currentPath.substring(0, currentPath.lastIndexOf('/'));
+        setCurrentPath(parent || '/');
+      } else {
+        setCurrentPath(currentPath + '/' + entry.name);
+      }
+    }
+  }, [currentPath]);
+
   const loadDirectory = useCallback(async (path: string) => {
     setLoading(true);
     setError(null);
@@ -138,10 +149,17 @@ export function FxChainBrowser({
 
   // Filtered chain list
   const filteredChains = useMemo(() => {
-    if (!search.trim()) return chains;
-    const lower = search.toLowerCase();
-    return chains.filter((c) => c.name.toLowerCase().includes(lower));
-  }, [chains, search]);
+    const lower = search.trim().toLowerCase();
+    // Separate dirs from files, sort dirs first
+    const dirs = chains.filter((c) => c.type === 'dir' && (!lower || c.name.toLowerCase().includes(lower)));
+    const files = chains.filter((c) => c.type !== 'dir' && (!lower || c.name.toLowerCase().includes(lower)));
+    // Add '..' for parent navigation if not at root
+    // Show '..' parent entry only when not filtering by search
+    if (currentPath !== '/' && currentPath !== '' && !lower) {
+      return [{name: '..', size: 0, type: 'dir'}, ...dirs, ...files];
+    }
+    return [...dirs, ...files];
+  }, [chains, search, currentPath]);
 
   // Format file size
   const formatSize = (bytes: number): string => {
@@ -299,6 +317,18 @@ export function FxChainBrowser({
                         ${isSelected ? 'ring-1 ring-[var(--accent-orange)]/40' : ''}
                       `}
                     >
+                      {entry.type === 'dir' ? (
+                        <button
+                          onClick={() => handleNavigate(entry)}
+                          className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                        >
+                          <span className="text-lg flex-shrink-0">
+                            {entry.name === '..' ? '📂' : '📁'}
+                          </span>
+                          <span className="text-sm font-medium truncate">{entry.name}</span>
+                        </button>
+                      ) : (
+                        <div>
                       {/* Chain info - tap to select */}
                       <button
                         onClick={() => handleSelectChain(entry)}
@@ -357,6 +387,8 @@ export function FxChainBrowser({
                       >
                         +
                       </button>
+                    </div>
+                  )}
                     </div>
                   );
                 })}

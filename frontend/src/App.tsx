@@ -73,6 +73,13 @@ function App() {
 
   // FX chain browser state (Issue #7)
   const [fxChainView, setFxChainView] = useState(false);
+  const [fxChainPath, setFxChainPath] = useState<string>(
+    () => localStorage.getItem('fxChainPath') || ''
+  );
+
+  useEffect(() => {
+    localStorage.setItem('fxChainPath', fxChainPath);
+  }, [fxChainPath]);
 
   // Param control navigation state
   const [paramView, setParamView] = useState<{

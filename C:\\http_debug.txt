@@ -1,0 +1,5 @@
+[spidercrab] Frontend path set: /home/sasha/.config/REAPER/UserPlugins/frontend
+[spidercrab] addListenPort returned: -1
+[spidercrab] HTTP server port 5173 bind failed: -1
+[spidercrab] addListenPort(port+1) returned: 0
+[spidercrab] HTTP server started on port 5174
