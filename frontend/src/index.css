@@ -29,6 +29,13 @@
   --format-dx: #D48A9E;
 }
 
+/* ── Smooth transitions for theme switching ── */
+*, *::before, *::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
+}
+
 body {
   margin: 0;
   background: var(--bg-primary);
@@ -63,6 +70,31 @@ h1, h2, h3, h4, h5, h6, .font-semibold {
 }
 ::-webkit-scrollbar-thumb {
   background: #D5CCB8;
+}
+
+/* Dark scrollbar variant */
+.dark ::-webkit-scrollbar-thumb {
+  background: #5A666A;
+}
+
+/* ── Everforest Dark palette ── */
+.dark,
+[data-theme="dark"] {
+  --bg-primary: #2D353B;
+  --bg-secondary: #343F44;
+  --bg-tertiary: #3D484D;
+  --text-primary: #D3C6AA;
+  --text-secondary: #859289;
+  --accent-green: #A7C080;
+  --accent-red: #E67E80;
+  --accent-orange: #E69875;
+  --accent-yellow: #D4B96A;
+  --accent-blue: #7FBBB3;
+  --border: #475258;
+  --accent-dim: color-mix(in srgb, var(--accent-orange) 35%, transparent);
+  --format-vst2: #83C092;
+  --format-clap: #A68DBA;
+  --format-dx: #C47D94;
 }
 
 /* Touch-friendly tap targets */

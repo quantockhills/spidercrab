@@ -44,6 +44,7 @@ function setupMockReaper() {
     deleteFx: mockDeleteFx,
     getDirectory: vi.fn().mockResolvedValue([]),
     sendSampleToTrack: vi.fn(),
+    isRefreshingFx: false,
     refreshFxCache: vi.fn(),
     play: vi.fn(),
     stop: vi.fn(),
@@ -107,5 +108,108 @@ describe('App — FX card navigation to ParamControl', () => {
       // Should show the FX browser (not ParamControl anymore)
       expect(screen.queryByText('Loading parameters...')).toBeNull();
     });
+  });
+});
+
+describe('App — Settings tab', () => {
+  it('switches to Settings tab and shows Refresh Plugin List button', async () => {
+    setupMockReaper();
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Refresh Plugin List')).toBeDefined();
+    });
+
+    // Button should be enabled by default
+    const btn = screen.getByText('Refresh Plugin List') as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+  });
+
+  it('shows disabled button and Refreshing indicator when isRefreshingFx is true', async () => {
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: true,
+      refreshFxCache: vi.fn(),
+      play: vi.fn(),
+      stop: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    // Should show Refreshing indicator
+    await waitFor(() => {
+      expect(screen.getByText(/Refreshing/)).toBeDefined();
+    });
+
+    // Button should be disabled
+    const btn = screen.getByText(/Refreshing/);
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('calls refreshFxCache when Refresh Plugin List is clicked', async () => {
+    const mockRefreshFxCache = vi.fn();
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: mockRefreshFxCache,
+      play: vi.fn(),
+      stop: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Refresh Plugin List')).toBeDefined();
+    });
+
+    // Click the button
+    fireEvent.click(screen.getByText('Refresh Plugin List'));
+
+    expect(mockRefreshFxCache).toHaveBeenCalledTimes(1);
   });
 });
