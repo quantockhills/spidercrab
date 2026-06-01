@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useTheme } from './hooks/useTheme';
 import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
@@ -62,6 +63,8 @@ function App() {
     seqSetLength,
     seqSetBaseNote,
   } = useReaper();
+
+  const { preference, isDark, setTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
   const [sessionMode, setSessionMode] = useState<'session' | 'sequencer'>('session');
@@ -363,6 +366,29 @@ function App() {
                   </p>
                 )}
               </div>
+            </div>
+
+            {/* Theme section */}
+            <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Theme</h3>
+              <div className="flex gap-2">
+                {(['light', 'dark', 'system'] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`flex-1 py-2.5 text-sm transition-colors active:brightness-95 ${
+                      preference === t
+                        ? 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                    }`}
+                  >
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] text-center">
+                {isDark ? 'Dark mode active' : 'Light mode active'}
+              </p>
             </div>
           </div>
         )}
