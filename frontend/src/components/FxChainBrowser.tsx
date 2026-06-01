@@ -35,7 +35,7 @@ export function FxChainBrowser({
   onBack,
   initialPath,
 }: FxChainBrowserProps) {
-  const [rootPath, setRootPath] = useState(initialPath || '');
+  const [rootPath] = useState(initialPath || '');
   const [rootData, setRootData] = useState<DirData>({ chains: [], dirs: [] });
   const [rootLoading, setRootLoading] = useState(false);
   const [rootError, setRootError] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export function FxChainBrowser({
     }
   }, [fxChainGetDirectory]);
 
-  useEffect(() => { loadRoot(rootPath); }, [rootPath]);
+  useEffect(() => { loadRoot(rootPath); }, [rootPath, loadRoot]);
 
   const toggleDir = useCallback(async (dirPath: string) => {
     if (expanded.has(dirPath)) {
