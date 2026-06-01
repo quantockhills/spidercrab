@@ -458,13 +458,24 @@ void CommandHandler::HandleGetFXParams(
         char   name[256] = { 0 };
         m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
 
+        // Get the human-readable formatted value (e.g. "50.0%", "-6.0 dB")
+        // Falls back to empty/null if TrackFX_GetFormattedParamValue is
+        // unavailable or fails (Issue #73)
+        char formattedBuf[256] = { 0 };
+        bool formattedOk = false;
+        if (m_api.TrackFX_GetFormattedParamValue) {
+            formattedOk = m_api.TrackFX_GetFormattedParamValue(
+                track, fxIdx, i, formattedBuf, sizeof(formattedBuf));
+        }
+
         paramsList += "{";
         paramsList += json_string("index") + ":" + std::to_string(i) + ",";
         paramsList += json_string("name") + ":" + json_string(name) + ",";
         paramsList += json_string("value") + ":" + std::to_string(actualVal) + ",";
         paramsList += json_string("min") + ":" + std::to_string(minVal) + ",";
         paramsList += json_string("max") + ":" + std::to_string(maxVal) + ",";
-        paramsList += json_string("mid") + ":" + std::to_string(midVal);
+        paramsList += json_string("mid") + ":" + std::to_string(midVal) + ",";
+        paramsList += json_string("formatted") + ":" + (formattedOk && formattedBuf[0] ? json_string(formattedBuf) : json_string(""));
         paramsList += "}";
     }
     paramsList += "]";
@@ -535,7 +546,12 @@ void CommandHandler::HandleSetFXParam(
     if (normalizedVal < 0.0) normalizedVal = 0.0;
     if (normalizedVal > 1.0) normalizedVal = 1.0;
 
+    // Record this as our own set so OnFxParamChanged can suppress
+    // REAPER's talkback broadcast (Issue #73)
+    m_lastSetParam = {trackIdx, fxIdx, paramIdx};
+
     bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, normalizedVal);
+
     // Read back the actual value REAPER committed (fixes slider jumping due to
     // normalization precision loss or stepped params)
     double committedVal = value;
@@ -544,10 +560,20 @@ void CommandHandler::HandleSetFXParam(
         double normVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &actualMin, &actualMax, &actualMid);
         committedVal = actualMin + normVal * (actualMax - actualMin);
     }
+
+    // Get the formatted value for the committed param (Issue #73)
+    char formattedBuf[256] = { 0 };
+    bool formattedOk = false;
+    if (success && m_api.TrackFX_GetFormattedParamValue) {
+        formattedOk = m_api.TrackFX_GetFormattedParamValue(
+            track, fxIdx, paramIdx, formattedBuf, sizeof(formattedBuf));
+    }
+
     SendResponse(
         clientId, id, success,
         "{\"set\":" + std::string(success ? "true" : "false") + ","
-        "\"value\":" + std::to_string(committedVal) + "}");
+        "\"value\":" + std::to_string(committedVal) + ","
+        "\"formatted\":" + (formattedOk && formattedBuf[0] ? json_string(formattedBuf) : json_string("")) + "}");
 }
 
 void CommandHandler::HandleAddFX(int clientId, const std::string& id, const std::string& params)
@@ -1076,6 +1102,20 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     if (trackIdx != m_watchedTrackIdx || fxIdx != m_watchedFxIdx)
         return;
 
+    // Suppress broadcasting param changes that WE just made ourselves
+    // (Issue #73). When TrackFX_SetParam succeeds, REAPER fires this
+    // callback with its internal stored value (which may differ from what
+    // we sent due to quantization/stepping). The frontend already received
+    // the committed value via the setFxParam response, so broadcasting this
+    // event would overwrite the correct value with REAPER's version.
+    if (m_lastSetParam.trackIdx == trackIdx &&
+        m_lastSetParam.fxIdx == fxIdx &&
+        m_lastSetParam.paramIdx == paramIdx) {
+        // Clear the tracking for this param
+        m_lastSetParam = {-1, -1, -1};
+        return;
+    }
+
     // Get param name for the event
     char name[256] = { 0 };
     if (m_api.TrackFX_GetParamName) {
@@ -1090,6 +1130,14 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     // Convert normalized to actual display value (consistent with HandleGetFXParams)
     double actualVal = minVal + value * (maxVal - minVal);
 
+    // Get the formatted value for this param (Issue #73)
+    char formattedBuf[256] = { 0 };
+    bool formattedOk = false;
+    if (m_api.TrackFX_GetFormattedParamValue) {
+        formattedOk = m_api.TrackFX_GetFormattedParamValue(
+            track, fxIdx, paramIdx, formattedBuf, sizeof(formattedBuf));
+    }
+
     std::string event = "{";
     event += "\"type\":\"event\",";
     event += "\"event\":\"fx_param_changed\",";
@@ -1102,7 +1150,8 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     event += "\"value\":" + std::to_string(actualVal) + ",";
     event += "\"min\":" + std::to_string(minVal) + ",";
     event += "\"max\":" + std::to_string(maxVal) + ",";
-    event += "\"mid\":" + std::to_string(midVal);
+    event += "\"mid\":" + std::to_string(midVal) + ",";
+    event += "\"formatted\":" + (formattedOk && formattedBuf[0] ? json_string(formattedBuf) : json_string(""));
     event += "}]}}";
 
     if (m_broadcastCb)

@@ -42,6 +42,7 @@ export interface FxParam {
   min: number;
   max: number;
   mid: number;
+  formatted?: string;
 }
 
 export function useReaper(opts: UseReaperOptions = {}) {

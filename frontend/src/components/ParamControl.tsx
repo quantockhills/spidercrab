@@ -72,7 +72,7 @@ export function ParamControl({
             const changed = changedParams.find((cp: any) => cp.index === p.index);
             // Skip event updates for the param currently being dragged
             if (changed && draggingParamRef.current === p.index) return p;
-            return changed ? { ...p, value: changed.value, min: changed.min, max: changed.max, mid: changed.mid } : p;
+            return changed ? { ...p, value: changed.value, min: changed.min, max: changed.max, mid: changed.mid, formatted: changed.formatted } : p;
           }),
         );
       }
@@ -118,7 +118,14 @@ export function ParamControl({
       // If server returned a committed value, use it (authoritative)
       if (resp?.payload?.value !== undefined) {
         setParams((prev) =>
-          prev.map((p) => (p.index === paramIdx ? { ...p, value: resp.payload.value as number } : p)),
+          prev.map((p) => {
+            if (p.index !== paramIdx) return p;
+            const update: Partial<typeof p> = { value: resp.payload.value as number };
+            if (resp.payload.formatted !== undefined) {
+              update.formatted = resp.payload.formatted as string;
+            }
+            return { ...p, ...update };
+          }),
         );
       }
     },
@@ -245,8 +252,10 @@ function ParamSlider({ param, onChange, draggingParamRef, onDragStart, onDragEnd
   const normalized = (localValue - param.min) / (param.max - param.min);
   const pct = Math.max(0, Math.min(100, normalized * 100));
 
-  // Format display value
-  const displayValue = formatParamValue(localValue, param.name, param.min, param.max);
+  // Format display value — prefer server-provided formatted string
+  // (e.g. "50.0%", "-6.0 dB") over client-side computation (Issue #73)
+  // Server uses TrackFX_GetFormattedParamValue for authoritative display.
+  const displayValue = param.formatted || formatParamValue(localValue, param.name, param.min, param.max);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {

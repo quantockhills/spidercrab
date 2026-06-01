@@ -38,6 +38,7 @@ struct ReaperAPI {
     bool (*TrackFX_GetParamName)(MediaTrack* track, int fx, int param, char* bufOut, int bufOut_sz)
         = nullptr;
     bool (*TrackFX_SetParam)(MediaTrack* track, int fx, int param, double val)        = nullptr;
+    bool (*TrackFX_GetFormattedParamValue)(MediaTrack* track, int fx, int param, char* bufOut, int bufOut_sz) = nullptr;
     bool (*TrackFX_Delete)(MediaTrack* track, int fx)                                 = nullptr;
     void (*TrackFX_CopyToTrack)(MediaTrack* src_track, int src_fx, MediaTrack* dest_track,
         int dest_fx, bool is_move)                                                    = nullptr;
@@ -103,6 +104,10 @@ private:
     // Watched FX for callback-based param change filtering (Issue #58)
     int         m_watchedTrackIdx = -1;
     int         m_watchedFxIdx    = -1;
+
+    // Track the last param we set ourselves, so we can suppress
+    // REAPER's OnFxParamChanged talkback (Issue #73)
+    struct { int trackIdx; int fxIdx; int paramIdx; } m_lastSetParam = {-1, -1, -1};
 
     // Run the actual EnumInstalledFX loop (no response, just populate cache)
     // Returns the JSON string of the FX list
