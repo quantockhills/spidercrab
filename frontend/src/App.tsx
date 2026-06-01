@@ -73,6 +73,13 @@ function App() {
 
   // FX chain browser state (Issue #7)
   const [fxChainView, setFxChainView] = useState(false);
+  const [fxChainPath, setFxChainPath] = useState<string>(
+    () => localStorage.getItem('fxChainPath') || ''
+  );
+
+  useEffect(() => {
+    localStorage.setItem('fxChainPath', fxChainPath);
+  }, [fxChainPath]);
 
   // Param control navigation state
   const [paramView, setParamView] = useState<{
@@ -292,6 +299,7 @@ function App() {
             fxChainLoad={fxChainLoad}
             fxChainGetInfo={fxChainGetInfo}
             onBack={handleBackFromFxChains}
+            initialPath={fxChainPath || undefined}
           />
         ) : (
           <FxBrowser
@@ -391,6 +399,31 @@ function App() {
               <p className="text-[11px] text-[var(--text-secondary)] text-center">
                 {isDark ? 'Dark mode active' : 'Light mode active'}
               </p>
+            </div>
+
+            {/* FX Chain path setting */}
+            <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider">FX Chains</h3>
+              <input
+                type="text"
+                value={fxChainPath}
+                onChange={(e) => setFxChainPath(e.target.value)}
+                placeholder="Path to FXChains folder (e.g. C:\Users\...\REAPER\FXChains)"
+                className="w-full px-3 py-2 bg-[var(--bg-secondary)] text-sm
+                  text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
+                  outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
+              />
+              <button
+                onClick={() => {
+                  if (fxChainPath) {
+                    setFxChainView(true);
+                    setActiveTab('fx');
+                  }
+                }}
+                className="w-full py-2.5 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:brightness-95 transition-colors"
+              >
+                Browse FX Chains
+              </button>
             </div>
           </div>
         )}

@@ -134,7 +134,7 @@ export function FxBrowser({
   );
 
   const handleSelectFx = useCallback(
-    async (trackIdx: number, fxIdx: number, fxName: string) => {
+    async (trackIdx: number, _fxIdx: number, fxName: string) => {
       // Look up the track-local FX index — fxIdx from the enumerated list is the
       // GLOBAL plugin index, but Reaper's TrackFX_* APIs expect the 0-based index
       // of the FX on the specific track (e.g. 0 = first FX on track).
