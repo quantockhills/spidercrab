@@ -261,10 +261,10 @@ export function useReaper(opts: UseReaperOptions = {}) {
 
   // ── FX Chain commands (Issue #7) ──
 
-  const fxChainGetDirectory = useCallback(async (path: string): Promise<{chains: FxChainEntry[]}> => {
-    if (!clientRef.current) return {chains: []};
-    const resp = await clientRef.current.send('fxchain/getDirectory', { path });
-    return resp.payload as {chains: FxChainEntry[]};
+  const fxChainGetDirectory = useCallback(async (path: string): Promise<{chains: FxChainEntry[]; dirs: string[]}> => {
+    if (!clientRef.current) return {chains: [], dirs: []};
+    const resp = await clientRef.current.send('fxchain/getDirectory', { path }, 60000);
+    return resp.payload as {chains: FxChainEntry[]; dirs: string[]};
   }, []);
 
   const fxChainSave = useCallback(async (trackIdx: number, filePath: string): Promise<boolean> => {
@@ -335,7 +335,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     if (!clientRef.current) return null;
     try {
       const resp = await clientRef.current.send('matrix/getAll');
-      const data = resp.payload as MatrixData;
+      const data = resp.payload as unknown as MatrixData;
       setMatrix(data);
       return data;
     } catch {
@@ -371,7 +371,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     if (!clientRef.current) return null;
     try {
       const resp = await clientRef.current.send('sequencer/getAll');
-      const data = resp.payload as SequencerData;
+      const data = resp.payload as unknown as SequencerData;
       setSequencer(data);
       return data;
     } catch {
@@ -383,7 +383,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     if (!clientRef.current) return null;
     try {
       const resp = await clientRef.current.send('sequencer/toggleStep', { column, row });
-      const data = resp.payload as StepData;
+      const data = resp.payload as unknown as StepData;
       // Optimistic update
       setSequencer((prev) => {
         if (!prev) return prev;

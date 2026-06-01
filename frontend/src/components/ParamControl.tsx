@@ -10,7 +10,7 @@ interface ParamControlProps {
   trackName: string;
   fxIdx: number;
   fxName: string;
-  getFxParams: (trackIdx: number, fxIdx: number) => Promise<FxParam[]>;
+  getFxParams: (trackIdx: number, fxIdx: number, offset?: number, limit?: number) => Promise<{params: FxParam[]; total: number; offset: number; limit: number}>;
   setFxParam: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<WsResponse>;
   deleteFx: (trackIdx: number, fxIdx: number) => Promise<boolean>;
   onEvent: (pattern: string, handler: (data: unknown) => void) => () => void;
@@ -217,8 +217,8 @@ export function ParamControl({
               onClick={() => {
                 setError(null);
                 setLoading(true);
-                getFxParams(trackIdx, fxIdx)
-                  .then(setParams)
+                getFxParams(trackIdx, fxIdx, 0, 32)
+                  .then((r) => { setParams(r.params); setTotalParams(r.total); setParamOffset(r.offset); })
                   .catch((err) => setError(err.message))
                   .finally(() => setLoading(false));
               }}

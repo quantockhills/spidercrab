@@ -55,7 +55,7 @@ export function SequencerView({
   const [velocityMode, setVelocityMode] = useState(false);
   const [velocityEdit, setVelocityEdit] = useState<{col: number; row: number} | null>(null);
   const [velocityValue, setVelocityValue] = useState(100);
-  const [selectedNote, setSelectedNote] = useState(36);
+  const [_selectedNote, setSelectedNote] = useState(36);
   const initializedRef = useRef(false);
 
   // Load sequencer on mount
@@ -134,7 +134,6 @@ export function SequencerView({
   }
 
   const page = Math.floor(sequencer.playhead / cols) * cols;
-  const visibleSteps = Array.from({ length: cols }, (_, c) => page + c);
 
   return (
     <div className="flex flex-col h-full">
