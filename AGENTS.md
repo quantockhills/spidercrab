@@ -212,9 +212,25 @@ Every feature goes through this sequence before its issue is closed:
 Instead of one sub-agent doing everything, chain specialized sub-agents.
 
 ```
-📋 Planner (1-2 min) — optional, for complex features
-   Read issue + docs → write brief plan → comment on Gitea
-   Sets direction before building starts
+📋 Planner (3-5 min) — required for ALL work
+   **Read everything first. Stay humble. You don't understand the problem yet.**
+   - Read the issue body + any linked issues
+   - Read the relevant API/SDK docs (`docs/reaper-sdk/sdk/reaper_plugin_functions.h`, etc.)
+   - Read the relevant source code (understand the current implementation before changing it)
+   - **Ask: do I need to debug before writing code?** If the issue involves a crash,
+     wrong behaviour, or unexpected output — don't guess. Build a minimal reproduction,
+     trace the code path, add logging, verify your theory. Debug first, code second.
+   - **Rule: if you haven't proven you understand the bug, you haven't started yet.**
+     A plan built on assumptions is worse than no plan.
+   - For new features: research existing patterns, check what other projects do
+   - Write a brief plan as a Gitea issue comment covering:
+     * What needs to change (and why — not just "fix bug" but root cause)
+     * Whether debugging is needed first (and what the debug approach is)
+     * Which files need modification
+     * Which APIs/docs were consulted
+     * Edge cases the Builder must handle
+     * Any dependencies or gotchas
+   - Sets direction before building starts
 
 🎨 Designer (3-5 min) — for design/layout changes
    Read design-guidelines.md + designer-prompt.md + original-theme/

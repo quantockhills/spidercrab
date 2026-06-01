@@ -22,6 +22,7 @@
 #define REAPERAPI_WANT_TrackFX_GetParam
 #define REAPERAPI_WANT_TrackFX_GetParamEx
 #define REAPERAPI_WANT_TrackFX_GetParamName
+#define REAPERAPI_WANT_TrackFX_GetFormattedParamValue
 #define REAPERAPI_WANT_TrackFX_SetParam
 #define REAPERAPI_WANT_TrackFX_Delete
 #define REAPERAPI_WANT_TrackFX_CopyToTrack
@@ -452,6 +453,7 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         api.TrackFX_GetParam            = TrackFX_GetParam;
         api.TrackFX_GetParamEx          = TrackFX_GetParamEx;
         api.TrackFX_GetParamName        = TrackFX_GetParamName;
+        api.TrackFX_GetFormattedParamValue = TrackFX_GetFormattedParamValue;
         api.TrackFX_SetParam            = TrackFX_SetParam;
         api.TrackFX_Delete              = TrackFX_Delete;
         api.TrackFX_CopyToTrack         = TrackFX_CopyToTrack;
