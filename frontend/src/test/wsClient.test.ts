@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { WsClient } from '../lib/wsClient';
 
 /** Creates a mock WebSocket that opens synchronously */
@@ -18,6 +19,7 @@ function createMockWsClass() {
     constructor(url: string) {
       this.url = url;
       (MockWebSocket as any).lastInstance = this;
+      // eslint-disable-next-line @typescript-eslint/no-this-alias
       instance = this;
       // Fire onopen synchronously on construction
       setTimeout(() => { this.onopen?.(); }, 0);

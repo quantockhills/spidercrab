@@ -20,30 +20,18 @@ export function SampleBrowser({
   sendSampleToTrack,
   onBack,
 }: SampleBrowserProps) {
-  const [currentPath, setCurrentPath] = useState<string>('');
+  const [currentPath, setCurrentPath] = useState<string>('/tmp');
   const [entries, setEntries] = useState<DirEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sending, setSending] = useState<string | null>(null);
   const [sentFiles, setSentFiles] = useState<Set<string>>(new Set());
 
-  // Load initial directory (~/ as default starting point)
-  useEffect(() => {
-    if (!currentPath) {
-      // Detect home dir — defaults to /home/user or /tmp
-      setCurrentPath('/tmp');
-      return;
-    }
-    loadDirectory(currentPath);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPath]);
-
   const loadDirectory = useCallback(async (path: string) => {
-    setLoading(true);
-    setError(null);
     try {
       const result = await getDirectory(path);
+      setError(null);
       setEntries(result.entries || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load directory');
@@ -53,8 +41,30 @@ export function SampleBrowser({
     }
   }, [getDirectory]);
 
+  // Load directory on mount / path change
+  useEffect(() => {
+    let cancelled = false;
+    getDirectory(currentPath)
+      .then((result) => {
+        if (!cancelled) {
+          setError(null);
+          setEntries(result.entries || []);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load directory');
+          setEntries([]);
+          setLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [currentPath, getDirectory]);
+
   const handleNavigate = useCallback((entry: DirEntry) => {
     if (entry.type === 'dir') {
+      setLoading(true);
       if (entry.name === '..') {
         // Go up one level
         const parent = currentPath.substring(0, currentPath.lastIndexOf('/'));

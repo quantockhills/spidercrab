@@ -83,7 +83,7 @@ static void DebugLog(const char* msg)
 #endif
 
 // ============================================================
-// REAPER Extension: reaper-ipad-ext
+// REAPER Extension: reaper-spidercrab
 //
 // A control surface extension that runs a WebSocket server
 // for iPad/phone remote control of Reaper.

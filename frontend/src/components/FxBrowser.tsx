@@ -52,8 +52,6 @@ export function FxBrowser({
   // Load FX on mount
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     enumerateFx()
       .then((fx) => {
         if (!cancelled) {
@@ -134,7 +132,7 @@ export function FxBrowser({
   );
 
   const handleSelectFx = useCallback(
-    async (trackIdx: number, _fxIdx: number, fxName: string) => {
+    async (trackIdx: number, fxIdx: number, fxName: string) => {
       // Look up the track-local FX index — fxIdx from the enumerated list is the
       // GLOBAL plugin index, but Reaper's TrackFX_* APIs expect the 0-based index
       // of the FX on the specific track (e.g. 0 = first FX on track).
@@ -297,7 +295,7 @@ export function FxBrowser({
       {!loading && allFx.length > 0 && (
         <div className="px-4 py-2 border-t border-[var(--border)] flex justify-between text-[10px] text-[var(--text-secondary)]">
           <span>{allFx.length} total plugins</span>
-          {search && <span>{groupedFx.reduce((s, [_, l]) => s + l.length, 0)} filtered</span>}
+          {search && <span>{groupedFx.reduce((s, arr) => s + arr[1].length, 0)} filtered</span>}
         </div>
       )}
     </div>

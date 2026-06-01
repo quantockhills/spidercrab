@@ -68,32 +68,34 @@ export function useReaper(opts: UseReaperOptions = {}) {
     };
   }, [opts.host, opts.port]);
 
+  type PayloadMap = Record<string, unknown>;
+
   const getTracks = useCallback(async (): Promise<Track[]> => {
     if (!clientRef.current) return [];
     const resp = await clientRef.current.send('track/getAll');
-    return (resp.payload as any).tracks as Track[];
+    return (resp.payload as PayloadMap).tracks as Track[];
   }, []);
 
   const enumerateFx = useCallback(async (): Promise<EnumeratedFx[]> => {
     if (!clientRef.current) return [];
     const resp = await clientRef.current.send('fx/enumerate', {}, 60000);
-    return (resp.payload as any).fx as EnumeratedFx[];
+    return (resp.payload as PayloadMap).fx as EnumeratedFx[];
   }, []);
 
   const getTrackFx = useCallback(async (trackIdx: number): Promise<FxInfo[]> => {
     if (!clientRef.current) return [];
     const resp = await clientRef.current.send('track/getFx', { trackIdx }, 30000);
-    return (resp.payload as any).fx as FxInfo[];
+    return (resp.payload as PayloadMap).fx as FxInfo[];
   }, []);
 
   const getFxParams = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxParam[]> => {
     if (!clientRef.current) return [];
     const resp = await clientRef.current.send('fx/getParams', { trackIdx, fxIdx }, 30000);
-    return (resp.payload as any).params as FxParam[];
+    return (resp.payload as PayloadMap).params as FxParam[];
   }, []);
 
-  const setFxParam = useCallback(async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<any> => {
-    if (!clientRef.current) return {};
+  const setFxParam = useCallback(async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<import('../lib/wsClient').WsResponse> => {
+    if (!clientRef.current) return Promise.reject(new Error('Not connected'));
     const resp = await clientRef.current.send('fx/setParam', { trackIdx, fxIdx, paramIdx, value });
     return resp;
   }, []);
@@ -101,7 +103,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
   const addFx = useCallback(async (trackIdx: number, fxName: string): Promise<number> => {
     if (!clientRef.current) return -1;
     const resp = await clientRef.current.send('fx/add', { trackIdx, fxName });
-    return (resp.payload as any).fxIdx ?? -1;
+    return (resp.payload as PayloadMap).fxIdx as number ?? -1;
   }, []);
 
   const deleteFx = useCallback(async (trackIdx: number, fxIdx: number): Promise<boolean> => {
@@ -214,7 +216,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
   const getTransportState = useCallback(async (): Promise<{playing: boolean; recording: boolean}> => {
     if (!clientRef.current) return {playing: false, recording: false};
     const resp = await clientRef.current.send('transport/getState');
-    return (resp.payload as any) || {playing: false, recording: false};
+    return (resp.payload as Record<string, unknown>) as {playing: boolean; recording: boolean} || {playing: false, recording: false};
   }, []);
 
   const refreshFxCache = useCallback(async (): Promise<boolean> => {
@@ -228,7 +230,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
   }, [setTrackSelected]);
 
   // Subscribe to events from the WS client (e.g. fx_param_changed)
-  const onEvent = useCallback((pattern: string, handler: (data: any) => void): (() => void) => {
+  const onEvent = useCallback((pattern: string, handler: (data: unknown) => void): (() => void) => {
     if (!clientRef.current) return () => {};
     return clientRef.current.on(pattern, handler);
   }, []);

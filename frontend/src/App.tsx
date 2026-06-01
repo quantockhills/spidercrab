@@ -62,14 +62,16 @@ function App() {
 
   // Subscribe to real-time track state changes (Issue #57)
   useEffect(() => {
-    const unsubTrack = onEvent('event:track_state_changed', (msg: any) => {
-      const { trackIdx, muted, soloed, armed } = msg.payload || {};
+    const unsubTrack = onEvent('event:track_state_changed', (msg: unknown) => {
+      const m = msg as Record<string, unknown>;
+      const payload = m.payload as Record<string, unknown> || {};
+      const trackIdx = payload.trackIdx as number;
       if (trackIdx !== undefined) {
-        const updates: Record<string, boolean> = {};
-        if (muted !== undefined) updates.muted = muted;
-        if (soloed !== undefined) updates.soloed = soloed;
-        if (armed !== undefined) updates.armed = armed;
-        updateTrack(trackIdx, updates as any);
+        const updates: Partial<Omit<import('./hooks/useReaper').Track, 'index'>> = {};
+        if (payload.muted !== undefined) updates.muted = payload.muted as boolean;
+        if (payload.soloed !== undefined) updates.soloed = payload.soloed as boolean;
+        if (payload.armed !== undefined) updates.armed = payload.armed as boolean;
+        updateTrack(trackIdx, updates);
       }
     });
     const unsubList = onEvent('event:track_list_changed', () => {
@@ -79,7 +81,7 @@ function App() {
       unsubTrack();
       unsubList();
     };
-  }, [onEvent, refreshTracks]);
+  }, [onEvent, refreshTracks, updateTrack]);
 
   const handleSelectTrack = useCallback((index: number) => {
     setSelectedTrack(index);

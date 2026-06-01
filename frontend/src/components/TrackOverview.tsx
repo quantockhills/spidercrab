@@ -98,10 +98,10 @@ export function TrackOverview({
   // Fetch FX for all tracks on mount / when track list changes
   useEffect(() => {
     if (!getTrackFx || tracks.length === 0) {
-      setTrackFxMap({});
       return;
     }
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFxLoading(true);
     Promise.all(
       tracks.map(async (t) => {

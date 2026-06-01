@@ -3,15 +3,17 @@ import type { FxParam } from '../hooks/useReaper';
 
 // ── Types ────────────────────────────────────────────────────
 
+import type { WsResponse } from '../lib/wsClient';
+
 interface ParamControlProps {
   trackIdx: number;
   trackName: string;
   fxIdx: number;
   fxName: string;
   getFxParams: (trackIdx: number, fxIdx: number) => Promise<FxParam[]>;
-  setFxParam: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<any>;
-  deleteFx: (trackIdx: number, fxIdx: number) => Promise<any>;
-  onEvent: (pattern: string, handler: (data: any) => void) => () => void;
+  setFxParam: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<WsResponse>;
+  deleteFx: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onEvent: (pattern: string, handler: (data: unknown) => void) => () => void;
   onBack: () => void;
 }
 
@@ -42,8 +44,6 @@ export function ParamControl({
   // Load params on mount + subscribe to real-time updates
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     getFxParams(trackIdx, fxIdx)
       .then((p) => {
         if (!cancelled) {
@@ -64,15 +64,26 @@ export function ParamControl({
   // While dragging a param, ignore events for that param to avoid
   // slider jumping (optimistic update vs server event race, Issue #73)
   useEffect(() => {
-    const unsubscribe = onEvent('event:fx_param_changed', (msg: any) => {
-      const { trackIdx: eventTrack, fxIdx: eventFx, params: changedParams } = msg.payload || {};
+    const unsubscribe = onEvent('event:fx_param_changed', (msg: unknown) => {
+      const m = msg as Record<string, unknown>;
+      const payload = m.payload as Record<string, unknown> || {};
+      const eventTrack = payload.trackIdx as number;
+      const eventFx = payload.fxIdx as number;
+      const changedParams = payload.params as Array<Record<string, unknown>>;
       if (eventTrack === trackIdx && eventFx === fxIdx && Array.isArray(changedParams)) {
         setParams((prev) =>
           prev.map((p) => {
-            const changed = changedParams.find((cp: any) => cp.index === p.index);
+            const changed = changedParams.find((cp) => cp.index === p.index);
             // Skip event updates for the param currently being dragged
             if (changed && draggingParamRef.current === p.index) return p;
-            return changed ? { ...p, value: changed.value, min: changed.min, max: changed.max, mid: changed.mid, formatted: changed.formatted } : p;
+            return changed ? {
+              ...p,
+              value: changed.value as number,
+              min: changed.min as number,
+              max: changed.max as number,
+              mid: changed.mid as number,
+              formatted: changed.formatted as string | undefined,
+            } : p;
           }),
         );
       }
@@ -215,7 +226,6 @@ export function ParamControl({
                 key={param.index}
                 param={param}
                 onChange={(value) => handleParamChange(param.index, value)}
-                draggingParamRef={draggingParamRef}
                 onDragStart={startDragging}
                 onDragEnd={finishDragging}
               />
@@ -232,30 +242,24 @@ export function ParamControl({
 interface ParamSliderProps {
   param: FxParam;
   onChange: (value: number) => void;
-  draggingParamRef: React.MutableRefObject<number | null>;
   onDragStart: (paramIdx: number) => void;
   onDragEnd: () => void;
 }
 
-function ParamSlider({ param, onChange, draggingParamRef, onDragStart, onDragEnd }: ParamSliderProps) {
+function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localValue, setLocalValue] = useState(param.value);
 
-  // Sync with external value when not dragging
-  useEffect(() => {
-    if (!dragging) {
-      setLocalValue(param.value);
-    }
-  }, [param.value, dragging]);
-
-  const normalized = (localValue - param.min) / (param.max - param.min);
+  // Use localValue when dragging, server value otherwise
+  const effectiveValue = dragging ? localValue : param.value;
+  const normalized = (effectiveValue - param.min) / (param.max - param.min);
   const pct = Math.max(0, Math.min(100, normalized * 100));
 
   // Format display value — prefer server-provided formatted string
   // (e.g. "50.0%", "-6.0 dB") over client-side computation (Issue #73)
   // Server uses TrackFX_GetFormattedParamValue for authoritative display.
-  const displayValue = param.formatted || formatParamValue(localValue, param.name, param.min, param.max);
+  const displayValue = param.formatted || formatParamValue(effectiveValue, param.name, param.min, param.max);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {

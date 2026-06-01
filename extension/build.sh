@@ -70,7 +70,7 @@ SRC="$SRC $WDL_DIR/jnetlib/asyncdns.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/webserver.cpp"
 SRC="$SRC $WDL_DIR/jnetlib/httpserv.cpp"
 
-OUT="$SCRIPT_DIR/build/reaper-ipad-ext$SUFFIX"
+OUT="$SCRIPT_DIR/build/reaper-spidercrab$SUFFIX"
 mkdir -p "$SCRIPT_DIR/build"
 
 echo "CXX: $CXX"

@@ -103,7 +103,7 @@ export class WsClient {
       this.scheduleReconnect();
     };
 
-    this.ws.onerror = (_ev) => {
+    this.ws.onerror = () => {
       this.config.onError(new Error('WebSocket error'));
     };
 
@@ -121,7 +121,7 @@ export class WsClient {
           if (msg.success) {
             pending.resolve(msg);
           } else {
-            pending.reject(new Error((msg.payload as any)?.error || 'Command failed'));
+            pending.reject(new Error(((msg.payload as Record<string, string>)?.error) || 'Command failed'));
           }
         }
 

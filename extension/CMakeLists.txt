@@ -51,16 +51,16 @@ set(TEST_SOURCES
 # ============================================================
 # 1. Extension shared library (for Reaper)
 # ============================================================
-add_library(reaper-ipad-ext SHARED ${EXTENSION_SOURCES})
-set_target_properties(reaper-ipad-ext PROPERTIES
+add_library(reaper-spidercrab SHARED ${EXTENSION_SOURCES})
+set_target_properties(reaper-spidercrab PROPERTIES
     PREFIX ""
     SUFFIX ".so"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
 )
 
 if(UNIX)
-    target_link_libraries(reaper-ipad-ext PRIVATE pthread dl)
-    target_compile_definitions(reaper-ipad-ext PRIVATE PTHREAD=1)
+    target_link_libraries(reaper-spidercrab PRIVATE pthread dl)
+    target_compile_definitions(reaper-spidercrab PRIVATE PTHREAD=1)
 endif()
 
 # ============================================================

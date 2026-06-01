@@ -15,8 +15,10 @@ code, and writes a plan before any code is written.
 For any UI feature (new screen, component, or UX change):
 
 ```
-Planner → Builder → Reviewer → Screenshot Verifier → Tester → Close
+Planner → Builder → Reviewer → Screenshot Verifier → Tester
 ```
+
+**🔒 Only 🧪 Tester may close the issue. No other stage is authorized.**
 
 | Stage | Tool | Pass/Fail |
 |-------|------|-----------|
@@ -24,8 +26,10 @@ Planner → Builder → Reviewer → Screenshot Verifier → Tester → Close
 | **Builder** | Write code, commit | Compiles, lints clean |
 | **Reviewer** | Read diff, check against AGENTS.md + UI.md + issue body | No regressions, matches spec |
 | **Screenshot Verifier** | Full stack → Playwright screenshots → Kimi K2.6 visual check | Screenshots match claims |
-| **Tester** | Run all unit + integration + E2E tests | All pass |
-| **Close** | Close Gitea issue, push | — |
+| **Tester** | Review test completeness + coverage + edge cases + check Playwright/E2E tests exist (1 per feature, 2-3 per milestone) + run all unit/integration/E2E tests | All pass + tests cover the issue + Playwright tests exist |
+| **Close** (🧪 Tester only) | Close Gitea issue, push | — |
+
+**Tester may restart pipeline:** If the approach is wrong (not just code), loop back to Planner instead of Builder.
 
 ### Notes
 - The Screenshot Verifier **must** be spawned with
@@ -40,16 +44,20 @@ Planner → Builder → Reviewer → Screenshot Verifier → Tester → Close
 For any backend change (WebSocket server, command handlers, REAPER API):
 
 ```
-Planner → Builder → Reviewer → Integration Tester → Close
+Planner → Builder → Reviewer → Integration Tester
 ```
+
+**🔒 Only 🧪 Tester may close the issue.**
 
 | Stage | Tool | Pass/Fail |
 |-------|------|-----------|
 | **Planner** | Read issue + SDK docs + source → Gitea plan comment | Plan approved |
 | **Builder** | Write C++ code, `make build` | Compiles |
 | **Reviewer** | Read diff, check for memory safety, ABI issues | Clean |
-| **Integration Tester** | `make test` (C++ GTest) + `make deploy` + headless test | All pass |
-| **Close** | Close Gitea issue, push | — |
+| **Integration Tester** | Review test quality (edge cases, real semantics, Playwright coverage) + `make test` + `make deploy` + headless test | All pass + tests cover the fix |
+| **Close** (🧪 Tester only) | Close Gitea issue, push | — |
+
+**Tester may restart pipeline:** If the approach is wrong, loop back to Planner instead of Builder.
 
 ### Notes
 - No Screenshot Verifier needed — backend changes have no visual output.
@@ -62,8 +70,10 @@ Planner → Builder → Reviewer → Integration Tester → Close
 For any visual/layout change (CSS, component structure, responsive breakpoints):
 
 ```
-Planner → Designer → Builder → Reviewer → Screenshot Verifier → Close
+Planner → Designer → Builder → Reviewer → Screenshot Verifier → Tester
 ```
+
+**🔒 Only 🧪 Tester may close the issue.** UI tests must pass even for layout changes, unless they're purely cosmetic.
 
 | Stage | Tool | Pass/Fail |
 |-------|------|-----------|
@@ -72,7 +82,7 @@ Planner → Designer → Builder → Reviewer → Screenshot Verifier → Close
 | **Builder** | Implement CSS/components | Matches design spec |
 | **Reviewer** | Read diff, check design-guidelines compliance | No violations |
 | **Screenshot Verifier** | Full stack → Playwright screenshots → Kimi K2.6 visual check | Matches design spec |
-| **Close** | Close Gitea issue, push | — |
+| **Close** (🧪 Tester only) | Close Gitea issue, push | — |
 
 ### Notes
 - No Tester stage — layout changes don't affect unit/integration test
@@ -98,16 +108,20 @@ A Designer agent should check ALL of these before starting:
 For any bug fix (crashes, incorrect behaviour, regressions):
 
 ```
-Planner → Builder → Reviewer → Integration Tester → Close
+Planner → Builder → Reviewer → Integration Tester
 ```
+
+**🔒 Only 🧪 Tester may close the issue.**
 
 | Stage | Tool | Pass/Fail |
 |-------|------|-----------|
 | **Planner** | Reproduce bug → trace code path → check SDK docs → root cause analysis → plan | Root cause identified |
 | **Builder** | Write fix + tests | Compiles |
 | **Reviewer** | Read diff, check for regressions, verify edge cases | Clean |
-| **Integration Tester** | `make test` + headless test + verify bug is fixed | All pass + bug gone |
-| **Close** | Close Gitea issue, push | — |
+| **Integration Tester** | Review test quality (does test actually prove fix? Playwright coverage?) + `make test` + headless test + verify bug is fixed | All pass + bug gone + tests prove it |
+| **Close** (🧪 Tester only) | Close Gitea issue, push | — |
+
+**Tester may restart pipeline:** If the approach is wrong, loop back to Planner instead of Builder.
 
 ### Planner debugging checklist
 - [ ] Can you reproduce the bug? What are the exact steps?
@@ -127,6 +141,8 @@ For docs, config, process changes:
 ```
 Planner → Builder → Reviewer → Close
 ```
+
+**Doc-only issues:** Builder may close after Reviewer approves, since no tests apply.
 
 | Stage | Tool | Pass/Fail |
 |-------|------|-----------|

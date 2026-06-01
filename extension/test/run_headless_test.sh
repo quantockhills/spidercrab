@@ -203,17 +203,17 @@ mkdir -p "${REAPER_CFG_DIR}/UserPlugins"
 # Find and copy the extension .so
 if [ -n "${EXT_SO:-}" ]; then
     EXT_SRC="$EXT_SO"
-elif [ -f "${REAPER_HOME}/Plugins/reaper_ipad_ext.so" ]; then
-    EXT_SRC="${REAPER_HOME}/Plugins/reaper_ipad_ext.so"
-elif [ -f "${REAPER_HOME}/UserPlugins/reaper_ipad_ext.so" ]; then
-    EXT_SRC="${REAPER_HOME}/UserPlugins/reaper_ipad_ext.so"
-elif [ -f "${PROJECT_DIR}/build/reaper-ipad-ext.so" ]; then
-    EXT_SRC="${PROJECT_DIR}/build/reaper-ipad-ext.so"
+elif [ -f "${REAPER_HOME}/Plugins/reaper_spidercrab.so" ]; then
+    EXT_SRC="${REAPER_HOME}/Plugins/reaper_spidercrab.so"
+elif [ -f "${REAPER_HOME}/UserPlugins/reaper_spidercrab.so" ]; then
+    EXT_SRC="${REAPER_HOME}/UserPlugins/reaper_spidercrab.so"
+elif [ -f "${PROJECT_DIR}/build/reaper-spidercrab.so" ]; then
+    EXT_SRC="${PROJECT_DIR}/build/reaper-spidercrab.so"
 else
     fail "Extension .so not found"
     exit 1
 fi
-cp "$EXT_SRC" "${REAPER_CFG_DIR}/UserPlugins/reaper_ipad_ext.so"
+cp "$EXT_SRC" "${REAPER_CFG_DIR}/UserPlugins/reaper_spidercrab.so"
 verbose "Copied extension: $EXT_SRC"
 verbose "Config dir: $REAPER_CFG_DIR"
 

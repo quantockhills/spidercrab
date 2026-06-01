@@ -1,21 +1,12 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
 import App from '../App';
-import type { Track } from '../hooks/useReaper';
 
 // ── Helpers ──────────────────────────────────────────────────
 
 let cssRaw: string;
-let appEl: HTMLElement | null;
-
-// Minimal mock tracks to exercise track-row rendering
-const mockTracks: Track[] = [
-  { index: 0, name: 'Kick', trackNumber: 1, selected: true, muted: false, soloed: false, armed: false, volume: 0.8 },
-  { index: 1, name: 'Snare', trackNumber: 2, selected: false, muted: true, soloed: false, armed: false, volume: 0.7 },
-  { index: 2, name: 'HiHat', trackNumber: 3, selected: false, muted: false, soloed: true, armed: false, volume: 0.6 },
-];
 
 beforeAll(() => {
   const cssPath = path.resolve(__dirname, '../index.css');
@@ -29,7 +20,6 @@ beforeEach(() => {
 
 function renderApp() {
   render(<App />);
-  appEl = document.querySelector('.min-h-screen');
 }
 
 describe('Design System — Everforest pastel + Inter font', () => {

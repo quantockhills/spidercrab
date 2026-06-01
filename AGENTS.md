@@ -192,6 +192,7 @@ Every feature goes through this sequence before its issue is closed:
 - [ ] Does the signal flow work end-to-end? (app → WS → extension → Reaper → back)
 
 **4. Close out:**
+- [ ] **Tester only** — only the 🧪 Tester stage may close an issue
 - [ ] **Evidence required** — never close an issue without proof:
       - Code changes: attach test output (`make test` / headless test run)
       - UI features: screenshot or video
@@ -201,15 +202,23 @@ Every feature goes through this sequence before its issue is closed:
 - [ ] Add to changelog
 
 **Sloppy close prevention — hard rules:**
+- Issues MUST NOT be closed without passing tests. No exceptions.
 - Issues MUST NOT be closed based on "code compiles" alone
 - Issues MUST NOT be closed based on "I wrote the code, it should work"
 - If an issue can't be verified, it stays open. No exceptions.
+- **Only the 🧪 Tester stage has authority to close an issue.**
+  Planner, Designer, Builder, Reviewer, and Screenshot Verifier must all pass without closing.
 
 **Label workflow:** When code is done but not yet verified, tag the issue with `needs-verification`. Once verified by running the app and matching against the UI doc, remove the label and close the issue.
 
 ### Assembly Line Pattern — Faster Sub-agents
 
 Instead of one sub-agent doing everything, chain specialized sub-agents.
+
+**🔒 CLOSE AUTHORITY: Only the 🧪 Tester may close issues.**
+Planner, Designer, Builder, Reviewer, and Screenshot Verifier must NEVER close an issue.
+Violating this rule means the issue gets reopened and the worker gets a black mark.
+This is non-negotiable — tests are the gate, not code review.
 
 ```
 📋 Planner (3-5 min) — required for ALL work
@@ -242,9 +251,10 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
 
 👷 Builder (3-5 min)
    Read plan or issue → write code + tests → compile → commit
-   Done. No verifying, no closing.
+   Done. Do NOT verify. Do NOT close the issue.
    ⚠️ Write failing tests first (TDD), even if they're simple.
       The Tester will run them later — but they must exist.
+⚠️ NEVER close an issue. Passing to Reviewer is your last step.
 
    **Before coding, read:**
    - If Designer stage ran: read `design/spec-<issue>.md` (the Designer's output)
@@ -267,6 +277,7 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
 🔍 Reviewer (2-3 min) — fires after builder
    Read diff → check against AGENTS.md + issue + spec
    → approve OR flag issues → comment on Gitea
+   ⚠️ NEVER close the issue. Only 🧪 Tester may close. If clean, pass to Tester.
 
    **References to check (task-dependent):**
    - If Designer ran: check against `design/spec-<issue>.md` (the spec)
@@ -308,6 +319,7 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    For any UI feature: launch full stack (Reaper headless + extension + frontend),
    take screenshots via Playwright, then have a vision-capable agent (Kimi K2.6)
    analyze each screenshot against claimed content.
+   ⚠️ NEVER close the issue. Only 🧪 Tester may close. Pass results to Tester.
 
    **Before capturing, read:** `docs/playwright.md` (Playwright setup + screenshot guide)
    **Output directory:** `gui_testing/` (all screenshots go here)
@@ -323,16 +335,42 @@ Instead of one sub-agent doing everything, chain specialized sub-agents.
    ⚠️ If screenshots show loading states instead of real data → fix timing, retake,
      re-verify. Don't pass broken/incomplete views.
 
-🧪 Tester (3-5 min) — fires after reviewer + screenshot verifier clear
-   Run headless tests → C++ tests → frontend tests
+🧪 Tester (5-8 min) — fires after reviewer + screenshot verifier clear
+   **You are the ONLY stage authorized to close issues.**
+   **You are also responsible for test quality.** Do not just run tests — review
+   them for completeness and relevance to our actual use cases.
+
+   **Test review checklist:**
+   - [ ] Do the tests actually prove the behavior described in the issue?
+     (Not just "code ran without crashing" — does it test the right thing?)
+   - [ ] Are there both unit tests AND integration tests where applicable?
+   - [ ] **Are there Playwright/E2E tests?** Every feature should have at least
+     one. Bigger features or milestones should have 2-3.
+   - [ ] Are edge cases covered? (empty state, null, bounds, error paths, WS disconnect)
+   - [ ] Do they test against real Reaper semantics, not fake assumptions?
+   - [ ] Do the tests cover the bug/feature from BOTH sides (frontend + extension)?
+   - [ ] Is the mock/fake accurate enough to trust the test result?
+
+   If tests are incomplete or test the wrong thing, **loop back** with specific feedback:
+   - If tests just need fixing or expanding → loop back to **Builder + Reviewer**
+   - If the approach itself is wrong (wrong feature, wrong architecture, missing
+     design spec) → loop back to **Planner** to restart from the beginning
+   Do NOT close the issue.
+
+   **Run tests:** headless → C++ tests (`make test`) → frontend tests (`cd frontend && npm test`)
    → report results
-   ⚠️ If tests fail → loop back to Builder + Reviewer
-   ✅ If all green → close issue
+   ⚠️ If any tests fail → loop back to Builder + Reviewer. Do NOT close.
+   ✅ If all pass AND tests are complete → CLOSE the issue (only you can do this)
 ```
 
 Testing is conditional — it only runs after the reviewer approves.
-If tests fail, the whole build-review loop resets so the builder fixes
+If tests fail or are incomplete, the whole build-review loop resets so the builder fixes
 with test feedback in hand.
+
+**Tester can restart the full loop:** If the implementation approach is fundamentally
+wrong (wrong architecture, wrong feature, missing design spec), the Tester can loop
+back to **Planner** instead of Builder — restarting the entire pipeline from scratch.
+Use this when the problem isn't in the code quality but in the direction itself.
 
 This keeps each sub-agent fast and focused. Chaining is manual
 (I spawn the next after the previous completes) to avoid merge conflicts.
@@ -341,18 +379,28 @@ This keeps each sub-agent fast and focused. Chaining is manual
 
 When working as an isolated sub-agent (20-min cron, spawned task):
 
+0. **NEVER close an issue.** Only the autonomous worker's final 🧪 Tester stage may close it.
 1. **Start with a plan** — read the issue, read the relevant docs, think about what needs to happen. Comment a brief plan on the issue before writing code.
 2. **Read AGENTS.md first** — every time. The project rules may have changed.
-2. **Read the relevant docs** — UI.md, ARCHITECTURE.md, the issue itself. Don't code from memory.
-3. **Re-read before closing** — don't assume your first read is enough. Check again before you call it done.
-4. **Question your test** — does it prove the thing actually works, or just that the code ran? Test the behavior, not the response.
-5. **Phase 1 MVP only** — do NOT touch Phase 2, Future, or Process issues. If Phase 1 MVP is complete, exit.
-6. **Create issues as needed** — if you discover work that isn't tracked yet, create a new issue. If it'\''s a bug or needed feature for the current milestone, add it to Phase 1 MVP. If it'\''s clearly a future feature, tag it with the appropriate milestone (Phase 2, Future, etc.).
-7. **Reopen on failure** — if you closed an issue but the fix doesn'\''t actually work (test fails, Reaper crashes, visual mismatch), reopen it immediately. Don'\''t leave broken closes behind.
-8. **Update milestones** — when you add issues to a milestone or complete one, update the milestone state. When open=0 for a milestone, write integration tests, run them, and close the milestone only if tests pass.
-9. **No silent failures** — if you'\''re stuck, write to ~/blockers.md and move to the next issue. Don'\''t pretend it'\''s fine.
-10. **Evidence or nothing** — don'\''t close issues without proof. "Code compiles" is not proof.
-11. **Screenshot Verifier model override** — when spawning the Screenshot Verifier, always pass `model: "openrouter/moonshotai/kimi-k2.6"`. DeepSeek can't do vision. This must be explicit in every spawn command.
+3. **Read the relevant docs** — UI.md, ARCHITECTURE.md, the issue itself. Don't code from memory.
+4. **Re-read before closing** — don't assume your first read is enough. Check again before you call it done.
+5. **Question your test** — does it prove the thing actually works, or just that the code ran? Test the behavior, not the response.
+6. **Phase 1 MVP only** — do NOT touch Phase 2, Future, or Process issues. If Phase 1 MVP is complete, exit.
+7. **Create issues as needed** — if you discover work that isn't tracked yet, create a new issue. If it'\''s a bug or needed feature for the current milestone, add it to Phase 1 MVP. If it'\''s clearly a future feature, tag it with the appropriate milestone (Phase 2, Future, etc.).
+8. **Reopen on failure** — if you closed an issue but the fix doesn'\''t actually work (test fails, Reaper crashes, visual mismatch), reopen it immediately. Don'\''t leave broken closes behind.
+9. **Update milestones** — when you add issues to a milestone or complete one, update the milestone state. When open=0 for a milestone, write integration tests, run them, and close the milestone only if tests pass.
+10. **No silent failures** — if you'\''re stuck, write to ~/blockers.md and move to the next issue. Don'\''t pretend it'\''s fine.
+11. **Evidence or nothing** — don'\''t close issues without proof. "Code compiles" is not proof.
+12. **Screenshot Verifier model override** — when spawning the Screenshot Verifier, always pass `model: "openrouter/moonshotai/kimi-k2.6"`. DeepSeek can't do vision. This must be explicit in every spawn command.
+
+**🔒 The 3-Close Rule:** Before closing ANY issue, ALL of these must be true:
+1. ✅ C++ tests pass (`make test`)
+2. ✅ Frontend tests pass (`cd frontend && npm test`)
+3. ✅ Tests are complete — they cover the issue's requirements, edge cases,
+   and both unit + integration perspectives
+4. ✅ Only the 🧪 Tester stage performs the close
+
+No exceptions. If you are not the Tester, you do not close issues, period.
 
 ### Getting Unstuck
 If you're stuck:
