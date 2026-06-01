@@ -507,23 +507,10 @@ void CommandHandler::HandleGetFXParams(
                 track, fxIdx, i, formattedBuf, sizeof(formattedBuf));
         }
 
-        // Some plugins (e.g. ReaEQ) report min=0, max=1 (normalized range)
-        // but the formatted value has the real display value.
-        // When formatted is available and it starts with a digit, use the parsed
-        // numeric value so the frontend gets the actual display number.
-        double displayVal = actualVal;
-        if (formattedOk && formattedBuf[0] && isdigit((unsigned char)formattedBuf[0])) {
-            char* end = nullptr;
-            double parsed = strtod(formattedBuf, &end);
-            if (end != formattedBuf) {
-                displayVal = parsed;
-            }
-        }
-
         paramsList += "{";
         paramsList += json_string("index") + ":" + std::to_string(i) + ",";
         paramsList += json_string("name") + ":" + json_string(name) + ",";
-        paramsList += json_string("value") + ":" + std::to_string(displayVal) + ",";
+        paramsList += json_string("value") + ":" + std::to_string(actualVal) + ",";
         paramsList += json_string("min") + ":" + std::to_string(minVal) + ",";
         paramsList += json_string("max") + ":" + std::to_string(maxVal) + ",";
         paramsList += json_string("mid") + ":" + std::to_string(midVal) + ",";
@@ -611,15 +598,6 @@ void CommandHandler::HandleSetFXParam(
     if (success && m_api.TrackFX_GetFormattedParamValue) {
         formattedOk = m_api.TrackFX_GetFormattedParamValue(
             track, fxIdx, paramIdx, formattedBuf, sizeof(formattedBuf));
-    }
-
-    // If formatted starts with a digit, use the parsed value
-    if (formattedOk && formattedBuf[0] && isdigit((unsigned char)formattedBuf[0])) {
-        char* end = nullptr;
-        double parsed = strtod(formattedBuf, &end);
-        if (end != formattedBuf) {
-            committedVal = parsed;
-        }
     }
 
     SendResponse(
@@ -2100,15 +2078,6 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     if (m_api.TrackFX_GetFormattedParamValue) {
         formattedOk = m_api.TrackFX_GetFormattedParamValue(
             track, fxIdx, paramIdx, formattedBuf, sizeof(formattedBuf));
-    }
-
-    // If formatted starts with a digit, use the parsed value
-    if (formattedOk && formattedBuf[0] && isdigit((unsigned char)formattedBuf[0])) {
-        char* end = nullptr;
-        double parsed = strtod(formattedBuf, &end);
-        if (end != formattedBuf) {
-            actualVal = parsed;
-        }
     }
 
     std::string event = "{";
