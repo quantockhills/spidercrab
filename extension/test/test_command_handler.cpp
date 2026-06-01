@@ -378,7 +378,11 @@ static double mock_TrackFX_GetParamEx(
     if (minOut) *minOut = f.paramMins[param];
     if (maxOut) *maxOut = f.paramMaxs[param];
     if (midOut) *midOut = f.paramMids[param];
-    return f.paramVals[param];
+    // paramVals stores actual display values.
+    // GetParamEx must return normalized (0-1), so convert (Issue #73).
+    double range = f.paramMaxs[param] - f.paramMins[param];
+    if (range < 1e-15) return 0.0;
+    return (f.paramVals[param] - f.paramMins[param]) / range;
 }
 
 static bool mock_TrackFX_GetParamName(MediaTrack* track, int fx, int param, char* buf, int buf_sz)
@@ -539,8 +543,8 @@ TEST(FXRoundtripTest, GetTrackFXReturnsSpecificNames)
     MockState state;
     MockTrack t;
     t.name = "Guitar";
-    MockTrack::MockFX f1{ 0, "ReaEQ", { "Frequency", "Gain", "Q" }, { 0.5, 0.5, 0.5 }, { 20.0, -24.0, 0.01 }, { 20000.0, 24.0, 10.0 }, { 1000.0, 0.0, 1.0 } };
-    MockTrack::MockFX f2{ 1, "ReaComp", { "Threshold", "Ratio", "Attack", "Release" }, { 0.5, 0.5, 0.5, 0.5 }, { -60.0, 1.0, 0.1, 1.0 }, { 0.0, 20.0, 300.0, 1000.0 }, { -18.0, 4.0, 10.0, 100.0 } };
+    MockTrack::MockFX f1{ 0, "ReaEQ", { "Frequency", "Gain", "Q" }, { 10010.0, 0.0, 5.005 }, { 20.0, -24.0, 0.01 }, { 20000.0, 24.0, 10.0 }, { 1000.0, 0.0, 1.0 } };
+    MockTrack::MockFX f2{ 1, "ReaComp", { "Threshold", "Ratio", "Attack", "Release" }, { -30.0, 10.5, 150.05, 500.5 }, { -60.0, 1.0, 0.1, 1.0 }, { 0.0, 20.0, 300.0, 1000.0 }, { -18.0, 4.0, 10.0, 100.0 } };
     t.fx = { f1, f2 };
     state.tracks = { t };
 
@@ -605,7 +609,7 @@ TEST(FXRoundtripTest, GetFXParamsReturnsSpecificParamNames)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency", "Gain", "Q" },
-        { 0.5, 0.5, 0.5 },  // normalized values
+        { 10010.0, 0.0, 5.005 },  // actual display values (min + 0.5 * range)
         { 20.0, -24.0, 0.01 },
         { 20000.0, 24.0, 10.0 },
         { 1000.0, 0.0, 1.0 } });
@@ -622,11 +626,11 @@ TEST(FXRoundtripTest, GetFXParamsReturnsSpecificParamNames)
     EXPECT_NE(resp.find("\"Gain\""), std::string::npos);
     EXPECT_NE(resp.find("\"Q\""), std::string::npos);
     // After conversion: actualVal = min + normalized * (max-min)
-    // Freq: 20 + 0.5*(20000-20) = 10010
+    // Freq: normalized = (10010-20)/(20000-20) = 0.5, actual = 20 + 0.5*19980 = 10010
     EXPECT_NE(resp.find("\"value\":10010"), std::string::npos);
-    // Gain: -24 + 0.5*(24-(-24)) = 0
+    // Gain: normalized = (0-(-24))/48 = 0.5, actual = -24 + 0.5*48 = 0
     EXPECT_NE(resp.find("\"value\":0"), std::string::npos);
-    // Q: 0.01 + 0.5*(10-0.01) = 5.005
+    // Q: normalized = (5.005-0.01)/(10-0.01) = 0.5, actual = 0.01 + 0.5*9.99 = 5.005
     EXPECT_NE(resp.find("\"value\":5.005"), std::string::npos);
     EXPECT_EQ(resp.find("\"error\""), std::string::npos);
 }
@@ -637,7 +641,7 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency", "Gain" },
-        { 0.5, 0.0 },  // normalized values
+        { 10010.0, -24.0 },  // actual display values (Freq midpoint, Gain at min)
         { 20.0, -24.0 },
         { 20000.0, 24.0 },
         { 1000.0, 0.0 } });
@@ -647,7 +651,8 @@ TEST(FXRoundtripTest, SetParamThenGetParamReflectsNewValue)
     auto handler = MakeMockHandler(&state, &responses);
 
     // Set Frequency to 5000.0 (actual display value)
-    // Backend converts: normalized = (5000-20)/(20000-20) ≈ 0.24925
+    // TrackFX_SetParam receives 5000.0 directly (no normalization, Issue #73)
+    // mock_TrackFX_GetParamEx returns (5000-20)/(20000-20) ≈ 0.24925
     handler->HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"set1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"set\":true"), std::string::npos);
@@ -731,7 +736,7 @@ TEST(FXRoundtripTest, ParamMinMaxMidAreCorrect)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         { "Frequency" },
-        { 0.5 },  // normalized
+        { 10010.0 },  // actual display value (20 + 0.5*19980)
         { 20.0 },
         { 20000.0 },
         { 1000.0 } });
@@ -1268,7 +1273,7 @@ TEST(Phase1MVPTest, FullFxParamRoundTrip)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         {"Frequency", "Gain", "Q"},
-        {0.5, 0.5, 0.5},  // normalized values
+        {10010.0, 0.0, 5.005},  // actual display values
         {20.0, -24.0, 0.01},
         {20000.0, 24.0, 10.0},
         {1000.0, 0.0, 1.0}
@@ -1282,13 +1287,13 @@ TEST(Phase1MVPTest, FullFxParamRoundTrip)
     handler->HandleMessage(1, R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"fx1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"Frequency\""), std::string::npos);
-    // Freq: 20 + 0.5*(20000-20) = 10010
+    // Freq: stored actual=10010, GetParamEx returns (10010-20)/(20000-20)=0.5, value=20+0.5*19980=10010
     EXPECT_NE(responses[0].find("\"value\":10010"), std::string::npos);
     EXPECT_NE(responses[0].find("\"min\":20"), std::string::npos);
     EXPECT_NE(responses[0].find("\"max\":20000"), std::string::npos);
     EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
 
-    // Step 2: Set Frequency to 5000 (actual display value)
+    // Step 2: Set Frequency to 5000 (actual display value, sent directly to TrackFX_SetParam)
     responses.clear();
     handler->HandleMessage(1, R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":5000.0},"id":"fx2"})");
     ASSERT_EQ(responses.size(), 1u);
@@ -1703,7 +1708,7 @@ TEST(FxParamSliderTest, HandleSetFXParamWithEqualMinMaxDoesNotProduceNaN)
     // A param where min == max (e.g., a read-only display slider)
     t.fx.push_back({ 0, "JS: Analyzer",
         {"Readout"},
-        {0.5},   // normalized value
+        {0.0},   // actual value (min==max, so any value is 0)
         {0.0},   // min
         {0.0},   // max — equal to min!
         {0.0} });
@@ -1738,7 +1743,7 @@ TEST(FxParamSliderTest, HandleSetFXParamWithNearlyEqualMinMaxIsSafe)
     MockTrack t;
     t.fx.push_back({ 0, "JS: MicroParam",
         {"Tiny"},
-        {0.5},
+        {1.0},    // actual value (midpoint = 0.9999 + 0.5*0.0002 = 1.0)
         {0.9999},  // min
         {1.0001},  // max — very small range
         {1.0} });
@@ -1767,7 +1772,7 @@ TEST(FxParamSliderTest, SetParamWithIntegerStepSnapsCorrectly)
     // Simulate a stepped param (e.g., pitch cents: -1200 to 1200, integer steps)
     t.fx.push_back({ 0, "ReaPitch",
         {"Pitch adjust"},
-        {0.5},             // normalized = 0.5 → actual = 0
+        {0.0},             // actual value (midpoint = -1200 + 0.5*2400 = 0)
         {-1200.0},
         {1200.0},
         {0.0} });
@@ -1800,7 +1805,7 @@ TEST(FxParamSliderTest, SetParamNormalizationPrecisionMaintained)
     // Param with a standard continuous range
     t.fx.push_back({ 0, "ReaEQ",
         {"Frequency"},
-        {0.0},            // normalized = 0 → actual = 20
+        {20.0},           // actual value (normalized 0 → actual 20)
         {20.0},
         {20000.0},
         {1000.0} });
@@ -1829,7 +1834,7 @@ TEST(FxParamSliderTest, SetParamOnBypassToggleRange)
     MockTrack t;
     t.fx.push_back({ 0, "JS: Utility",
         {"Bypass", "Gain"},
-        {0.0, 0.0},  // normalized
+        {0.0, -18.0},  // actual display values (bypass off, gain at min)
         {0.0, -18.0},
         {1.0, 18.0},
         {0.0, 0.0} });
@@ -1838,8 +1843,9 @@ TEST(FxParamSliderTest, SetParamOnBypassToggleRange)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    // Set bypass to "on" (value=1.0, which is actual display value,
-    // converts to normalized = 1.0 since min=0, max=1)
+    // Set bypass to "on" (value=1.0, actual display value.
+    // TrackFX_SetParam receives 1.0 directly — no normalization (Issue #73).
+    // GetParamEx returns (1.0-0)/(1-0) = 1.0 since min=0, max=1)
     handler->HandleMessage(1,
         R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":1.0},"id":"bp1"})");
     ASSERT_EQ(responses.size(), 1u);
@@ -1858,7 +1864,7 @@ TEST(FxParamSliderTest, HandleSetFXParamReturnsCommittedValueConsistentWithGet)
     MockTrack t;
     t.fx.push_back({ 0, "ReaEQ",
         {"Gain"},
-        {0.5},  // normalized = 0.5 → actual = 0 (since min=-24, max=24)
+        {0.0},  // actual value (midpoint of -24 to 24)
         {-24.0},
         {24.0},
         {0.0} });
