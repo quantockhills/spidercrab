@@ -4,11 +4,18 @@
 
 Touch-friendly REAPER remote control for iPad — FX browser, real-time param control, track management, all over WiFi.
 
-<p align="center">
-  <img src="docs/screenshots/ss-tracks.jpg" width="280" alt="Track overview with transport controls" />
-  <img src="docs/screenshots/ss-fx.jpg" width="280" alt="FX browser with search and filter" />
-  <img src="docs/screenshots/ss-settings.jpg" width="280" alt="Settings with FX Chains path config" />
-</p>
+<div align="center">
+  <table>
+    <tr>
+      <td><img src="docs/screenshots/ss-tracks.jpg" width="240" alt="Track overview" /></td>
+      <td><img src="docs/screenshots/ss-fx-browser.jpg" width="240" alt="FX browser with plugins" /></td>
+    </tr>
+    <tr>
+      <td><img src="docs/screenshots/ss-fx.jpg" width="240" alt="FX browser with search" /></td>
+      <td><img src="docs/screenshots/ss-settings.jpg" width="240" alt="Settings" /></td>
+    </tr>
+  </table>
+</div>
 
 ```
 ┌───────────────────────────────────────────────┐
