@@ -22,12 +22,14 @@ function createMockChains(): FxChainEntry[] {
 
 function createMockChainInfo(): FxChainInfo {
   return {
-    filePath: '/tmp/my_comp.RfxChain',
+    filePath: '/tmp/test_chains/my_comp.RfxChain',
     fxCount: 2,
     fxNames: ['ReaComp', 'ReaEQ'],
     fileSize: 512,
   };
 }
+
+const testPath = '/tmp/test_chains';
 
 // ── Tests ─────────────────────────────────────────────────────
 
@@ -39,7 +41,7 @@ describe('FxChainBrowser', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetDirectory.mockResolvedValue({ chains: createMockChains() });
+    mockGetDirectory.mockResolvedValue({ chains: createMockChains(), dirs: [] });
     mockSave.mockResolvedValue(true);
     mockLoad.mockResolvedValue(true);
     mockGetInfo.mockResolvedValue(createMockChainInfo());
@@ -55,11 +57,11 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
-    expect(screen.getByText('Loading FX chains...')).toBeDefined();
+    expect(screen.getByText('Loading…')).toBeDefined();
   });
 
   it('renders FX chain files after loading', async () => {
@@ -71,8 +73,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -92,8 +94,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -111,8 +113,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -128,13 +130,13 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
     await waitFor(() => {
-      expect(mockGetDirectory).toHaveBeenCalled();
+      expect(mockGetDirectory).toHaveBeenCalledWith(testPath);
     });
   });
 
@@ -147,8 +149,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -175,8 +177,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -184,8 +186,8 @@ describe('FxChainBrowser', () => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
     });
 
-    // Click the + append button
-    const appendButtons = screen.getAllByTitle('Append to existing FX chain');
+    // Click the + append button (title="Append")
+    const appendButtons = screen.getAllByTitle('Append');
     fireEvent.click(appendButtons[0]);
 
     await waitFor(() => {
@@ -202,8 +204,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -228,8 +230,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -257,8 +259,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -279,8 +281,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -303,8 +305,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -338,8 +340,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -350,7 +352,7 @@ describe('FxChainBrowser', () => {
   });
 
   it('shows empty state when no chain files found', async () => {
-    mockGetDirectory.mockResolvedValue({ chains: [] });
+    mockGetDirectory.mockResolvedValue({ chains: [], dirs: [] });
 
     render(
       <FxChainBrowser
@@ -360,27 +362,44 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
     await waitFor(() => {
-      expect(screen.getByText('No FX chain files found')).toBeDefined();
+      expect(screen.getByText('No FX chains found in this folder')).toBeDefined();
     });
+  });
+
+  it('shows folder prompt when no path is configured', () => {
+    // No initialPath — should show the folder prompt
+    render(
+      <FxChainBrowser
+        tracks={[]}
+        selectedTrack={null}
+        fxChainGetDirectory={mockGetDirectory}
+        fxChainSave={mockSave}
+        fxChainLoad={mockLoad}
+        fxChainGetInfo={mockGetInfo}
+        onBack={() => {}}
+      />
+    );
+
+    expect(screen.getByText('Set the FX Chains folder path in Settings')).toBeDefined();
   });
 
   it('filters chains by search query', async () => {
     render(
       <FxChainBrowser
-        tracks={[]}
-        selectedTrack={null}
+        tracks={createMockTracks()}
+        selectedTrack={0}
         fxChainGetDirectory={mockGetDirectory}
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -388,7 +407,7 @@ describe('FxChainBrowser', () => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
     });
 
-    const searchInput = screen.getByPlaceholderText('Filter chains...');
+    const searchInput = screen.getByPlaceholderText('Search loaded chains…');
     fireEvent.change(searchInput, { target: { value: 'reverb' } });
 
     await waitFor(() => {
@@ -400,14 +419,14 @@ describe('FxChainBrowser', () => {
   it('shows no results when search matches nothing', async () => {
     render(
       <FxChainBrowser
-        tracks={[]}
-        selectedTrack={null}
+        tracks={createMockTracks()}
+        selectedTrack={0}
         fxChainGetDirectory={mockGetDirectory}
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={() => {}}
+        initialPath={testPath}
       />
     );
 
@@ -415,11 +434,11 @@ describe('FxChainBrowser', () => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
     });
 
-    const searchInput = screen.getByPlaceholderText('Filter chains...');
+    const searchInput = screen.getByPlaceholderText('Search loaded chains…');
     fireEvent.change(searchInput, { target: { value: 'zzzzz_not_found' } });
 
     await waitFor(() => {
-      expect(screen.getByText(/no results matching/i)).toBeDefined();
+      expect(screen.getByText(/No results for/i)).toBeDefined();
     });
   });
 
@@ -433,8 +452,8 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
-        
         onBack={onBack}
+        initialPath={testPath}
       />
     );
 
