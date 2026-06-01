@@ -21,6 +21,12 @@ cp "$SCRIPT_DIR/build/reaper_spidercrab${SUFFIX}" "$HOME/reaper-portable/Plugins
 echo "Deployed to: $HOME/reaper-portable/Plugins/reaper_spidercrab.so"
 ls -lh "$HOME/reaper-portable/Plugins/reaper_spidercrab.so"
 
+# Also deploy to the user config directory (Reaper may load from here instead)
+if [ -d "$HOME/.config/REAPER/UserPlugins" ]; then
+  cp "$SCRIPT_DIR/build/reaper_spidercrab${SUFFIX}" "$HOME/.config/REAPER/UserPlugins/reaper_spidercrab.so"
+  echo "Also deployed to: $HOME/.config/REAPER/UserPlugins/reaper_spidercrab.so"
+fi
+
 if [ "$BUILD_TYPE" = "debug" ]; then
     echo ""
     echo "⚠️  Debug build deployed. Run Reaper with:"
