@@ -41,6 +41,7 @@ export interface DirEntry {
 export interface FxChainEntry {
   name: string;
   size: number;
+  type?: 'dir' | 'file';
 }
 
 export interface FxChainInfo {
