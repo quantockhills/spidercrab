@@ -49,6 +49,9 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       return (
         <div className="flex flex-col items-center justify-center h-full p-8 text-[var(--text-primary)]">
           <div className="bg-[var(--bg-tertiary)] border border-[var(--border)] p-6 max-w-md w-full space-y-4">
+            <div className="text-center text-[var(--accent-red)] text-3xl">
+              ⚠️
+            </div>
             <h2 className="text-base font-semibold text-[var(--accent-red)]">
               Something went wrong
             </h2>
