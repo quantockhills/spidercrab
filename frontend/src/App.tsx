@@ -38,6 +38,7 @@ function App() {
     deleteFx,
     getDirectory,
     sendSampleToTrack,
+    isRefreshingFx,
     refreshFxCache,
     play,
     stop,
@@ -341,12 +342,27 @@ function App() {
               >
                 Refresh Tracks
               </button>
-              <button
-                onClick={() => refreshFxCache()}
-                className="w-full py-2.5 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:brightness-95 transition-colors"
-              >
-                Refresh Plugin List
-              </button>
+              <div className="space-y-2">
+                <button
+                  onClick={() => refreshFxCache()}
+                  disabled={isRefreshingFx}
+                  className={`w-full py-2.5 text-sm active:brightness-95 transition-colors flex items-center justify-center gap-2 ${
+                    isRefreshingFx
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] cursor-not-allowed'
+                      : 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+                  }`}
+                >
+                  {isRefreshingFx && (
+                    <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {isRefreshingFx ? 'Refreshing...' : 'Refresh Plugin List'}
+                </button>
+                {isRefreshingFx && (
+                  <p className="text-[11px] text-[var(--text-secondary)] text-center">
+                    Scanning installed plugins...
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         )}
