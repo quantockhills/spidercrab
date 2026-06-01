@@ -1690,3 +1690,203 @@ TEST(FxEnumCacheTest, EnumerateReturnsFormatCorrectly)
     EXPECT_NE(resp.find("\"AU\""), std::string::npos);
 }
 
+// ============================================================
+// FX param slider jump fixes (Issue #73)
+// ============================================================
+
+TEST(FxParamSliderTest, HandleSetFXParamWithEqualMinMaxDoesNotProduceNaN)
+{
+    // Some JSFX params report minVal == maxVal (read-only sliders).
+    // HandleSetFXParam must guard against division by zero.
+    MockState state;
+    MockTrack t;
+    // A param where min == max (e.g., a read-only display slider)
+    t.fx.push_back({ 0, "JS: Analyzer",
+        {"Readout"},
+        {0.5},   // normalized value
+        {0.0},   // min
+        {0.0},   // max — equal to min!
+        {0.0} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Attempt to set the param to any value
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":0.5},"id":"eqnan"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should still return success and a valid value (not NaN)
+    EXPECT_NE(resp.find("\"set\":true"), std::string::npos)
+        << "Should succeed (or at least not crash) even when min==max";
+    // Verify value is not NaN — "nan" could appear in the "id" field, so
+    // check specifically that the "value" field is not NaN
+    EXPECT_EQ(resp.find("\"value\":nan"), std::string::npos)
+        << "Response value should never be NaN";
+    EXPECT_EQ(resp.find("\"value\":-nan"), std::string::npos)
+        << "Response value should never be -NaN";
+    EXPECT_EQ(resp.find("\"value\":inf"), std::string::npos)
+        << "Response value should never be infinity";
+}
+
+TEST(FxParamSliderTest, HandleSetFXParamWithNearlyEqualMinMaxIsSafe)
+{
+    // Edge case: very small range should not cause issues
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "JS: MicroParam",
+        {"Tiny"},
+        {0.5},
+        {0.9999},  // min
+        {1.0001},  // max — very small range
+        {1.0} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":1.0},"id":"tiny"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should produce valid response, not NaN
+    EXPECT_EQ(resp.find("\"value\":nan"), std::string::npos);
+    EXPECT_NE(resp.find("\"set\":true"), std::string::npos);
+}
+
+TEST(FxParamSliderTest, SetParamWithIntegerStepSnapsCorrectly)
+{
+    // JSFX and VST params often have integer steps.
+    // Normalization round-trip can cause rounding errors.
+    // The read-back in HandleSetFXParam should return the committed value.
+    MockState state;
+    MockTrack t;
+    // Simulate a stepped param (e.g., pitch cents: -1200 to 1200, integer steps)
+    t.fx.push_back({ 0, "ReaPitch",
+        {"Pitch adjust"},
+        {0.5},             // normalized = 0.5 → actual = 0
+        {-1200.0},
+        {1200.0},
+        {0.0} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set pitch to 100 cents (which is actual display value)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":100.0},"id":"pitch1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // The response should include the committed value (which the mock
+    // returns faithfully since it just stores the normalized value)
+    EXPECT_NE(resp.find("\"set\":true"), std::string::npos);
+    // The committed value should be approximately 100 (not 0, not NaN, not some other value)
+    EXPECT_NE(resp.find("\"value\":100"), std::string::npos)
+        << "Committed value should reflect the set operation";
+    EXPECT_EQ(resp.find("\"value\":nan"), std::string::npos);
+}
+
+TEST(FxParamSliderTest, SetParamNormalizationPrecisionMaintained)
+{
+    // Test that the read-back mechanism in HandleSetFXParam accurately
+    // returns the value Reaper committed, even through the normalized domain.
+    MockState state;
+    MockTrack t;
+    // Param with a standard continuous range
+    t.fx.push_back({ 0, "ReaEQ",
+        {"Frequency"},
+        {0.0},            // normalized = 0 → actual = 20
+        {20.0},
+        {20000.0},
+        {1000.0} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set frequency to 10000 Hz
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":10000.0},"id":"prec1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Read back value should be close to 10000
+    // Calculate: normalized = (10000-20)/(20000-20) = 9980/19980 ≈ 0.4995
+    // readback: 20 + 0.4995*19980 = 20 + 9980 = 10000
+    EXPECT_NE(resp.find("\"value\":10000"), std::string::npos)
+        << "Read-back should preserve the set value";
+}
+
+TEST(FxParamSliderTest, SetParamOnBypassToggleRange)
+{
+    // Some JSFX have 0-1 toggles that actually report as min/max
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "JS: Utility",
+        {"Bypass", "Gain"},
+        {0.0, 0.0},  // normalized
+        {0.0, -18.0},
+        {1.0, 18.0},
+        {0.0, 0.0} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set bypass to "on" (value=1.0, which is actual display value,
+    // converts to normalized = 1.0 since min=0, max=1)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":1.0},"id":"bp1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"set\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"value\":nan"), std::string::npos);
+    EXPECT_EQ(resp.find("\"value\":inf"), std::string::npos);
+}
+
+TEST(FxParamSliderTest, HandleSetFXParamReturnsCommittedValueConsistentWithGet)
+{
+    // Roundtrip: set a value, get the response back, then get params
+    // and verify the setParam committed value matches the getParam value.
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "ReaEQ",
+        {"Gain"},
+        {0.5},  // normalized = 0.5 → actual = 0 (since min=-24, max=24)
+        {-24.0},
+        {24.0},
+        {0.0} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set gain to 12 dB
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setParam","payload":{"trackIdx":0,"fxIdx":0,"paramIdx":0,"value":12.0},"id":"gain1"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Read back committed value from setParam response
+    std::string& setResp = responses[0];
+    EXPECT_NE(setResp.find("\"set\":true"), std::string::npos);
+    EXPECT_NE(setResp.find("\"value\":12"), std::string::npos)
+        << "Set response value should be 12 dB";
+
+    // Now get params and verify consistency
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"gain2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& getResp = responses[0];
+
+    // GetParams should show the same committed value
+    EXPECT_NE(getResp.find("\"value\":12"), std::string::npos)
+        << "GetParams value should match the committed set value";
+}
+

@@ -508,7 +508,33 @@ void CommandHandler::HandleSetFXParam(
     if (m_api.TrackFX_GetParamEx) {
         m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
     }
-    double normalizedVal = (value - minVal) / (maxVal - minVal);
+
+    // Guard against division by zero (Issue #73):
+    // Some JSFX params report minVal == maxVal (read-only sliders).
+    // In that case, skip the set entirely and respond with the current value.
+    double range = maxVal - minVal;
+    if (range >= 0.0 && range < 1e-15) {
+        // Range is effectively zero — can't normalize. Return current value.
+        // Use TrackFX_GetParamEx to re-read current state so the frontend
+        // gets the actual parameter value.
+        double currentNorm = 0;
+        double readMin = 0, readMax = 0, readMid = 0;
+        if (m_api.TrackFX_GetParamEx) {
+            currentNorm = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &readMin, &readMax, &readMid);
+        }
+        double currentVal = readMin + currentNorm * (readMax - readMin);
+        SendResponse(clientId, id, true,
+            "{\"set\":true,"
+            "\"value\":" + std::to_string(currentVal) + "}");
+        return;
+    }
+
+    double normalizedVal = (value - minVal) / range;
+    // Clamp normalized value to valid [0.0, 1.0] range to prevent
+    // floating-point edge cases from setting out-of-range values
+    if (normalizedVal < 0.0) normalizedVal = 0.0;
+    if (normalizedVal > 1.0) normalizedVal = 1.0;
+
     bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, normalizedVal);
     // Read back the actual value REAPER committed (fixes slider jumping due to
     // normalization precision loss or stepped params)

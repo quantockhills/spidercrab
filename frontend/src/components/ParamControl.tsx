@@ -80,7 +80,32 @@ export function ParamControl({
     return unsubscribe;
   }, [trackIdx, fxIdx, onEvent]);
 
-  const draggingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragCleanupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Start dragging a specific param — sets the drag guard that prevents
+  // real-time fx_param_changed events from clobbering the slider position
+  const startDragging = useCallback((paramIdx: number) => {
+    draggingParamRef.current = paramIdx;
+    if (dragCleanupTimeoutRef.current) {
+      clearTimeout(dragCleanupTimeoutRef.current);
+      dragCleanupTimeoutRef.current = null;
+    }
+  }, []);
+
+  // End dragging a param — after a short debounce to allow the final
+  // server response to arrive, clears the drag guard so real-time events
+  // flow again.
+  const finishDragging = useCallback(() => {
+    if (dragCleanupTimeoutRef.current) {
+      clearTimeout(dragCleanupTimeoutRef.current);
+    }
+    // Short debounce: wait for any in-flight setFxParam response to arrive
+    // before re-enabling fx_param_changed event processing
+    dragCleanupTimeoutRef.current = setTimeout(() => {
+      draggingParamRef.current = null;
+      dragCleanupTimeoutRef.current = null;
+    }, 150);
+  }, []);
 
   const handleParamChange = useCallback(
     async (paramIdx: number, value: number) => {
@@ -88,18 +113,8 @@ export function ParamControl({
       setParams((prev) =>
         prev.map((p) => (p.index === paramIdx ? { ...p, value } : p)),
       );
-      
-      // Safety timeout: clear dragging ref after 2s even if no response
-      if (draggingTimeoutRef.current) clearTimeout(draggingTimeoutRef.current);
-      draggingTimeoutRef.current = setTimeout(() => {
-        draggingParamRef.current = null;
-        draggingTimeoutRef.current = null;
-      }, 2000);
-      
+
       const resp = await setFxParam(trackIdx, fxIdx, paramIdx, value);
-      // Clear dragging ref after server responds — prevents stale events
-      // from overwriting before the response arrives
-      draggingParamRef.current = null;
       // If server returned a committed value, use it (authoritative)
       if (resp?.payload?.value !== undefined) {
         setParams((prev) =>
@@ -194,6 +209,8 @@ export function ParamControl({
                 param={param}
                 onChange={(value) => handleParamChange(param.index, value)}
                 draggingParamRef={draggingParamRef}
+                onDragStart={startDragging}
+                onDragEnd={finishDragging}
               />
             ))}
           </div>
@@ -209,9 +226,11 @@ interface ParamSliderProps {
   param: FxParam;
   onChange: (value: number) => void;
   draggingParamRef: React.MutableRefObject<number | null>;
+  onDragStart: (paramIdx: number) => void;
+  onDragEnd: () => void;
 }
 
-function ParamSlider({ param, onChange, draggingParamRef }: ParamSliderProps) {
+function ParamSlider({ param, onChange, draggingParamRef, onDragStart, onDragEnd }: ParamSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localValue, setLocalValue] = useState(param.value);
@@ -232,7 +251,9 @@ function ParamSlider({ param, onChange, draggingParamRef }: ParamSliderProps) {
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.preventDefault();
-      draggingParamRef.current = param.index;
+      // Notify parent that we started dragging THIS param — sets the guard
+      // that prevents real-time fx_param_changed events from overwriting
+      onDragStart(param.index);
       setDragging(true);
 
       const slider = trackRef.current;
@@ -254,9 +275,11 @@ function ParamSlider({ param, onChange, draggingParamRef }: ParamSliderProps) {
         window.removeEventListener('pointermove', handlePointerMove);
         window.removeEventListener('pointerup', handlePointerUp);
 
-        // Don't clear draggingParamRef here — let handleParamChange clear it
-        // after the server response arrives. This prevents stale fx_param_changed
-        // events from overwriting the value before the response comes back.
+        // Notify parent that drag ended — will schedule cleanup of the
+        // drag guard after a short debounce to let the final server response
+        // arrive. Prevents stale fx_param_changed events from overwriting
+        // the value before the response comes back (Issue #73 fix).
+        onDragEnd();
 
         // If no movement happened, treat as a tap (jump to position)
         if (!didMove) {
@@ -271,7 +294,7 @@ function ParamSlider({ param, onChange, draggingParamRef }: ParamSliderProps) {
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
     },
-    [param.min, param.max, onChange],
+    [param.min, param.max, param.index, onChange, onDragStart, onDragEnd],
   );
 
   // Double-tap to reset to mid value
