@@ -79,6 +79,7 @@ static void DebugLog(const char* msg)
 #include "command_handler.h"
 #include "websocket_server.h"
 #include "frontend_server.h"
+#include "playtime_api.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -162,7 +163,9 @@ public:
         // Called ~30x/sec — drive the WebSocket + HTTP servers
         g_wsServer.Run();
         g_httpServer.run();
-        static int rcnt; if ((++rcnt % 30) == 1) DebugLog("Run() tick");
+        // Retry Playtime API resolution if it wasn't available at init time.
+        // helgobox may register its API functions after our extension starts.
+        retryPlaytimeApi();
     }
 
     void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }

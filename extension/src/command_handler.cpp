@@ -8,6 +8,7 @@ namespace fs = std::filesystem;
 
 // Global Playtime 2 API state (defined here, declared extern in playtime_api.h)
 PlaytimeApi g_playtimeApi;
+void* (*g_playtimeGetFunc)(const char*) = nullptr;
 
 // Minimal JSON builder (no dependencies)
 static std::string json_escape(const std::string& s)
@@ -330,6 +331,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleFxChainLoad(clientId, id, message);
         } else if (command == "fxchain/getInfo") {
             HandleFxChainGetInfo(clientId, id, message);
+        } else if (command == "playtime/isAvailable") {
+            HandlePlaytimeIsAvailable(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -410,9 +413,24 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (pp) pan = *pp;
         }
 
+        // Read real track name via GetSetMediaTrackInfo_String (Issue #40)
+        // Fallback to "Track N" if API unavailable or name is empty
+        char trackName[256] = {0};
+        bool gotName = false;
+        if (m_api.GetSetMediaTrackInfo_String) {
+            gotName = m_api.GetSetMediaTrackInfo_String(track, "P_NAME", trackName, false);
+        }
+        std::string displayName;
+        if (gotName && trackName[0] != '\0') {
+            displayName = trackName;
+        } else {
+            // Master track returns NULL/P_NAME empty per docs; fallback for all empty names
+            displayName = "Track " + std::to_string(i + 1);
+        }
+
         tracksJson += "{";
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
-        tracksJson += json_string("name") + ":" + json_string("Track " + std::to_string(i + 1)) + ",";
+        tracksJson += json_string("name") + ":" + json_string(displayName) + ",";
         tracksJson += json_string("trackNumber") + ":" + std::to_string(i + 1) + ",";
         tracksJson += json_string("selected") + ":false,";
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
@@ -2118,4 +2136,36 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     else if (m_ws)
         m_ws->Broadcast(event);
 }
+// ============================================================
+// Playtime 2 API - isAvailable command
+// ============================================================
+void CommandHandler::HandlePlaytimeIsAvailable(
+    int clientId, const std::string& id, const std::string& /* params */)
+{
+    bool available = isPlaytimeAvailable();
 
+    // Build version info
+    std::string versionInfo = "unknown";
+    if (g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject) {
+        versionInfo = "HB_FindFirstPlaytimeHelgoboxInstanceInProject: yes";
+        if (g_playtimeApi.HB_CreateClipMatrix) versionInfo += ", HB_CreateClipMatrix: yes";
+        if (g_playtimeApi.HB_ShowOrHidePlaytime) versionInfo += ", HB_ShowOrHidePlaytime: yes";
+    }
+
+    std::string payload = "{\"available\":";
+    payload += (available ? "true" : "false");
+    payload += ",\"version\":\"";
+    payload += json_escape(versionInfo);
+    payload += "\"";
+    if (!available) {
+        payload += ",\"reason\":\"";
+        if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+            payload += "Playtime API not registered (Helgobox installed but Playtime API missing)";
+        } else {
+            payload += "Helgobox API not registered";
+        }
+        payload += "\"";
+    }
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
