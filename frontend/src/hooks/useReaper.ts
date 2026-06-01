@@ -15,6 +15,7 @@ export interface Track {
   soloed: boolean;
   armed: boolean;
   volume: number;
+  pan: number;
 }
 
 export interface FxInfo {
@@ -210,6 +211,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
   const setTrackVolume = useCallback(async (trackIdx: number, volume: number): Promise<boolean> => {
     if (!clientRef.current) return false;
     const resp = await clientRef.current.send('track/setVolume', { trackIdx, volume });
+    return resp.success;
+  }, []);
+
+  const setTrackPan = useCallback(async (trackIdx: number, pan: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('track/setPan', { trackIdx, pan });
     return resp.success;
   }, []);
 
@@ -444,6 +451,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     setTrackArm,
     setTrackSelected,
     setTrackVolume,
+    setTrackPan,
     addTrack,
     toggleTrackMute,
     toggleTrackSolo,

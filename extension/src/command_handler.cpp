@@ -294,6 +294,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleSetTrackSelected(clientId, id, message);
         } else if (command == "track/setVolume") {
             HandleSetTrackVolume(clientId, id, message);
+        } else if (command == "track/setPan") {
+            HandleSetTrackPan(clientId, id, message);
         } else if (command == "sample/getDirectory") {
             HandleSampleGetDirectory(clientId, id, message);
         } else if (command == "sample/sendToTrack") {
@@ -386,6 +388,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         // Read actual state from Reaper (setNewValue=nullptr = read mode)
         bool muted = false, soloed = false, armed = false;
         double volume = 0.75; // sane default if API unavailable
+        double pan = 0.0;  // sane default if API unavailable
         if (m_api.GetSetMediaTrackInfo) {
             bool* mp = (bool*)m_api.GetSetMediaTrackInfo(track, "B_MUTE", nullptr);
             if (mp) muted = *mp;
@@ -395,6 +398,8 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (ap) armed = (*ap != 0);
             double* vp = (double*)m_api.GetSetMediaTrackInfo(track, "D_VOL", nullptr);
             if (vp) volume = *vp;
+            double* pp = (double*)m_api.GetSetMediaTrackInfo(track, "D_PAN", nullptr);
+            if (pp) pan = *pp;
         }
 
         tracksJson += "{";
@@ -405,7 +410,8 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
         tracksJson += json_string("soloed") + ":" + std::string(soloed ? "true" : "false") + ",";
         tracksJson += json_string("armed") + ":" + std::string(armed ? "true" : "false") + ",";
-        tracksJson += json_string("volume") + ":" + std::to_string(volume);
+        tracksJson += json_string("volume") + ":" + std::to_string(volume) + ",";
+        tracksJson += json_string("pan") + ":" + std::to_string(pan);
         tracksJson += "}";
     }
     tracksJson += "]";
@@ -1448,6 +1454,38 @@ void CommandHandler::HandleSetTrackVolume(
     BroadcastTrackEvent("track_volume_changed", trackIdx, volume);
     SendResponse(clientId, id, true,
         "{\"volume\":" + std::to_string(volume) + "}");
+}
+
+// ============================================================
+// HandleSetTrackPan (Issue #53)
+// ============================================================
+
+void CommandHandler::HandleSetTrackPan(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string panStr      = parser.getString("pan");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+    double pan = atof(panStr.c_str());
+    // Clamp pan to valid range -1.0 to 1.0
+    if (pan < -1.0) pan = -1.0;
+    if (pan > 1.0) pan = 1.0;
+    m_api.GetSetMediaTrackInfo(track, "D_PAN", &pan);
+    // Broadcast pan change event for real-time updates
+    BroadcastTrackEvent("track_pan_changed", trackIdx, pan);
+    SendResponse(clientId, id, true,
+        "{\"pan\":" + std::to_string(pan) + "}");
 }
 
 // ============================================================

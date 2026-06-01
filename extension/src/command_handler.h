@@ -154,6 +154,7 @@ private:
     void HandleSetTrackArm(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackSelected(int clientId, const std::string& id, const std::string& params);
     void HandleSetTrackVolume(int clientId, const std::string& id, const std::string& params);
+    void HandleSetTrackPan(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — sample/media
     void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);

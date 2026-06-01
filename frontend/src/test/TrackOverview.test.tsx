@@ -6,8 +6,8 @@ import type { Track, FxInfo } from '../hooks/useReaper';
 // ── Mock data ────────────────────────────────────────────────
 
 const mockTracks: Track[] = [
-  { index: 0, name: 'Kick', trackNumber: 1, selected: true, muted: false, soloed: false, armed: false, volume: 0.8 },
-  { index: 1, name: 'Snare', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, volume: 0.7 },
+  { index: 0, name: 'Kick', trackNumber: 1, selected: true, muted: false, soloed: false, armed: false, volume: 0.8, pan: 0 },
+  { index: 1, name: 'Snare', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, volume: 0.7, pan: 0.3 },
 ];
 
 const mockFx: Record<number, FxInfo[]> = {
@@ -261,6 +261,150 @@ describe('TrackOverview — FX grid cards', () => {
     expect(() => {
       fireEvent.change(sliders[0], { target: { value: '0.3' } });
     }).not.toThrow();
+  });
+
+  // ── Pan slider tests (Issue #53) ──
+
+  it('renders PanBar for each track', () => {
+    renderTrackOverview();
+
+    const panSliders = screen.getAllByTestId('track-pan-slider');
+    expect(panSliders).toHaveLength(2);
+  });
+
+  it('displays correct pan values from track data', () => {
+    renderTrackOverview();
+
+    // Track 0: pan=0 (center)
+    const panSliders = screen.getAllByTestId('track-pan-slider') as HTMLInputElement[];
+    expect(panSliders[0].value).toBe('0');
+
+    // Track 1: pan=0.3 (right)
+    expect(panSliders[1].value).toBe('0.3');
+  });
+
+  it('shows "C" label for center pan (value 0)', () => {
+    renderTrackOverview();
+
+    // Track 0 has pan=0, should show "C"
+    const panLabels = screen.getAllByTestId('pan-label');
+    expect(panLabels[0].textContent).toBe('C');
+  });
+
+  it('shows "R" label for right pan values', () => {
+    renderTrackOverview();
+
+    // Track 1 has pan=0.3, should show "R 30%"
+    const panLabels = screen.getAllByTestId('pan-label');
+    expect(panLabels[1].textContent).toBe('R 30%');
+  });
+
+  it('shows "L" label for left pan values', () => {
+    // Override with a left-pan track
+    const leftTracks: Track[] = [
+      { index: 0, name: 'Bass', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: -0.5 },
+    ];
+    render(
+      <TrackOverview
+        tracks={leftTracks}
+        selectedTrack={0}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const panLabels = screen.getAllByTestId('pan-label');
+    expect(panLabels[0].textContent).toBe('L 50%');
+  });
+
+  it('shows "C" for near-center pan values (within ±0.05)', () => {
+    const nearCenterTracks: Track[] = [
+      { index: 0, name: 'Test', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0.03 },
+    ];
+    render(
+      <TrackOverview
+        tracks={nearCenterTracks}
+        selectedTrack={0}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const panLabels = screen.getAllByTestId('pan-label');
+    expect(panLabels[0].textContent).toBe('C');
+  });
+
+  it('shows exactly 100% for extreme hard-left pan', () => {
+    const hardLeftTracks: Track[] = [
+      { index: 0, name: 'Test', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: -1 },
+    ];
+    render(
+      <TrackOverview
+        tracks={hardLeftTracks}
+        selectedTrack={0}
+        onSelectTrack={vi.fn()}
+        onToggleMute={vi.fn()}
+        onToggleSolo={vi.fn()}
+        onToggleArm={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    const panLabels = screen.getAllByTestId('pan-label');
+    expect(panLabels[0].textContent).toBe('L 100%');
+  });
+
+  it('calls onPanChange when pan slider is changed', () => {
+    const onPanChange = vi.fn();
+    renderTrackOverview({ onPanChange });
+
+    const panSliders = screen.getAllByTestId('track-pan-slider');
+    expect(panSliders).toHaveLength(2);
+
+    // Change pan of track 0 to 0.5
+    fireEvent.change(panSliders[0], { target: { value: '0.5' } });
+
+    expect(onPanChange).toHaveBeenCalledOnce();
+    expect(onPanChange).toHaveBeenCalledWith(0, 0.5);
+  });
+
+  it('calls onPanChange with correct track index for each slider', () => {
+    const onPanChange = vi.fn();
+    renderTrackOverview({ onPanChange });
+
+    const panSliders = screen.getAllByTestId('track-pan-slider');
+
+    // Change pan of track 1 to -0.8
+    fireEvent.change(panSliders[1], { target: { value: '-0.8' } });
+
+    expect(onPanChange).toHaveBeenCalledOnce();
+    expect(onPanChange).toHaveBeenCalledWith(1, -0.8);
+  });
+
+  it('does not crash when onPanChange is not provided', () => {
+    renderTrackOverview();
+
+    const panSliders = screen.getAllByTestId('track-pan-slider');
+    expect(panSliders).toHaveLength(2);
+
+    expect(() => {
+      fireEvent.change(panSliders[0], { target: { value: '-0.2' } });
+    }).not.toThrow();
+  });
+
+  it('pan slider has correct attributes (min=-1, max=1, step=0.01)', () => {
+    renderTrackOverview();
+
+    const slider = screen.getAllByTestId('track-pan-slider')[0] as HTMLInputElement;
+    expect(slider.min).toBe('-1');
+    expect(slider.max).toBe('1');
+    expect(slider.step).toBe('0.01');
   });
 
   // ── Add Track button tests (Issue #67) ──
