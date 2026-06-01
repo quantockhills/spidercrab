@@ -59,6 +59,11 @@ struct ReaperAPI {
     // Media/sample
     int (*InsertMedia)(const char* file, int mode) = nullptr;
     const char* (*EnumerateFiles)(const char* path, int fileindex) = nullptr;
+
+    // Track state chunk (for FX chain save/load)
+    bool (*GetTrackStateChunk)(MediaTrack* track, char* strNeedBig, int strNeedBig_sz, bool isundoOptional)
+        = nullptr;
+    bool (*SetTrackStateChunk)(MediaTrack* track, const char* str, bool isundoOptional) = nullptr;
 };
 
 class CommandHandler {
@@ -159,6 +164,12 @@ private:
     // Command handlers — sample/media
     void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);
     void HandleSampleSendToTrack(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — FX chain save/load (Issue #7)
+    void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainSave(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainLoad(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainGetInfo(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX
     void HandleEnumerateFX(int clientId, const std::string& id, const std::string& params);

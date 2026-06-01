@@ -6,6 +6,7 @@ import { ParamControl } from './components/ParamControl';
 import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
+import { FxChainBrowser } from './components/FxChainBrowser';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 
@@ -44,6 +45,10 @@ function App() {
     getTransportState,
     onEvent,
     updateTrack,
+    fxChainGetDirectory,
+    fxChainSave,
+    fxChainLoad,
+    fxChainGetInfo,
     matrix,
     getMatrix,
     triggerSlot,
@@ -60,6 +65,9 @@ function App() {
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
   const [sessionMode, setSessionMode] = useState<'session' | 'sequencer'>('session');
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
+
+  // FX chain browser state (Issue #7)
+  const [fxChainView, setFxChainView] = useState(false);
 
   // Param control navigation state
   const [paramView, setParamView] = useState<{
@@ -148,7 +156,16 @@ function App() {
   }, []);
 
   const handleBackFromFxBrowser = useCallback(() => {
+    setFxChainView(false);
     setActiveTab('tracks');
+  }, []);
+
+  const handleOpenFxChains = useCallback(() => {
+    setFxChainView(true);
+  }, []);
+
+  const handleBackFromFxChains = useCallback(() => {
+    setFxChainView(false);
   }, []);
 
   return (
@@ -258,6 +275,16 @@ function App() {
             onEvent={onEvent}
             onBack={handleBackFromParam}
           />
+        ) : fxChainView ? (
+          <FxChainBrowser
+            tracks={tracks}
+            selectedTrack={selectedTrack}
+            fxChainGetDirectory={fxChainGetDirectory}
+            fxChainSave={fxChainSave}
+            fxChainLoad={fxChainLoad}
+            fxChainGetInfo={fxChainGetInfo}
+            onBack={handleBackFromFxChains}
+          />
         ) : (
           <FxBrowser
             tracks={tracks}
@@ -267,6 +294,7 @@ function App() {
             addFx={addFx}
             onSelectFx={handleSelectFx}
             onBack={handleBackFromFxBrowser}
+            onOpenFxChains={handleOpenFxChains}
           />
         ))}
 

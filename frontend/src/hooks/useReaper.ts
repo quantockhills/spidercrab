@@ -36,6 +36,20 @@ export interface DirEntry {
   size: number;
 }
 
+// ── FX Chain types (Issue #7) ──
+
+export interface FxChainEntry {
+  name: string;
+  size: number;
+}
+
+export interface FxChainInfo {
+  filePath: string;
+  fxCount: number;
+  fxNames: string[];
+  fileSize: number;
+}
+
 // ── Playtime 2 / Clip Matrix types ──
 
 export interface ClipSlot {
@@ -231,6 +245,36 @@ export function useReaper(opts: UseReaperOptions = {}) {
     if (!clientRef.current) return false;
     const resp = await clientRef.current.send('sample/sendToTrack', { path, trackIdx });
     return resp.success;
+  }, []);
+
+  // ── FX Chain commands (Issue #7) ──
+
+  const fxChainGetDirectory = useCallback(async (path: string): Promise<{chains: FxChainEntry[]}> => {
+    if (!clientRef.current) return {chains: []};
+    const resp = await clientRef.current.send('fxchain/getDirectory', { path });
+    return resp.payload as {chains: FxChainEntry[]};
+  }, []);
+
+  const fxChainSave = useCallback(async (trackIdx: number, filePath: string): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('fxchain/save', { trackIdx, filePath });
+    return resp.success;
+  }, []);
+
+  const fxChainLoad = useCallback(async (trackIdx: number, filePath: string, mode: 'replace' | 'append' = 'replace'): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('fxchain/load', { trackIdx, filePath, mode });
+    return resp.success;
+  }, []);
+
+  const fxChainGetInfo = useCallback(async (filePath: string): Promise<FxChainInfo | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('fxchain/getInfo', { filePath });
+      return resp.payload as unknown as FxChainInfo;
+    } catch {
+      return null;
+    }
   }, []);
 
   // Transport commands
@@ -466,5 +510,9 @@ export function useReaper(opts: UseReaperOptions = {}) {
     refreshFxCache,
     onEvent,
     updateTrack,
+    fxChainGetDirectory,
+    fxChainSave,
+    fxChainLoad,
+    fxChainGetInfo,
   };
 }

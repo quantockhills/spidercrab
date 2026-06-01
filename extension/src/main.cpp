@@ -38,6 +38,8 @@
 #define REAPERAPI_WANT_EnumProjects
 #define REAPERAPI_WANT_InsertMedia
 #define REAPERAPI_WANT_EnumerateFiles
+#define REAPERAPI_WANT_GetTrackStateChunk
+#define REAPERAPI_WANT_SetTrackStateChunk
 #define REAPERAPI_WANT_CreateMIDIOutput
 #define REAPERAPI_WANT_GetMaxMidiOutputs
 
@@ -460,6 +462,8 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         api.TrackFX_GetPresetIndex      = TrackFX_GetPresetIndex;
         api.TrackFX_SetPreset           = TrackFX_SetPreset;
         api.EnumInstalledFX             = EnumInstalledFX;
+        api.GetTrackStateChunk          = GetTrackStateChunk;
+        api.SetTrackStateChunk          = SetTrackStateChunk;
         api.Main_OnCommand              = Main_OnCommand;
         api.CSurf_OnPlay                = CSurf_OnPlay;
         api.CSurf_OnStop                = CSurf_OnStop;

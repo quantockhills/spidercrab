@@ -479,6 +479,45 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
     return nullptr;
 }
 
+// ---- Mock GetTrackStateChunk / SetTrackStateChunk ----
+
+static std::string g_mockChunk;
+
+static bool mock_GetTrackStateChunk(MediaTrack* track, char* buf, int buf_sz, bool)
+{
+    (void)track;
+    if (buf_sz <= 0 || buf == nullptr) return false;
+    if (g_mockChunk.empty()) {
+        g_mockChunk =
+            "<TRACK\n"
+            "  NAME \"Test Track\"\n"
+            "  <FXCHAIN\n"
+            "    SHOW 0\n"
+            "    LASTSEL 0\n"
+            "    DOCKED 0\n"
+            "    <ITEM\n"
+            "      NAME \"ReaEQ\"\n"
+            "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+            "    >\n"
+            "    <ITEM\n"
+            "      NAME \"ReaComp\"\n"
+            "      VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+            "    >\n"
+            "  >\n"
+            ">\n";
+    }
+    size_t len = g_mockChunk.size();
+    memcpy(buf, g_mockChunk.c_str(), len + 1);
+    return true;
+}
+
+static bool mock_SetTrackStateChunk(MediaTrack* track, const char* str, bool)
+{
+    (void)track;
+    if (str) g_mockChunk = str;
+    return true;
+}
+
 // ---- Mock EnumInstalledFX ----
 
 struct MockFxEntry {
@@ -519,6 +558,8 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_Delete       = mock_TrackFX_Delete;
     api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
     api.EnumInstalledFX      = mock_EnumInstalledFX;
+    api.GetTrackStateChunk   = mock_GetTrackStateChunk;
+    api.SetTrackStateChunk   = mock_SetTrackStateChunk;
     handler->SetApi(api);
     if (outResponses) {
         handler->SetResponseCallback([outResponses](int, const std::string& resp) {
@@ -2591,7 +2632,11 @@ TEST(SequencerTest, ToggleStepPreservesOtherSteps)
     // We parse by looking at the specific step structure
     EXPECT_NE(responses[0].find("\"column\":0,\"row\":0,\"active\":true"), std::string::npos);
     EXPECT_NE(responses[0].find("\"column\":1,\"row\":1,\"active\":false"), std::string::npos);
-    EXPECT_NE(responses[0].find("\"column\":7,\"row\":7,\"active\":true"), std::string::npos);// FX param slider jump fixes (Issue #73)
+    EXPECT_NE(responses[0].find("\"column\":7,\"row\":7,\"active\":true"), std::string::npos);
+}
+
+// ============================================================
+// FX param slider jump fixes (Issue #73)
 // ============================================================
 
 TEST(FxParamSliderTest, HandleSetFXParamWithEqualMinMaxDoesNotProduceNaN)
@@ -2789,4 +2834,446 @@ TEST(FxParamSliderTest, HandleSetFXParamReturnsCommittedValueConsistentWithGet)
     // GetParams should show the same committed value
     EXPECT_NE(getResp.find("\"value\":12"), std::string::npos)
         << "GetParams value should match the committed set value";}
+
+// ============================================================
+// FX Chain save/load command tests (Issue #7)
+// ============================================================
+
+TEST(FxChainTest, GetDirectoryListsRfxChainFiles)
+{
+    // Create a temp directory with .RfxChain files
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_test";
+    fs::create_directories(testDir);
+    { std::ofstream(testDir / "my_chain.RfxChain").close(); }
+    { std::ofstream(testDir / "another.RfxChain").close(); }
+    { std::ofstream(testDir / "note.txt").close(); } // Should be excluded
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":")" + testDir.string() + R"("},"id":"fc1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify only .RfxChain files are listed
+    EXPECT_NE(resp.find("my_chain.RfxChain"), std::string::npos);
+    EXPECT_NE(resp.find("another.RfxChain"), std::string::npos);
+    // note.txt should NOT be in the response
+    EXPECT_EQ(resp.find("note.txt"), std::string::npos);
+
+    // Cleanup
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, GetDirectoryEmptyDir)
+{
+    // Test getDirectory on a valid but empty directory
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_empty_test";
+    fs::create_directories(testDir);
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":")" + testDir.string() + R"("},"id":"fc2"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    // Should succeed with empty chains array
+    EXPECT_NE(responses[0].find("\"chains\":[]"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, GetDirectoryInvalidPath)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":"/nonexistent_path_xyz123"},"id":"fc3"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxChainTest, SaveChainCreatesFile)
+{
+    // Create a temp directory for saving
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_save_test";
+    fs::create_directories(testDir);
+    fs::path savePath = testDir / "saved_chain.RfxChain";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "ReaComp", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    // Reset mock chunk to default (has ReaEQ and ReaComp)
+    g_mockChunk = ""; // Will auto-init with default
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc4"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"saved\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"filePath\""), std::string::npos);
+
+    // Verify file was created
+    EXPECT_TRUE(fs::exists(savePath));
+    EXPECT_GT(fs::file_size(savePath), 0);
+
+    // Verify file contains FXCHAIN section
+    std::ifstream f(savePath);
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    EXPECT_NE(content.find("<FXCHAIN"), std::string::npos);
+    EXPECT_NE(content.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(content.find("ReaComp"), std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SaveChainOnTrackWithNoFx)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_nofx_test";
+    fs::create_directories(testDir);
+    fs::path savePath = testDir / "empty.RfxChain";
+
+    // Track with no FX — default chunk has no FXCHAIN section
+    // Modify g_mockChunk to have NO FXCHAIN
+    g_mockChunk = "<TRACK\n  NAME \"Empty Track\"\n>\n";
+
+    MockState state;
+    MockTrack t;
+    t.fx = {}; // No FX
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc5"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    // Should fail with "No FX chain found on track"
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("No FX chain found"), std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, LoadChainReplacesTrackFx)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_load_test";
+    fs::create_directories(testDir);
+    fs::path chainPath = testDir / "chain.RfxChain";
+
+    // Create an FX chain file
+    std::string fxChainContent =
+        "<FXCHAIN\n"
+        "  SHOW 0\n"
+        "  LASTSEL 0\n"
+        "  DOCKED 0\n"
+        "  <ITEM\n"
+        "    NAME \"LoadedFX\"\n"
+        "    VST \"VST3: LoadedFX (Test)\" LoadedFX 0 0\n"
+        "  >\n"
+        "  <ITEM\n"
+        "    NAME \"AnotherFX\"\n"
+        "    VST \"VST3: AnotherFX (Test)\" AnotherFX 0 0\n"
+        "  >\n"
+        ">";
+
+    std::ofstream f(chainPath);
+    f << fxChainContent;
+    f.close();
+
+    // Track with existing FX (ReaEQ only)
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    LASTSEL 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"("},"id":"fc6"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"loaded\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"filePath\""), std::string::npos);
+
+    // Verify track chunk was updated (should now contain LoadedFX instead of ReaEQ)
+    EXPECT_NE(g_mockChunk.find("LoadedFX"), std::string::npos) << "New FX should be in chunk";
+    EXPECT_EQ(g_mockChunk.find("ReaEQ"), std::string::npos) << "Old FX should be replaced";
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, LoadChainAppendAddsToExisting)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_append_test";
+    fs::create_directories(testDir);
+    fs::path chainPath = testDir / "add.RfxChain";
+
+    // Append chain: additional FX
+    std::string appendChain =
+        "<FXCHAIN\n"
+        "  <ITEM\n"
+        "    NAME \"AddedFX\"\n"
+        "    VST \"VST3: AddedFX (Test)\" AddedFX 0 0\n"
+        "  >\n"
+        ">";
+
+    std::ofstream f(chainPath);
+    f << appendChain;
+    f.close();
+
+    // Track with existing FX (ReaEQ)
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"(","mode":"append"},"id":"fc7"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"loaded\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"append\":true"), std::string::npos);
+
+    // Both original and appended FX should be in chunk
+    EXPECT_NE(g_mockChunk.find("ReaEQ"), std::string::npos) << "Original FX should remain";
+    EXPECT_NE(g_mockChunk.find("AddedFX"), std::string::npos) << "Appended FX should be added";
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, LoadChainWithMissingFile)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":"/nonexistent/file.RfxChain"},"id":"fc8"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxChainTest, GetInfoReturnsChainDetails)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_info_test";
+    fs::create_directories(testDir);
+    fs::path chainPath = testDir / "test_chain.RfxChain";
+
+    // Create an FX chain file with multiple FX
+    std::string fxChainContent =
+        "<FXCHAIN\n"
+        "  SHOW 0\n"
+        "  LASTSEL 0\n"
+        "  DOCKED 0\n"
+        "  <ITEM\n"
+        "    NAME \"ReaEQ\"\n"
+        "    VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0 0\n"
+        "  >\n"
+        "  <ITEM\n"
+        "    NAME \"ReaComp\"\n"
+        "    VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+        "  >\n"
+        "  <ITEM\n"
+        "    NAME \"ReaDelay\"\n"
+        "    VST \"VST3: ReaDelay (Cockos)\" ReaDelay 0\n"
+        "  >\n"
+        ">";
+
+    std::ofstream f(chainPath);
+    f << fxChainContent;
+    f.close();
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getInfo","payload":{"filePath":")" + chainPath.string() + R"("},"id":"fc9"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"fxCount\":3"), std::string::npos) << "Should find 3 FX";
+    EXPECT_NE(resp.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(resp.find("ReaComp"), std::string::npos);
+    EXPECT_NE(resp.find("ReaDelay"), std::string::npos);
+
+    // Verify fxNames array has 3 entries
+    size_t pos = 0;
+    int nameCount = 0;
+    while ((pos = resp.find("\"fxNames\"", pos)) != std::string::npos) {
+        nameCount++;
+        pos++;
+    }
+    EXPECT_EQ(nameCount, 1) << "fxNames should appear exactly once";
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SaveAndLoadRoundTrip)
+{
+    // Full round-trip: save a track's FX chain, then load it onto another track
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_roundtrip";
+    fs::create_directories(testDir);
+    fs::path savePath = testDir / "roundtrip.RfxChain";
+
+    // Track 0 has ReaEQ and ReaComp
+    g_mockChunk = "<TRACK\n  NAME \"Source\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+        "    >\n"
+        "    <ITEM\n"
+        "      NAME \"ReaComp\"\n"
+        "      VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t0, t1;
+    t0.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    t0.fx.push_back({1, "ReaComp", {}, {}, {}, {}, {}});
+    t1.fx = {}; // Empty
+    state.tracks = {t0, t1};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    // Reset mock chunk to default
+    g_mockChunk = "";
+
+    // Step 1: Save track 0's FX chain
+    std::string saveCmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc_s"})";
+    handler->HandleMessage(1, saveCmd);
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"saved\":true"), std::string::npos);
+
+    // Verify file exists
+    ASSERT_TRUE(fs::exists(savePath));
+
+    // Step 2: Load onto track 1
+    // First, set the chunk for track 1 to something different
+    g_mockChunk = "<TRACK\n  NAME \"Dest\"\n  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaDelay\"\n"
+        "      VST \"VST3: ReaDelay (Cockos)\" ReaDelay 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    responses.clear();
+    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":1,"filePath":")" + savePath.string() + R"("},"id":"fc_l"})";
+    handler->HandleMessage(1, loadCmd);
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"loaded\":true"), std::string::npos);
+
+    // Verify track 1's chunk now has the saved FX (ReaEQ, ReaComp) and not ReaDelay
+    EXPECT_NE(g_mockChunk.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(g_mockChunk.find("ReaComp"), std::string::npos);
+    EXPECT_EQ(g_mockChunk.find("ReaDelay"), std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, GetInfoMissingFileReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/getInfo","payload":{"filePath":"/nonexistent/file.RfxChain"},"id":"fc10"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_invalid_test";
+    fs::create_directories(testDir);
+    fs::path savePath = testDir / "invalid.RfxChain";
+
+    MockState state;
+    state.tracks = {}; // No tracks
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc11"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Invalid track index"), std::string::npos);
+
+    fs::remove_all(testDir);
+}
 

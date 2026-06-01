@@ -322,6 +322,14 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleSequencerSetBaseNote(clientId, id, message);
         } else if (command == "sequencer/getPlayhead") {
             HandleSequencerGetPlayhead(clientId, id, message);
+        } else if (command == "fxchain/getDirectory") {
+            HandleFxChainGetDirectory(clientId, id, message);
+        } else if (command == "fxchain/save") {
+            HandleFxChainSave(clientId, id, message);
+        } else if (command == "fxchain/load") {
+            HandleFxChainLoad(clientId, id, message);
+        } else if (command == "fxchain/getInfo") {
+            HandleFxChainGetInfo(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -1478,6 +1486,531 @@ void CommandHandler::HandleSetTrackPan(
     BroadcastTrackEvent("track_pan_changed", trackIdx, pan);
     SendResponse(clientId, id, true,
         "{\"pan\":" + std::to_string(pan) + "}");
+}
+
+// ============================================================
+// FX chain save/load commands (Issue #7)
+//
+// REAPER stores FX chains as .RfxChain files. These are
+// extracted from the track state chunk (GetTrackStateChunk)
+// which returns the full RPPXML track state containing a
+// <FXCHAIN>...</FXCHAIN> section.
+//
+// Save: extract <FXCHAIN>...</FXCHAIN> from track chunk, write to file
+// Load: read .RfxChain file, replace <FXCHAIN> in current track chunk
+// ============================================================
+
+// Helper: Find the <FXCHAIN> section in a track chunk and extract it
+// Returns empty string if not found
+static std::string extractFxChainFromChunk(const std::string& chunk)
+{
+    size_t start = chunk.find("<FXCHAIN");
+    if (start == std::string::npos)
+        return "";
+
+    // REAPER RPPXML format: sections open with <TAG... (no > on opening line)
+    // and close with > on its own line. Count depth to find matching close.
+    int depth = 0;
+    size_t pos = start;
+    while (pos < chunk.size()) {
+        size_t openAngle = chunk.find('<', pos);
+        size_t closeAngle = chunk.find('>', pos);
+        if (openAngle == std::string::npos && closeAngle == std::string::npos)
+            break;
+
+        if (closeAngle != std::string::npos && (openAngle == std::string::npos || closeAngle < openAngle)) {
+            // '>' encountered — close one level
+            depth--;
+            if (depth == 0) {
+                // Found the closing > for FXCHAIN
+                return chunk.substr(start, closeAngle - start + 1);
+            }
+            pos = closeAngle + 1;
+        } else if (openAngle != std::string::npos) {
+            // '<' encountered — check if it's a section opener or closer
+            // REAPER sections: <TAG ... (no > on same line) or > (close) or /> (self-close)
+            if (openAngle + 1 < chunk.size() && chunk[openAngle + 1] == '/') {
+                // Closing tag like </FOO>
+                size_t endTag = chunk.find('>', openAngle);
+                if (endTag != std::string::npos) {
+                    // This is NOT REAPER's format, but handle gracefully
+                    pos = endTag + 1;
+                } else {
+                    pos = openAngle + 1;
+                }
+            } else {
+                // Opening tag like <FOO or self-closing like <FOO ... />
+                size_t endTag = chunk.find('>', openAngle);
+                if (endTag != std::string::npos) {
+                    // It's <TAG...> or <TAG ... />
+                    std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                    // Trim trailing whitespace
+                    while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                        tagContent.pop_back();
+                    if (!tagContent.empty() && tagContent.back() == '/') {
+                        // Self-closing tag <... /> — no depth change
+                        pos = endTag + 1;
+                    } else {
+                        // Regular opening tag
+                        depth++;
+                        pos = endTag + 1;
+                    }
+                } else {
+                    // <TAG without > on same line — REAPER section opener
+                    depth++;
+                    pos = openAngle + 1;
+                }
+            }
+        }
+    }
+    return "";
+}
+
+// Helper: Replace the <FXCHAIN> section in a track chunk
+// REAPER RPPXML format: <FXCHAIN...>...> (opening tag has no >, closing is standalone >)
+static std::string replaceFxChainInChunk(const std::string& chunk, const std::string& newFxChain)
+{
+    size_t start = chunk.find("<FXCHAIN");
+    if (start == std::string::npos) {
+        // No existing FXCHAIN — find the matching close > of the track section
+        // and insert before it, or append at end
+        size_t trackOpen = chunk.find("<TRACK");
+        size_t trackClose = std::string::npos;
+        if (trackOpen != std::string::npos) {
+            // Find the closing > of the TRACK section
+            int depth = 0;
+            size_t pos = trackOpen;
+            while (pos < chunk.size()) {
+                size_t openAngle = chunk.find('<', pos);
+                size_t closeAngle = chunk.find('>', pos);
+                if (closeAngle == std::string::npos) break;
+                if (openAngle == std::string::npos || closeAngle < openAngle) {
+                    depth--;
+                    if (depth == 0) { trackClose = closeAngle; break; }
+                    pos = closeAngle + 1;
+                } else {
+                    // Check if self-closing
+                    size_t endTag = chunk.find('>', openAngle);
+                    if (endTag != std::string::npos) {
+                        std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                        while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                            tagContent.pop_back();
+                        if (tagContent.empty() || tagContent.back() != '/') {
+                            depth++;
+                        }
+                        pos = endTag + 1;
+                    } else {
+                        depth++;
+                        pos = openAngle + 1;
+                    }
+                }
+            }
+        }
+        if (trackClose != std::string::npos) {
+            std::string result = chunk.substr(0, trackClose);
+            result += newFxChain;
+            result += "\n";
+            result += chunk.substr(trackClose);
+            return result;
+        }
+        // Fallback: append at end
+        return chunk + "\n" + newFxChain;
+    }
+
+    // Find the matching closing > for this FXCHAIN section
+    int depth = 0;
+    size_t pos = start;
+    size_t fxChainEnd = std::string::npos;
+    while (pos < chunk.size()) {
+        size_t openAngle = chunk.find('<', pos);
+        size_t closeAngle = chunk.find('>', pos);
+        if (closeAngle == std::string::npos) break;
+
+        if (openAngle == std::string::npos || closeAngle < openAngle) {
+            depth--;
+            if (depth == 0) { fxChainEnd = closeAngle; break; }
+            pos = closeAngle + 1;
+        } else {
+            // Opening tag
+            size_t endTag = chunk.find('>', openAngle);
+            if (endTag != std::string::npos) {
+                std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                    tagContent.pop_back();
+                if (!tagContent.empty() && tagContent.back() != '/') {
+                    depth++;
+                }
+                pos = endTag + 1;
+            } else {
+                depth++;
+                pos = openAngle + 1;
+            }
+        }
+    }
+
+    if (fxChainEnd != std::string::npos) {
+        std::string result = chunk.substr(0, start);
+        result += newFxChain;
+        result += "\n";
+        result += chunk.substr(fxChainEnd);
+        return result;
+    }
+
+    // Fallback: replace from start to end
+    return chunk + "\n" + newFxChain;
+}
+
+void CommandHandler::HandleFxChainGetDirectory(
+    int clientId, const std::string& id, const std::string& params)
+{
+    // Extract "path" from payload
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string path = parser.getString("path");
+    if (path.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+        return;
+    }
+
+    std::string chains = "[";
+    bool first = true;
+
+    try {
+        for (const auto& entry : fs::directory_iterator(path)) {
+            if (!entry.is_regular_file())
+                continue;
+            std::string name = entry.path().filename().string();
+            // Only include .RfxChain files (case-insensitive extension check)
+            std::string ext;
+            size_t dotPos = name.rfind('.');
+            if (dotPos == std::string::npos)
+                continue;
+            ext = name.substr(dotPos);
+            std::string lowerExt;
+            for (char c : ext) lowerExt += tolower((unsigned char)c);
+            if (lowerExt != ".rfxchain")
+                continue;
+
+            if (!first) chains += ",";
+            first = false;
+
+            uintmax_t fileSize = fs::file_size(entry.path());
+            chains += "{";
+            chains += json_string("name") + ":" + json_string(name) + ",";
+            chains += json_string("size") + ":" + std::to_string(fileSize);
+            chains += "}";
+        }
+    } catch (const fs::filesystem_error& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    chains += "]";
+
+    std::string payload = "{";
+    payload += json_string("path") + ":" + json_string(path) + ",";
+    payload += json_string("chains") + ":" + chains;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleFxChainSave(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string filePath    = parser.getString("filePath");
+
+    if (trackIdxStr.empty() || filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'filePath' parameter\"}");
+        return;
+    }
+
+    int         trackIdx = atoi(trackIdxStr.c_str());
+    MediaTrack* track    = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    // Get track state chunk (64KB buffer should be enough)
+    char chunkBuf[65536] = {0};
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf, sizeof(chunkBuf), false);
+    if (!gotChunk || chunkBuf[0] == 0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Failed to get track state chunk\"}");
+        return;
+    }
+
+    std::string chunk(chunkBuf);
+    std::string fxChain = extractFxChainFromChunk(chunk);
+    if (fxChain.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"No FX chain found on track\"}");
+        return;
+    }
+
+    // Write the FX chain to file
+    // Ensure parent directory exists
+    try {
+        fs::path parentDir = fs::path(filePath).parent_path();
+        if (!parentDir.empty() && !fs::exists(parentDir)) {
+            fs::create_directories(parentDir);
+        }
+
+        FILE* f = fopen(filePath.c_str(), "w");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("Failed to open file for writing: " + filePath) + "}");
+            return;
+        }
+        fwrite(fxChain.c_str(), 1, fxChain.size(), f);
+        fclose(f);
+
+        SendResponse(clientId, id, true,
+            "{\"saved\":true,\"filePath\":" + json_string(filePath) + "}");
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+    }
+}
+
+void CommandHandler::HandleFxChainLoad(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string filePath    = parser.getString("filePath");
+    std::string modeStr     = parser.getString("mode"); // "replace" (default) or "append"
+
+    if (trackIdxStr.empty() || filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'filePath' parameter\"}");
+        return;
+    }
+
+    int         trackIdx = atoi(trackIdxStr.c_str());
+    MediaTrack* track    = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    // Read the .RfxChain file
+    std::string fxChain;
+    try {
+        FILE* f = fopen(filePath.c_str(), "r");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("File not found: " + filePath) + "}");
+            return;
+        }
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            fxChain.append(buf, nread);
+        }
+        fclose(f);
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    if (fxChain.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Empty FX chain file\"}");
+        return;
+    }
+
+    // Get current track chunk
+    char chunkBuf[65536] = {0};
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf, sizeof(chunkBuf), false);
+    if (!gotChunk || chunkBuf[0] == 0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Failed to get track state chunk\"}");
+        return;
+    }
+
+    std::string currentChunk(chunkBuf);
+    std::string newChunk;
+
+    bool append = (modeStr == "append");
+
+    // Ensure the loaded content is a proper FXCHAIN section
+    // It might contain just <FXCHAIN>...</FXCHAIN> or might be a full track chunk
+    std::string loadedFxChain;
+    std::string extracted = extractFxChainFromChunk(fxChain);
+    if (!extracted.empty()) {
+        loadedFxChain = extracted;
+    } else {
+        // Assume the file is already an FXCHAIN section
+        loadedFxChain = fxChain;
+    }
+
+    if (append) {
+        // Append: load current FX chain, append new FX to it
+        std::string currentFxChain = extractFxChainFromChunk(currentChunk);
+        if (!currentFxChain.empty()) {
+            // Merge: take the opening <FXCHAIN...> from current, add the
+            // <ITEM> entries from loaded, find the closing > of FXCHAIN
+            // REAPER format: <FXCHAIN\n  ...\n  <ITEM ...>\n>
+            // The closing > is on its own line after all ITEMs
+            size_t currentClose = currentFxChain.rfind('\n');
+            if (currentClose != std::string::npos && currentClose > 0) {
+                // Trim trailing whitespace from the line before last
+                size_t trim = currentClose;
+                while (trim > 0 && (currentFxChain[trim-1] == ' ' || currentFxChain[trim-1] == '\t' || currentFxChain[trim-1] == '\n' || currentFxChain[trim-1] == '\r'))
+                    trim--;
+                // The closing > is on the last line - everything before it is the FX list
+                // Check if the last non-empty line is just ">"
+                size_t lastLineStart = currentFxChain.rfind('\n', currentClose - 1);
+                if (lastLineStart == std::string::npos) lastLineStart = 0;
+                std::string lastLine = currentFxChain.substr(lastLineStart, currentClose - lastLineStart);
+                // Trim whitespace from last line
+                size_t first = lastLine.find_first_not_of(" \t\n\r");
+                if (first != std::string::npos && lastLine[first] == '>') {
+                    // The closing > is on its own line - use everything before it
+                    currentClose = lastLineStart;
+                }
+            }
+            
+            // Find ITEM entries in the loaded chain
+            size_t loadedStart = loadedFxChain.find("<ITEM");
+            if (loadedStart != std::string::npos && currentClose != std::string::npos) {
+                std::string merged = currentFxChain.substr(0, currentClose);
+                // Add the new ITEM entries (without the opening <FXCHAIN and closing >)
+                merged += loadedFxChain.substr(loadedStart);
+                newChunk = replaceFxChainInChunk(currentChunk, merged);
+            } else {
+                newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+            }
+        } else {
+            newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+        }
+    } else {
+        // Replace: just swap the FXCHAIN section
+        newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+    }
+
+    // Write the new track state chunk
+    bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
+    if (ok) {
+        SendResponse(clientId, id, true,
+            "{\"loaded\":true,\"filePath\":" + json_string(filePath) + ",\"append\":"
+                + (append ? "true" : "false") + "}");
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to set track state chunk\"}");
+    }
+}
+
+void CommandHandler::HandleFxChainGetInfo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string filePath = parser.getString("filePath");
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'filePath' parameter\"}");
+        return;
+    }
+
+    // Read the .RfxChain file
+    std::string content;
+    try {
+        FILE* f = fopen(filePath.c_str(), "r");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("File not found: " + filePath) + "}");
+            return;
+        }
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            content.append(buf, nread);
+        }
+        fclose(f);
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    // Parse the FXCHAIN: count ITEM entries and extract names
+    int fxCount = 0;
+    std::string fxNames = "[";
+    size_t pos = 0;
+    bool first = true;
+
+    while ((pos = content.find("<ITEM", pos)) != std::string::npos) {
+        fxCount++;
+        size_t nameStart = content.find("NAME", pos);
+        if (nameStart != std::string::npos && nameStart < content.find(">", pos)) {
+            // NAME="..."
+            size_t quote1 = content.find('"', nameStart);
+            if (quote1 != std::string::npos) {
+                size_t quote2 = content.find('"', quote1 + 1);
+                if (quote2 != std::string::npos) {
+                    std::string fxName = content.substr(quote1 + 1, quote2 - quote1 - 1);
+                    if (!first) fxNames += ",";
+                    first = false;
+                    fxNames += json_string(fxName);
+                }
+            }
+        }
+        // Move past this ITEM
+        size_t itemClose = content.find(">", pos);
+        if (itemClose != std::string::npos) {
+            // Move past the rest of this ITEM block — find VST / JS or the next ITEM
+            size_t nextItem = content.find("<ITEM", pos + 5);
+            if (nextItem != std::string::npos) {
+                pos = nextItem;
+            } else {
+                // Last item - find the end of the FXCHAIN section
+                size_t fxChainClose = content.find("</FXCHAIN>", pos);
+                if (fxChainClose != std::string::npos) {
+                    pos = fxChainClose;
+                } else {
+                    pos = content.size();
+                }
+            }
+        } else {
+            pos++;
+        }
+    }
+    fxNames += "]";
+
+    // Get file info
+    uintmax_t fileSize = 0;
+    try {
+        fileSize = fs::file_size(filePath);
+    } catch (...) {
+        fileSize = 0;
+    }
+
+    std::string payload = "{";
+    payload += json_string("filePath") + ":" + json_string(filePath) + ",";
+    payload += json_string("fxCount") + ":" + std::to_string(fxCount) + ",";
+    payload += json_string("fxNames") + ":" + fxNames + ",";
+    payload += json_string("fileSize") + ":" + std::to_string(fileSize);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
 }
 
 // ============================================================
