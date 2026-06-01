@@ -545,20 +545,17 @@ void CommandHandler::HandleSetFXParam(
         return;
     }
 
-    // Convert the actual display value back to normalized (0.0-1.0) for TrackFX_SetParam
+    // Get param range info for zero-range guard and readback
     double minVal = 0, maxVal = 0, midVal = 0;
     if (m_api.TrackFX_GetParamEx) {
         m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
     }
 
-    // Guard against division by zero (Issue #73):
-    // Some JSFX params report minVal == maxVal (read-only sliders).
-    // In that case, skip the set entirely and respond with the current value.
+    // Guard against zero-range params (read-only sliders, Issue #73):
+    // Some JSFX params report minVal == maxVal. Skip the set entirely.
     double range = maxVal - minVal;
     if (range >= 0.0 && range < 1e-15) {
-        // Range is effectively zero — can't normalize. Return current value.
-        // Use TrackFX_GetParamEx to re-read current state so the frontend
-        // gets the actual parameter value.
+        // Range is effectively zero — return current value.
         double currentNorm = 0;
         double readMin = 0, readMax = 0, readMid = 0;
         if (m_api.TrackFX_GetParamEx) {
@@ -571,17 +568,12 @@ void CommandHandler::HandleSetFXParam(
         return;
     }
 
-    double normalizedVal = (value - minVal) / range;
-    // Clamp normalized value to valid [0.0, 1.0] range to prevent
-    // floating-point edge cases from setting out-of-range values
-    if (normalizedVal < 0.0) normalizedVal = 0.0;
-    if (normalizedVal > 1.0) normalizedVal = 1.0;
-
-    // Record this as our own set so OnFxParamChanged can suppress
-    // REAPER's talkback broadcast (Issue #73)
+    // TrackFX_SetParam takes actual display values, NOT normalized 0-1 (Issue #73).
+    // The frontend sends actual display values (e.g. 5000 Hz, -12 dB), so
+    // we pass them directly to the API.
     m_lastSetParam = {trackIdx, fxIdx, paramIdx};
 
-    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, normalizedVal);
+    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, value);
 
     // Read back the actual value REAPER committed (fixes slider jumping due to
     // normalization precision loss or stepped params)
