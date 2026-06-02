@@ -4955,3 +4955,128 @@ TEST(MidiFeedbackTest, FeedbackPathDoesNotAffectBroadcastCallback)
     SlotState s2 = handler->GetPlaytimeState().getSlot(5, 6);
     EXPECT_EQ(s2.state, "playing"); // was set by feedback
 }
+
+TEST(FxChainTest, SearchRecursiveFindsChainsInSubdirs)
+{
+    // Create temp dir with chain files at root and in subdirs
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_recursive_test";
+    fs::create_directories(testDir);
+    fs::create_directories(testDir / "subdir1");
+    fs::create_directories(testDir / "subdir2");
+
+    // Root level chain
+    { std::ofstream(testDir / "master.RfxChain").close(); }
+    // Subdir1 chain
+    { std::ofstream(testDir / "subdir1" / "kick.RfxChain").close(); }
+    // Subdir2 chain
+    { std::ofstream(testDir / "subdir2" / "snare.RfxChain").close(); }
+    // Non-chain file (should be ignored)
+    { std::ofstream(testDir / "notes.txt").close(); }
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + testDir.string() + R"("},"id":"fsr1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
+    // Should find all 3 .RfxChain files across root + subdirs
+    EXPECT_TRUE(responses[0].find("master.RfxChain") != std::string::npos);
+    EXPECT_TRUE(responses[0].find("kick.RfxChain") != std::string::npos);
+    EXPECT_TRUE(responses[0].find("snare.RfxChain") != std::string::npos);
+    // Should NOT include non-chain files
+    EXPECT_TRUE(responses[0].find("notes.txt") == std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SearchRecursiveFiltersByQuery)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_search_query_test";
+    fs::create_directories(testDir);
+    fs::create_directories(testDir / "sub");
+
+    { std::ofstream(testDir / "my_comp.RfxChain").close(); }
+    { std::ofstream(testDir / "reverb.RfxChain").close(); }
+    { std::ofstream(testDir / "sub" / "my_reverb.RfxChain").close(); }
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Search for "comp" — should find only my_comp.RfxChain
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"comp","rootPath":")" + testDir.string() + R"("},"id":"fsr2"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
+    EXPECT_TRUE(responses[0].find("my_comp.RfxChain") != std::string::npos);
+    EXPECT_TRUE(responses[0].find("reverb.RfxChain") == std::string::npos);
+    EXPECT_TRUE(responses[0].find("my_reverb.RfxChain") == std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SearchRecursiveCaseInsensitive)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_case_test";
+    fs::create_directories(testDir);
+
+    { std::ofstream(testDir / "My_Comp.RfxChain").close(); }
+    { std::ofstream(testDir / "REVERB.RfxChain").close(); }
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Search lowercase "comp" should find uppercase "My_Comp"
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"comp","rootPath":")" + testDir.string() + R"("},"id":"fsr3"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
+    EXPECT_TRUE(responses[0].find("My_Comp.RfxChain") != std::string::npos);
+    EXPECT_TRUE(responses[0].find("REVERB.RfxChain") == std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SearchRecursiveInvalidPathReturnsEmpty)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":"/nonexistent_path_xyz"},"id":"fsr4"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
+    EXPECT_TRUE(responses[0].find("\"results\":[]") != std::string::npos);
+}
+
+TEST(FxChainTest, SearchRecursiveMissingRootPath)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":""},"id":"fsr5"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_TRUE(responses[0].find("\"success\":false") != std::string::npos);
+    EXPECT_TRUE(responses[0].find("\"error\"") != std::string::npos);
+}

@@ -1,5 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Track, FxChainEntry, FxChainInfo } from '../hooks/useReaper';
+
+interface FxChainSearchResult {
+  filePath: string;
+  name: string;
+  size: number;
+}
 
 interface DirData { chains: FxChainEntry[]; dirs: string[] }
 
@@ -10,6 +16,7 @@ interface FxChainBrowserProps {
   fxChainSave: (trackIdx: number, filePath: string) => Promise<boolean>;
   fxChainLoad: (trackIdx: number, filePath: string, mode?: 'replace' | 'append') => Promise<boolean>;
   fxChainGetInfo: (filePath: string) => Promise<FxChainInfo | null>;
+  fxChainSearchRecursive: (query: string, rootPath: string) => Promise<FxChainSearchResult[]>;
   onBack: () => void;
   initialPath?: string;
 }
@@ -32,6 +39,7 @@ export function FxChainBrowser({
   fxChainSave,
   fxChainLoad,
   fxChainGetInfo,
+  fxChainSearchRecursive,
   onBack,
   initialPath,
 }: FxChainBrowserProps) {
@@ -46,6 +54,9 @@ export function FxChainBrowser({
   const [subLoading, setSubLoading] = useState<Set<string>>(new Set());
 
   const [search, setSearch] = useState('');
+  const [backendResults, setBackendResults] = useState<FxChainSearchResult[] | null>(null);
+  const [searchingAll, setSearchingAll] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loadingFile, setLoadingFile] = useState<string | null>(null);
   const [loadedFiles, setLoadedFiles] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -132,11 +143,54 @@ export function FxChainBrowser({
     return result;
   }, [rootPath, rootData, subData]);
 
+  // Debounced backend recursive search
+  useEffect(() => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    if (!search.trim() || !rootPath) {
+      setBackendResults(null);
+      setSearchingAll(false);
+      return;
+    }
+    setSearchingAll(true);
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const results = await fxChainSearchRecursive(search, rootPath);
+        setBackendResults(results);
+      } catch {
+        setBackendResults([]);
+      } finally {
+        setSearchingAll(false);
+      }
+    }, 300);
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [search, rootPath, fxChainSearchRecursive]);
+
+  // Merge local visible chains + backend recursive results, deduplicate by filePath
   const searchResults = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
-    return allVisibleChains.filter(c => c.name.toLowerCase().includes(q));
-  }, [search, allVisibleChains]);
+
+    // Local results from visible (expanded) chains
+    const localResults = allVisibleChains.filter(c => c.name.toLowerCase().includes(q));
+
+    if (!backendResults) return localResults.length > 0 ? localResults : null;
+
+    // Merge with backend results, deduplicate by filePath
+    const seen = new Set<string>();
+    for (const c of localResults) seen.add(c.filePath);
+    const merged = [...localResults];
+    for (const c of backendResults) {
+      if (!seen.has(c.filePath)) {
+        merged.push(c);
+        seen.add(c.filePath);
+      }
+    }
+    return merged.length > 0 ? merged : [];
+  }, [search, allVisibleChains, backendResults]);
 
   const selectedTrackName = selectedTrack !== null ? tracks.find(t => t.index === selectedTrack)?.name : null;
 
@@ -243,9 +297,14 @@ export function FxChainBrowser({
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)]">🔍</span>
               <input
                 type="text" value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Search loaded chains…"
+                placeholder="Search all FX chains…"
                 className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
               />
+              {searchingAll && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--text-secondary)] animate-pulse">
+                  Searching all folders…
+                </span>
+              )}
             </div>
           </div>
 
