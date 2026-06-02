@@ -44,6 +44,13 @@
 #define REAPERAPI_WANT_SetTrackStateChunk
 #define REAPERAPI_WANT_CreateMIDIOutput
 #define REAPERAPI_WANT_GetMaxMidiOutputs
+#define REAPERAPI_WANT_CountMediaItems
+#define REAPERAPI_WANT_GetMediaItem
+#define REAPERAPI_WANT_GetActiveTake
+#define REAPERAPI_WANT_GetMediaItemTake_Source
+#define REAPERAPI_WANT_MIDI_eventlist_Create
+#define REAPERAPI_WANT_MIDI_eventlist_Destroy
+#define REAPERAPI_WANT_GetPlayPosition
 
 // CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
 // Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.
@@ -472,6 +479,13 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         api.CSurf_OnPlay                = CSurf_OnPlay;
         api.CSurf_OnStop                = CSurf_OnStop;
         api.GetPlayState                = GetPlayState;
+        api.CountMediaItems              = CountMediaItems;
+        api.GetMediaItem                 = GetMediaItem;
+        api.GetActiveTake                = GetActiveTake;
+        api.GetMediaItemTake_Source      = GetMediaItemTake_Source;
+        api.MIDI_eventlist_Create        = MIDI_eventlist_Create;
+        api.MIDI_eventlist_Destroy       = MIDI_eventlist_Destroy;
+        api.GetPlayPosition              = GetPlayPosition;
         g_cmdHandler->SetApi(api);
 
         // Pre-cache FX list at startup, before any WebSocket client
