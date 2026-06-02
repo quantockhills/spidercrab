@@ -142,12 +142,14 @@ function App() {
   }, [toggleTrackArm]);
 
   const handleVolumeChange = useCallback(async (index: number, volume: number) => {
-    await setTrackVolume(index, volume);
-  }, [setTrackVolume]);
+    const ok = await setTrackVolume(index, volume);
+    if (ok) updateTrack(index, { volume });
+  }, [setTrackVolume, updateTrack]);
 
   const handlePanChange = useCallback(async (index: number, pan: number) => {
-    await setTrackPan(index, pan);
-  }, [setTrackPan]);
+    const ok = await setTrackPan(index, pan);
+    if (ok) updateTrack(index, { pan });
+  }, [setTrackPan, updateTrack]);
 
   // ── FX / Param navigation ──
   const handleSelectFx = useCallback(

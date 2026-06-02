@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TrackOverview } from '../components/TrackOverview';
+import { volumeToDb } from '../utils/volume';
 import type { Track, FxInfo } from '../hooks/useReaper';
 
 // ── Mock data ────────────────────────────────────────────────
@@ -193,6 +195,121 @@ describe('TrackOverview — FX grid cards', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('Loading FX…')).toBeNull();
+    });
+  });
+
+  // ── volumeToDb unit tests (Issue #85) ──
+
+  describe('volumeToDb', () => {
+    it('returns "0.0dB" for volume 1.0', () => {
+      expect(volumeToDb(1.0)).toBe('0.0dB');
+    });
+
+    it('returns "-∞" for volume 0', () => {
+      expect(volumeToDb(0)).toBe('-∞');
+    });
+
+    it('returns "-∞" for negative volume', () => {
+      expect(volumeToDb(-1)).toBe('-∞');
+    });
+
+    it('returns "-6.0dB" for volume 0.5', () => {
+      expect(volumeToDb(0.5)).toBe('-6.0dB');
+    });
+
+    it('returns "-12.0dB" for volume 0.25', () => {
+      expect(volumeToDb(0.25)).toBe('-12.0dB');
+    });
+
+    it('returns "-3.0dB" for volume 0.7079 (approx -3dB)', () => {
+      // 20*log10(0.7079) ≈ -3.0
+      expect(volumeToDb(0.7079)).toBe('-3.0dB');
+    });
+
+    it('rounds to one decimal place', () => {
+      // 20*log10(0.8) = -1.938... should be '-1.9dB'
+      expect(volumeToDb(0.8)).toBe('-1.9dB');
+    });
+  });
+
+  // ── Volume slider integration tests (Issue #85) ──
+
+  it('updates dB label when volume slider is changed (optimistic local state)', async () => {
+    // Simulate a parent component that maintains tracks state (like App.tsx)
+    function TestHarness() {
+      const [testTracks, setTestTracks] = useState<Track[]>(mockTracks);
+
+      const handleVolumeChange = (index: number, volume: number) => {
+        setTestTracks((prev) =>
+          prev.map((t) => (t.index === index ? { ...t, volume } : t)),
+        );
+      };
+
+      return (
+        <TrackOverview
+          tracks={testTracks}
+          selectedTrack={0}
+          onSelectTrack={vi.fn()}
+          onToggleMute={vi.fn()}
+          onToggleSolo={vi.fn()}
+          onToggleArm={vi.fn()}
+          onVolumeChange={handleVolumeChange}
+          onRefresh={vi.fn()}
+        />
+      );
+    }
+
+    render(<TestHarness />);
+
+    // Track 0 has volume 0.8, should show "-1.9dB"
+    expect(screen.getByText('-1.9dB')).toBeDefined();
+
+    // Change volume of track 0 to 0.5
+    const sliders = screen.getAllByTestId('track-volume-slider');
+    fireEvent.change(sliders[0], { target: { value: '0.5' } });
+
+    // dB label should now show "-6.0dB"
+    await waitFor(() => {
+      expect(screen.getByText('-6.0dB')).toBeDefined();
+    });
+  });
+
+  it('updates pan label when pan slider is changed (optimistic local state)', async () => {
+    function TestHarness() {
+      const [testTracks, setTestTracks] = useState<Track[]>(mockTracks);
+
+      const handlePanChange = (index: number, pan: number) => {
+        setTestTracks((prev) =>
+          prev.map((t) => (t.index === index ? { ...t, pan } : t)),
+        );
+      };
+
+      return (
+        <TrackOverview
+          tracks={testTracks}
+          selectedTrack={0}
+          onSelectTrack={vi.fn()}
+          onToggleMute={vi.fn()}
+          onToggleSolo={vi.fn()}
+          onToggleArm={vi.fn()}
+          onPanChange={handlePanChange}
+          onRefresh={vi.fn()}
+        />
+      );
+    }
+
+    render(<TestHarness />);
+
+    // Track 0 has pan=0, should show "C"
+    expect(screen.getByText('C')).toBeDefined();
+
+    // Change pan of track 0 to -0.5
+    const panSliders = screen.getAllByTestId('track-pan-slider');
+    fireEvent.change(panSliders[0], { target: { value: '-0.5' } });
+
+    // Pan label should now show "L 50%"
+    await waitFor(() => {
+      expect(screen.getByText('L 50%')).toBeDefined();
     });
   });
 

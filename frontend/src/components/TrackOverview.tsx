@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { Track, FxInfo } from '../hooks/useReaper';
+import { volumeToDb } from '../utils/volume';
 
 interface TrackOverviewProps {
   tracks: Track[];
@@ -20,12 +21,7 @@ interface TrackOverviewProps {
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
 }
 
-/** Convert linear 0-1 Reaper volume to approximate dB string */
-function volumeToDb(vol: number): string {
-  if (vol <= 0) return '-∞';
-  const dB = 20 * Math.log10(vol);
-  return `${dB.toFixed(1)}dB`;
-}
+
 
 /** Interactive volume fader with slider and visual bar */
 function VolumeBar({ volume, onChange }: { volume: number; onChange?: (value: number) => void }) {
