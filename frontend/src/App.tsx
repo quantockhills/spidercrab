@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useTheme } from './hooks/useTheme';
+import { ReaperClientProvider, useTheme } from './hooks';
 import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
@@ -20,7 +20,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'settings',label: 'Settings',icon: '⚙️' },
 ];
 
-function App() {
+function AppInner() {
   const {
     connected,
     tracks,
@@ -462,4 +462,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <ReaperClientProvider>
+      <AppInner />
+    </ReaperClientProvider>
+  );
+}
