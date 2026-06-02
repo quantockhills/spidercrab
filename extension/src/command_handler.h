@@ -203,4 +203,7 @@ private:
 
     // Command handlers — Playtime 2 (Issue #81)
     void HandlePlaytimeIsAvailable(int clientId, const std::string& id, const std::string& params);
+
+    // Command handler — Playtime 2 launch (Issue #88)
+    void HandlePlaytimeLaunch(int clientId, const std::string& id, const std::string& params);
 };

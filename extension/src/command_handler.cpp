@@ -282,6 +282,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fxchain/load"]            = &CommandHandler::HandleFxChainLoad;
     m_commandMap["fxchain/getInfo"]         = &CommandHandler::HandleFxChainGetInfo;
     m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
+    m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -2195,6 +2196,57 @@ void CommandHandler::HandlePlaytimeIsAvailable(
         }
         payload += "\"";
     }
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Playtime 2 launch command (Issue #88)
+// ============================================================
+void CommandHandler::HandlePlaytimeLaunch(
+    int clientId, const std::string& id, const std::string& /* params */)
+{
+    // Attempt to launch/show Playtime 2 by calling HB_ShowOrHidePlaytime
+    // on the first available Helgobox/Playtime instance.
+    bool launched = false;
+    std::string message;
+
+    if (isPlaytimeAvailable()) {
+        // Find the first Playtime/Helgobox instance in the current project
+        int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
+        if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
+            g_playtimeApi.HB_ShowOrHidePlaytime(instance);
+            launched = true;
+            message = "Playtime 2 launched";
+            fprintf(stderr, "[reaper-ipad] Playtime 2 launched (instance %d)\n", instance);
+        } else {
+            message = "Playtime instance not found or HB_ShowOrHidePlaytime unavailable";
+            fprintf(stderr, "[reaper-ipad] Playtime launch failed: instance=%d, HB_ShowOrHidePlaytime=%p\n",
+                instance, (void*)g_playtimeApi.HB_ShowOrHidePlaytime);
+        }
+    } else {
+        // Retry resolution in case Helgobox registered after our startup
+        retryPlaytimeApi();
+        if (isPlaytimeAvailable()) {
+            // Retry succeeded — try to launch
+            int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
+            if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
+                g_playtimeApi.HB_ShowOrHidePlaytime(instance);
+                launched = true;
+                message = "Playtime 2 launched (after retry)";
+                fprintf(stderr, "[reaper-ipad] Playtime 2 launched after retry (instance %d)\n", instance);
+            } else {
+                message = "Playtime API available but instance or ShowOrHide function not ready";
+            }
+        } else {
+            message = "Playtime 2 API not available \u2014 Helgobox may not be loaded";
+            fprintf(stderr, "[reaper-ipad] Playtime 2 not available: cannot launch\n");
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("launched") + ":" + (launched ? "true" : "false") + ",";
+    payload += json_string("message") + ":" + json_string(message);
     payload += "}";
     SendResponse(clientId, id, true, payload);
 }

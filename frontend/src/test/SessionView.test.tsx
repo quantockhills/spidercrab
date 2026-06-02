@@ -274,6 +274,195 @@ describe('SessionView', () => {
     });
   });
 
+  // ── Launch Playtime button tests (Issue #88) ──
+
+  it('shows Launch Playtime button when matrix is null and playtime is not available', async () => {
+    const onLaunchPlaytime = vi.fn().mockResolvedValue({ launched: true, message: 'ok' });
+    const onCheckPlaytimeAvailable = vi.fn().mockResolvedValue({ available: false });
+
+    render(
+      <SessionView
+        matrix={null}
+        getMatrix={vi.fn().mockResolvedValue(null)}
+        triggerSlot={vi.fn()}
+        triggerScene={vi.fn()}
+        onLaunchPlaytime={onLaunchPlaytime}
+        onCheckPlaytimeAvailable={onCheckPlaytimeAvailable}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Launch Playtime')).toBeDefined();
+      expect(onCheckPlaytimeAvailable).toHaveBeenCalled();
+    });
+  });
+
+  it('calls onLaunchPlaytime when Launch Playtime button is clicked', async () => {
+    const onLaunchPlaytime = vi.fn().mockResolvedValue({ launched: true, message: 'ok' });
+    const onCheckPlaytimeAvailable = vi.fn().mockResolvedValue({ available: false });
+
+    render(
+      <SessionView
+        matrix={null}
+        getMatrix={vi.fn().mockResolvedValue(null)}
+        triggerSlot={vi.fn()}
+        triggerScene={vi.fn()}
+        onLaunchPlaytime={onLaunchPlaytime}
+        onCheckPlaytimeAvailable={onCheckPlaytimeAvailable}
+      />
+    );
+
+    await waitFor(() => {
+      const launchBtn = screen.getByLabelText('Launch Playtime');
+      fireEvent.click(launchBtn);
+      expect(onLaunchPlaytime).toHaveBeenCalled();
+    });
+  });
+
+  it('shows Playtime Active text when playtime becomes available', async () => {
+    const onCheckPlaytimeAvailable = vi.fn().mockResolvedValue({ available: true });
+
+    render(
+      <SessionView
+        matrix={null}
+        getMatrix={vi.fn().mockResolvedValue(null)}
+        triggerSlot={vi.fn()}
+        triggerScene={vi.fn()}
+        onCheckPlaytimeAvailable={onCheckPlaytimeAvailable}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Playtime Active')).toBeDefined();
+      // Launch button should NOT be shown when Playtime is active
+      expect(screen.queryByLabelText('Launch Playtime')).toBeNull();
+    });
+  });
+
+  it('shows Refresh Matrix button when Playtime is active but no matrix', async () => {
+    const onCheckPlaytimeAvailable = vi.fn().mockResolvedValue({ available: true });
+    const onGetMatrix = vi.fn().mockResolvedValue(null);
+
+    render(
+      <SessionView
+        matrix={null}
+        getMatrix={onGetMatrix}
+        triggerSlot={vi.fn()}
+        triggerScene={vi.fn()}
+        onCheckPlaytimeAvailable={onCheckPlaytimeAvailable}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Refresh matrix')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByLabelText('Refresh matrix'));
+    expect(onGetMatrix).toHaveBeenCalled();
+  });
+
+  it('shows error message when launch fails', async () => {
+    const onLaunchPlaytime = vi.fn().mockResolvedValue({ launched: false, message: 'No Helgobox instance found' });
+    const onCheckPlaytimeAvailable = vi.fn().mockResolvedValue({ available: false });
+
+    render(
+      <SessionView
+        matrix={null}
+        getMatrix={vi.fn().mockResolvedValue(null)}
+        triggerSlot={vi.fn()}
+        triggerScene={vi.fn()}
+        onLaunchPlaytime={onLaunchPlaytime}
+        onCheckPlaytimeAvailable={onCheckPlaytimeAvailable}
+      />
+    );
+
+    await waitFor(() => {
+      const launchBtn = screen.getByLabelText('Launch Playtime');
+      fireEvent.click(launchBtn);
+    });
+
+    await waitFor(() => {
+      // Should show the error message in the button
+      expect(screen.getByText(/No Helgobox instance found/)).toBeDefined();
+    });
+  });
+
+  it('shows launching state while launching', async () => {
+    // A promise that never resolves to keep launching state
+    const onLaunchPlaytime = vi.fn().mockReturnValue(new Promise(() => {}));
+    const onCheckPlaytimeAvailable = vi.fn().mockResolvedValue({ available: false });
+
+    render(
+      <SessionView
+        matrix={null}
+        getMatrix={vi.fn().mockResolvedValue(null)}
+        triggerSlot={vi.fn()}
+        triggerScene={vi.fn()}
+        onLaunchPlaytime={onLaunchPlaytime}
+        onCheckPlaytimeAvailable={onCheckPlaytimeAvailable}
+      />
+    );
+
+    await waitFor(() => {
+      const launchBtn = screen.getByLabelText('Launch Playtime');
+      fireEvent.click(launchBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Launching/)).toBeDefined();
+    });
+  });
+
+  it('shows retry button while checking playtime availability', async () => {
+    // Use a delayed promise so the check stays in 'checking' state
+    const onCheckPlaytimeAvailable = vi.fn().mockReturnValue(new Promise(() => {}));
+
+    render(
+      <SessionView
+        matrix={null}
+        getMatrix={vi.fn().mockResolvedValue(null)}
+        triggerSlot={vi.fn()}
+        triggerScene={vi.fn()}
+        onCheckPlaytimeAvailable={onCheckPlaytimeAvailable}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Retry Playtime check')).toBeDefined();
+    });
+  });
+
+  it('hides launch button and shows Playtime Active after successful launch', async () => {
+    const onLaunchPlaytime = vi.fn().mockResolvedValue({ launched: true, message: 'Playtime 2 launched' });
+    const onCheckPlaytimeAvailable = vi.fn().mockResolvedValue({ available: false });
+    const onGetMatrix = vi.fn().mockResolvedValue(null);
+
+    // Render with matrix=null so the launch prompt is shown
+    const { rerender } = render(
+      <SessionView
+        matrix={null}
+        getMatrix={onGetMatrix}
+        triggerSlot={vi.fn()}
+        triggerScene={vi.fn()}
+        onLaunchPlaytime={onLaunchPlaytime}
+        onCheckPlaytimeAvailable={onCheckPlaytimeAvailable}
+      />
+    );
+
+    // Click launch button
+    await waitFor(() => {
+      const launchBtn = screen.getByLabelText('Launch Playtime');
+      fireEvent.click(launchBtn);
+    });
+
+    // After launch returns {launched: true}, the state should update
+    // to show Playtime Active
+    await waitFor(() => {
+      expect(screen.getByText('Playtime Active')).toBeDefined();
+      expect(screen.queryByLabelText('Launch Playtime')).toBeNull();
+    });
+  });
+
   it('renders column headers with fallback for tracks with empty names', async () => {
     const matrix = makeEmptyMatrix();
     const mockTracks = [

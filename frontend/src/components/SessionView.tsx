@@ -12,6 +12,10 @@ interface SessionViewProps {
   onStop?: () => Promise<boolean>;
   onRecord?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
+  /** Launch Playtime 2 (Issue #88) */
+  onLaunchPlaytime?: () => Promise<{launched: boolean; message: string}>;
+  /** Check if Playtime 2 is available (Issue #88) */
+  onCheckPlaytimeAvailable?: () => Promise<{available: boolean}>;
 }
 
 /** Map slot state to display color hex (for the cell accent) */
@@ -35,11 +39,16 @@ export function SessionView({
   onStop,
   onRecord,
   onGetTransportState,
+  onLaunchPlaytime,
+  onCheckPlaytimeAvailable,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [playtimeAvailable, setPlaytimeAvailable] = useState<boolean | null>(null);
+  const [playtimeLaunching, setPlaytimeLaunching] = useState(false);
+  const [playtimeError, setPlaytimeError] = useState<string | null>(null);
   const initializedRef = useRef(false);
 
   // Load matrix on mount if not provided
@@ -47,8 +56,18 @@ export function SessionView({
     if (!initializedRef.current) {
       initializedRef.current = true;
       getMatrix().then(() => setLoading(false));
+      // Check if Playtime is available
+      if (onCheckPlaytimeAvailable) {
+        onCheckPlaytimeAvailable().then(result => {
+          setPlaytimeAvailable(result.available);
+        }).catch(() => {
+          setPlaytimeAvailable(false);
+        });
+      } else {
+        setPlaytimeAvailable(false);
+      }
     }
-  }, [getMatrix]);
+  }, [getMatrix, onCheckPlaytimeAvailable]);
 
   // Load initial transport state on mount
   useEffect(() => {
@@ -105,6 +124,26 @@ export function SessionView({
     setActiveScene(null);
   }, [triggerScene]);
 
+  const handleLaunchPlaytime = useCallback(async () => {
+    if (!onLaunchPlaytime) return;
+    setPlaytimeLaunching(true);
+    setPlaytimeError(null);
+    try {
+      const result = await onLaunchPlaytime();
+      if (result.launched) {
+        setPlaytimeAvailable(true);
+        // Refresh matrix now that Playtime is running
+        getMatrix();
+      } else {
+        setPlaytimeError(result.message || 'Failed to launch Playtime');
+      }
+    } catch {
+      setPlaytimeError('Failed to send launch command');
+    } finally {
+      setPlaytimeLaunching(false);
+    }
+  }, [onLaunchPlaytime, getMatrix]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-[var(--text-secondary)] text-sm">
@@ -113,10 +152,90 @@ export function SessionView({
     );
   }
 
+  // Show Launch Playtime prompt when matrix is unavailable and Playtime is not running
   if (!matrix) {
+    const showLaunchButton = playtimeAvailable === false || playtimeAvailable === null;
+    const isActive = playtimeAvailable === true;
+
     return (
-      <div className="flex items-center justify-center h-full text-[var(--text-secondary)] text-sm">
-        No matrix data available
+      <div className="flex flex-col items-center justify-center h-full gap-6 px-6">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="w-16 h-16 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-2xl opacity-60">
+            🎵
+          </div>
+          <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+            {isActive ? 'Playtime Active' : 'Playtime 2'}
+          </h3>
+          <p className="text-[11px] text-[var(--text-secondary)]/60 max-w-[240px]">
+            {isActive
+              ? 'Playtime 2 is running but no clip matrix was found. Try refreshing or creating a matrix in REAPER.'
+              : 'Playtime 2 powers the clip launcher. Launch it to start triggering clips from your iPad.'}
+          </p>
+        </div>
+
+        {showLaunchButton && (
+          <div className="flex flex-col items-center gap-3">
+            <button
+              onClick={handleLaunchPlaytime}
+              disabled={playtimeLaunching}
+              className={`
+                flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold
+                transition-all active:brightness-90
+                ${playtimeLaunching
+                  ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] cursor-not-allowed'
+                  : playtimeError
+                    ? 'bg-[var(--accent-red)]/20 text-[var(--accent-red)] hover:bg-[var(--accent-red)]/30 ring-1 ring-[var(--accent-red)]/30'
+                    : 'bg-[var(--accent-orange)] text-black hover:brightness-110'
+                }
+              `}
+              aria-label="Launch Playtime"
+            >
+              {playtimeLaunching ? (
+                <>
+                  <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Launching…
+                </>
+              ) : playtimeError ? (
+                <>
+                  <span>⚠</span>
+                  {playtimeError}
+                </>
+              ) : (
+                <>
+                  <span>▶</span>
+                  Launch Playtime
+                </>
+              )}
+            </button>
+
+            {/* Retry button if Playtime check failed */}
+            {onCheckPlaytimeAvailable && playtimeAvailable === null && !playtimeLaunching && (
+              <button
+                onClick={() => {
+                  onCheckPlaytimeAvailable().then(result => {
+                    setPlaytimeAvailable(result.available);
+                  }).catch(() => {
+                    setPlaytimeAvailable(false);
+                  });
+                }}
+                className="text-[10px] text-[var(--text-secondary)]/50 hover:text-[var(--text-secondary)] underline"
+                aria-label="Retry Playtime check"
+              >
+                Check again
+              </button>
+            )}
+          </div>
+        )}
+
+        {isActive && (
+          <button
+            onClick={() => getMatrix()}
+            className="flex items-center gap-2 px-4 py-2 rounded text-sm bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-all active:brightness-90"
+            aria-label="Refresh matrix"
+          >
+            ↻ Refresh Matrix
+          </button>
+        )}
       </div>
     );
   }
