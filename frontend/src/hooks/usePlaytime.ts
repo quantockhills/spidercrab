@@ -56,6 +56,18 @@ export function usePlaytime() {
     }
   }, [send]);
 
+  const checkPlaytimeAvailable = useCallback(async (): Promise<{available: boolean}> => {
+    try {
+      const resp = await send('playtime/isAvailable');
+      const payload = resp.payload as Record<string, unknown>;
+      return {
+        available: payload?.available === true,
+      };
+    } catch {
+      return { available: false };
+    }
+  }, [send]);
+
   const launchPlaytime = useCallback(async (): Promise<{launched: boolean; message: string}> => {
     try {
       const resp = await send('playtime/launch');
@@ -99,5 +111,6 @@ export function usePlaytime() {
     setSlotState,
     updateMatrixSlot,
     launchPlaytime,
+    checkPlaytimeAvailable,
   };
 }
