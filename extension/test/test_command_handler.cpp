@@ -3373,22 +3373,17 @@ TEST(FxChainTest, GetInfoReturnsChainDetails)
     fs::path chainPath = testDir / "test_chain.RfxChain";
 
     // Create an FX chain file with multiple FX
+    // REAPER's native .RfxChain format uses <VST (not <ITEM) for plugins
     std::string fxChainContent =
         "<FXCHAIN\n"
         "  SHOW 0\n"
         "  LASTSEL 0\n"
         "  DOCKED 0\n"
-        "  <ITEM\n"
-        "    NAME \"ReaEQ\"\n"
-        "    VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0 0\n"
+        "  <VST \"VST: ReaEQ (Cockos)\" reaeq.vst.so 0\n"
         "  >\n"
-        "  <ITEM\n"
-        "    NAME \"ReaComp\"\n"
-        "    VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+        "  <VST \"VST: ReaComp (Cockos)\" reacomp.vst.so 0\n"
         "  >\n"
-        "  <ITEM\n"
-        "    NAME \"ReaDelay\"\n"
-        "    VST \"VST3: ReaDelay (Cockos)\" ReaDelay 0\n"
+        "  <VST \"VST: ReaDelay (Cockos)\" readelay.vst.so 0\n"
         "  >\n"
         ">";
 
@@ -3734,14 +3729,18 @@ TEST(FxChainChunkTest, ReplaceWithNoExistingFxChain)
     }
     EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
 
-    // The result should contain the new FXCHAIN somewhere after the
-    // original chunk content. Since this is the fallback path, the
-    // FXCHAIN is appended at the end (the track close > is in the
-    // original chunk, not after the FXCHAIN).
+    // The result should contain the new FXCHAIN inside the TRACK section,
+    // before the closing >. The TRACK open is detected as a REAPER section
+    // opener (no > on same line), and the FXCHAIN is inserted before the
+    // matching close >.
     size_t fxchainPos = result.find("<FXCHAIN");
     ASSERT_NE(fxchainPos, std::string::npos);
-    // The original chunk ends with ">\n" — the FXCHAIN comes after that
-    EXPECT_GT(fxchainPos, noFxChunk.size()) << "FXCHAIN should be appended after original chunk";
+    // FXCHAIN should be after the TRACK open and its NAME line
+    EXPECT_GT(fxchainPos, 0u) << "FXCHAIN should be after TRACK open";
+    // FXCHAIN should be before the TRACK close >
+    size_t trackClosePos = result.find(">\n");
+    ASSERT_NE(trackClosePos, std::string::npos);
+    EXPECT_LT(fxchainPos, trackClosePos) << "FXCHAIN should be before TRACK close >";
 }
 
 TEST(FxChainChunkTest, ReplaceWithXmlWrappedFxChain)
