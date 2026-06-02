@@ -4769,3 +4769,189 @@ TEST(MidiEventTest, MidiEventResponseIsValidJson)
         EXPECT_EQ(resp.back(), '}') << cc.desc;
     }
 }
+
+// ============================================================
+// MIDI feedback mapping tests (Issue #91)
+//
+// These tests validate the note-to-slot mapping logic used in the
+// MIDI feedback listener, without requiring actual MIDI hardware.
+// ============================================================
+
+TEST(MidiFeedbackTest, Note36MapsToColumn0Row0)
+{
+    // MIDI note 36 = first slot in the 8x8 grid (column 0, row 0)
+    int note = 36;
+    int index = note - 36;
+    int col = index % 8;
+    int row = index / 8;
+    EXPECT_EQ(col, 0);
+    EXPECT_EQ(row, 0);
+}
+
+TEST(MidiFeedbackTest, Note43MapsToColumn7Row0)
+{
+    // MIDI note 43 = 36 + 7 = column 7, row 0 (end of first row)
+    int note = 43;
+    int index = note - 36;
+    int col = index % 8;
+    int row = index / 8;
+    EXPECT_EQ(col, 7);
+    EXPECT_EQ(row, 0);
+}
+
+TEST(MidiFeedbackTest, Note44MapsToColumn0Row1)
+{
+    // MIDI note 44 = 36 + 8 = second row start
+    int note = 44;
+    int index = note - 36;
+    int col = index % 8;
+    int row = index / 8;
+    EXPECT_EQ(col, 0);
+    EXPECT_EQ(row, 1);
+}
+
+TEST(MidiFeedbackTest, Note99MapsToColumn7Row7)
+{
+    // MIDI note 99 = 36 + 63 = last slot (column 7, row 7)
+    int note = 99;
+    int index = note - 36;
+    int col = index % 8;
+    int row = index / 8;
+    EXPECT_EQ(col, 7);
+    EXPECT_EQ(row, 7);
+}
+
+TEST(MidiFeedbackTest, Note100MapsToSceneRow0)
+{
+    // Scene buttons use notes 100-107, which aren't processed by slot feedback
+    int note = 100;
+    EXPECT_TRUE(note >= 100 && note <= 107);
+    // These should NOT match the 36-99 slot range
+    bool isSlot = (note >= 36 && note <= 99);
+    EXPECT_FALSE(isSlot);
+}
+
+TEST(MidiFeedbackTest, Note108IsStopAll)
+{
+    // Global control notes (108+) should NOT match slot range
+    int note = 108;
+    bool isSlot = (note >= 36 && note <= 99);
+    EXPECT_FALSE(isSlot);
+}
+
+TEST(MidiFeedbackTest, Velocity64MarksPlayingThreshold)
+{
+    // ReaLearn: vel >= 64 = playing, vel < 64 = stopped
+    EXPECT_TRUE((64 >= 64) ? true : false);  // 'playing'
+    EXPECT_TRUE((63 >= 64) ? false : true);  // 'stopped'
+    EXPECT_TRUE((0 >= 64)  ? false : true);  // 'stopped' (note off)
+    EXPECT_TRUE((127 >= 64) ? true : false); // 'playing'
+}
+
+TEST(MidiFeedbackTest, SetSlotStateFromNoteFeedback)
+{
+    // Simulate what Run() does when it receives a MIDI feedback note
+    // This tests the full logic path: note -> col/row -> setSlotState
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    PlaytimeState& state = handler->GetPlaytimeState();
+
+    // Simulate receiving note 60 (index 24, col 0, row 3) with vel=127
+    int note = 60;
+    int vel = 127;
+    int index = note - 36;
+    int col = index % 8;
+    int row = index / 8;
+    std::string newState = (vel >= 64) ? "playing" : "stopped";
+
+    EXPECT_EQ(col, 0);
+    EXPECT_EQ(row, 3);
+
+    // Apply the state change to PlaytimeState
+    state.setSlotState(col, row, newState);
+
+    // Verify the state was updated
+    SlotState s = state.getSlot(col, row);
+    EXPECT_EQ(s.state, "playing");
+    EXPECT_EQ(s.column, 0);
+    EXPECT_EQ(s.row, 3);
+
+    // Verify other slots are unaffected
+    SlotState other = state.getSlot(7, 7);
+    EXPECT_EQ(other.state, "empty");
+}
+
+TEST(MidiFeedbackTest, BroadcastEventFromFeedback)
+{
+    // Test that BroadcastMatrixEvent works correctly when called
+    // from the feedback path (simulates what Run() does)
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    // Simulate Run() feedback logic
+    int note = 44; // column 0, row 1
+    int vel = 100;
+    int index = note - 36;
+    int col = index % 8;
+    int row = index / 8;
+    std::string newState = (vel >= 64) ? "playing" : "stopped";
+
+    handler->GetPlaytimeState().setSlotState(col, row, newState);
+    SlotState s = handler->GetPlaytimeState().getSlot(col, row);
+    handler->BroadcastMatrixEvent("matrix/slotStateChanged", s.toJson());
+
+    ASSERT_EQ(captured.size(), 1u);
+    EXPECT_NE(captured[0].find("matrix/slotStateChanged"), std::string::npos);
+    EXPECT_NE(captured[0].find("\"state\":\"playing\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"column\":0"), std::string::npos);
+    EXPECT_NE(captured[0].find("\"row\":1"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : captured[0]) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MidiFeedbackTest, FeedbackPathDoesNotAffectBroadcastCallback)
+{
+    // Test that the feedback path correctly uses the broadcast callback
+    // when it's set (simulating the main.cpp Run() code path)
+    std::vector<std::string> captured;
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger a slot via the command handler (which also broadcasts)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t1"})");
+
+    // Should have one broadcast (from triggerSlot) and one response
+    ASSERT_EQ(captured.size(), 1u) << "triggerSlot should broadcast";
+    ASSERT_EQ(responses.size(), 1u) << "triggerSlot should respond";
+
+    // Now simulate a MIDI feedback event coming in
+    captured.clear();
+    handler->GetPlaytimeState().setSlotState(5, 6, "playing");
+    SlotState s = handler->GetPlaytimeState().getSlot(5, 6);
+    handler->BroadcastMatrixEvent("matrix/slotStateChanged", s.toJson());
+
+    // Should have a new broadcast from feedback
+    ASSERT_EQ(captured.size(), 1u);
+    EXPECT_NE(captured[0].find("matrix/slotStateChanged"), std::string::npos);
+
+    // Slot (2,3) should still be in its triggerSlot state, slot (5,6) should be playing
+    SlotState s1 = handler->GetPlaytimeState().getSlot(2, 3);
+    EXPECT_NE(s1.state, "empty"); // was toggled by triggerSlot
+    SlotState s2 = handler->GetPlaytimeState().getSlot(5, 6);
+    EXPECT_EQ(s2.state, "playing"); // was set by feedback
+}

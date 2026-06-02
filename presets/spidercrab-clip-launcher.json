@@ -1,0 +1,1469 @@
+{
+  "id": "spidercrab",
+  "name": "Spidercrab Clip Launcher",
+  "version": "2.11.0-pre.2",
+  "controlDeviceId": "0",
+  "feedbackDeviceId": "fx-output",
+  "mappings": [
+    {
+      "id": "7c005c5e-38c0-4c35-a1b2-7b90a07440ca",
+      "name": "Slot C1/R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 36
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 0,
+        "row_index": 0
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "afe98b18-a933-4d11-9e7d-088e0ee2b6c9",
+      "name": "Slot C2/R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 37
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 1,
+        "row_index": 0
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "b5ab5a97-827f-4283-8db7-5fea2fff8cc8",
+      "name": "Slot C3/R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 38
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 2,
+        "row_index": 0
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "bd545595-ef53-408f-8cc5-132382755b2e",
+      "name": "Slot C4/R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 39
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 3,
+        "row_index": 0
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "702d8987-5405-4b3a-95f1-05ad728fafd2",
+      "name": "Slot C5/R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 40
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 4,
+        "row_index": 0
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "4bed5dce-cbc5-4295-be82-e391c4aac4c7",
+      "name": "Slot C6/R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 41
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 5,
+        "row_index": 0
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "2562dd05-574a-47b4-8179-c11eab51628e",
+      "name": "Slot C7/R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 42
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 6,
+        "row_index": 0
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "8a8659c0-5257-4a84-a409-85d520092666",
+      "name": "Slot C8/R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 43
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 7,
+        "row_index": 0
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "8251c0ee-4944-4f7d-a9bb-18d54a8677e2",
+      "name": "Slot C1/R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 44
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 0,
+        "row_index": 1
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "832af88e-f271-4d84-9ea4-b922ff19e9f5",
+      "name": "Slot C2/R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 45
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 1,
+        "row_index": 1
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "b7cb19ed-c5fe-4a9a-92cb-297a08dd3f8b",
+      "name": "Slot C3/R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 46
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 2,
+        "row_index": 1
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "81015d02-0752-484a-a401-2e62d7dc2a4e",
+      "name": "Slot C4/R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 47
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 3,
+        "row_index": 1
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "6f1e5c5e-0a76-4207-834f-668d4ab66816",
+      "name": "Slot C5/R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 48
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 4,
+        "row_index": 1
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "e2c645e5-52fb-460b-b550-3cf9d6c28183",
+      "name": "Slot C6/R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 49
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 5,
+        "row_index": 1
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "eb1550af-f7cc-4899-876f-e5a671c3f200",
+      "name": "Slot C7/R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 50
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 6,
+        "row_index": 1
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "e79c4562-e440-4345-98fd-065ec5a9fd2d",
+      "name": "Slot C8/R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 51
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 7,
+        "row_index": 1
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "471ae52c-62fc-4c27-b012-05ce5fc19098",
+      "name": "Slot C1/R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 52
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 0,
+        "row_index": 2
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "d19660dd-eb6e-45cb-bf43-fac58d52a478",
+      "name": "Slot C2/R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 53
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 1,
+        "row_index": 2
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "b086c38a-f2dd-479f-8bbf-dad9c10c8f82",
+      "name": "Slot C3/R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 54
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 2,
+        "row_index": 2
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "a4578691-9164-45de-aca0-38519f46dc03",
+      "name": "Slot C4/R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 55
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 3,
+        "row_index": 2
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "2b273e3b-989c-4993-bae6-d97c0af677d9",
+      "name": "Slot C5/R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 56
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 4,
+        "row_index": 2
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "c672bcc4-e515-4a6d-aa1a-bcd64b329e98",
+      "name": "Slot C6/R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 57
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 5,
+        "row_index": 2
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "5ef00ff8-9604-4654-b0f2-8dc9c62f8f5f",
+      "name": "Slot C7/R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 58
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 6,
+        "row_index": 2
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "8adbd93f-23a7-4208-b5f8-ae452bf0433f",
+      "name": "Slot C8/R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 59
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 7,
+        "row_index": 2
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "e52793e3-d294-4af4-833b-d7667147c912",
+      "name": "Slot C1/R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 60
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 0,
+        "row_index": 3
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "ef15821a-763a-4499-9b57-912704ea01e1",
+      "name": "Slot C2/R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 61
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 1,
+        "row_index": 3
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "b1800a82-80fd-4e03-909b-908b76b21471",
+      "name": "Slot C3/R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 62
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 2,
+        "row_index": 3
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "909262d4-eed3-4768-b559-d6835f213684",
+      "name": "Slot C4/R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 63
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 3,
+        "row_index": 3
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "d459860d-58c9-47f9-9dba-588ecdaf5af8",
+      "name": "Slot C5/R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 64
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 4,
+        "row_index": 3
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "a1603870-35f8-4d69-972c-6dd9e558af73",
+      "name": "Slot C6/R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 65
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 5,
+        "row_index": 3
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "bb39acfa-1835-4971-91ec-e64aab8f4a95",
+      "name": "Slot C7/R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 66
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 6,
+        "row_index": 3
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "2218b997-58c7-45cb-8d4a-dc686a4f375c",
+      "name": "Slot C8/R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 67
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 7,
+        "row_index": 3
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "775152f2-f643-4204-a14b-7045fbad64e3",
+      "name": "Slot C1/R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 68
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 0,
+        "row_index": 4
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "a95a44a3-d43d-4dba-98ec-acbf889d3899",
+      "name": "Slot C2/R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 69
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 1,
+        "row_index": 4
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "d707c8e0-66ae-4ebf-a3b2-9c8e33284a57",
+      "name": "Slot C3/R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 70
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 2,
+        "row_index": 4
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "1f6037eb-25ff-4681-991a-655b9b1e68e6",
+      "name": "Slot C4/R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 71
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 3,
+        "row_index": 4
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "c9ba87a9-cce2-4d53-9188-c968d4219f63",
+      "name": "Slot C5/R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 72
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 4,
+        "row_index": 4
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "f7d7bb59-aef2-4b65-b66d-67184288aa81",
+      "name": "Slot C6/R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 73
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 5,
+        "row_index": 4
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "69d6bd32-0c63-4f9b-9958-9a012819f8c5",
+      "name": "Slot C7/R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 74
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 6,
+        "row_index": 4
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "c3fe9ac7-6b38-414e-9090-3b0965d9d834",
+      "name": "Slot C8/R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 75
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 7,
+        "row_index": 4
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "b9c89896-b5eb-4d42-a318-d127ad705d60",
+      "name": "Slot C1/R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 76
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 0,
+        "row_index": 5
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "5180026d-3c1d-4c88-8fda-04533cb6ae07",
+      "name": "Slot C2/R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 77
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 1,
+        "row_index": 5
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "6c8d9941-ac05-434a-ae61-bb6674ee5ba6",
+      "name": "Slot C3/R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 78
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 2,
+        "row_index": 5
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "c79b811f-c2e9-4d5f-a9b8-40ed598ae77f",
+      "name": "Slot C4/R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 79
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 3,
+        "row_index": 5
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "91cfe53a-fc6f-4865-843c-fbef0b7af94f",
+      "name": "Slot C5/R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 80
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 4,
+        "row_index": 5
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "c6e50ae7-ab9a-46fa-b9da-8821452b62e7",
+      "name": "Slot C6/R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 81
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 5,
+        "row_index": 5
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "95be3f73-b45c-438b-830e-556582907fc2",
+      "name": "Slot C7/R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 82
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 6,
+        "row_index": 5
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "1dd66dc4-62e8-45f5-9967-6b4adf60613a",
+      "name": "Slot C8/R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 83
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 7,
+        "row_index": 5
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "7dfd276f-bddf-4acc-9ca3-5bc2887aeb10",
+      "name": "Slot C1/R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 84
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 0,
+        "row_index": 6
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "f5a84944-4b1c-48b6-a5d4-948fe854ad1c",
+      "name": "Slot C2/R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 85
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 1,
+        "row_index": 6
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "9fae6951-d818-432b-8dde-13b6c24a4475",
+      "name": "Slot C3/R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 86
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 2,
+        "row_index": 6
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "48e984b6-fc96-4589-826a-6dc25f6651db",
+      "name": "Slot C4/R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 87
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 3,
+        "row_index": 6
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "4acaa573-fe5e-4391-9c56-099d0f79d862",
+      "name": "Slot C5/R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 88
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 4,
+        "row_index": 6
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "bf19ac14-647a-4401-bb34-2bc233349d46",
+      "name": "Slot C6/R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 89
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 5,
+        "row_index": 6
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "cb893ee7-0252-4e18-8f30-ca4c22713b54",
+      "name": "Slot C7/R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 90
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 6,
+        "row_index": 6
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "8332094a-c935-452f-9828-0ed0a60c8ca4",
+      "name": "Slot C8/R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 91
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 7,
+        "row_index": 6
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "303b36c0-caca-4811-8719-1463eaee1f43",
+      "name": "Slot C1/R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 92
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 0,
+        "row_index": 7
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "b13e36c4-22d4-45dc-b133-40d26b9c8553",
+      "name": "Slot C2/R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 93
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 1,
+        "row_index": 7
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "d2cd3045-8a96-446d-bd7c-23e1038b2920",
+      "name": "Slot C3/R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 94
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 2,
+        "row_index": 7
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "a4cca54f-3a1a-4217-bae2-fdad50b09061",
+      "name": "Slot C4/R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 95
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 3,
+        "row_index": 7
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "d1958670-4bf9-4061-b3df-c42b115714bb",
+      "name": "Slot C5/R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 96
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 4,
+        "row_index": 7
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "901e1c7d-ecd5-4357-8fb2-4654d34a4364",
+      "name": "Slot C6/R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 97
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 5,
+        "row_index": 7
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "43062f20-9609-418d-bea7-f8153bccec3b",
+      "name": "Slot C7/R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 98
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 6,
+        "row_index": 7
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "2dd5cd4a-ecd8-4012-adfe-d0e21f697614",
+      "name": "Slot C8/R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 99
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeSlotTransportAction"
+      },
+      "clip_slot": {
+        "address": "ByIndex",
+        "column_index": 7,
+        "row_index": 7
+      },
+      "clip_transport_action": "RecordPlayStop",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "c98ded04-87ab-40e3-b619-4cc6b07f39f8",
+      "name": "Scene R1",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 100
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeRowAction"
+      },
+      "clip_row": {
+        "address": "ByIndex",
+        "index": 0
+      },
+      "clip_row_action": "PlayScene",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "187168b2-8168-472e-9e75-da14c683f822",
+      "name": "Scene R2",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 101
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeRowAction"
+      },
+      "clip_row": {
+        "address": "ByIndex",
+        "index": 1
+      },
+      "clip_row_action": "PlayScene",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "0900d7a8-ee0d-4751-b707-c6fa60e2ce51",
+      "name": "Scene R3",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 102
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeRowAction"
+      },
+      "clip_row": {
+        "address": "ByIndex",
+        "index": 2
+      },
+      "clip_row_action": "PlayScene",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "6fb9b495-6ece-4139-9f89-b2d452037a99",
+      "name": "Scene R4",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 103
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeRowAction"
+      },
+      "clip_row": {
+        "address": "ByIndex",
+        "index": 3
+      },
+      "clip_row_action": "PlayScene",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "31339188-70fb-4900-b1c7-87c81c642050",
+      "name": "Scene R5",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 104
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeRowAction"
+      },
+      "clip_row": {
+        "address": "ByIndex",
+        "index": 4
+      },
+      "clip_row_action": "PlayScene",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "a6d44416-b8fe-4cb0-8d51-ab2a8c0185ad",
+      "name": "Scene R6",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 105
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeRowAction"
+      },
+      "clip_row": {
+        "address": "ByIndex",
+        "index": 5
+      },
+      "clip_row_action": "PlayScene",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "7ed0c4c6-3407-412d-bfe8-efaebb1a06f6",
+      "name": "Scene R7",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 106
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeRowAction"
+      },
+      "clip_row": {
+        "address": "ByIndex",
+        "index": 6
+      },
+      "clip_row_action": "PlayScene",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "47668ddf-47dd-4d77-a77e-d6946e9eaad3",
+      "name": "Scene R8",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 107
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeRowAction"
+      },
+      "clip_row": {
+        "address": "ByIndex",
+        "index": 7
+      },
+      "clip_row_action": "PlayScene",
+      "sendFeedbackAfterControl": true
+    },
+    {
+      "id": "12279318-b539-474f-818a-5fd40433584c",
+      "name": "Stop All",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 108
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeMatrixAction"
+      },
+      "clip_matrix_action": "Stop"
+    },
+    {
+      "id": "070444b6-12ff-41d8-8e00-b92284465fcd",
+      "name": "Start/Stop Playback",
+      "source": {
+        "type": 1,
+        "channel": 0,
+        "number": 109
+      },
+      "mode": {},
+      "target": {
+        "type": "PlaytimeMatrixAction"
+      },
+      "clip_matrix_action": "StartOrStopPlayback"
+    }
+  ]
+}
