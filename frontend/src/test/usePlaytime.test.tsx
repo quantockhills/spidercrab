@@ -113,6 +113,79 @@ describe('usePlaytime', () => {
     expect(slot!.state).toBe('playing');
   });
 
+  it('checkPlaytimeAvailable sends playtime/isAvailable command', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.checkPlaytimeAvailable();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('playtime/isAvailable');
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { available: true, version: 'ok' },
+      }));
+    });
+
+    const resultData = await promise;
+    expect(resultData.available).toBe(true);
+  });
+
+  it('checkPlaytimeAvailable returns false on error', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.checkPlaytimeAvailable();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: false,
+        payload: { available: false, reason: 'Not available' },
+      }));
+    });
+
+    const resultData = await promise;
+    expect(resultData.available).toBe(false);
+  });
+
+  it('checkPlaytimeAvailable returns false on network error', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.checkPlaytimeAvailable();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: false,
+        error: 'Connection error',
+      }));
+    });
+
+    const resultData = await promise;
+    expect(resultData.available).toBe(false);
+  });
+
   it('updateMatrixSlot updates local state optimistically', () => {
     const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
 

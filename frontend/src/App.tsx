@@ -63,6 +63,8 @@ function AppInner() {
     seqClearAll,
     seqSetLength,
     seqSetBaseNote,
+    launchPlaytime,
+    checkPlaytimeAvailable,
   } = useReaper();
 
   const { preference, isDark, setTheme } = useTheme();
@@ -264,6 +266,8 @@ function AppInner() {
                   onStop={stop}
                   onRecord={record}
                   onGetTransportState={getTransportState}
+                  onLaunchPlaytime={launchPlaytime}
+                  onCheckPlaytimeAvailable={checkPlaytimeAvailable}
                 />
               ) : (
                 <SequencerView
