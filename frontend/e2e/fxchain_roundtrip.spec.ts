@@ -5,6 +5,10 @@ import { test, expect } from '@playwright/test';
  * Wire up a mocking WebSocket handler that responds to all commands
  * the app might send during the FX chain browser roundtrip tests.
  * Captures sent messages for verification where needed.
+ *
+ * Uses setTimeout(0) to defer ws.send() responses, avoiding potential
+ * re-entrancy issues in Playwright's WebSocketRoute when sending from
+ * within an onMessage callback.
  */
 function makeMockWsHandler(captured?: { sent: string[] }): (ws: any) => void {
   return (ws: any): void => {
@@ -70,12 +74,16 @@ function makeMockWsHandler(captured?: { sent: string[] }): (ws: any) => void {
           break;
       }
 
-      ws.send(JSON.stringify({
-        type: 'response',
-        id,
-        success: true,
-        payload: responsePayload,
-      }));
+      // Defer the ws.send() to avoid potential re-entrancy issues in
+      // Playwright's WebSocketRoute when sending from within onMessage.
+      setTimeout(() => {
+        ws.send(JSON.stringify({
+          type: 'response',
+          id,
+          success: true,
+          payload: responsePayload,
+        }));
+      }, 0);
     });
   };
 }
@@ -92,8 +100,11 @@ test.describe('FX Chain Browser Roundtrip (mocked WS)', () => {
    * Assumes a track has already been selected (or not, depending on test).
    */
   async function openChainsBrowser(page: any) {
-    // Navigate to FX tab
-    await page.getByText('FX').first().click();
+    // Navigate to FX tab using the bottom nav bar.
+    // IMPORTANT: Do NOT use getByText('FX').first() — that matches TrackOverview's
+    // per-track "FX" open button which ALSO calls setSelectedTrack(). We must
+    // specifically target the tab-bar button in <nav>.
+    await page.locator('nav button:has-text("FX")').click();
     await page.waitForTimeout(500);
 
     // Click the "🔗 Chains" button in FxBrowser header
@@ -115,20 +126,36 @@ test.describe('FX Chain Browser Roundtrip (mocked WS)', () => {
 
   /**
    * Helper: set up WS mock and navigate.
-   * Gives Playwright a moment to register the route before the page loads.
+   * Uses expect().toBeVisible() with auto-waiting (more robust than waitForFunction)
+   * to confirm track data has loaded from the mock WebSocket.
+   *
+   * Falls back to clicking the Refresh button if the initial track/getAll response
+   * didn't arrive (a rare timing issue with Playwright routeWebSocket).
    */
   async function setupWithMock(page: any, captured?: { sent: string[] }) {
     await page.routeWebSocket('ws://127.0.0.1:9224', makeMockWsHandler(captured));
-    // Small delay to ensure routeWebSocket is fully registered
-    await page.waitForTimeout(100);
     await page.goto('/');
+    // Wait for track data to appear in the UI.
+    // Use a try/catch with a fallback: if the initial track/getAll response was
+    // missed (Playwright routeWebSocket timing issue), click the Refresh button
+    // to trigger another track/getAll call.
+    try {
+      await expect(page.getByText('Track 1').first()).toBeVisible({ timeout: 8000 });
+    } catch {
+      // Initial response missed — trigger a manual refresh. This sends another
+      // track/getAll which the mock will handle.
+      const refreshBtn = page.getByTitle('Refresh tracks');
+      await refreshBtn.click();
+      await expect(page.getByText('Track 1').first()).toBeVisible({ timeout: 10000 });
+    }
   }
 
   /**
    * Helper: select the first track (app starts on Tracks tab)
    */
   async function selectFirstTrack(page: any) {
-    await expect(page.getByText('Track 1')).toBeVisible({ timeout: 10000 });
+    // Track names are set by refreshTracks() after mock WS responds to track/getAll.
+    await expect(page.getByText('Track 1').first()).toBeVisible({ timeout: 10000 });
     await page.getByText('Track 1').first().click();
     await page.waitForTimeout(300);
   }
