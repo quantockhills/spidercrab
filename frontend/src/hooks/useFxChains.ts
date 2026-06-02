@@ -9,6 +9,16 @@ export interface FxChainEntry {
   type?: 'dir' | 'file';
 }
 
+// ── Search result type ──────────────────────────────────────
+
+export interface FxChainSearchResult {
+  filePath: string;
+  name: string;
+  size: number;
+}
+
+// ── Public types ─────────────────────────────────────────────
+
 export interface FxChainInfo {
   filePath: string;
   fxCount: number;
@@ -57,5 +67,13 @@ export function useFxChains() {
     [send],
   );
 
-  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo };
+  const fxChainSearchRecursive = useCallback(
+    async (query: string, rootPath: string): Promise<{ query: string; results: FxChainSearchResult[] }> => {
+      const resp = await send('fxchain/searchRecursive', { query, rootPath }, 60000);
+      return resp.payload as { query: string; results: FxChainSearchResult[] };
+    },
+    [send],
+  );
+
+  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo, fxChainSearchRecursive };
 }
