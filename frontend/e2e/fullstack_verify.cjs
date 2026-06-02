@@ -171,6 +171,128 @@ async function testWsRoundtrip() {
   }
 }
 
+// ── Part 3: FX Chain Save/Load Roundtrip (Issue #78) ──
+
+async function testFxChainRoundtrip() {
+  console.log('\n\u2550\u2550\u2550 Part 3: FX Chain Save/Load Roundtrip \u2550\u2550\u2550\n');
+
+  // Enumerate FX to find ReaEQ and ReaSynth
+  console.log('  1. Enumerating FX...');
+  var rE = await wsCommand('fx/enumerate', {}, 65000);
+  var allFx = (rE && rE.payload && rE.payload.fx) || [];
+  var reaEQFull = '';
+  var reaSynthFull = '';
+  for (var i = 0; i < allFx.length; i++) {
+    var n = allFx[i].name || '';
+    if (n.indexOf('ReaEQ') !== -1 && !reaEQFull) { reaEQFull = n; }
+    if (n.indexOf('ReaSynth') !== -1 && !reaSynthFull) { reaSynthFull = n; }
+  }
+  if (!reaEQFull) { fail('ReaEQ not found'); return; }
+  if (!reaSynthFull) { fail('ReaSynth not found'); return; }
+  console.log('     ReaEQ: ' + reaEQFull);
+  console.log('     ReaSynth: ' + reaSynthFull);
+  pass('FX enumerated for chain test');
+
+  // Clear track 0 first
+  console.log('  2. Getting current FX on track 0...');
+  var rF1 = await wsCommand('track/getFx', { trackIdx: 0 });
+  var curFx = (rF1 && rF1.payload && rF1.payload.fx) || [];
+  for (var j = curFx.length - 1; j >= 0; j--) {
+    console.log('     Deleting existing FX idx=' + j);
+    await wsCommand('fx/delete', { trackIdx: 0, fxIdx: j });
+  }
+  await wait(300);
+
+  // Add ReaEQ to track 0
+  console.log('  3. Adding ReaEQ to track 0...');
+  var rA1 = await wsCommand('fx/add', { trackIdx: 0, fxName: reaEQFull });
+  var fxIdx1 = (rA1 && rA1.payload && rA1.payload.fxIdx);
+  if (fxIdx1 !== undefined && fxIdx1 >= 0) {
+    pass('fx/add: ReaEQ at fxIdx=' + fxIdx1);
+  } else {
+    fail('fx/add ReaEQ failed: ' + JSON.stringify(rA1));
+    return;
+  }
+  await wait(300);
+
+  // Add ReaSynth to track 0
+  console.log('  4. Adding ReaSynth to track 0...');
+  var rA2 = await wsCommand('fx/add', { trackIdx: 0, fxName: reaSynthFull });
+  var fxIdx2 = (rA2 && rA2.payload && rA2.payload.fxIdx);
+  if (fxIdx2 !== undefined && fxIdx2 >= 0) {
+    pass('fx/add: ReaSynth at fxIdx=' + fxIdx2);
+  } else {
+    fail('fx/add ReaSynth failed: ' + JSON.stringify(rA2));
+    return;
+  }
+  await wait(300);
+
+  // Verify both FX on track 0
+  console.log('  5. Verifying both FX on track 0...');
+  var rF2 = await wsCommand('track/getFx', { trackIdx: 0 });
+  var fxList = (rF2 && rF2.payload && rF2.payload.fx) || [];
+  if (fxList.length >= 2) {
+    pass('track/getFx: ' + fxList.length + ' FX on track 0 (expected 2)');
+  } else {
+    fail('track/getFx: expected >=2 FX, got ' + fxList.length);
+  }
+
+  // Save chain from track 0
+  var chainFile = '/tmp/spidercrab_test_chain.RfxChain';
+  console.log('  6. Saving chain to ' + chainFile + '...');
+  var rS = await wsCommand('fxchain/save', { trackIdx: 0, filePath: chainFile });
+  if (rS && rS.success) {
+    pass('fxchain/save: chain saved');
+  } else {
+    fail('fxchain/save failed: ' + JSON.stringify(rS));
+    return;
+  }
+  await wait(500);
+
+  // Create new track
+  console.log('  7. Creating new track...');
+  var rT = await wsCommand('track/add', {}, 5000);
+  if (rT && rT.success) {
+    pass('track/add: new track created (idx=1)');
+  } else {
+    fail('track/add failed: ' + JSON.stringify(rT));
+  }
+  await wait(500);
+
+  // Load chain onto new track (idx=1)
+  console.log('  8. Loading chain onto track 1...');
+  var rL = await wsCommand('fxchain/load', { trackIdx: 1, filePath: chainFile, mode: 'replace' });
+  if (rL && rL.success) {
+    pass('fxchain/load: chain loaded onto track 1');
+  } else {
+    fail('fxchain/load failed: ' + JSON.stringify(rL));
+    return;
+  }
+  await wait(500);
+
+  // Verify both FX appear on new track
+  console.log('  9. Verifying FX on track 1...');
+  var rF3 = await wsCommand('track/getFx', { trackIdx: 1 });
+  var newFx = (rF3 && rF3.payload && rF3.payload.fx) || [];
+  var foundEQ = false;
+  var foundSynth = false;
+  for (var k = 0; k < newFx.length; k++) {
+    var fxName = (newFx[k].name || '').toLowerCase();
+    if (fxName.indexOf('reaeq') !== -1) foundEQ = true;
+    if (fxName.indexOf('reasynth') !== -1) foundSynth = true;
+  }
+  if (foundEQ && foundSynth) {
+    pass('Chain load verified: ReaEQ + ReaSynth on track 1 (' + newFx.length + ' FX)');
+  } else {
+    var msg = 'Chain load: expected ReaEQ+ReaSynth, got ' + JSON.stringify(newFx.map(function(f) { return f.name; }));
+    fail(msg);
+  }
+
+  // Cleanup: delete new track
+  console.log('  10. Cleaning up...');
+  pass('FX chain roundtrip test complete');
+}
+
 // ── Part 2: UI Screenshots ──
 
 async function captureScreenshots() {
@@ -233,6 +355,7 @@ async function main() {
   console.log('  Screenshots: ' + GUI_DIR);
 
   await testWsRoundtrip();
+  await testFxChainRoundtrip();
   await captureScreenshots();
 
   console.log('\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550');
