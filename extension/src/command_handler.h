@@ -181,6 +181,7 @@ private:
     void HandleSetFXParam(int clientId, const std::string& id, const std::string& params);
     void HandleAddFX(int clientId, const std::string& id, const std::string& params);
     void HandleDeleteFX(int clientId, const std::string& id, const std::string& params);
+    void HandleReorderFX(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX presets
     void HandleGetFxPreset(int clientId, const std::string& id, const std::string& params);

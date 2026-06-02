@@ -272,6 +272,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleAddFX(clientId, id, message);
         } else if (command == "fx/delete") {
             HandleDeleteFX(clientId, id, message);
+        } else if (command == "fx/reorder") {
+            HandleReorderFX(clientId, id, message);
         } else if (command == "fx/getPreset") {
             HandleGetFxPreset(clientId, id, message);
         } else if (command == "fx/setPreset") {
@@ -819,6 +821,78 @@ void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const s
     bool success = m_api.TrackFX_Delete(track, fxIdx);
     SendResponse(
         clientId, id, success, "{\"deleted\":" + std::string(success ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleReorderFX(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_CopyToTrack || !m_api.TrackFX_Delete || !m_api.TrackFX_GetCount) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr  = parser.getString("trackIdx");
+    std::string fromIdxStr   = parser.getString("fromIndex");
+    std::string toIdxStr     = parser.getString("toIndex");
+
+    if (trackIdxStr.empty() || fromIdxStr.empty() || toIdxStr.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Missing required parameters\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+    int fromIdx  = atoi(fromIdxStr.c_str());
+    int toIdx    = atoi(toIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+
+    // Validate indices
+    if (fromIdx < 0 || fromIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"fromIndex out of range: " + std::to_string(fromIdx) + " (0-" + std::to_string(fxCount - 1) + ")\"}");
+        return;
+    }
+    if (toIdx < 0 || toIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"toIndex out of range: " + std::to_string(toIdx) + " (0-" + std::to_string(fxCount - 1) + ")\"}");
+        return;
+    }
+
+    // No-op if moving to same position
+    if (fromIdx == toIdx) {
+        SendResponse(clientId, id, true,
+            "{\"reordered\":true,\"trackIdx\":" + std::to_string(trackIdx)
+            + ",\"fromIndex\":" + std::to_string(fromIdx)
+            + ",\"toIndex\":" + std::to_string(toIdx) + "}");
+        return;
+    }
+
+    // Index shift logic:
+    // If toIdx < fromIdx: copy to toIdx first (shift right), then delete at fromIdx + 1
+    // If toIdx > fromIdx: copy to toIdx+1 first (shift right past original), then delete at fromIdx
+    int destCopyIdx = (toIdx > fromIdx) ? toIdx + 1 : toIdx;
+    m_api.TrackFX_CopyToTrack(track, fromIdx, track, destCopyIdx, false);
+
+    int deleteIdx;
+    if (toIdx < fromIdx) {
+        deleteIdx = fromIdx + 1;
+    } else {
+        deleteIdx = fromIdx;
+    }
+
+    m_api.TrackFX_Delete(track, deleteIdx);
+
+    SendResponse(clientId, id, true,
+        "{\"reordered\":true,\"trackIdx\":" + std::to_string(trackIdx)
+        + ",\"fromIndex\":" + std::to_string(fromIdx)
+        + ",\"toIndex\":" + std::to_string(toIdx) + "}");
 }
 
 void CommandHandler::HandleGetTransport(
