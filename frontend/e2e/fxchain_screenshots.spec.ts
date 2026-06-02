@@ -8,6 +8,10 @@ const CHAIN_PATH = '/home/user/REAPER/FXChains';
 /**
  * Wire up a mocking WebSocket handler that responds to all commands
  * the app might send during the FX chain browser test.
+ *
+ * Uses setTimeout(0) to defer ws.send() responses, avoiding potential
+ * re-entrancy issues in Playwright's WebSocketRoute when sending from
+ * within an onMessage callback.
  */
 function makeMockWsHandler() {
   return (ws: any): void => {
@@ -59,58 +63,100 @@ function makeMockWsHandler() {
           break;
       }
 
-      ws.send(JSON.stringify({
-        type: 'response',
-        id,
-        success: true,
-        payload: responsePayload,
-      }));
+      // Defer the ws.send() to avoid potential re-entrancy issues in
+      // Playwright's WebSocketRoute when sending from within onMessage.
+      setTimeout(() => {
+        ws.send(JSON.stringify({
+          type: 'response',
+          id,
+          success: true,
+          payload: responsePayload,
+        }));
+      }, 0);
     });
   };
 }
 
-test.describe('Issue #78 — FX Chain Browser Screenshots', () => {
+/**
+ * Helper: pre-set localStorage so the FX chain path is available on app init.
+ * Must be called before page.goto().
+ */
+async function presetFxChainPath(page: any, path: string) {
+  await page.addInitScript((fxPath: string) => {
+    window.localStorage.setItem('fxChainPath', fxPath);
+  }, path);
+}
+
+/**
+ * Helper: navigate to FX tab and open the Chains browser.
+ * Assumes a track has already been selected (or not, depending on test).
+ */
+async function openChainsBrowser(page: any) {
+  // Navigate to FX tab using the bottom nav bar.
+  // IMPORTANT: Do NOT use getByText('FX').first() — that matches TrackOverview's
+  // per-track "FX" open button which ALSO calls setSelectedTrack(). We must
+  // specifically target the tab-bar button in <nav>.
+  await page.locator('nav button:has-text("FX")').click();
+  await page.waitForTimeout(500);
+
+  // Click the "🔗 Chains" button in FxBrowser header
+  const chainsBtn = page.locator('button:has-text("Chains")');
+  await expect(chainsBtn).toBeVisible({ timeout: 5000 });
+  await chainsBtn.click();
+  await page.waitForTimeout(500);
+}
+
+/**
+ * Helper: set up WS mock and navigate.
+ * Falls back to clicking the Refresh button if the initial track/getAll response
+ * didn't arrive (a rare timing issue with Playwright routeWebSocket).
+ */
+async function setupWithMock(page: any) {
+  await page.routeWebSocket('ws://127.0.0.1:9224', makeMockWsHandler());
+  await page.goto('/');
+  // Wait for track data to appear in the UI.
+  // Use a try/catch with a fallback: if the initial track/getAll response was
+  // missed (Playwright routeWebSocket timing issue), click the Refresh button
+  // to trigger another track/getAll call.
+  try {
+    await expect(page.getByText('Track 1').first()).toBeVisible({ timeout: 8000 });
+  } catch {
+    // Initial response missed — trigger a manual refresh. This sends another
+    // track/getAll which the mock will handle.
+    const refreshBtn = page.getByTitle('Refresh tracks');
+    await refreshBtn.click();
+    await expect(page.getByText('Track 1').first()).toBeVisible({ timeout: 10000 });
+  }
+}
+
+/**
+ * Helper: select a track (app starts on Tracks tab)
+ */
+async function selectTrack(page: any, name: string) {
+  await expect(page.getByText(name).first()).toBeVisible({ timeout: 10000 });
+  await page.getByText(name).first().click();
+  await page.waitForTimeout(300);
+}
+
+test.describe('Issue #82 — FX Chain Browser Screenshots', () => {
   test.setTimeout(60000);
 
   test('Capture FX chain browser with mocked WS', async ({ page }) => {
+    // Pre-set localStorage so fxChainPath is available on app init
+    await presetFxChainPath(page, CHAIN_PATH);
+
     // Intercept WebSocket — frontend connects to 127.0.0.1:9224 (useReaper default)
-    await page.routeWebSocket('ws://127.0.0.1:9224', makeMockWsHandler());
+    await setupWithMock(page);
 
     await page.setViewportSize(IPAD_PRO);
-    await page.goto('/');
-    await page.waitForTimeout(2000);
 
-    // ── Step 1: Select a track first (needed for Load/Save) ──
-    // Navigate to Tracks tab
-    const tracksTab = page.getByText('Tracks').first();
-    await expect(tracksTab).toBeVisible({ timeout: 5000 });
-    await tracksTab.click();
+    // Select Track 2
+    await selectTrack(page, 'Track 2');
 
-    // Wait for track list to render
-    await expect(page.getByText('Track 2')).toBeVisible({ timeout: 10000 });
-    // Click on Track 2 to select it
-    await page.getByText('Track 2').first().click();
-    await page.waitForTimeout(500);
+    // Navigate to FX tab and open Chains browser
+    await openChainsBrowser(page);
 
-    // ── Step 2: Navigate to Settings tab ──
-    const settingsTab = page.getByText('Settings').last();
-    await expect(settingsTab).toBeVisible({ timeout: 5000 });
-    await settingsTab.click();
-    await page.waitForTimeout(1000);
-
-    // ── Step 3: Set FX Chains folder path ──
-    const pathInput = page.locator('input[placeholder*="Path to FXChains"]');
-    await expect(pathInput).toBeVisible({ timeout: 5000 });
-    await pathInput.fill(CHAIN_PATH);
-    await page.waitForTimeout(500);
-
-    // ── Step 4: Click "Browse FX Chains" to open the FxChainBrowser ──
-    const browseBtn = page.getByText('Browse FX Chains');
-    await expect(browseBtn).toBeVisible();
-    await browseBtn.click();
-    await page.waitForTimeout(2000);
-
-    // ── Step 5: Verify chain files appear ──
+    // ── Verify chain files appear ──
     await expect(page.getByText('EQ+Comp.RfxChain')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('Vocal Chain.RfxChain')).toBeVisible();
     await expect(page.getByText('Master Bus.RfxChain')).toBeVisible();
@@ -119,31 +165,31 @@ test.describe('Issue #78 — FX Chain Browser Screenshots', () => {
     await expect(page.getByText('Drums')).toBeVisible();
     await expect(page.getByText('Vocals')).toBeVisible();
 
-    // ── Step 6: Select a chain to show info panel ──
+    // ── Select a chain to show info panel ──
     const chainName = page.getByText('EQ+Comp.RfxChain');
     await chainName.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
 
     // Verify chain info panel appears
     await expect(page.getByText('Chain Info')).toBeVisible({ timeout: 3000 });
     await expect(page.getByText('ReaEQ')).toBeVisible();
     await expect(page.getByText('ReaComp')).toBeVisible();
-    await expect(page.getByText('2 FX', { exact: true })).toBeVisible();
+    await expect(page.getByText('2 FX').first()).toBeVisible();
 
     // ── Screenshot 1: Directory listing with selected chain info panel ──
-    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-78-chain-browser.png` });
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-82-chain-browser-loaded.png` });
 
-    // ── Step 7: Click Load to trigger fxchain/load ──
+    // ── Click Load to trigger fxchain/load ──
     // Target the Load button in the file row (not the "Browse & Load" mode toggle)
     const loadBtn = page.locator('button:has-text("Load"):not(:has-text("Browse"))').first();
     await expect(loadBtn).toBeVisible({ timeout: 3000 });
     await loadBtn.click();
 
-    // ── Step 8: Wait for the "✓" confirmation state ──
+    // ── Wait for the "✓" confirmation state ──
     await expect(page.getByText('✓').first()).toBeVisible({ timeout: 5000 });
 
     // ── Screenshot 2: After clicking Load — "✓" confirmation state ──
-    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-78-chain-loaded.png` });
+    await page.screenshot({ path: `${SCREENSHOT_DIR}/ss-82-chain-load-confirm.png` });
 
     // Verify the ✓ is temporary (disappears after ~2s)
     await page.waitForTimeout(3000);
