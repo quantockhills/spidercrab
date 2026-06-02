@@ -3628,3 +3628,96 @@ TEST(PlaytimeCommandTest, IsAvailablePayloadIsValid)
     EXPECT_EQ(depth, 0);
 }
 
+// ============================================================
+// Playtime launch command tests (Issue #88)
+// ============================================================
+
+TEST(PlaytimeCommandTest, LaunchWithoutPlaytimeApiReturnsSuccessWithLaunchedFalse)
+{
+    // When Playtime API is not loaded, playtime/launch should still
+    // return success but with launched:false and an explanatory message.
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/launch","id":"pl1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should return success:true but launched:false (since Playtime API is not loaded)
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos)
+        << "playtime/launch should return success even when Playtime is not available";
+    EXPECT_NE(resp.find("\"launched\":false"), std::string::npos)
+        << "playtime/launch should return launched:false when Playtime API is not loaded";
+    EXPECT_NE(resp.find("\"message\":"), std::string::npos)
+        << "playtime/launch should include an explanatory message";
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(PlaytimeCommandTest, LaunchRecognizedAsValidCommand)
+{
+    // Verify playtime/launch is registered in the command map
+    // and doesn't result in "Unknown command"
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Send an unknown command to compare
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/unknownCommand","id":"unk"})");
+
+    ASSERT_GE(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("Unknown command"), std::string::npos)
+        << "Unknown commands should get 'Unknown command' error";
+
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/launch","id":"pl2"})");
+
+    ASSERT_GE(responses.size(), 1u);
+    EXPECT_EQ(responses[0].find("Unknown command"), std::string::npos)
+        << "playtime/launch should be a recognized command";
+}
+
+TEST(PlaytimeCommandTest, LaunchReturnsProperPayloadStructure)
+{
+    // Verify the basic structure of playtime/launch response payload
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/launch","id":"pl3"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have type, id, success, payload keys
+    EXPECT_NE(resp.find("\"type\":\"response\""), std::string::npos);
+    EXPECT_NE(resp.find("\"id\":\"pl3\""), std::string::npos);
+    EXPECT_NE(resp.find("\"payload\":{"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+

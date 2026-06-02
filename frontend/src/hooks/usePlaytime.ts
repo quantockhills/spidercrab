@@ -56,6 +56,19 @@ export function usePlaytime() {
     }
   }, [send]);
 
+  const launchPlaytime = useCallback(async (): Promise<{launched: boolean; message: string}> => {
+    try {
+      const resp = await send('playtime/launch');
+      const payload = resp.payload as Record<string, unknown>;
+      return {
+        launched: payload?.launched === true,
+        message: (payload?.message as string) || '',
+      };
+    } catch {
+      return { launched: false, message: 'Failed to send launch command' };
+    }
+  }, [send]);
+
   const setSlotState = useCallback(
     (column: number, row: number, state: ClipSlot['state']) => {
       send('matrix/setSlotState', { column, row, state }).catch(() => {});
@@ -85,5 +98,6 @@ export function usePlaytime() {
     triggerScene,
     setSlotState,
     updateMatrixSlot,
+    launchPlaytime,
   };
 }
