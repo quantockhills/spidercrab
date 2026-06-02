@@ -306,6 +306,23 @@ export function useReaper(opts: UseReaperOptions = {}) {
     }
   }, []);
 
+  interface FxChainSearchResult {
+    filePath: string;
+    name: string;
+    size: number;
+  }
+
+  const fxChainSearchRecursive = useCallback(async (query: string, rootPath: string): Promise<FxChainSearchResult[]> => {
+    if (!clientRef.current || !rootPath) return [];
+    try {
+      const resp = await clientRef.current.send('fxchain/searchRecursive', { query, rootPath }, 30000);
+      if (!resp.success) return [];
+      return (resp.payload as { results: FxChainSearchResult[] }).results;
+    } catch {
+      return [];
+    }
+  }, []);
+
   // ── FX Preset commands (Issue #87) ──
 
   const getFxPreset = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxPresetInfo | null> => {
@@ -600,6 +617,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     fxChainSave,
     fxChainLoad,
     fxChainGetInfo,
+    fxChainSearchRecursive,
     getFxPreset,
     setFxPreset,
     getAllFxPresetNames,

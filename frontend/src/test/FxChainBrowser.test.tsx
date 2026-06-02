@@ -38,6 +38,7 @@ describe('FxChainBrowser', () => {
   const mockSave = vi.fn();
   const mockLoad = vi.fn();
   const mockGetInfo = vi.fn();
+  const mockSearchRecursive = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,6 +46,7 @@ describe('FxChainBrowser', () => {
     mockSave.mockResolvedValue(true);
     mockLoad.mockResolvedValue(true);
     mockGetInfo.mockResolvedValue(createMockChainInfo());
+    mockSearchRecursive.mockResolvedValue([]);
   });
 
   it('renders loading state initially', () => {
@@ -57,6 +59,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -73,6 +76,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -94,6 +98,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -113,6 +118,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -130,6 +136,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -149,6 +156,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -177,6 +185,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -204,6 +213,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -230,6 +240,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -259,6 +270,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -281,6 +293,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -305,6 +318,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -340,6 +354,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -362,6 +377,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -382,6 +398,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
       />
     );
@@ -398,6 +415,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -407,7 +425,7 @@ describe('FxChainBrowser', () => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
     });
 
-    const searchInput = screen.getByPlaceholderText('Search loaded chains…');
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
     fireEvent.change(searchInput, { target: { value: 'reverb' } });
 
     await waitFor(() => {
@@ -425,6 +443,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={() => {}}
         initialPath={testPath}
       />
@@ -434,7 +453,7 @@ describe('FxChainBrowser', () => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
     });
 
-    const searchInput = screen.getByPlaceholderText('Search loaded chains…');
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
     fireEvent.change(searchInput, { target: { value: 'zzzzz_not_found' } });
 
     await waitFor(() => {
@@ -452,6 +471,7 @@ describe('FxChainBrowser', () => {
         fxChainSave={mockSave}
         fxChainLoad={mockLoad}
         fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
         onBack={onBack}
         initialPath={testPath}
       />
@@ -460,5 +480,105 @@ describe('FxChainBrowser', () => {
     const backButton = screen.getByText('← Back');
     fireEvent.click(backButton);
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls fxChainSearchRecursive when search text changes', async () => {
+    mockSearchRecursive.mockResolvedValue([
+      { filePath: '/tmp/test_chains/sub/hidden_comp.RfxChain', name: 'hidden_comp.RfxChain', size: 256 },
+    ]);
+
+    render(
+      <FxChainBrowser
+        tracks={createMockTracks()}
+        selectedTrack={0}
+        fxChainGetDirectory={mockGetDirectory}
+        fxChainSave={mockSave}
+        fxChainLoad={mockLoad}
+        fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
+        onBack={() => {}}
+        initialPath={testPath}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'hidden' } });
+
+    // Wait for 300ms debounce to fire
+    await waitFor(() => {
+      expect(mockSearchRecursive).toHaveBeenCalledWith('hidden', testPath);
+    }, { timeout: 5000 });
+  });
+
+  it('shows backend results merged with local results', async () => {
+    mockSearchRecursive.mockResolvedValue([
+      { filePath: '/tmp/test_chains/sub/extra.RfxChain', name: 'extra.RfxChain', size: 128 },
+    ]);
+
+    render(
+      <FxChainBrowser
+        tracks={createMockTracks()}
+        selectedTrack={0}
+        fxChainGetDirectory={mockGetDirectory}
+        fxChainSave={mockSave}
+        fxChainLoad={mockLoad}
+        fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
+        onBack={() => {}}
+        initialPath={testPath}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    // Search for 'RfxChain' which matches all local + backend results
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'RfxChain' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('extra.RfxChain')).toBeDefined();
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    }, { timeout: 5000 });
+  });
+
+  it('shows searching indicator while backend search is in flight', async () => {
+    // Use a slow-resolving promise so the search indicator stays visible
+    let resolvePromise: (v: unknown) => void = () => {};
+    mockSearchRecursive.mockImplementation(() => new Promise(resolve => { resolvePromise = resolve; }));
+
+    render(
+      <FxChainBrowser
+        tracks={createMockTracks()}
+        selectedTrack={0}
+        fxChainGetDirectory={mockGetDirectory}
+        fxChainSave={mockSave}
+        fxChainLoad={mockLoad}
+        fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
+        onBack={() => {}}
+        initialPath={testPath}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'hidden' } });
+
+    // Wait for debounce to fire and searching indicator to appear
+    await waitFor(() => {
+      expect(screen.getByText('Searching all folders…')).toBeDefined();
+    }, { timeout: 5000 });
+
+    // Resolve the promise to clean up
+    resolvePromise([]);
   });
 });
