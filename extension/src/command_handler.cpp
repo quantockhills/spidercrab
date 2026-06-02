@@ -272,6 +272,12 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleAddFX(clientId, id, message);
         } else if (command == "fx/delete") {
             HandleDeleteFX(clientId, id, message);
+        } else if (command == "fx/getPreset") {
+            HandleGetFxPreset(clientId, id, message);
+        } else if (command == "fx/setPreset") {
+            HandleSetFxPreset(clientId, id, message);
+        } else if (command == "fx/getAllPresetNames") {
+            HandleGetAllFxPresetNames(clientId, id, message);
         } else if (command == "transport/getState") {
             HandleGetTransport(clientId, id, message);
         } else if (command == "transport/play") {
@@ -637,6 +643,156 @@ void CommandHandler::HandleAddFX(int clientId, const std::string& id, const std:
     // instantiate=1 means: don't prompt, just add the FX
     int fxIdx = m_api.TrackFX_AddByName(track, fxName.c_str(), false, 1);
     SendResponse(clientId, id, fxIdx >= 0, "{\"fxIdx\":" + std::to_string(fxIdx) + "}");
+}
+
+// ============================================================
+// FX preset command handlers (Issue #87)
+// ============================================================
+
+void CommandHandler::HandleGetFxPreset(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string fxIdxStr    = parser.getString("fxIdx");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    int         fxIdx       = atoi(fxIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int numPresets = 0;
+    int presetIdx  = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
+
+    std::string presetName;
+    if (presetIdx >= 0) {
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            presetName = nameBuf;
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("presetIndex") + ":" + std::to_string(presetIdx) + ",";
+    payload += json_string("presetName") + ":" + (presetName.empty() ? "null" : json_string(presetName)) + ",";
+    payload += json_string("numPresets") + ":" + std::to_string(numPresets);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSetFxPreset(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_SetPresetByIndex || !m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr  = parser.getString("trackIdx");
+    std::string fxIdxStr     = parser.getString("fxIdx");
+    std::string presetIdxStr = parser.getString("presetIdx");
+    int trackIdx  = atoi(trackIdxStr.c_str());
+    int fxIdx     = atoi(fxIdxStr.c_str());
+    int presetIdx = atoi(presetIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    bool success = m_api.TrackFX_SetPresetByIndex(track, fxIdx, presetIdx);
+    if (!success) {
+        SendResponse(clientId, id, false, "{\"error\":\"Failed to set preset\"}");
+        return;
+    }
+
+    // Read back the committed state
+    int numPresets = 0;
+    int committedIdx = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
+
+    std::string presetName;
+    if (committedIdx >= 0) {
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            presetName = nameBuf;
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("presetIndex") + ":" + std::to_string(committedIdx) + ",";
+    payload += json_string("presetName") + ":" + (presetName.empty() ? "null" : json_string(presetName)) + ",";
+    payload += json_string("numPresets") + ":" + std::to_string(numPresets);
+    payload += "}";
+
+    SendResponse(clientId, id, success, payload);
+}
+
+void CommandHandler::HandleGetAllFxPresetNames(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset || !m_api.TrackFX_SetPresetByIndex) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string fxIdxStr    = parser.getString("fxIdx");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    int         fxIdx       = atoi(fxIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int numPresets = 0;
+    int originalIdx = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
+
+    if (numPresets <= 0) {
+        std::string payload = "{";
+        payload += json_string("presetNames") + ":[],";
+        payload += json_string("currentIndex") + ":" + std::to_string(originalIdx);
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+        return;
+    }
+
+    // Enumerate all presets by index
+    std::string nameList = "[";
+    for (int i = 0; i < numPresets; i++) {
+        if (i > 0) nameList += ",";
+        m_api.TrackFX_SetPresetByIndex(track, fxIdx, i);
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            nameList += json_string(nameBuf);
+        } else {
+            nameList += json_string("");
+        }
+    }
+    nameList += "]";
+
+    // Restore original preset (important for correctness)
+    m_api.TrackFX_SetPresetByIndex(track, fxIdx, originalIdx);
+
+    std::string payload = "{";
+    payload += json_string("presetNames") + ":" + nameList + ",";
+    payload += json_string("currentIndex") + ":" + std::to_string(originalIdx);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
 }
 
 void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const std::string& params)

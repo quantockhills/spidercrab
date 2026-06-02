@@ -27,7 +27,9 @@
 #define REAPERAPI_WANT_TrackFX_Delete
 #define REAPERAPI_WANT_TrackFX_CopyToTrack
 #define REAPERAPI_WANT_TrackFX_GetPresetIndex
+#define REAPERAPI_WANT_TrackFX_GetPreset
 #define REAPERAPI_WANT_TrackFX_SetPreset
+#define REAPERAPI_WANT_TrackFX_SetPresetByIndex
 #define REAPERAPI_WANT_EnumInstalledFX
 #define REAPERAPI_WANT_Main_OnCommand
 #define REAPERAPI_WANT_CSurf_OnPlay
@@ -460,7 +462,9 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         api.TrackFX_Delete              = TrackFX_Delete;
         api.TrackFX_CopyToTrack         = TrackFX_CopyToTrack;
         api.TrackFX_GetPresetIndex      = TrackFX_GetPresetIndex;
+        api.TrackFX_GetPreset           = TrackFX_GetPreset;
         api.TrackFX_SetPreset           = TrackFX_SetPreset;
+        api.TrackFX_SetPresetByIndex    = TrackFX_SetPresetByIndex;
         api.EnumInstalledFX             = EnumInstalledFX;
         api.GetTrackStateChunk          = GetTrackStateChunk;
         api.SetTrackStateChunk          = SetTrackStateChunk;
