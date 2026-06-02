@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { MatrixData, ClipSlot } from '../hooks/useReaper';
+import type { MatrixData, ClipSlot, Track } from '../hooks/useReaper';
 
 interface SessionViewProps {
   matrix: MatrixData | null;
+  tracks?: Track[];
   getMatrix: () => Promise<MatrixData | null>;
   triggerSlot: (column: number, row: number) => Promise<ClipSlot | null>;
   triggerScene: (row: number) => Promise<ClipSlot[] | null>;
@@ -25,6 +26,7 @@ function stateColor(state: ClipSlot['state']): string {
 
 export function SessionView({
   matrix,
+  tracks,
   getMatrix,
   triggerSlot,
   triggerScene,
@@ -194,6 +196,27 @@ export function SessionView({
         >
           ●
         </button>
+      </div>
+
+      {/* Column headers */}
+      <div className="grid gap-px px-3 pt-2 border-b border-[var(--border)]" style={{
+        gridTemplateColumns: `repeat(${cols}, 1fr) 32px`,
+      }}>
+        {Array.from({ length: cols }, (_, col) => {
+          const trackName = tracks?.[col]?.name || `Track ${col + 1}`;
+          return (
+            <div
+              key={`col-header-${col}`}
+              className="flex items-center justify-center text-[10px] font-semibold text-[var(--text-secondary)] truncate px-1 py-1.5 border-b border-[var(--border)]"
+              title={trackName}
+              data-col={col}
+              aria-label={`Column ${col + 1}: ${trackName}`}
+            >
+              {trackName}
+            </div>
+          );
+        })}
+        <div className="border-b border-[var(--border)]" />
       </div>
 
       {/* Grid area */}

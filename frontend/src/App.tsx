@@ -112,6 +112,8 @@ function App() {
     });
     const unsubList = onEvent('event:track_list_changed', () => {
       refreshTracks();
+      // Matrix dimensions may change when tracks are added/removed
+      getMatrix();
     });
     const unsubSlot = onEvent('event:slotStateChanged', () => {
       // Refresh matrix state on any slot change
@@ -253,6 +255,7 @@ function App() {
               {sessionMode === 'session' ? (
                 <SessionView
                   matrix={matrix}
+                  tracks={tracks}
                   getMatrix={getMatrix}
                   triggerSlot={triggerSlot}
                   triggerScene={triggerScene}

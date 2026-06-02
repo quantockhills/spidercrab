@@ -363,6 +363,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     }
   }, []);
 
+  const setSlotState = useCallback((column: number, row: number, state: ClipSlot['state']) => {
+    if (clientRef.current) {
+      clientRef.current.send('matrix/setSlotState', { column, row, state });
+    }
+  }, []);
+
   // ── Step Sequencer commands (Issue #63) ──
 
   const [sequencer, setSequencer] = useState<SequencerData | null>(null);
@@ -495,6 +501,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     getMatrix,
     triggerSlot,
     triggerScene,
+    setSlotState,
     updateMatrixSlot,
     // Step sequencer (Issue #63)
     sequencer,
