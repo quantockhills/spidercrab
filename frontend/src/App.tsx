@@ -38,6 +38,7 @@ function App() {
     setFxParam,
     addFx,
     deleteFx,
+    reorderFx,
     getDirectory,
     sendSampleToTrack,
     isRefreshingFx,
@@ -351,6 +352,7 @@ function App() {
             getTrackFx={getTrackFx}
             onSelectFx={handleSelectFx}
             onOpenFx={handleOpenFx}
+            onReorderFx={reorderFx}
           />
         )}
 
