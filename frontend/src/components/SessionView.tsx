@@ -116,13 +116,20 @@ export function SessionView({
 
   const handleSlotTap = useCallback(async (col: number, row: number) => {
     await triggerSlot(col, row);
-  }, [triggerSlot]);
+    // Issue #80: Refresh matrix after triggering a slot so the grid
+    // reflects the new visual state (playing/stopped). Without this,
+    // the matrix prop never updates and the grid stays unchanged.
+    getMatrix();
+  }, [triggerSlot, getMatrix]);
 
   const handleSceneLaunch = useCallback(async (row: number) => {
     setActiveScene(row);
     await triggerScene(row);
     setActiveScene(null);
-  }, [triggerScene]);
+    // Issue #80: Also refresh matrix after scene trigger so all
+    // slots in the scene row update their visual state.
+    getMatrix();
+  }, [triggerScene, getMatrix]);
 
   const handleLaunchPlaytime = useCallback(async () => {
     if (!onLaunchPlaytime) return;

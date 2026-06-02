@@ -104,6 +104,49 @@ describe('SessionView', () => {
     });
   });
 
+  it('calls getMatrix after tapping a slot to refresh matrix state', async () => {
+    // Issue #80: After triggering a slot, the matrix must refresh so the
+    // grid reflects the new visual state (playing/stopped). Prior to the fix,
+    // handleSlotTap called triggerSlot but never refreshed the matrix.
+    const matrix = makeEmptyMatrix();
+    const slotResponse: ClipSlot = {
+      column: 0, row: 0, state: 'playing', color: '#00ff00',
+      name: 'Triggered Clip', clipType: 'audio',
+    };
+    const updatedMatrix = makeEmptyMatrix();
+    updatedMatrix.slots[0] = slotResponse;
+
+    const onTriggerSlot = vi.fn().mockResolvedValue(slotResponse);
+    const onGetMatrix = vi.fn().mockResolvedValue(updatedMatrix);
+
+    render(
+      <SessionView
+        matrix={matrix}
+        getMatrix={onGetMatrix}
+        triggerSlot={onTriggerSlot}
+        triggerScene={vi.fn()}
+      />,
+    );
+
+    // Wait for mount effect to finish (getMatrix called once on mount)
+    await waitFor(() => {
+      expect(onGetMatrix).toHaveBeenCalledTimes(1);
+    });
+
+    const slot = screen.getByLabelText('Slot 1,1');
+    fireEvent.click(slot);
+
+    // Verify triggerSlot was called with correct coordinates
+    await waitFor(() => {
+      expect(onTriggerSlot).toHaveBeenCalledWith(0, 0);
+    });
+
+    // The fix: handleSlotTap must call getMatrix() after triggerSlot resolves
+    // so the matrix prop updates and the grid re-renders with new state.
+    // Currently this FAILS — getMatrix is only called once on mount.
+    expect(onGetMatrix).toHaveBeenCalledTimes(2);
+  });
+
   it('calls triggerScene when tapping a scene launch button', async () => {
     const matrix = makeEmptyMatrix();
     const onTriggerScene = vi.fn().mockResolvedValue(true);
@@ -113,6 +156,42 @@ describe('SessionView', () => {
       const sceneBtn = screen.getByLabelText('Scene 1');
       fireEvent.click(sceneBtn);
       expect(onTriggerScene).toHaveBeenCalledWith(0);
+    });
+  });
+
+  it('calls getMatrix after tapping a scene launch button', async () => {
+    // Issue #80: handleSceneLaunch must refresh the matrix so the grid
+    // re-renders after triggering all slots in a scene row.
+    const matrix = makeEmptyMatrix();
+    const onTriggerScene = vi.fn().mockResolvedValue({ slots: [], triggered: true });
+    const onGetMatrix = vi.fn().mockResolvedValue(matrix);
+
+    render(
+      <SessionView
+        matrix={matrix}
+        getMatrix={onGetMatrix}
+        triggerSlot={vi.fn()}
+        triggerScene={onTriggerScene}
+      />,
+    );
+
+    // Wait for mount effect
+    await waitFor(() => {
+      expect(onGetMatrix).toHaveBeenCalledTimes(1);
+    });
+
+    const sceneBtn = screen.getByLabelText('Scene 1');
+    fireEvent.click(sceneBtn);
+
+    await waitFor(() => {
+      expect(onTriggerScene).toHaveBeenCalledWith(0);
+    });
+
+    // The fix: handleSceneLaunch must also call getMatrix() after
+    // triggerScene resolves, so the grid re-renders.
+    // Currently this FAILS — getMatrix is only called once on mount.
+    await waitFor(() => {
+      expect(onGetMatrix).toHaveBeenCalledTimes(2);
     });
   });
 
