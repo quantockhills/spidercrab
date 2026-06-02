@@ -356,6 +356,11 @@ function App() {
             onSelectFx={handleSelectFx}
             onOpenFx={handleOpenFx}
             onReorderFx={reorderFx}
+            getFxParams={getFxParams}
+            setFxParam={setFxParam}
+            getFxPreset={getFxPreset}
+            setFxPreset={setFxPreset}
+            getAllFxPresetNames={getAllFxPresetNames}
           />
         )}
 

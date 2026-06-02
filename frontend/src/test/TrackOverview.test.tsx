@@ -35,6 +35,10 @@ function renderTrackOverview(props: Partial<Parameters<typeof TrackOverview>[0]>
   const onToggleArm = vi.fn();
   const onRefresh = vi.fn();
 
+  // Default mocks for inline drawer props (Issue #94)
+  const getFxParams = vi.fn().mockResolvedValue({ params: [], total: 0, offset: 0, limit: 8 });
+  const setFxParam = vi.fn().mockResolvedValue({ success: true });
+
   const utils = render(
     <TrackOverview
       tracks={mockTracks}
@@ -46,6 +50,8 @@ function renderTrackOverview(props: Partial<Parameters<typeof TrackOverview>[0]>
       onRefresh={onRefresh}
       getTrackFx={getTrackFx}
       onSelectFx={onSelectFx}
+      getFxParams={getFxParams}
+      setFxParam={setFxParam}
       {...props}
     />,
   );
@@ -389,19 +395,24 @@ describe('TrackOverview — FX grid cards', () => {
     });
   });
 
-  it('calls onSelectFx when tapping an FX card', async () => {
+  it('opens inline drawer when FX card is tapped (Issue #94)', async () => {
+    // FX cards now open inline drawer instead of calling onSelectFx
     const { onSelectFx } = renderTrackOverview();
 
     await waitFor(() => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Click the ReaEQ card
+    // Click the ReaEQ card — should open inline drawer
     fireEvent.click(screen.getByText('ReaEQ'));
 
-    expect(onSelectFx).toHaveBeenCalledOnce();
-    // trackIdx=0, fxIdx=0, fxName='VST3: ReaEQ' (raw name, not cleaned)
-    expect(onSelectFx).toHaveBeenCalledWith(0, 0, 'VST3: ReaEQ');
+    // Drawer shows a close button (✕) which is unique to the drawer
+    await waitFor(() => {
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
+    });
+
+    // onSelectFx should NOT have been called (no navigation away)
+    expect(onSelectFx).not.toHaveBeenCalled();
   });
 
   it('shows loading indicator while FX are being fetched', async () => {
@@ -886,5 +897,350 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.queryByText('ReaEQ')).toBeNull();
       expect(screen.queryByText('Loading FX…')).toBeNull();
     });
+  });
+});
+
+// ── Inline FX drawer tests (Issue #94) ────────────────────────
+
+describe('TrackOverview — Inline FX drawer', () => {
+  const mockParams: import('../hooks/useReaper').FxParam[] = Array.from({ length: 12 }, (_, i) => ({
+    index: i,
+    name: `Param ${i}`,
+    value: 0.5 + i * 0.05,
+    min: 0,
+    max: 1,
+    mid: 0.5,
+    formatted: `${Math.round((0.5 + i * 0.05) * 100)}%`,
+  }));
+
+  const mockPresetInfo: import('../hooks/useReaper').FxPresetInfo = {
+    presetIndex: 2,
+    presetName: 'Hall Reverb',
+    numPresets: 5,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  function renderWithInlineDrawer(props: Partial<Parameters<typeof TrackOverview>[0]> = {}) {
+    const getFxParams = vi.fn().mockImplementation(
+      async (_trackIdx: number, _fxIdx: number, offset: number = 0, limit: number = 8) => {
+        const sliced = mockParams.slice(offset, offset + limit);
+        return {
+          params: sliced,
+          total: mockParams.length,
+          offset,
+          limit,
+        };
+      },
+    );
+    const setFxParam = vi.fn().mockResolvedValue({ success: true });
+    const getFxPreset = vi.fn().mockResolvedValue(mockPresetInfo);
+    const setFxPreset = vi.fn().mockImplementation(
+      async (_trackIdx: number, _fxIdx: number, presetIdx: number) => ({
+        presetIndex: presetIdx,
+        presetName: `Preset ${presetIdx}`,
+        numPresets: 5,
+      }),
+    );
+    const getAllFxPresetNames = vi.fn().mockResolvedValue({
+      presetNames: ['Room', 'Hall', 'Plate', 'Spring', 'Reverse'],
+      currentIndex: 2,
+    });
+
+    const utils = renderTrackOverview({
+      getFxParams,
+      setFxParam,
+      getFxPreset,
+      setFxPreset,
+      getAllFxPresetNames,
+      ...props,
+    });
+
+    return { ...utils, getFxParams, setFxParam, getFxPreset, setFxPreset, getAllFxPresetNames };
+  }
+
+  it('opens inline drawer when FX card is tapped (instead of navigating away)', async () => {
+    const onSelectFx = vi.fn();
+    renderWithInlineDrawer({ onSelectFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Tap ReaEQ card
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    // Drawer should open — look for close button which is unique to drawer
+    await waitFor(() => {
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
+    });
+
+    // onSelectFx should NOT have been called (no navigation away)
+    expect(onSelectFx).not.toHaveBeenCalled();
+  });
+
+  it('collapses inline drawer when same FX card is tapped again', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Tap to open — use getAllByText and take first (the FX card, not drawer header)
+    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
+    });
+
+    // Tap same card again to close — use first ReaEQ element (FX card)
+    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+
+    // Drawer should be closed — close button should disappear
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Close drawer')).toBeNull();
+    });
+  });
+
+  it('closes current drawer and opens new one when different FX is tapped', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Open ReaEQ drawer
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Hall Reverb')).toBeDefined();
+    });
+
+    // Tap ReaComp (different FX)
+    fireEvent.click(screen.getByText('ReaComp'));
+
+    // Previous drawer's preset name should be gone
+    await waitFor(() => {
+      expect(screen.queryByText('Hall Reverb')).toBeNull();
+    });
+  });
+
+  it('shows preset info with current preset name and navigation buttons', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Open ReaEQ drawer
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Hall Reverb')).toBeDefined();
+    });
+
+    // Should have preset navigation buttons
+    const prevBtn = screen.getByLabelText('Previous preset');
+    const nextBtn = screen.getByLabelText('Next preset');
+    expect(prevBtn).toBeDefined();
+    expect(nextBtn).toBeDefined();
+  });
+
+  it('cycles presets with Next/Prev buttons', async () => {
+    const { setFxPreset } = renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Hall Reverb')).toBeDefined();
+    });
+
+    // Click Next
+    fireEvent.click(screen.getByLabelText('Next preset'));
+    await waitFor(() => {
+      expect(setFxPreset).toHaveBeenCalled();
+    });
+    const lastCallArgs = setFxPreset.mock.lastCall;
+    expect(lastCallArgs[2]).toBe(3); // Next from index 2 should go to 3
+  });
+
+  it('shows 8 params per page with page indicator', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    // Wait for params to load
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+      expect(screen.getByText('Param 7')).toBeDefined();
+    });
+
+    // Page indicator: 1–8 of 12
+    expect(screen.getByText('1–8 of 12')).toBeDefined();
+
+    // Param 8 should NOT be visible (it's on page 2)
+    expect(screen.queryByText('Param 8')).toBeNull();
+  });
+
+  it('paginates to next and previous page', async () => {
+    const { getFxParams } = renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+      expect(screen.getByText('1–8 of 12')).toBeDefined();
+    });
+
+    // Click Next
+    fireEvent.click(screen.getByText('Next →'));
+    await waitFor(() => {
+      expect(getFxParams).toHaveBeenCalledWith(0, 0, 8, 8);
+    });
+  });
+
+  it('hides pagination when 8 or fewer params', async () => {
+    const fewMockParams: import('../hooks/useReaper').FxParam[] = Array.from({ length: 5 }, (_, i) => ({
+      index: i,
+      name: `FewParam ${i}`,
+      value: 0.5,
+      min: 0,
+      max: 1,
+      mid: 0.5,
+    }));
+
+    const getFxParams = vi.fn().mockResolvedValue({
+      params: fewMockParams,
+      total: fewMockParams.length,
+      offset: 0,
+      limit: 8,
+    });
+
+    renderTrackOverview({
+      getFxParams,
+      setFxParam: vi.fn().mockResolvedValue({ success: true }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('FewParam 0')).toBeDefined();
+    });
+
+    // Pagination buttons should not appear
+    expect(screen.queryByText('Next →')).toBeNull();
+    expect(screen.queryByText('← Prev')).toBeNull();
+  });
+
+  it('pins and unpins params with pin icon toggle', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+    });
+
+    // Find the pin buttons — there should be at least 8 (one per param)
+    const pinButtons = screen.getAllByLabelText('Pin parameter');
+    expect(pinButtons.length).toBeGreaterThanOrEqual(8);
+
+    // Pin Param 0 (first pin button)
+    fireEvent.click(pinButtons[0]);
+
+    // Now the first pin button should show 'Unpin parameter'
+    await waitFor(() => {
+      const unpinButtons = screen.getAllByLabelText('Unpin parameter');
+      expect(unpinButtons.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Pinned section should be visible
+    expect(screen.getByText('Pinned')).toBeDefined();
+
+    // Unpin by clicking first unpin button
+    const unpinButtons = screen.getAllByLabelText('Unpin parameter');
+    fireEvent.click(unpinButtons[0]);
+
+    await waitFor(() => {
+      // After unpinning, all buttons should be back to 'Pin parameter'
+      expect(screen.queryAllByLabelText('Unpin parameter').length).toBe(0);
+    });
+  });
+
+  it('persists pinned params to localStorage', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+    });
+
+    // Pin a param
+    const pinBtns = screen.getAllByLabelText('Pin parameter');
+    fireEvent.click(pinBtns[1]); // Pin Param 1
+
+    // localStorage should have the pin data
+    const stored = localStorage.getItem('fx:pinned:0:0');
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored!);
+    expect(parsed).toContain(1);
+  });
+
+  it('hides preset section when no presets available', async () => {
+    const getFxPreset = vi.fn().mockResolvedValue(null);
+    renderTrackOverview({
+      getFxParams: vi.fn().mockImplementation(
+        async (_trackIdx: number, _fxIdx: number, offset: number = 0, limit: number = 8) => ({
+          params: mockParams.slice(offset, offset + limit),
+          total: mockParams.length,
+          offset,
+          limit,
+        }),
+      ),
+      setFxParam: vi.fn().mockResolvedValue({ success: true }),
+      getFxPreset,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Wait for drawer to open with params
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+    });
+
+    // Should show 'No presets' instead of preset navigation
+    expect(screen.getByText(/No presets/i)).toBeDefined();
   });
 });

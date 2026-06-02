@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Track, FxInfo } from '../hooks/useReaper';
+import type { Track, FxInfo, FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
 import { volumeToDb } from '../utils/volume';
+import type { WsResponse } from '../lib/wsClient';
+import { ParamSlider } from './ParamControl';
 
 interface TrackOverviewProps {
   tracks: Track[];
@@ -21,6 +23,12 @@ interface TrackOverviewProps {
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
   onOpenFx?: (trackIdx: number) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
+  // Inline FX drawer props (Issue #94)
+  getFxParams?: (trackIdx: number, fxIdx: number, offset?: number, limit?: number) => Promise<{params: FxParam[]; total: number; offset: number; limit: number}>;
+  setFxParam?: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<WsResponse>;
+  getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
+  setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
+  getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
 }
 
 
@@ -144,12 +152,20 @@ export function TrackOverview({
   onSelectFx,
   onOpenFx,
   onReorderFx,
+  getFxParams,
+  setFxParam,
+  getFxPreset,
+  setFxPreset,
+  getAllFxPresetNames,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [trackFxMap, setTrackFxMap] = useState<Record<number, FxInfo[]>>({});
   const [fxLoading, setFxLoading] = useState(false);
+
+  // Inline FX drawer state (Issue #94)
+  const [expandedFx, setExpandedFx] = useState<{trackIdx: number; fxIdx: number; fxName: string} | null>(null);
 
   // Drag-and-drop state for FX reordering
   // Note: Refs are used for data that must be available synchronously across
@@ -401,7 +417,12 @@ export function TrackOverview({
                         draggable={true}
                         onClick={(e) => {
                           e.stopPropagation();
-                          onSelectFx!(track.index, fx.index, fx.name);
+                          // Toggle inline drawer (Issue #94) — if same FX is tapped, collapse; otherwise open
+                          if (expandedFx?.trackIdx === track.index && expandedFx?.fxIdx === fx.index) {
+                            setExpandedFx(null);
+                          } else {
+                            setExpandedFx({ trackIdx: track.index, fxIdx: fx.index, fxName: fx.name });
+                          }
                         }}
                         onDragStart={(e) => {
                           e.dataTransfer.setData('text/plain', `${track.index}:${fx.index}`);
@@ -409,6 +430,8 @@ export function TrackOverview({
                           dragDataRef.current = { trackIdx: track.index, fxIdx: fx.index };
                           setDragActiveTrack(track.index);
                           setDragSourceFxIdx(fx.index);
+                          // Collapse inline drawer on drag start (Issue #94)
+                          setExpandedFx(null);
                         }}
                         onDragOver={(e) => {
                           e.preventDefault();
@@ -540,10 +563,353 @@ export function TrackOverview({
                   )}
                 </div>
               )}
+              {/* Inline FX drawer (Issue #94) */}
+              {expandedFx?.trackIdx === track.index && getFxParams && setFxParam && (
+                <InlineFxDrawer
+                  trackIdx={track.index}
+                  fxIdx={expandedFx.fxIdx}
+                  fxName={expandedFx.fxName}
+                  getFxParams={getFxParams}
+                  setFxParam={setFxParam}
+                  getFxPreset={getFxPreset}
+                  setFxPreset={setFxPreset}
+                  getAllFxPresetNames={getAllFxPresetNames}
+                  onClose={() => setExpandedFx(null)}
+                />
+              )}
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Inline FX Drawer (Issue #94) ─────────────────────────
+
+interface InlineFxDrawerProps {
+  trackIdx: number;
+  fxIdx: number;
+  fxName: string;
+  getFxParams: (trackIdx: number, fxIdx: number, offset?: number, limit?: number) => Promise<{params: FxParam[]; total: number; offset: number; limit: number}>;
+  setFxParam: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<WsResponse>;
+  getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
+  setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
+  getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
+  onClose: () => void;
+}
+
+function InlineFxDrawer({
+  trackIdx,
+  fxIdx,
+  fxName,
+  getFxParams,
+  setFxParam,
+  getFxPreset,
+  setFxPreset,
+  getAllFxPresetNames,
+  onClose,
+}: InlineFxDrawerProps) {
+  const [params, setParams] = useState<FxParam[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [paramOffset, setParamOffset] = useState(0);
+  const [totalParams, setTotalParams] = useState(0);
+  const PAGE_SIZE = 8;
+
+  // Preset state
+  const [presetInfo, setPresetInfo] = useState<FxPresetInfo | null>(null);
+  const [presetLoading, setPresetLoading] = useState(true);
+
+  // Pinned params from localStorage
+  const pinStorageKey = `fx:pinned:${trackIdx}:${fxIdx}`;
+  const [pinnedParams, setPinnedParams] = useState<number[]>(() => {
+    try {
+      const stored = localStorage.getItem(pinStorageKey);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Dragging state for local param slider
+  const draggingParamRef = useRef<number | null>(null);
+  const dragCleanupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load params on mount
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getFxParams(trackIdx, fxIdx, 0, PAGE_SIZE).then((result) => {
+      if (!cancelled) {
+        setParams(result.params);
+        setTotalParams(result.total);
+        setParamOffset(result.offset);
+        setLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [trackIdx, fxIdx, getFxParams]);
+
+  // Load preset info
+  useEffect(() => {
+    if (!getFxPreset) {
+      setPresetLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPresetLoading(true);
+    getFxPreset(trackIdx, fxIdx).then((info) => {
+      if (!cancelled) {
+        setPresetInfo(info);
+        setPresetLoading(false);
+      }
+    }).catch(() => {
+      if (!cancelled) setPresetLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [trackIdx, fxIdx, getFxPreset]);
+
+  // Pagination
+  const goNextPage = useCallback(() => {
+    const next = paramOffset + PAGE_SIZE;
+    if (next < totalParams) {
+      setLoading(true);
+      getFxParams(trackIdx, fxIdx, next, PAGE_SIZE).then((result) => {
+        setParams(result.params);
+        setTotalParams(result.total);
+        setParamOffset(result.offset);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    }
+  }, [paramOffset, totalParams, trackIdx, fxIdx, getFxParams]);
+
+  const goPrevPage = useCallback(() => {
+    const prev = Math.max(0, paramOffset - PAGE_SIZE);
+    setLoading(true);
+    getFxParams(trackIdx, fxIdx, prev, PAGE_SIZE).then((result) => {
+      setParams(result.params);
+      setTotalParams(result.total);
+      setParamOffset(result.offset);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  }, [paramOffset, trackIdx, fxIdx, getFxParams]);
+
+  // Preset navigation
+  const handlePrevPreset = useCallback(() => {
+    if (!presetInfo || !setFxPreset || presetInfo.numPresets <= 0) return;
+    let newIdx = presetInfo.presetIndex - 1;
+    if (newIdx < 0) newIdx = presetInfo.numPresets - 1;
+    setFxPreset(trackIdx, fxIdx, newIdx).then((info) => {
+      if (info) setPresetInfo(info);
+      // Re-fetch params
+      getFxParams(trackIdx, fxIdx, paramOffset, PAGE_SIZE).then((result) => {
+        setParams(result.params);
+        setTotalParams(result.total);
+      });
+    });
+  }, [presetInfo, setFxPreset, trackIdx, fxIdx, paramOffset, getFxParams]);
+
+  const handleNextPreset = useCallback(() => {
+    if (!presetInfo || !setFxPreset || presetInfo.numPresets <= 0) return;
+    let newIdx = presetInfo.presetIndex + 1;
+    if (newIdx >= presetInfo.numPresets) newIdx = 0;
+    setFxPreset(trackIdx, fxIdx, newIdx).then((info) => {
+      if (info) setPresetInfo(info);
+      getFxParams(trackIdx, fxIdx, paramOffset, PAGE_SIZE).then((result) => {
+        setParams(result.params);
+        setTotalParams(result.total);
+      });
+    });
+  }, [presetInfo, setFxPreset, trackIdx, fxIdx, paramOffset, getFxParams]);
+
+  // Param change handler
+  const handleParamChange = useCallback(async (paramIdx: number, value: number) => {
+    // Optimistic update
+    setParams((prev) =>
+      prev.map((p) => (p.index === paramIdx ? { ...p, value } : p)),
+    );
+    await setFxParam(trackIdx, fxIdx, paramIdx, value);
+  }, [trackIdx, fxIdx, setFxParam]);
+
+  // Pin/unpin handlers
+  const togglePin = useCallback((paramIdx: number) => {
+    setPinnedParams((prev) => {
+      const next = prev.includes(paramIdx)
+        ? prev.filter((p) => p !== paramIdx)
+        : [...prev, paramIdx];
+      try {
+        localStorage.setItem(pinStorageKey, JSON.stringify(next));
+      } catch { /* ignore */ }
+      return next;
+    });
+  }, [pinStorageKey]);
+
+  // Drag handlers
+  const startDragging = useCallback((paramIdx: number) => {
+    draggingParamRef.current = paramIdx;
+    if (dragCleanupTimeoutRef.current) {
+      clearTimeout(dragCleanupTimeoutRef.current);
+      dragCleanupTimeoutRef.current = null;
+    }
+  }, []);
+
+  const finishDragging = useCallback(() => {
+    if (dragCleanupTimeoutRef.current) {
+      clearTimeout(dragCleanupTimeoutRef.current);
+    }
+    dragCleanupTimeoutRef.current = setTimeout(() => {
+      draggingParamRef.current = null;
+      dragCleanupTimeoutRef.current = null;
+    }, 150);
+  }, []);
+
+  // Determine which params are pinned (filter from the current page)
+  const currentPageParamIndices = params.map((p) => p.index);
+  const visiblePinned = pinnedParams.filter((pi) => currentPageParamIndices.includes(pi));
+
+  return (
+    <div className="mx-3 mb-2 bg-[var(--bg-secondary)] ring-1 ring-[var(--accent-orange)]/30 overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 bg-[var(--bg-tertiary)]/50 border-b border-[var(--border)]">
+        <span className="text-xs font-semibold truncate text-[var(--accent-orange)]">
+          {cleanFxName(fxName)}
+        </span>
+        <button
+          onClick={onClose}
+          className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] active:brightness-95 px-1"
+          aria-label="Close drawer"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Preset bar */}
+      {(getFxPreset || setFxPreset) && (
+        <div className="px-3 py-1.5 border-b border-[var(--border)]">
+          {presetLoading ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-[var(--text-secondary)]">Presets:</span>
+              <div className="h-3 w-20 bg-[var(--bg-tertiary)] animate-pulse rounded" />
+            </div>
+          ) : !presetInfo || presetInfo.numPresets <= 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-[var(--text-secondary)]">Presets:</span>
+              <span className="text-[10px] text-[var(--text-tertiary)]">— No presets —</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-[var(--text-secondary)] whitespace-nowrap">Preset:</span>
+              <button
+                onClick={handlePrevPreset}
+                className="px-1.5 py-1 text-[10px] bg-[var(--bg-tertiary)] text-[var(--text-primary)] active:brightness-95"
+                aria-label="Previous preset"
+              >
+                ◀
+              </button>
+              <span className="flex-1 text-[10px] text-center truncate px-1.5 py-1 bg-[var(--bg-tertiary)] text-[var(--text-primary)]">
+                {presetInfo.presetName || `Preset ${presetInfo.presetIndex + 1}`}
+              </span>
+              <button
+                onClick={handleNextPreset}
+                className="px-1.5 py-1 text-[10px] bg-[var(--bg-tertiary)] text-[var(--text-primary)] active:brightness-95"
+                aria-label="Next preset"
+              >
+                ▶
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Pinned params section */}
+      {visiblePinned.length > 0 && (
+        <div className="px-3 py-1.5 border-b border-[var(--border)] bg-[var(--accent-orange)]/5">
+          <div className="text-[10px] text-[var(--text-secondary)] font-medium mb-1">Pinned</div>
+          {params
+            .filter((p) => visiblePinned.includes(p.index))
+            .map((param) => (
+              <div key={param.index} className="flex items-center gap-2 py-0.5">
+                <div className="flex-1 min-w-0">
+                  <ParamSlider
+                    param={param}
+                    onChange={(value) => handleParamChange(param.index, value)}
+                    onDragStart={startDragging}
+                    onDragEnd={finishDragging}
+                  />
+                </div>
+                <button
+                  onClick={() => togglePin(param.index)}
+                  className="text-[10px] text-[var(--accent-orange)] active:brightness-95 px-1 flex-shrink-0"
+                  aria-label="Unpin parameter"
+                >
+                  📌
+                </button>
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* Param sliders */}
+      <div className="px-3 py-1.5 space-y-1">
+        {/* Page indicator */}
+        {totalParams > PAGE_SIZE && (
+          <div className="flex items-center justify-between pb-1">
+            <button
+              onClick={goPrevPage}
+              disabled={paramOffset === 0}
+              className="px-2 py-1 text-[10px] font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] disabled:opacity-30 active:brightness-95"
+            >
+              ← Prev
+            </button>
+            <span className="text-[10px] text-[var(--text-secondary)]">
+              {paramOffset + 1}–{Math.min(paramOffset + PAGE_SIZE, totalParams)} of {totalParams}
+            </span>
+            <button
+              onClick={goNextPage}
+              disabled={paramOffset + PAGE_SIZE >= totalParams}
+              className="px-2 py-1 text-[10px] font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] disabled:opacity-30 active:brightness-95"
+            >
+              Next →
+            </button>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="py-4 text-center text-[10px] text-[var(--text-secondary)] animate-pulse">
+            Loading parameters…
+          </div>
+        ) : params.length === 0 ? (
+          <div className="py-4 text-center text-[10px] text-[var(--text-tertiary)]">
+            No adjustable parameters
+          </div>
+        ) : (
+          params.map((param) => (
+            <div key={param.index} className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <ParamSlider
+                  param={param}
+                  onChange={(value) => handleParamChange(param.index, value)}
+                  onDragStart={startDragging}
+                  onDragEnd={finishDragging}
+                />
+              </div>
+              <button
+                onClick={() => togglePin(param.index)}
+                className={`text-[10px] active:brightness-95 px-1 flex-shrink-0 ${
+                  pinnedParams.includes(param.index)
+                    ? 'text-[var(--accent-orange)]'
+                    : 'text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'
+                }`}
+                aria-label={pinnedParams.includes(param.index) ? 'Unpin parameter' : 'Pin parameter'}
+              >
+                📌
+              </button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
