@@ -243,6 +243,45 @@ static std::string extractPayload(const std::string& message)
 CommandHandler::CommandHandler(WebSocketServer* ws)
     : m_ws(ws)
 {
+    // Populate command dispatch map
+    m_commandMap["track/getAll"]           = &CommandHandler::HandleGetTracks;
+    m_commandMap["track/add"]              = &CommandHandler::HandleAddTrack;
+    m_commandMap["track/getFx"]            = &CommandHandler::HandleGetTrackFX;
+    m_commandMap["track/setMute"]          = &CommandHandler::HandleSetTrackMute;
+    m_commandMap["track/setSolo"]          = &CommandHandler::HandleSetTrackSolo;
+    m_commandMap["track/setArm"]           = &CommandHandler::HandleSetTrackArm;
+    m_commandMap["track/setSelected"]      = &CommandHandler::HandleSetTrackSelected;
+    m_commandMap["track/setVolume"]        = &CommandHandler::HandleSetTrackVolume;
+    m_commandMap["track/setPan"]           = &CommandHandler::HandleSetTrackPan;
+    m_commandMap["fx/getParams"]           = &CommandHandler::HandleGetFXParams;
+    m_commandMap["fx/setParam"]            = &CommandHandler::HandleSetFXParam;
+    m_commandMap["fx/add"]                 = &CommandHandler::HandleAddFX;
+    m_commandMap["fx/delete"]              = &CommandHandler::HandleDeleteFX;
+    m_commandMap["fx/enumerate"]           = &CommandHandler::HandleEnumerateFX;
+    m_commandMap["fx/refreshCache"]        = &CommandHandler::HandleRefreshFxCache;
+    m_commandMap["transport/getState"]     = &CommandHandler::HandleGetTransport;
+    m_commandMap["transport/play"]         = &CommandHandler::HandlePlay;
+    m_commandMap["transport/stop"]         = &CommandHandler::HandleStop;
+    m_commandMap["transport/record"]       = &CommandHandler::HandleRecord;
+    m_commandMap["sample/getDirectory"]    = &CommandHandler::HandleSampleGetDirectory;
+    m_commandMap["sample/sendToTrack"]     = &CommandHandler::HandleSampleSendToTrack;
+    m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
+    m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
+    m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
+    m_commandMap["matrix/triggerScene"]     = &CommandHandler::HandleMatrixTriggerScene;
+    m_commandMap["matrix/setSlotState"]     = &CommandHandler::HandleMatrixSetSlotState;
+    m_commandMap["sequencer/getAll"]        = &CommandHandler::HandleSequencerGetAll;
+    m_commandMap["sequencer/toggleStep"]    = &CommandHandler::HandleSequencerToggleStep;
+    m_commandMap["sequencer/setStep"]       = &CommandHandler::HandleSequencerSetStep;
+    m_commandMap["sequencer/clearAll"]      = &CommandHandler::HandleSequencerClearAll;
+    m_commandMap["sequencer/setLength"]     = &CommandHandler::HandleSequencerSetLength;
+    m_commandMap["sequencer/setBaseNote"]   = &CommandHandler::HandleSequencerSetBaseNote;
+    m_commandMap["sequencer/getPlayhead"]   = &CommandHandler::HandleSequencerGetPlayhead;
+    m_commandMap["fxchain/getDirectory"]    = &CommandHandler::HandleFxChainGetDirectory;
+    m_commandMap["fxchain/save"]            = &CommandHandler::HandleFxChainSave;
+    m_commandMap["fxchain/load"]            = &CommandHandler::HandleFxChainLoad;
+    m_commandMap["fxchain/getInfo"]         = &CommandHandler::HandleFxChainGetInfo;
+    m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -259,82 +298,9 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
 
     // Simple dispatch
     if (type.empty() || type == "command") {
-        if (command == "track/getAll") {
-            HandleGetTracks(clientId, id, message);
-        } else if (command == "track/add") {
-            HandleAddTrack(clientId, id, message);
-        } else if (command == "track/getFx") {
-            HandleGetTrackFX(clientId, id, message);
-        } else if (command == "fx/getParams") {
-            HandleGetFXParams(clientId, id, message);
-        } else if (command == "fx/setParam") {
-            HandleSetFXParam(clientId, id, message);
-        } else if (command == "fx/add") {
-            HandleAddFX(clientId, id, message);
-        } else if (command == "fx/delete") {
-            HandleDeleteFX(clientId, id, message);
-        } else if (command == "transport/getState") {
-            HandleGetTransport(clientId, id, message);
-        } else if (command == "transport/play") {
-            HandlePlay(clientId, id, message);
-        } else if (command == "transport/stop") {
-            HandleStop(clientId, id, message);
-        } else if (command == "transport/record") {
-            HandleRecord(clientId, id, message);
-        } else if (command == "fx/enumerate") {
-            HandleEnumerateFX(clientId, id, message);
-        } else if (command == "fx/refreshCache") {
-            HandleRefreshFxCache(clientId, id, message);
-        } else if (command == "track/setMute") {
-            HandleSetTrackMute(clientId, id, message);
-        } else if (command == "track/setSolo") {
-            HandleSetTrackSolo(clientId, id, message);
-        } else if (command == "track/setArm") {
-            HandleSetTrackArm(clientId, id, message);
-        } else if (command == "track/setSelected") {
-            HandleSetTrackSelected(clientId, id, message);
-        } else if (command == "track/setVolume") {
-            HandleSetTrackVolume(clientId, id, message);
-        } else if (command == "track/setPan") {
-            HandleSetTrackPan(clientId, id, message);
-        } else if (command == "sample/getDirectory") {
-            HandleSampleGetDirectory(clientId, id, message);
-        } else if (command == "sample/sendToTrack") {
-            HandleSampleSendToTrack(clientId, id, message);
-        } else if (command == "matrix/getAll") {
-            HandleMatrixGetAll(clientId, id, message);
-        } else if (command == "matrix/getSlot") {
-            HandleMatrixGetSlot(clientId, id, message);
-        } else if (command == "matrix/triggerSlot") {
-            HandleMatrixTriggerSlot(clientId, id, message);
-        } else if (command == "matrix/triggerScene") {
-            HandleMatrixTriggerScene(clientId, id, message);
-        } else if (command == "matrix/setSlotState") {
-            HandleMatrixSetSlotState(clientId, id, message);
-        } else if (command == "sequencer/getAll") {
-            HandleSequencerGetAll(clientId, id, message);
-        } else if (command == "sequencer/toggleStep") {
-            HandleSequencerToggleStep(clientId, id, message);
-        } else if (command == "sequencer/setStep") {
-            HandleSequencerSetStep(clientId, id, message);
-        } else if (command == "sequencer/clearAll") {
-            HandleSequencerClearAll(clientId, id, message);
-        } else if (command == "sequencer/setLength") {
-            HandleSequencerSetLength(clientId, id, message);
-        } else if (command == "sequencer/setBaseNote") {
-            HandleSequencerSetBaseNote(clientId, id, message);
-        } else if (command == "sequencer/getPlayhead") {
-            HandleSequencerGetPlayhead(clientId, id, message);
-        } else if (command == "fxchain/getDirectory") {
-            HandleFxChainGetDirectory(clientId, id, message);
-        } else if (command == "fxchain/save") {
-            HandleFxChainSave(clientId, id, message);
-        } else if (command == "fxchain/load") {
-            HandleFxChainLoad(clientId, id, message);
-        } else if (command == "fxchain/getInfo") {
-            HandleFxChainGetInfo(clientId, id, message);
-        } else if (command == "playtime/isAvailable") {
-            HandlePlaytimeIsAvailable(clientId, id, message);
+        auto it = m_commandMap.find(command);
+        if (it != m_commandMap.end()) {
+            (this->*(it->second))(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }

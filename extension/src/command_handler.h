@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 
 // Forward declare REAPER types — must match reaper_plugin.h which uses 'class',
 // not 'struct'. MSVC ABI mangles them differently causing linker errors.
@@ -68,6 +69,7 @@ struct ReaperAPI {
 
 class CommandHandler {
 public:
+    using HandlerFn = void (CommandHandler::*)(int clientId, const std::string& id, const std::string& rawMessage);
     using ResponseCallback = std::function<void(int clientId, const std::string& response)>;
     using BroadcastCallback = std::function<void(const std::string& message)>;
 
@@ -125,6 +127,9 @@ private:
     // Watched FX for callback-based param change filtering (Issue #58)
     int         m_watchedTrackIdx = -1;
     int         m_watchedFxIdx    = -1;
+
+    // Command dispatch map: command string → handler method
+    std::unordered_map<std::string, HandlerFn> m_commandMap;
 
     // Playtime 2 clip launcher state (Issues #61)
     PlaytimeState m_playtimeState;
