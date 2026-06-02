@@ -175,6 +175,7 @@ private:
     void HandleFxChainSave(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainLoad(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainGetInfo(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainSearchRecursive(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX
     void HandleEnumerateFX(int clientId, const std::string& id, const std::string& params);

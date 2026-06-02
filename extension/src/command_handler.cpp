@@ -283,6 +283,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fxchain/save"]            = &CommandHandler::HandleFxChainSave;
     m_commandMap["fxchain/load"]            = &CommandHandler::HandleFxChainLoad;
     m_commandMap["fxchain/getInfo"]         = &CommandHandler::HandleFxChainGetInfo;
+    m_commandMap["fxchain/searchRecursive"] = &CommandHandler::HandleFxChainSearchRecursive;
     m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
     m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
 }
@@ -2181,6 +2182,89 @@ void CommandHandler::HandleFxChainGetInfo(
     payload += json_string("fxCount") + ":" + std::to_string(fxCount) + ",";
     payload += json_string("fxNames") + ":" + fxNames + ",";
     payload += json_string("fileSize") + ":" + std::to_string(fileSize);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Recursive FX chain search across all subdirectories (Issue #93)
+// ============================================================
+
+void CommandHandler::HandleFxChainSearchRecursive(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string query    = parser.getString("query");
+    std::string rootPath = parser.getString("rootPath");
+
+    if (rootPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'rootPath' parameter\"}");
+        return;
+    }
+
+    std::string results = "[";
+    bool first = true;
+
+    try {
+        if (!fs::exists(rootPath)) {
+            // Non-existent path returns empty results, not error
+            results += "]";
+            std::string payload = "{";
+            payload += json_string("query")   + ":" + json_string(query) + ",";
+            payload += json_string("results") + ":" + results;
+            payload += "}";
+            SendResponse(clientId, id, true, payload);
+            return;
+        }
+
+        std::string lowerQuery;
+        for (char c : query) lowerQuery += tolower((unsigned char)c);
+
+        for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
+            if (!entry.is_regular_file())
+                continue;
+
+            std::string name = entry.path().filename().string();
+            std::string ext;
+            size_t dotPos = name.rfind('.');
+            if (dotPos == std::string::npos) continue;
+            ext = name.substr(dotPos);
+            std::string lowerExt;
+            for (char c : ext) lowerExt += tolower((unsigned char)c);
+            if (lowerExt != ".rfxchain") continue;
+
+            // Apply query filter (case-insensitive substring match)
+            if (!query.empty()) {
+                std::string lowerName;
+                for (char c : name) lowerName += tolower((unsigned char)c);
+                if (lowerName.find(lowerQuery) == std::string::npos)
+                    continue;
+            }
+
+            std::string fullPath = entry.path().string();
+            uintmax_t fileSize = 0;
+            try { fileSize = fs::file_size(entry.path()); } catch (...) {}
+
+            if (!first) results += ",";
+            first = false;
+            results += "{";
+            results += json_string("filePath") + ":" + json_string(fullPath) + ",";
+            results += json_string("name")     + ":" + json_string(name)     + ",";
+            results += json_string("size")     + ":" + std::to_string(fileSize);
+            results += "}";
+        }
+    } catch (const fs::filesystem_error&) {
+        // Graceful: return what we have so far
+    }
+
+    results += "]";
+
+    std::string payload = "{";
+    payload += json_string("query")   + ":" + json_string(query) + ",";
+    payload += json_string("results") + ":" + results;
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
