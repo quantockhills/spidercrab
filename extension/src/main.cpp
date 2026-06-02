@@ -368,18 +368,17 @@ static bool InitializeCoreServices()
     }
 
     // Set up MIDI output for Playtime clip launcher
+    // The midi_Output pointer is created once and captured by the lambda.
+    // Playtime 2 C API has no clip-triggering functions — matrix commands
+    // must work via MIDI notes sent to the Playtime 2 virtual MIDI input.
+    // CreateMIDIOutput(dev=0, outbus=1, midiMapConfig=nullptr) creates a
+    // virtual MIDI output that Playtime 2 can listen to on the first output bus.
     if (CreateMIDIOutput) {
         midi_Output* midiOut = CreateMIDIOutput(0, 1, nullptr);
         if (midiOut) {
             fprintf(stderr, "[reaper-ipad] MIDI output initialized for Playtime clip launcher\n");
-            g_cmdHandler->GetMidi().setSendFunc([](int status, int d1, int d2) {
-                static midi_Output* s_midiOut = nullptr;
-                if (!s_midiOut) {
-                    s_midiOut = CreateMIDIOutput(0, 1, nullptr);
-                }
-                if (s_midiOut) {
-                    s_midiOut->Send(status, d1, d2, -1);
-                }
+            g_cmdHandler->GetMidi().setSendFunc([midiOut](int status, int d1, int d2) {
+                midiOut->Send(status, d1, d2, -1);
             });
         } else {
             fprintf(stderr, "[reaper-ipad] MIDI output creation failed (no devices?)\n");
