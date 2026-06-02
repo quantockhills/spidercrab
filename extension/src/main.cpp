@@ -43,6 +43,7 @@
 #define REAPERAPI_WANT_GetTrackStateChunk
 #define REAPERAPI_WANT_SetTrackStateChunk
 #define REAPERAPI_WANT_CreateMIDIOutput
+#define REAPERAPI_WANT_CreateMIDIInput
 #define REAPERAPI_WANT_GetMaxMidiOutputs
 #define REAPERAPI_WANT_CountMediaItems
 #define REAPERAPI_WANT_GetMediaItem
@@ -123,6 +124,9 @@ static reaper_plugin_info_t* g_pluginInfo = nullptr;
 static int                   g_port       = 9224; // default port (matching reamo convention)
 static int                   g_httpPort   = 5173;
 
+// MIDI feedback listener for Playtime 2 clip launcher (Issue #91)
+static midi_Input*           g_midiInput  = nullptr;
+
 // Helper: find the frontend dist directory relative to this extension's location
 static bool FindFrontendDist(std::string& outPath)
 {
@@ -178,6 +182,39 @@ public:
         // Called ~30x/sec — drive the WebSocket + HTTP servers
         g_wsServer.Run();
         g_httpServer.run();
+
+        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91)
+        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91)
+        if (g_midiInput) {
+            // Swap buffers to get latest MIDI events
+            g_midiInput->SwapBufsPrecise(0, 0.0);
+            MIDI_eventlist* evtList = g_midiInput->GetReadBuf();
+            if (evtList) {
+                int bpos = 0;
+                MIDI_event_t* evt = evtList->EnumItems(&bpos);
+                while (evt) {
+                    int status = evt->midi_message[0] & 0xF0;
+                    int note   = evt->midi_message[1];
+                    int vel    = evt->midi_message[2];
+                    if (status == 0x90 && note >= 36 && note <= 99) {
+                        // This is a slot state feedback note
+                        int index = note - 36;
+                        int col = index % 8;
+                        int row = index / 8;
+                        // Map velocity to slot state
+                        // ReaLearn sends: vel=0=stopped, vel=127=playing
+                        if (g_cmdHandler) {
+                            std::string newState = (vel >= 64) ? "playing" : "stopped";
+                            g_cmdHandler->GetPlaytimeState().setSlotState(col, row, newState);
+                            SlotState s = g_cmdHandler->GetPlaytimeState().getSlot(col, row);
+                            g_cmdHandler->BroadcastMatrixEvent("matrix/slotStateChanged", s.toJson());
+                        }
+                    }
+                    evt = evtList->EnumItems(&bpos);
+                }
+            }
+        }
+
         static int rcnt; if ((++rcnt % 30) == 1) DebugLog("Run() tick");
     }
 
@@ -524,6 +561,20 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
         }
     } else if (g_cmdHandler) {
         fprintf(stderr, "[reaper-ipad] MIDI output not available (CreateMIDIOutput not resolved)\n");
+    }
+
+    // Set up MIDI feedback listener (reads Playtime 2 slot state changes
+    // sent by ReaLearn via virtual MIDI port, Issue #91)
+    if (g_cmdHandler && CreateMIDIInput) {
+        g_midiInput = CreateMIDIInput(0);
+        if (g_midiInput) {
+            g_midiInput->start();
+            fprintf(stderr, "[reaper-ipad] MIDI input initialized for Playtime feedback\n");
+        } else {
+            fprintf(stderr, "[reaper-ipad] MIDI input creation failed (no devices?)\n");
+        }
+    } else if (g_cmdHandler) {
+        fprintf(stderr, "[reaper-ipad] MIDI input not available (CreateMIDIInput not resolved)\n");
     }
 
     // Set up WebSocket message handler
