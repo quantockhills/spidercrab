@@ -1709,18 +1709,27 @@ static std::string extractFxChainFromChunk(const std::string& chunk)
                 // Opening tag like <FOO or self-closing like <FOO ... />
                 size_t endTag = chunk.find('>', openAngle);
                 if (endTag != std::string::npos) {
-                    // It's <TAG...> or <TAG ... />
-                    std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
-                    // Trim trailing whitespace
-                    while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
-                        tagContent.pop_back();
-                    if (!tagContent.empty() && tagContent.back() == '/') {
-                        // Self-closing tag <... /> — no depth change
-                        pos = endTag + 1;
-                    } else {
-                        // Regular opening tag
+                    // Check if > is on a different line than < — REAPER section opener
+                    // like <FXCHAIN or <TRACK with no > on the opening line
+                    size_t newline = chunk.find('\n', openAngle);
+                    if (newline != std::string::npos && newline < endTag) {
+                        // REAPER section opener: <TAG without > on same line
                         depth++;
-                        pos = endTag + 1;
+                        pos = openAngle + 1;
+                    } else {
+                        // It's <TAG...> or <TAG ... /> — all on one line
+                        std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                        // Trim trailing whitespace
+                        while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                            tagContent.pop_back();
+                        if (!tagContent.empty() && tagContent.back() == '/') {
+                            // Self-closing tag <... /> — no depth change
+                            pos = endTag + 1;
+                        } else {
+                            // Regular opening tag
+                            depth++;
+                            pos = endTag + 1;
+                        }
                     }
                 } else {
                     // <TAG without > on same line — REAPER section opener
@@ -1756,16 +1765,23 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
                     if (depth == 0) { trackClose = closeAngle; break; }
                     pos = closeAngle + 1;
                 } else {
-                    // Check if self-closing
+                    // Check if self-closing — handle REAPER section openers (no > on same line)
                     size_t endTag = chunk.find('>', openAngle);
                     if (endTag != std::string::npos) {
-                        std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
-                        while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
-                            tagContent.pop_back();
-                        if (tagContent.empty() || tagContent.back() != '/') {
+                        size_t newline = chunk.find('\n', openAngle);
+                        if (newline != std::string::npos && newline < endTag) {
+                            // REAPER section opener: <TAG without > on same line, e.g. <TRACK
                             depth++;
+                            pos = openAngle + 1;
+                        } else {
+                            std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                            while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                                tagContent.pop_back();
+                            if (tagContent.empty() || tagContent.back() != '/') {
+                                depth++;
+                            }
+                            pos = endTag + 1;
                         }
-                        pos = endTag + 1;
                     } else {
                         depth++;
                         pos = openAngle + 1;
@@ -1798,16 +1814,23 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
             if (depth == 0) { fxChainEnd = closeAngle; break; }
             pos = closeAngle + 1;
         } else {
-            // Opening tag
+            // Opening tag — check if > is on a different line than < (REAPER section opener)
             size_t endTag = chunk.find('>', openAngle);
             if (endTag != std::string::npos) {
-                std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
-                while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
-                    tagContent.pop_back();
-                if (!tagContent.empty() && tagContent.back() != '/') {
+                size_t newline = chunk.find('\n', openAngle);
+                if (newline != std::string::npos && newline < endTag) {
+                    // REAPER section opener: <TAG without > on same line, e.g. <FXCHAIN
                     depth++;
+                    pos = openAngle + 1;
+                } else {
+                    std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                    while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                        tagContent.pop_back();
+                    if (!tagContent.empty() && tagContent.back() != '/') {
+                        depth++;
+                    }
+                    pos = endTag + 1;
                 }
-                pos = endTag + 1;
             } else {
                 depth++;
                 pos = openAngle + 1;
@@ -2127,47 +2150,49 @@ void CommandHandler::HandleFxChainGetInfo(
         return;
     }
 
-    // Parse the FXCHAIN: count ITEM entries and extract names
+    // Parse the FXCHAIN: count FX entries and extract names
+    // .RfxChain files use plugin-type tags like <VST, <VST3, <JS, <AU
     int fxCount = 0;
     std::string fxNames = "[";
     size_t pos = 0;
     bool first = true;
 
-    while ((pos = content.find("<ITEM", pos)) != std::string::npos) {
+    // Helper to find the next plugin tag, handling <VST vs <VST3 overlap
+    auto findNextPluginTag = [&](size_t from) -> size_t {
+        size_t vstPos  = content.find("<VST ", from);
+        size_t vst3Pos = content.find("<VST3", from);
+        size_t jsPos   = content.find("<JS ", from);
+        size_t auPos   = content.find("<AU ", from);
+        size_t best = std::string::npos;
+        if (vstPos != std::string::npos)  best = vstPos;
+        if (vst3Pos != std::string::npos && (best == std::string::npos || vst3Pos < best)) best = vst3Pos;
+        if (jsPos != std::string::npos && (best == std::string::npos || jsPos < best)) best = jsPos;
+        if (auPos != std::string::npos && (best == std::string::npos || auPos < best)) best = auPos;
+        return best;
+    };
+
+    pos = findNextPluginTag(0);
+    while (pos != std::string::npos) {
         fxCount++;
-        size_t nameStart = content.find("NAME", pos);
-        if (nameStart != std::string::npos && nameStart < content.find(">", pos)) {
-            // NAME="..."
-            size_t quote1 = content.find('"', nameStart);
-            if (quote1 != std::string::npos) {
-                size_t quote2 = content.find('"', quote1 + 1);
-                if (quote2 != std::string::npos) {
-                    std::string fxName = content.substr(quote1 + 1, quote2 - quote1 - 1);
-                    if (!first) fxNames += ",";
-                    first = false;
-                    fxNames += json_string(fxName);
-                }
+
+        // Extract plugin name from quoted string after tag: e.g. <VST "VST: ReaEQ (Cockos)"
+        size_t quote1 = content.find('"', pos);
+        if (quote1 != std::string::npos) {
+            size_t quote2 = content.find('"', quote1 + 1);
+            if (quote2 != std::string::npos) {
+                std::string fxName = content.substr(quote1 + 1, quote2 - quote1 - 1);
+                if (!first) fxNames += ",";
+                first = false;
+                fxNames += json_string(fxName);
             }
         }
-        // Move past this ITEM
-        size_t itemClose = content.find(">", pos);
-        if (itemClose != std::string::npos) {
-            // Move past the rest of this ITEM block — find VST / JS or the next ITEM
-            size_t nextItem = content.find("<ITEM", pos + 5);
-            if (nextItem != std::string::npos) {
-                pos = nextItem;
-            } else {
-                // Last item - find the end of the FXCHAIN section
-                size_t fxChainClose = content.find("</FXCHAIN>", pos);
-                if (fxChainClose != std::string::npos) {
-                    pos = fxChainClose;
-                } else {
-                    pos = content.size();
-                }
-            }
-        } else {
-            pos++;
-        }
+
+        // Move past the closing > of this plugin's opening tag
+        size_t tagClose = content.find(">", pos);
+        if (tagClose == std::string::npos) break;
+
+        // Find the next plugin tag
+        pos = findNextPluginTag(tagClose + 1);
     }
     fxNames += "]";
 
