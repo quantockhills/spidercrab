@@ -3784,4 +3784,181 @@ TEST(FxChainChunkTest, ReplaceWithXmlWrappedFxChain)
     EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
 }
 
+TEST(FxChainChunkTest, ExtractWithVstQuuidData)
+{
+    // REAPER format: VST plugin lines can have quuid data with < and >
+    // characters on the same line, e.g. 0<5653785437654876345>
+    // The old code treated the > in quuid data as closing the VST section,
+    // breaking depth tracking for multi-FX chains.
+    // Only < and > at LINE START (after optional whitespace) should be
+    // treated as REAPER section markers.
+    std::string chunk =
+        "<TRACK\n"
+        "  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <VST \"VST3: ReaEQ (Cockos)\" \"reaeq.vst3\" 0<5653785437654876345> \"\"\n"
+        "      FLOATPOS 0 0 0 0 0 0 0\n"
+        "    >\n"
+        "    <VST \"VST3: ReaComp (Cockos)\" \"reacomp.vst3\" 0<ab1234cd5678ef90> \"\"\n"
+        "      FLOATPOS 0 0 0 0 0 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">\n";
 
+    std::string result = extractFxChainFromChunk(chunk);
+
+    // Should extract the full FXCHAIN block containing both plugins
+    EXPECT_FALSE(result.empty()) << "Should extract FXCHAIN with quuid data";
+    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
+    EXPECT_EQ(result.back(), '>') << "Result must end with >";
+
+    // Both plugins must be present
+    EXPECT_NE(result.find("ReaEQ"), std::string::npos) << "ReaEQ should be in extracted chain";
+    EXPECT_NE(result.find("ReaComp"), std::string::npos) << "ReaComp should be in extracted chain";
+
+    // Quuid data must be preserved
+    EXPECT_NE(result.find("0<5653785437654876345>"), std::string::npos) << "Quuid data should be preserved";
+    EXPECT_NE(result.find("0<ab1234cd5678ef90>"), std::string::npos) << "Quuid data should be preserved";
+
+    // FLOATPOS lines must be present
+    EXPECT_NE(result.find("FLOATPOS"), std::string::npos) << "FLOATPOS should be in extracted chain";
+
+    // Result should NOT contain the outer TRACK
+    EXPECT_EQ(result.find("TRACK"), std::string::npos) << "Should not contain TRACK";
+
+    // Verify balanced angle brackets
+    int ltCount = 0, gtCount = 0;
+    for (char c : result) {
+        if (c == '<') ltCount++;
+        if (c == '>') gtCount++;
+    }
+    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
+}
+
+TEST(FxChainChunkTest, ExtractWithVstQuuidDataAndXmlCloses)
+{
+    // Same quuid data edge case but with XML-style closing tags
+    // (.RfxChain format uses this when externalized)
+    std::string chunk =
+        "<FXCHAIN>\n"
+        "  SHOW 0\n"
+        "  <VST \"VST3: ReaEQ (Cockos)\" \"reaeq.vst3\" 0<5653785437654876345> \"\"\n"
+        "    FLOATPOS 0 0 0 0 0 0 0\n"
+        "  </VST>\n"
+        "  <VST \"VST3: ReaComp (Cockos)\" \"reacomp.vst3\" 0<ab1234cd5678ef90> \"\"\n"
+        "    FLOATPOS 0 0 0 0 0 0 0\n"
+        "  </VST>\n"
+        "</FXCHAIN>";
+
+    std::string result = extractFxChainFromChunk(chunk);
+
+    EXPECT_FALSE(result.empty()) << "Should extract XML-wrapped FXCHAIN with quuid data";
+    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
+    EXPECT_EQ(result.back(), '>') << "Result must end with >";
+
+    // Both plugins must be present
+    EXPECT_NE(result.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(result.find("ReaComp"), std::string::npos);
+
+    // Quuid data must be preserved
+    EXPECT_NE(result.find("0<5653785437654876345>"), std::string::npos);
+    EXPECT_NE(result.find("0<ab1234cd5678ef90>"), std::string::npos);
+
+    // XML close tags must be preserved
+    EXPECT_NE(result.find("</VST>"), std::string::npos);
+    EXPECT_NE(result.find("</FXCHAIN>"), std::string::npos);
+
+    // NOTE: bracket balance is NOT checked here because quuid data like
+    // 0<565...> contains < as data, and the matching > is consumed as the
+    // endTag of the <VST inline tag — this is correct REAPER chunk behavior.
+}
+
+TEST(FxChainChunkTest, ReplaceWithVstQuuidData)
+{
+    // Replace FX chain where the new chain has VST lines with quuid data.
+    // The quuid data contains > on the same line as <VST, which the old
+    // code misinterpreted as inline tags.
+    std::string originalChunk =
+        "<TRACK\n"
+        "  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <VST \"VST3: OldFX (Test)\" \"oldfx.vst3\" 0<oldguid> \"\"\n"
+        "      FLOATPOS 0 0 0 0 0 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">\n";
+
+    std::string newFxChain =
+        "<FXCHAIN\n"
+        "  SHOW 0\n"
+        "  <VST \"VST3: ReaEQ (Cockos)\" \"reaeq.vst3\" 0<5653785437654876345> \"\"\n"
+        "    FLOATPOS 0 0 0 0 0 0 0\n"
+        "  >\n"
+        "  <VST \"VST3: ReaComp (Cockos)\" \"reacomp.vst3\" 0<ab1234cd5678ef90> \"\"\n"
+        "    FLOATPOS 0 0 0 0 0 0 0\n"
+        "  >\n"
+        ">";
+
+    std::string result = replaceFxChainInChunk(originalChunk, newFxChain);
+
+    EXPECT_FALSE(result.empty());
+    EXPECT_EQ(result.find("<TRACK"), 0u) << "Must start with TRACK";
+
+    // New FX must be present, old FX must be gone
+    EXPECT_NE(result.find("ReaEQ"), std::string::npos) << "New FX should be present";
+    EXPECT_NE(result.find("ReaComp"), std::string::npos) << "New FX should be present";
+    EXPECT_EQ(result.find("OldFX"), std::string::npos) << "Old FX should be replaced";
+
+    // Quuid data must be preserved
+    EXPECT_NE(result.find("0<5653785437654876345>"), std::string::npos);
+    EXPECT_NE(result.find("0<ab1234cd5678ef90>"), std::string::npos);
+
+    // Verify bracket balance
+    int ltCount = 0, gtCount = 0;
+    for (char c : result) {
+        if (c == '<') ltCount++;
+        if (c == '>') gtCount++;
+    }
+    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
+
+    // Structure: TRACK > (FXCHAIN > (VST >, VST >)) >
+    // Total: 1 TRACK open + 1 FXCHAIN open + 2 VST opens + 2 VST closes + 1 FXCHAIN close + 1 TRACK close = 6
+    // Wait: TRACK's < is not tracked because we don't track it with depth, 
+    // but the < are real chars. Let's just verify balance.
+}
+
+TEST(FxChainChunkTest, ExtractWithDeeplyNestedInlineAngles)
+{
+    // Aggressive test: VST line with multiple < and > characters in data fields
+    // This should not confuse the section-depth tracking.
+    std::string chunk =
+        "<FXCHAIN\n"
+        "  <VST \"VST3: Complex (Vendor)\" \"complex.vst3\" 0<a<b>c<d>e> \"\"\n"
+        "    FLOATPOS 0 0 0 0 0 0 0\n"
+        "    <PARAM\n"
+        "      name \"test\"\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    std::string result = extractFxChainFromChunk(chunk);
+
+    EXPECT_FALSE(result.empty()) << "Should extract FXCHAIN with deeply nested inline angles";
+    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
+    EXPECT_EQ(result.back(), '>') << "Result must end with >";
+
+    // All content must be preserved
+    EXPECT_NE(result.find("Complex"), std::string::npos);
+    EXPECT_NE(result.find("0<a<b>c<d>e>"), std::string::npos);
+    EXPECT_NE(result.find("<PARAM"), std::string::npos);
+
+    // Verify balanced angle brackets
+    int ltCount = 0, gtCount = 0;
+    for (char c : result) {
+        if (c == '<') ltCount++;
+        if (c == '>') gtCount++;
+    }
+    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
+}
