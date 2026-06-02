@@ -491,14 +491,14 @@ export function ParamControl({
 
 // ── Parameter Slider ─────────────────────────────────────────
 
-interface ParamSliderProps {
+export interface ParamSliderProps {
   param: FxParam;
   onChange: (value: number) => void;
   onDragStart: (paramIdx: number) => void;
   onDragEnd: () => void;
 }
 
-function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSliderProps) {
+export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localValue, setLocalValue] = useState(param.value);

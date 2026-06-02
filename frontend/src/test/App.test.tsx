@@ -57,36 +57,27 @@ function setupMockReaper() {
 }
 
 describe('App — FX card navigation to ParamControl', () => {
-  it('navigates to FX tab when FX card is tapped on TrackOverview', async () => {
+  it('opens inline FX drawer when FX card is tapped on TrackOverview (Issue #94)', async () => {
     setupMockReaper();
     render(<App />);
 
-    // Should start on the Tracks tab
-    expect(screen.getByText('Kick')).toBeDefined();
-
-    // Wait for FX cards to appear
     await waitFor(() => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Verify we're on the Tracks tab (not FX tab)
-    expect(screen.queryByText('Loading parameters...')).toBeNull();
+    // Click the ReaEQ card — opens inline drawer on Tracks tab
+    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
 
-    // Click the ReaEQ FX card
-    fireEvent.click(screen.getByText('ReaEQ'));
-
-    // Should now navigate to the FX tab and show loading params
+    // The inline drawer shows close button
     await waitFor(() => {
-      expect(screen.getByText('Loading parameters...')).toBeDefined();
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
     });
 
-    // The ParamControl view should show the FX name and track info
-    expect(screen.getByText('ReaEQ')).toBeDefined();
-    expect(screen.getByText('Track: Kick')).toBeDefined();
-    expect(screen.getByText('Remove FX')).toBeDefined();
+    // Should still be on the Tracks tab (not navigated away)
+    expect(screen.getByText('Tracks (2)')).toBeDefined();
   });
 
-  it('switches back to FX browser when pressing Back from ParamControl', async () => {
+  it('closes inline FX drawer when close button is pressed', async () => {
     setupMockReaper();
     render(<App />);
 
@@ -94,19 +85,19 @@ describe('App — FX card navigation to ParamControl', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Click FX card
-    fireEvent.click(screen.getByText('ReaEQ'));
+    // Click FX card to open drawer
+    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
 
     await waitFor(() => {
-      expect(screen.getByText('Loading parameters...')).toBeDefined();
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
     });
 
-    // Click Back — goes back to FX tab (showing FxBrowser), not to Tracks tab
-    fireEvent.click(screen.getByLabelText('Back'));
+    // Click Close
+    fireEvent.click(screen.getByLabelText('Close drawer'));
 
     await waitFor(() => {
-      // Should show the FX browser (not ParamControl anymore)
-      expect(screen.queryByText('Loading parameters...')).toBeNull();
+      // Drawer should be closed
+      expect(screen.queryByLabelText('Close drawer')).toBeNull();
     });
   });
 
