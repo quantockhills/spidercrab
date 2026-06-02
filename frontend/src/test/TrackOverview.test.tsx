@@ -603,6 +603,48 @@ describe('TrackOverview — FX grid cards', () => {
     expect(screen.queryByTestId('add-track-empty')).toBeNull();
   });
 
+  // ── FX open button tests (Issue #86) ──
+
+  describe('FX open button', () => {
+    it('renders FX button on each track when onOpenFx is provided', () => {
+      const onOpenFx = vi.fn();
+      renderTrackOverview({ onOpenFx });
+
+      const fxButtons = screen.getAllByTestId('open-fx-button');
+      expect(fxButtons).toHaveLength(2); // 2 mock tracks
+    });
+
+    it('does not render FX button when onOpenFx is not provided', () => {
+      renderTrackOverview();
+      expect(screen.queryByTestId('open-fx-button')).toBeNull();
+    });
+
+    it('calls onOpenFx with track index when FX button is clicked', () => {
+      const onOpenFx = vi.fn();
+      renderTrackOverview({ onOpenFx });
+
+      const fxButtons = screen.getAllByTestId('open-fx-button');
+      fireEvent.click(fxButtons[1]); // Click FX button on track 1 (Snare)
+
+      expect(onOpenFx).toHaveBeenCalledOnce();
+      expect(onOpenFx).toHaveBeenCalledWith(1);
+    });
+
+    it('stops click propagation so track selection does not trigger', () => {
+      const onOpenFx = vi.fn();
+      const onSelectTrack = vi.fn();
+      renderTrackOverview({ onOpenFx, onSelectTrack });
+
+      const fxButton = screen.getAllByTestId('open-fx-button')[0];
+      fireEvent.click(fxButton);
+
+      // Track selection should NOT have been called
+      expect(onSelectTrack).not.toHaveBeenCalled();
+      // FX callback should have been called
+      expect(onOpenFx).toHaveBeenCalledOnce();
+    });
+  });
+
   // ── Original test continues below ──
 
   it('does not render FX section when getTrackFx and onSelectFx are not provided', async () => {
