@@ -3531,3 +3531,258 @@ TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
     fs::remove_all(testDir);
 }
 
+// ============================================================
+// FX Chain chunk manipulation tests (Issue #79)
+//
+// Tests for the static helper functions:
+//   - extractFxChainFromChunk: must handle XML-wrapped </> closing tags
+//   - replaceFxChainInChunk: must produce well-formed chunks without
+//     duplicate closing > characters
+// ============================================================
+
+TEST(FxChainChunkTest, ExtractWithXmlClosingTags)
+{
+    // XML-wrapped .RfxChain content where sections close with </TAG>
+    // This is the format REAPER uses when saving .RfxChain files internally.
+    std::string xmlChunk =
+        "<FXCHAIN>\n"
+        "  SHOW 0\n"
+        "  LASTSEL 0\n"
+        "  <ITEM>\n"
+        "    NAME \"ReaEQ\"\n"
+        "    VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+        "  </ITEM>\n"
+        "  <ITEM>\n"
+        "    NAME \"ReaComp\"\n"
+        "    VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+        "  </ITEM>\n"
+        "</FXCHAIN>";
+
+    std::string result = extractFxChainFromChunk(xmlChunk);
+
+    // Must not be empty — should extract the full FXCHAIN block
+    EXPECT_FALSE(result.empty()) << "Should extract XML-wrapped FXCHAIN";
+
+    // Result must start with <FXCHAIN
+    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
+
+    // Result must contain ReaEQ and ReaComp
+    EXPECT_NE(result.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(result.find("ReaComp"), std::string::npos);
+
+    // Result must end with > (the closing > for </FXCHAIN>)
+    EXPECT_EQ(result.back(), '>') << "Result must end with >";
+
+    // Result should include the full content (all ITEMs)
+    EXPECT_NE(result.find("</ITEM>"), std::string::npos) << "Should preserve </ITEM> tags";
+    EXPECT_NE(result.find("</FXCHAIN>"), std::string::npos) << "Should preserve </FXCHAIN> tag";
+
+    // Verify balanced angle brackets
+    int ltCount = 0;
+    int gtCount = 0;
+    for (char c : result) {
+        if (c == '<') ltCount++;
+        if (c == '>') gtCount++;
+    }
+    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced in extracted chunk";
+}
+
+TEST(FxChainChunkTest, ExtractFromRawRppChunk)
+{
+    // REAPER's native RPP format (no XML-style close tags):
+    // <TAG... sections are only closed by standalone > on their own line.
+    std::string rppChunk =
+        "<TRACK\n"
+        "  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+        "    >\n"
+        "  >\n"
+        ">\n";
+
+    std::string result = extractFxChainFromChunk(rppChunk);
+
+    EXPECT_FALSE(result.empty()) << "Should extract RPP-format FXCHAIN";
+    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
+    EXPECT_EQ(result.back(), '>') << "Result must end with >";
+    EXPECT_NE(result.find("ReaEQ"), std::string::npos);
+
+    // Should NOT contain TRACK or the outer </ as those belong to the track
+    EXPECT_EQ(result.find("TRACK"), std::string::npos) << "Should not contain TRACK tag";
+}
+
+TEST(FxChainChunkTest, ExtractFromEmptyChunk)
+{
+    // No FXCHAIN section at all
+    std::string emptyChunk = "<TRACK\n  NAME \"Empty\"\n>\n";
+    std::string result = extractFxChainFromChunk(emptyChunk);
+    EXPECT_TRUE(result.empty()) << "Should return empty when no FXCHAIN found";
+}
+
+TEST(FxChainChunkTest, ReplaceProducesWellFormedChunk)
+{
+    // When replacing an FXCHAIN section, the result must not contain
+    // orphaned > characters that corrupt the track chunk. The old bug
+    // was: chunk.substr(fxChainEnd) included the closing > of the old
+    // FXCHAIN, causing a duplicate > line after the new FXCHAIN.
+    std::string originalChunk =
+        "<TRACK\n"
+        "  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+        "    >\n"
+        "  >\n"
+        ">\n";
+
+    std::string newFxChain =
+        "<FXCHAIN\n"
+        "  SHOW 0\n"
+        "  <ITEM\n"
+        "    NAME \"ReaComp\"\n"
+        "    VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+        "  >\n"
+        ">";
+
+    std::string result = replaceFxChainInChunk(originalChunk, newFxChain);
+
+    // Result must not be empty
+    EXPECT_FALSE(result.empty());
+
+    // Result must start with <TRACK
+    EXPECT_EQ(result.find("<TRACK"), 0u) << "Result must start with <TRACK";
+
+    // Result must end with >\n (the closing > of the TRACK section)
+    EXPECT_EQ(result.back(), '\n') << "Result must end with newline";
+    size_t lastGt = result.rfind('>');
+    EXPECT_NE(lastGt, std::string::npos);
+    EXPECT_EQ(result.substr(lastGt), ">\n") << "Result must end with >\n";
+
+    // Result must contain the new FX (ReaComp) not the old one (ReaEQ)
+    EXPECT_NE(result.find("ReaComp"), std::string::npos) << "New FX should be present";
+    EXPECT_EQ(result.find("ReaEQ"), std::string::npos) << "Old FX should be replaced";
+
+    // The replaced FXCHAIN section must be contiguous: after the old
+    // FXCHAIN's opening <FXCHAIN tag, everything should be new content.
+    // Verify there's no orphaned ">" between "ReaComp" and the new
+    // FXCHAIN closing ">" — the old closing ">" would appear as:
+    //   ...ReaComp...
+    //   >
+    //   ...
+    // where the first ">" is orphaned and the second is the new closing.
+    size_t reacompPos = result.find("ReaComp");
+    ASSERT_NE(reacompPos, std::string::npos);
+    // After ReaComp, the next ">" should be the ITEM close (indented),
+    // followed by the FXCHAIN close ">" (not indented), then TRACK close.
+    // There should not be an EXTRA ">" between the new FXCHAIN and the
+    // TRACK close. We verify by checking that after the first ">" after
+    // ReaComp, the remaining content matches expected structure.
+    size_t firstGtAfter = result.find('>', reacompPos);
+    ASSERT_NE(firstGtAfter, std::string::npos);
+    // Everything from firstGtAfter to end should be: > >\n (ITEM close,
+    // FXCHAIN close, TRACK close) with newlines between them.
+    // Specifically: ">\n>\n>\n"
+    std::string tail = result.substr(firstGtAfter);
+    // Count the ">" in tail — should be exactly 3 (ITEM, FXCHAIN, TRACK)
+    int tailGtCount = 0;
+    for (char c : tail) if (c == '>') tailGtCount++;
+    EXPECT_EQ(tailGtCount, 3) << "After new FX, there should be exactly 3 > closes";
+
+    // Verify the chunk structure is parseable by counting opening/closing>
+    int depth = 0;
+    for (char c : result) {
+        if (c == '<') depth++;
+        if (c == '>') depth--;
+    }
+    EXPECT_EQ(depth, 0) << "Angle bracket balancing must produce clean chunk";
+}
+
+TEST(FxChainChunkTest, ReplaceWithNoExistingFxChain)
+{
+    // When the track has no FXCHAIN section, the replacement fallback
+    // appends the new FXCHAIN at the end. The result must at minimum
+    // contain the new FX and have balanced brackets.
+    std::string noFxChunk =
+        "<TRACK\n"
+        "  NAME \"Clean\"\n"
+        ">\n";
+
+    std::string newFxChain =
+        "<FXCHAIN\n"
+        "  <ITEM\n"
+        "    NAME \"NewFX\"\n"
+        "    VST \"VST3: NewFX (Test)\" NewFX 0\n"
+        "  >\n"
+        ">";
+
+    std::string result = replaceFxChainInChunk(noFxChunk, newFxChain);
+
+    EXPECT_FALSE(result.empty());
+    EXPECT_EQ(result.find("<TRACK"), 0u) << "Must start with TRACK";
+    EXPECT_NE(result.find("NewFX"), std::string::npos) << "New FX should be in result";
+
+    // Verify bracket balance
+    int ltCount = 0, gtCount = 0;
+    for (char c : result) {
+        if (c == '<') ltCount++;
+        if (c == '>') gtCount++;
+    }
+    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
+
+    // The result should contain the new FXCHAIN somewhere after the
+    // original chunk content. Since this is the fallback path, the
+    // FXCHAIN is appended at the end (the track close > is in the
+    // original chunk, not after the FXCHAIN).
+    size_t fxchainPos = result.find("<FXCHAIN");
+    ASSERT_NE(fxchainPos, std::string::npos);
+    // The original chunk ends with ">\n" — the FXCHAIN comes after that
+    EXPECT_GT(fxchainPos, noFxChunk.size()) << "FXCHAIN should be appended after original chunk";
+}
+
+TEST(FxChainChunkTest, ReplaceWithXmlWrappedFxChain)
+{
+    // Verify that a new FXCHAIN with XML-style </> close tags can
+    // be spliced into an RPP-format track chunk.
+    std::string originalChunk =
+        "<TRACK\n"
+        "  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+        "    >\n"
+        "  >\n"
+        ">\n";
+
+    // This simulates a .RfxChain file that uses XML tags
+    std::string xmlFxChain =
+        "<FXCHAIN>\n"
+        "  <ITEM>\n"
+        "    NAME \"Limiter\"\n"
+        "    VST \"VST3: Limiter (Test)\" Limiter 0 0\n"
+        "  </ITEM>\n"
+        "</FXCHAIN>";
+
+    std::string result = replaceFxChainInChunk(originalChunk, xmlFxChain);
+
+    EXPECT_FALSE(result.empty());
+    EXPECT_EQ(result.find("<TRACK"), 0u) << "Must start with TRACK";
+    EXPECT_NE(result.find("Limiter"), std::string::npos) << "New FX should be in result";
+    EXPECT_EQ(result.find("ReaEQ"), std::string::npos) << "Old FX should be replaced";
+
+    // Verify bracket balance
+    int ltCount = 0, gtCount = 0;
+    for (char c : result) {
+        if (c == '<') ltCount++;
+        if (c == '>') gtCount++;
+    }
+    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
+}
+
+
