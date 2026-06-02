@@ -191,7 +191,7 @@ function AppInner() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col text-[var(--text-primary)]">
+    <div className="h-dvh bg-[var(--bg-primary)] flex flex-col text-[var(--text-primary)] overflow-hidden">
       {/* ── Status Bar ── */}
       <header className="sticky top-0 z-10 bg-[var(--bg-secondary)] border-b border-[var(--border)] px-4 py-2.5 safe-area-top">
         <div className="flex items-center justify-between">
@@ -220,7 +220,7 @@ function AppInner() {
       </header>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-hidden min-h-0">
         <ErrorBoundary>
         {activeTab === 'media' && (
           <SampleBrowser
@@ -233,7 +233,7 @@ function AppInner() {
         )}
 
         {activeTab === 'clips' && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full min-h-0">
             {/* Mode toggle */}
             <div className="flex border-b border-[var(--border)]">
               <button
@@ -257,7 +257,7 @@ function AppInner() {
                 Sequencer
               </button>
             </div>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden min-h-0">
               {sessionMode === 'session' ? (
                 <SessionView
                   matrix={matrix}
