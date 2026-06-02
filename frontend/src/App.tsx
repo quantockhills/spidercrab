@@ -52,6 +52,9 @@ function App() {
     fxChainSave,
     fxChainLoad,
     fxChainGetInfo,
+    getFxPreset,
+    setFxPreset,
+    getAllFxPresetNames,
     matrix,
     getMatrix,
     triggerSlot,
@@ -165,6 +168,16 @@ function App() {
       setActiveTab('fx');
     },
     [tracks],
+  );
+
+  // ── FX button from TrackOverview (Issue #86) ──
+  const handleOpenFx = useCallback(
+    (trackIdx: number) => {
+      setSelectedTrack(trackIdx);
+      selectTrack(trackIdx);
+      setActiveTab('fx');
+    },
+    [selectTrack],
   );
 
   const handleBackFromParam = useCallback(() => {
@@ -291,6 +304,9 @@ function App() {
             deleteFx={deleteFx}
             onEvent={onEvent}
             onBack={handleBackFromParam}
+            getFxPreset={getFxPreset}
+            setFxPreset={setFxPreset}
+            getAllFxPresetNames={getAllFxPresetNames}
           />
         ) : fxChainView ? (
           <FxChainBrowser
@@ -334,6 +350,7 @@ function App() {
             onGetTransportState={getTransportState}
             getTrackFx={getTrackFx}
             onSelectFx={handleSelectFx}
+            onOpenFx={handleOpenFx}
           />
         )}
 

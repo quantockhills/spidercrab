@@ -109,8 +109,31 @@ describe('App — FX card navigation to ParamControl', () => {
       expect(screen.queryByText('Loading parameters...')).toBeNull();
     });
   });
-});
 
+  // ── FX button from TrackOverview (Issue #86) ──
+
+  it('navigates to FX tab when FX button is tapped on TrackOverview', async () => {
+    setupMockReaper();
+    render(<App />);
+
+    // Should start on the Tracks tab
+    expect(screen.getByText('Kick')).toBeDefined();
+
+    // Find the FX button on track 0
+    await waitFor(() => {
+      const fxButtons = screen.getAllByTestId('open-fx-button');
+      expect(fxButtons.length).toBeGreaterThanOrEqual(1);
+    });
+
+    const fxButtons = screen.getAllByTestId('open-fx-button');
+    fireEvent.click(fxButtons[0]);
+
+    // Should navigate to FX tab showing FxBrowser
+    await waitFor(() => {
+      expect(screen.getByText('FX Browser')).toBeDefined();
+    });
+  });
+});
 describe('App — Settings tab', () => {
   it('switches to Settings tab and shows Refresh Plugin List button', async () => {
     setupMockReaper();

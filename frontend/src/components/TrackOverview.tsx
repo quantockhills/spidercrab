@@ -19,6 +19,7 @@ interface TrackOverviewProps {
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
   getTrackFx?: (trackIdx: number) => Promise<FxInfo[]>;
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
+  onOpenFx?: (trackIdx: number) => void;
 }
 
 
@@ -140,6 +141,7 @@ export function TrackOverview({
   onAddTrack,
   getTrackFx,
   onSelectFx,
+  onOpenFx,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -344,6 +346,7 @@ export function TrackOverview({
                 onToggleArm={() => onToggleArm(track.index)}
                 onVolumeChange={onVolumeChange ? (v) => onVolumeChange(track.index, v) : undefined}
                 onPanChange={onPanChange ? (v) => onPanChange(track.index, v) : undefined}
+                onOpenFx={onOpenFx ? () => onOpenFx(track.index) : undefined}
               />
               {/* FX grid cards under the track row */}
               {getTrackFx && onSelectFx && trackFxMap[track.index]?.length > 0 && (
@@ -390,6 +393,7 @@ interface TrackRowProps {
   onToggleArm: () => void;
   onVolumeChange?: (volume: number) => void;
   onPanChange?: (pan: number) => void;
+  onOpenFx?: () => void;
 }
 
 function TrackRow({
@@ -401,6 +405,7 @@ function TrackRow({
   onToggleArm,
   onVolumeChange,
   onPanChange,
+  onOpenFx,
 }: TrackRowProps) {
   return (
     <div
@@ -482,6 +487,20 @@ function TrackRow({
         >
           R
         </button>
+
+        {/* FX open button (Issue #86) */}
+        {onOpenFx && (
+          <button
+            data-testid="open-fx-button"
+            onClick={(e) => { e.stopPropagation(); onOpenFx(); }}
+            className={`
+              w-11 h-11 text-xs font-semibold transition-colors active:brightness-95
+              bg-[var(--bg-tertiary)] text-[var(--text-secondary)]
+            `}
+          >
+            FX
+          </button>
+        )}
       </div>
     </div>
   );
