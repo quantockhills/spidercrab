@@ -117,7 +117,11 @@ function AppInner() {
       // Matrix dimensions may change when tracks are added/removed
       getMatrix();
     });
-    const unsubSlot = onEvent('event:slotStateChanged', () => {
+    // Note: the C++ backend broadcasts events with the event name
+    // 'matrix/slotStateChanged' not 'slotStateChanged'. The WsClient
+    // dispatches to 'event:{msg.event}', so we must match 'matrix/slotStateChanged'.
+    // See command_handler.cpp: BroadcastMatrixEvent("matrix/slotStateChanged", ...)
+    const unsubSlot = onEvent('event:matrix/slotStateChanged', () => {
       // Refresh matrix state on any slot change
       getMatrix();
     });
