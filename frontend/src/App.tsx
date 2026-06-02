@@ -40,6 +40,7 @@ function App() {
     deleteFx,
     getDirectory,
     sendSampleToTrack,
+    sendCommand,
     isRefreshingFx,
     refreshFxCache,
     play,
@@ -220,6 +221,7 @@ function App() {
             selectedTrack={selectedTrack}
             getDirectory={getDirectory}
             sendSampleToTrack={sendSampleToTrack}
+            sendCommand={sendCommand}
             onBack={() => setActiveTab('tracks')}
           />
         )}

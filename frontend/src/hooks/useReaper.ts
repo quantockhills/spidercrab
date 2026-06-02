@@ -486,6 +486,15 @@ export function useReaper(opts: UseReaperOptions = {}) {
     );
   }, []);
 
+  // Generic sendCommand for hooks that need raw access (e.g. useAudioPreview)
+  const sendCommand = useCallback(
+    async (command: string, params?: Record<string, unknown>): Promise<{ payload: Record<string, unknown> }> => {
+      if (!clientRef.current) throw new Error('Not connected');
+      return await clientRef.current.send(command, params || {});
+    },
+    []
+  );
+
   return {
     connected,
     tracks,
@@ -527,6 +536,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     getTransportState,
     getDirectory,
     sendSampleToTrack,
+    sendCommand,
     refreshFxCache,
     onEvent,
     updateTrack,

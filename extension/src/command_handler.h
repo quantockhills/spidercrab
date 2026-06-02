@@ -164,6 +164,7 @@ private:
     // Command handlers — sample/media
     void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);
     void HandleSampleSendToTrack(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleGetAudioData(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

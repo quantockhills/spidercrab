@@ -1,8 +1,10 @@
 #include "command_handler.h"
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 namespace fs = std::filesystem;
 
@@ -1253,6 +1255,137 @@ void CommandHandler::HandleSampleSendToTrack(
         SendResponse(clientId, id, false,
             "{\"error\":\"InsertMedia returned " + std::to_string(insertResult) + "\"}");
     }
+}
+
+// ============================================================
+// Sample audio data command (Issue #27)
+// ============================================================
+
+// Base64 encode binary data
+static std::string base64_encode(const uint8_t* data, size_t len)
+{
+    static const char* chars =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    out.reserve(((len + 2) / 3) * 4);
+    for (size_t i = 0; i < len; i += 3) {
+        uint32_t triple = 0;
+        int remain = (int)(len - i);
+        if (remain > 0) triple |= ((uint32_t)data[i]) << 16;
+        if (remain > 1) triple |= ((uint32_t)data[i+1]) << 8;
+        if (remain > 2) triple |= ((uint32_t)data[i+2]);
+        out += chars[(triple >> 18) & 0x3F];
+        out += chars[(triple >> 12) & 0x3F];
+        out += (remain > 1) ? chars[(triple >> 6) & 0x3F] : '=';
+        out += (remain > 2) ? chars[triple & 0x3F] : '=';
+    }
+    return out;
+}
+
+void CommandHandler::HandleSampleGetAudioData(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string filePath = parser.getString("path");
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+        return;
+    }
+
+    // Check file existence
+    if (!fs::exists(filePath)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"File not found\"}");
+        return;
+    }
+
+    // Check file size limit (5 MB default)
+    uintmax_t fileSize = fs::file_size(filePath);
+    const uintmax_t kMaxFileSize = 5 * 1024 * 1024;
+    if (fileSize > kMaxFileSize) {
+        std::string err = "{\"error\":\"File too large (" +
+            std::to_string(fileSize / (1024 * 1024)) + " MB), max 5 MB\"}";
+        SendResponse(clientId, id, false, err);
+        return;
+    }
+
+    // Open file
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file.is_open()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Cannot open file\"}");
+        return;
+    }
+
+    // Read RIFF/WAV header
+    struct {
+        char     riff[4];
+        uint32_t fileSize;
+        char     wave[4];
+        char     fmt[4];
+        uint32_t fmtSize;
+        uint16_t audioFormat;
+        uint16_t numChannels;
+        uint32_t sampleRate;
+        uint32_t byteRate;
+        uint16_t blockAlign;
+        uint16_t bitsPerSample;
+    } header;
+
+    file.read(reinterpret_cast<char*>(&header), sizeof(header));
+    if (!file.good() ||
+        memcmp(header.riff, "RIFF", 4) != 0 ||
+        memcmp(header.wave, "WAVE", 4) != 0 ||
+        header.audioFormat != 1) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Not a valid PCM WAV file\"}");
+        return;
+    }
+
+    // Skip to "data" chunk
+    struct { char id[4]; uint32_t size; } chunk;
+    uint32_t dataSize = 0;
+    while (file.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))) {
+        if (memcmp(chunk.id, "data", 4) == 0) {
+            dataSize = chunk.size;
+            break;
+        }
+        file.seekg(chunk.size, std::ios::cur);
+        if (chunk.size % 2 != 0)
+            file.seekg(1, std::ios::cur);
+    }
+
+    if (dataSize == 0 || !file.good()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"No audio data found in WAV file\"}");
+        return;
+    }
+
+    // Read PCM data
+    std::vector<uint8_t> pcmData(dataSize);
+    file.read(reinterpret_cast<char*>(pcmData.data()), dataSize);
+    if (!file.good() && file.gcount() < (int)dataSize) {
+        pcmData.resize(file.gcount());
+    }
+
+    // Base64 encode PCM data
+    std::string b64 = base64_encode(pcmData.data(), pcmData.size());
+
+    // Build response
+    std::string payload = "{";
+    payload += json_string("sampleRate") + ":" + std::to_string(header.sampleRate) + ",";
+    payload += json_string("channels") + ":" + std::to_string(header.numChannels) + ",";
+    payload += json_string("bitDepth") + ":" + std::to_string(header.bitsPerSample) + ",";
+    payload += json_string("format") + ":" + json_string("wav") + ",";
+    payload += json_string("fileSize") + ":" + std::to_string(fileSize) + ",";
+    payload += json_string("dataSize") + ":" + std::to_string(pcmData.size()) + ",";
+    payload += json_string("data") + ":" + json_string(b64);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
 }
 
 // ============================================================

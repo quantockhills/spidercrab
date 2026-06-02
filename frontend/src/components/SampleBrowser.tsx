@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { Track, DirEntry } from '../hooks/useReaper';
+import { useAudioPreview } from '../hooks/useAudioPreview';
+import { WaveformDisplay } from './WaveformDisplay';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -8,6 +10,7 @@ interface SampleBrowserProps {
   selectedTrack: number | null;
   getDirectory: (path: string) => Promise<{entries: DirEntry[]}>;
   sendSampleToTrack: (path: string, trackIdx: number) => Promise<boolean>;
+  sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>;
   onBack: () => void;
 }
 
@@ -18,6 +21,7 @@ export function SampleBrowser({
   selectedTrack,
   getDirectory,
   sendSampleToTrack,
+  sendCommand,
   onBack,
 }: SampleBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>('/tmp');
@@ -27,6 +31,9 @@ export function SampleBrowser({
   const [search, setSearch] = useState('');
   const [sending, setSending] = useState<string | null>(null);
   const [sentFiles, setSentFiles] = useState<Set<string>>(new Set());
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  const audioPreview = useAudioPreview(selectedFile, sendCommand);
 
   const loadDirectory = useCallback(async (path: string) => {
     try {
@@ -122,6 +129,26 @@ export function SampleBrowser({
     const ext = name.split('.').pop()?.toLowerCase();
     return ['wav', 'mp3', 'flac', 'ogg', 'aiff', 'aif', 'm4a', 'wma'].includes(ext || '');
   };
+
+  // Format time in seconds to mm:ss
+  const formatTime = (seconds: number): string => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const handleFileClick = useCallback((entry: DirEntry) => {
+    if (entry.type !== 'file') return;
+    const fullPath = currentPath + '/' + entry.name;
+    if (selectedFile === fullPath) {
+      // Click same file again — close preview
+      audioPreview.stop();
+      setSelectedFile(null);
+    } else {
+      audioPreview.stop();
+      setSelectedFile(fullPath);
+    }
+  }, [currentPath, selectedFile, audioPreview]);
 
   const selectedTrackName = selectedTrack !== null
     ? tracks.find((t) => t.index === selectedTrack)?.name
@@ -234,12 +261,93 @@ export function SampleBrowser({
                 isSent={sentFiles.has(entry.name)}
                 canSend={selectedTrack !== null}
                 formattedSize={formatSize(entry.size)}
+                isSelected={selectedFile === currentPath + '/' + entry.name}
                 onSend={() => handleSendToTrack(entry)}
+                onSelect={() => handleFileClick(entry)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Audio preview panel */}
+      {selectedFile && (
+        <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
+          <div className="px-4 py-2 flex items-center justify-between">
+            <span className="text-xs font-medium text-[var(--text-primary)] truncate flex-1">
+              🎵 {selectedFile.split('/').pop()}
+            </span>
+            <button
+              onClick={() => { audioPreview.stop(); setSelectedFile(null); }}
+              className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 min-h-[36px]"
+              aria-label="Close preview"
+            >
+              ✕
+            </button>
+          </div>
+
+          {audioPreview.isLoading && (
+            <div className="px-4 py-8 flex justify-center">
+              <div className="text-sm text-[var(--text-secondary)] animate-pulse">Loading audio...</div>
+            </div>
+          )}
+
+          {audioPreview.error && (
+            <div className="px-4 py-4 flex justify-center">
+              <div className="text-sm text-[var(--accent-red)]">⚠ {audioPreview.error}</div>
+            </div>
+          )}
+
+          {audioPreview.peaks && (
+            <div className="px-4 pb-3 space-y-2">
+              <WaveformDisplay
+                peaks={audioPreview.peaks}
+                currentTime={audioPreview.currentTime}
+                duration={audioPreview.duration}
+                isPlaying={audioPreview.isPlaying}
+                reverse={audioPreview.reverse}
+                onSeek={audioPreview.seek}
+                height={64}
+              />
+
+              {/* Transport controls */}
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={audioPreview.isPlaying ? audioPreview.pause : audioPreview.play}
+                  className="px-4 py-2 text-sm font-medium bg-[var(--accent-orange)] text-black min-h-[44px] active:brightness-90"
+                  aria-label={audioPreview.isPlaying ? 'Pause' : 'Play'}
+                >
+                  {audioPreview.isPlaying ? '⏸ Pause' : '▶ Play'}
+                </button>
+                <button
+                  onClick={audioPreview.toggleReverse}
+                  className={`px-3 py-2 text-sm font-medium min-h-[44px] active:brightness-90 ${
+                    audioPreview.reverse
+                      ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/40'
+                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                  }`}
+                  aria-label="Toggle reverse"
+                >
+                  ↔ Rev
+                </button>
+                <button
+                  onClick={audioPreview.stop}
+                  className="px-3 py-2 text-sm font-medium bg-[var(--bg-tertiary)] text-[var(--text-secondary)] min-h-[44px] active:brightness-90"
+                  aria-label="Stop"
+                >
+                  ⏹ Stop
+                </button>
+              </div>
+
+              {/* Time display */}
+              <div className="flex justify-between text-[10px] text-[var(--text-secondary)]">
+                <span>{formatTime(audioPreview.currentTime)}</span>
+                <span>{formatTime(audioPreview.duration)}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Footer stats */}
       {!loading && entries.length > 0 && (
@@ -285,18 +393,37 @@ interface FileRowProps {
   isSent: boolean;
   canSend: boolean;
   formattedSize: string;
+  isSelected: boolean;
   onSend: () => void;
+  onSelect: () => void;
 }
 
-function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, onSend }: FileRowProps) {
+function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, isSelected, onSend, onSelect }: FileRowProps) {
   const icon = isAudio ? '🎵' : '📄';
 
   return (
     <div
-      className="flex items-center gap-2.5 px-3 py-2
-        bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60
-        active:brightness-95 transition-colors duration-100 select-none"
+      onClick={isAudio ? onSelect : undefined}
+      className={`flex items-center gap-2.5 px-3 py-2
+        active:brightness-95 transition-colors duration-100 select-none
+        ${isSelected
+          ? 'bg-[var(--accent-orange)]/15 ring-1 ring-[var(--accent-orange)]/30'
+          : 'bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60'
+        }`}
     >
+      {/* Play button (audio files only) */}
+      {isAudio && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSelect(); }}
+          className="flex-shrink-0 w-8 h-8 flex items-center justify-center
+            text-sm bg-[var(--bg-tertiary)] hover:bg-[var(--accent-orange)]/20
+            active:brightness-90 transition-colors"
+          aria-label={isSelected ? 'Close preview' : 'Preview'}
+        >
+          {isSelected ? '⏹' : '▶'}
+        </button>
+      )}
+
       {/* Icon + name */}
       <span className="text-base flex-shrink-0">{icon}</span>
       <div className="flex-1 min-w-0">
@@ -309,7 +436,7 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, on
       {/* Send to track button (audio files only) */}
       {isAudio && (
         <button
-          onClick={onSend}
+          onClick={(e) => { e.stopPropagation(); onSend(); }}
           disabled={!canSend || isSending}
           className={`
             flex-shrink-0 px-3 py-1.5 text-xs font-medium
