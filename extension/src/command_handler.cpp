@@ -1666,6 +1666,100 @@ void CommandHandler::HandleSetTrackPan(
 
 // Helper: Find the <FXCHAIN> section in a track chunk and extract it
 // Returns empty string if not found
+// Helper: find next REAPER section marker (&lt; or &gt;) that appears at the
+// start of a line (after optional whitespace). REAPER RPP/RfxChain format
+// always places section markers at line start, so characters like < and >
+// within data fields (e.g. VST quuid data like 0&lt;guid&gt;) are ignored.
+// Returns npos if no more markers found.
+// Sets *isOpen=true if marker is '<' (opening), false if '>' or '</...>' (closing).
+// Sets *isCloseTag=true if marker is '</...>' XML-style close tag.
+static size_t findNextSectionMarker(const std::string& chunk, size_t pos,
+                                     bool* isOpen, bool* isCloseTag)
+{
+    while (pos < chunk.size()) {
+        size_t lt = chunk.find('<', pos);
+        size_t gt = chunk.find('>', pos);
+
+        if (lt == std::string::npos && gt == std::string::npos)
+            return std::string::npos;
+
+        // Determine which comes first, but only if at line start
+        // A character at line start means: position 0, or the previous
+        // non-whitespace character before it is '\n'.
+        bool ltAtLineStart = false;
+        bool gtAtLineStart = false;
+
+        if (lt != std::string::npos) {
+            if (lt == 0) ltAtLineStart = true;
+            else {
+                // Scan backwards: all content from last \n to lt must be whitespace
+                size_t scan = lt;
+                while (scan > 0) {
+                    --scan;
+                    char c = chunk[scan];
+                    if (c == '\n') { ltAtLineStart = true; break; }
+                    if (c != ' ' && c != '\t') break;
+                }
+                if (scan == 0) ltAtLineStart = true; // start of string
+            }
+        }
+
+        if (gt != std::string::npos) {
+            if (gt == 0) gtAtLineStart = true;
+            else {
+                size_t scan = gt;
+                while (scan > 0) {
+                    --scan;
+                    char c = chunk[scan];
+                    if (c == '\n') { gtAtLineStart = true; break; }
+                    if (c != ' ' && c != '\t') break;
+                }
+                if (scan == 0) gtAtLineStart = true;
+            }
+        }
+
+        // If neither is at line start, advance past both and continue
+        if (!ltAtLineStart && !gtAtLineStart) {
+            size_t next = std::string::npos;
+            if (lt != std::string::npos && gt != std::string::npos)
+                next = std::min(lt, gt) + 1;
+            else if (lt != std::string::npos)
+                next = lt + 1;
+            else
+                next = gt + 1;
+
+            if (next <= pos) next = pos + 1;
+            pos = next;
+            continue;
+        }
+
+        // At least one is at line start — pick the earliest one that qualifies
+        if (gtAtLineStart && (!ltAtLineStart || gt < lt)) {
+            // '>' at line start is a section close
+            *isOpen = false;
+            *isCloseTag = false;
+            return gt;
+        }
+
+        if (ltAtLineStart) {
+            if (lt + 1 < chunk.size() && chunk[lt + 1] == '/') {
+                // XML-style close tag </...>
+                *isOpen = false;
+                *isCloseTag = true;
+                return lt;
+            }
+            // Opening tag '<'
+            *isOpen = true;
+            *isCloseTag = false;
+            return lt;
+        }
+
+        // Should not reach here, but just in case, advance and retry
+        pos = (lt != std::string::npos ? lt : gt) + 1;
+    }
+    return std::string::npos;
+}
+
 static std::string extractFxChainFromChunk(const std::string& chunk)
 {
     size_t start = chunk.find("<FXCHAIN");
@@ -1674,68 +1768,71 @@ static std::string extractFxChainFromChunk(const std::string& chunk)
 
     // REAPER RPPXML format: sections open with <TAG... (no > on opening line)
     // and close with > on its own line. Count depth to find matching close.
+    // Only section markers at LINE START are considered (ignoring < and > in
+    // data fields like VST quuid data).
     int depth = 0;
     size_t pos = start;
     while (pos < chunk.size()) {
-        size_t openAngle = chunk.find('<', pos);
-        size_t closeAngle = chunk.find('>', pos);
-        if (openAngle == std::string::npos && closeAngle == std::string::npos)
+        bool isOpen = false;
+        bool isCloseTag = false;
+        size_t marker = findNextSectionMarker(chunk, pos, &isOpen, &isCloseTag);
+        if (marker == std::string::npos)
             break;
 
-        if (closeAngle != std::string::npos && (openAngle == std::string::npos || closeAngle < openAngle)) {
-            // '>' encountered — close one level
+        if (!isOpen) {
+            // '>' at line start or XML close tag </...>
             depth--;
             if (depth == 0) {
-                // Found the closing > for FXCHAIN
-                return chunk.substr(start, closeAngle - start + 1);
+                if (isCloseTag) {
+                    // XML close tag: return up to and including the '>'
+                    size_t closeGt = chunk.find('>', marker);
+                    if (closeGt != std::string::npos)
+                        return chunk.substr(start, closeGt - start + 1);
+                }
+                // Plain '>' at line start
+                return chunk.substr(start, marker - start + 1);
             }
-            pos = closeAngle + 1;
-        } else if (openAngle != std::string::npos) {
-            // '<' encountered — check if it's a section opener or closer
-            // REAPER sections: <TAG ... (no > on same line) or > (close) or /> (self-close)
-            if (openAngle + 1 < chunk.size() && chunk[openAngle + 1] == '/') {
-                // Closing tag like </FOO> — decrement depth (XML .RfxChain format)
-                size_t endTag = chunk.find('>', openAngle);
-                if (endTag != std::string::npos) {
-                    depth--;
-                    if (depth == 0) {
-                        return chunk.substr(start, endTag - start + 1);
-                    }
-                    pos = endTag + 1;
+            if (isCloseTag) {
+                // Move past the entire </...> tag
+                size_t closeGt = chunk.find('>', marker);
+                if (closeGt != std::string::npos) {
+                    pos = closeGt + 1;
                 } else {
-                    pos = openAngle + 1;
+                    pos = marker + 1;
                 }
             } else {
-                // Opening tag like <FOO or self-closing like <FOO ... />
-                size_t endTag = chunk.find('>', openAngle);
-                if (endTag != std::string::npos) {
-                    // Check if > is on a different line than < — REAPER section opener
-                    // like <FXCHAIN or <TRACK with no > on the opening line
-                    size_t newline = chunk.find('\n', openAngle);
-                    if (newline != std::string::npos && newline < endTag) {
-                        // REAPER section opener: <TAG without > on same line
-                        depth++;
-                        pos = openAngle + 1;
-                    } else {
-                        // It's <TAG...> or <TAG ... /> — all on one line
-                        std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
-                        // Trim trailing whitespace
-                        while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
-                            tagContent.pop_back();
-                        if (!tagContent.empty() && tagContent.back() == '/') {
-                            // Self-closing tag <... /> — no depth change
-                            pos = endTag + 1;
-                        } else {
-                            // Regular opening tag
-                            depth++;
-                            pos = endTag + 1;
-                        }
-                    }
-                } else {
-                    // <TAG without > on same line — REAPER section opener
+                pos = marker + 1;
+            }
+        } else {
+            // '<' at line start — opening tag
+            size_t endTag = chunk.find('>', marker);
+            if (endTag != std::string::npos) {
+                size_t newline = chunk.find('\n', marker);
+                if (newline != std::string::npos && newline < endTag) {
+                    // REAPER section opener: <TAG without > on same line
+                    // e.g. <FXCHAIN or <TRACK — the > is on a subsequent line
                     depth++;
-                    pos = openAngle + 1;
+                    pos = marker + 1;
+                } else {
+                    // Inline tag <...> — all on one line
+                    std::string tagContent = chunk.substr(marker + 1, endTag - marker - 1);
+                    // Trim trailing whitespace
+                    while (!tagContent.empty() &&
+                           (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                        tagContent.pop_back();
+                    if (!tagContent.empty() && tagContent.back() == '/') {
+                        // Self-closing tag <... /> — no depth change
+                        pos = endTag + 1;
+                    } else {
+                        // Regular opening tag (inline)
+                        depth++;
+                        pos = endTag + 1;
+                    }
                 }
+            } else {
+                // <TAG without any > — section opener
+                depth++;
+                pos = marker + 1;
             }
         }
     }
@@ -1753,28 +1850,41 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
         size_t trackOpen = chunk.find("<TRACK");
         size_t trackClose = std::string::npos;
         if (trackOpen != std::string::npos) {
-            // Find the closing > of the TRACK section
+            // Find the closing > of the TRACK section using section markers
             int depth = 0;
             size_t pos = trackOpen;
             while (pos < chunk.size()) {
-                size_t openAngle = chunk.find('<', pos);
-                size_t closeAngle = chunk.find('>', pos);
-                if (closeAngle == std::string::npos) break;
-                if (openAngle == std::string::npos || closeAngle < openAngle) {
+                bool isOpen = false;
+                bool isCloseTag = false;
+                size_t marker = findNextSectionMarker(chunk, pos, &isOpen, &isCloseTag);
+                if (marker == std::string::npos) break;
+
+                if (!isOpen) {
                     depth--;
-                    if (depth == 0) { trackClose = closeAngle; break; }
-                    pos = closeAngle + 1;
+                    if (depth == 0) {
+                        size_t closeGt = chunk.find('>', marker);
+                        if (closeGt != std::string::npos)
+                            trackClose = closeGt;
+                        else
+                            trackClose = marker;
+                        break;
+                    }
+                    pos = marker + 1;
+                    if (isCloseTag) {
+                        size_t closeGt = chunk.find('>', marker);
+                        if (closeGt != std::string::npos) pos = closeGt + 1;
+                    }
                 } else {
-                    // Check if self-closing — handle REAPER section openers (no > on same line)
-                    size_t endTag = chunk.find('>', openAngle);
+                    size_t endTag = chunk.find('>', marker);
                     if (endTag != std::string::npos) {
-                        size_t newline = chunk.find('\n', openAngle);
+                        size_t newline = chunk.find('\n', marker);
                         if (newline != std::string::npos && newline < endTag) {
-                            // REAPER section opener: <TAG without > on same line, e.g. <TRACK
+                            // REAPER section opener
                             depth++;
-                            pos = openAngle + 1;
+                            pos = marker + 1;
                         } else {
-                            std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                            // Inline tag
+                            std::string tagContent = chunk.substr(marker + 1, endTag - marker - 1);
                             while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
                                 tagContent.pop_back();
                             if (tagContent.empty() || tagContent.back() != '/') {
@@ -1784,7 +1894,7 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
                         }
                     } else {
                         depth++;
-                        pos = openAngle + 1;
+                        pos = marker + 1;
                     }
                 }
             }
@@ -1801,29 +1911,47 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
     }
 
     // Find the matching closing > for this FXCHAIN section
+    // Only process section markers at line start (ignoring quuid data)
     int depth = 0;
     size_t pos = start;
     size_t fxChainEnd = std::string::npos;
     while (pos < chunk.size()) {
-        size_t openAngle = chunk.find('<', pos);
-        size_t closeAngle = chunk.find('>', pos);
-        if (closeAngle == std::string::npos) break;
+        bool isOpen = false;
+        bool isCloseTag = false;
+        size_t marker = findNextSectionMarker(chunk, pos, &isOpen, &isCloseTag);
+        if (marker == std::string::npos) break;
 
-        if (openAngle == std::string::npos || closeAngle < openAngle) {
+        if (!isOpen) {
+            // '>' encountered, or close tag </...>
             depth--;
-            if (depth == 0) { fxChainEnd = closeAngle; break; }
-            pos = closeAngle + 1;
+            if (depth == 0) {
+                // Need to find the actual '>' position for the close marker
+                size_t closePos = chunk.find('>', marker);
+                if (closePos != std::string::npos)
+                    fxChainEnd = closePos;
+                else
+                    fxChainEnd = marker;
+                break;
+            }
+            pos = marker + 1;
+            // For close tags </...>, move past the > too
+            if (isCloseTag) {
+                size_t endGt = chunk.find('>', marker);
+                if (endGt != std::string::npos) pos = endGt + 1;
+            }
         } else {
-            // Opening tag — check if > is on a different line than < (REAPER section opener)
-            size_t endTag = chunk.find('>', openAngle);
+            // '<' encountered (opening tag)
+            // Check if > is on same line (inline) or different line (section opener)
+            size_t endTag = chunk.find('>', marker);
             if (endTag != std::string::npos) {
-                size_t newline = chunk.find('\n', openAngle);
+                size_t newline = chunk.find('\n', marker);
                 if (newline != std::string::npos && newline < endTag) {
-                    // REAPER section opener: <TAG without > on same line, e.g. <FXCHAIN
+                    // REAPER section opener: <TAG without > on same line
                     depth++;
-                    pos = openAngle + 1;
+                    pos = marker + 1;
                 } else {
-                    std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                    // Inline tag <...> — check for self-closing
+                    std::string tagContent = chunk.substr(marker + 1, endTag - marker - 1);
                     while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
                         tagContent.pop_back();
                     if (!tagContent.empty() && tagContent.back() != '/') {
@@ -1833,7 +1961,7 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
                 }
             } else {
                 depth++;
-                pos = openAngle + 1;
+                pos = marker + 1;
             }
         }
     }
