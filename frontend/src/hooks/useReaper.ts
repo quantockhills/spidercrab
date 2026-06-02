@@ -78,6 +78,17 @@ export interface FxParam {
   formatted?: string;
 }
 
+export interface FxPresetInfo {
+  presetIndex: number;
+  presetName: string | null;
+  numPresets: number;
+}
+
+export interface FxPresetNames {
+  presetNames: string[];
+  currentIndex: number;
+}
+
 export interface StepData {
   column: number;
   row: number;
@@ -284,6 +295,38 @@ export function useReaper(opts: UseReaperOptions = {}) {
     try {
       const resp = await clientRef.current.send('fxchain/getInfo', { filePath });
       return resp.payload as unknown as FxChainInfo;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  // ── FX Preset commands (Issue #87) ──
+
+  const getFxPreset = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxPresetInfo | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('fx/getPreset', { trackIdx, fxIdx });
+      return resp.payload as unknown as FxPresetInfo;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const setFxPreset = useCallback(async (trackIdx: number, fxIdx: number, presetIdx: number): Promise<FxPresetInfo | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('fx/setPreset', { trackIdx, fxIdx, presetIdx });
+      return resp.payload as unknown as FxPresetInfo;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const getAllFxPresetNames = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxPresetNames | null> => {
+    if (!clientRef.current) return null;
+    try {
+      const resp = await clientRef.current.send('fx/getAllPresetNames', { trackIdx, fxIdx }, 30000);
+      return resp.payload as unknown as FxPresetNames;
     } catch {
       return null;
     }
@@ -534,5 +577,8 @@ export function useReaper(opts: UseReaperOptions = {}) {
     fxChainSave,
     fxChainLoad,
     fxChainGetInfo,
+    getFxPreset,
+    setFxPreset,
+    getAllFxPresetNames,
   };
 }

@@ -433,6 +433,51 @@ static int mock_TrackFX_AddByName(MediaTrack* track, const char* fxname, bool, i
     return f.idx;
 }
 
+// ── Mock preset functions ─────────────────────────────────
+
+struct MockPresets {
+    std::vector<std::string> names;
+    int currentIndex = 0;
+};
+
+static MockPresets g_mockPresets;
+
+static int mock_TrackFX_GetPresetIndex(MediaTrack* track, int fx, int* numberOfPresetsOut)
+{
+    (void)track;
+    (void)fx;
+    if (numberOfPresetsOut) *numberOfPresetsOut = (int)g_mockPresets.names.size();
+    if (g_mockPresets.names.empty()) return -1;
+    return g_mockPresets.currentIndex;
+}
+
+static bool mock_TrackFX_GetPreset(MediaTrack* track, int fx, char* presetnameOut, int presetnameOut_sz)
+{
+    (void)track;
+    (void)fx;
+    int idx = g_mockPresets.currentIndex;
+    if (idx < 0 || idx >= (int)g_mockPresets.names.size()) {
+        if (presetnameOut && presetnameOut_sz > 0) presetnameOut[0] = 0;
+        return false;
+    }
+    snprintf(presetnameOut, (size_t)presetnameOut_sz, "%s", g_mockPresets.names[idx].c_str());
+    return true;
+}
+
+static bool mock_TrackFX_SetPresetByIndex(MediaTrack* track, int fx, int idx)
+{
+    (void)track;
+    (void)fx;
+    // idx=-2 = factory default, idx=-1 = user default
+    if (idx < 0) {
+        g_mockPresets.currentIndex = 0;
+        return true;
+    }
+    if (idx >= (int)g_mockPresets.names.size()) return false;
+    g_mockPresets.currentIndex = idx;
+    return true;
+}
+
 static bool mock_TrackFX_Delete(MediaTrack* track, int fx)
 {
     int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
@@ -555,7 +600,10 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_GetParamName = mock_TrackFX_GetParamName;
     api.TrackFX_SetParam     = mock_TrackFX_SetParam;
     api.TrackFX_AddByName    = mock_TrackFX_AddByName;
-    api.TrackFX_Delete       = mock_TrackFX_Delete;
+    api.TrackFX_Delete            = mock_TrackFX_Delete;
+    api.TrackFX_GetPresetIndex    = mock_TrackFX_GetPresetIndex;
+    api.TrackFX_GetPreset         = mock_TrackFX_GetPreset;
+    api.TrackFX_SetPresetByIndex  = mock_TrackFX_SetPresetByIndex;
     api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
     api.EnumInstalledFX      = mock_EnumInstalledFX;
     api.GetTrackStateChunk   = mock_GetTrackStateChunk;
@@ -793,6 +841,212 @@ TEST(FXRoundtripTest, ParamMinMaxMidAreCorrect)
     EXPECT_NE(resp.find("\"min\":20"), std::string::npos);
     EXPECT_NE(resp.find("\"max\":20000"), std::string::npos);
     EXPECT_NE(resp.find("\"mid\":1000"), std::string::npos);
+}
+
+
+// ============================================================
+// FX Preset command tests (Issue #87)
+// ============================================================
+
+TEST(FxPresetTest, GetPresetReturnsCurrentPresetInfo)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "Default", "Classic EQ", "Bright EQ", "Dark EQ" };
+    g_mockPresets.currentIndex = 1; // "Classic EQ"
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getPreset","payload":{"trackIdx":0,"fxIdx":0},"id":"gp1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have presetIndex=1, presetName="Classic EQ", numPresets=4
+    EXPECT_NE(resp.find("\"presetIndex\":1"), std::string::npos);
+    EXPECT_NE(resp.find("Classic EQ"), std::string::npos);
+    EXPECT_NE(resp.find("\"numPresets\":4"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, GetPresetWithNoPresetsReturnsNegOne)
+{
+    // FX with no presets: GetPresetIndex returns -1, numPresets=0
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = {};
+    g_mockPresets.currentIndex = -1;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "NoPresetFX", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getPreset","payload":{"trackIdx":0,"fxIdx":0},"id":"gp2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"presetIndex\":-1"), std::string::npos);
+    EXPECT_NE(resp.find("\"presetName\":null"), std::string::npos);
+    EXPECT_NE(resp.find("\"numPresets\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, SetPresetByIndexAndVerify)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "Default", "Preset A", "Preset B", "Preset C" };
+    g_mockPresets.currentIndex = 0;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set to preset index 2 ("Preset B")
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setPreset","payload":{"trackIdx":0,"fxIdx":0,"presetIdx":2},"id":"sp1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"presetIndex\":2"), std::string::npos);
+    EXPECT_NE(resp.find("Preset B"), std::string::npos);
+    EXPECT_NE(resp.find("\"numPresets\":4"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+}
+
+TEST(FxPresetTest, SetPresetWithMinusTwoFactoryDefault)
+{
+    // presetIdx=-2 should select factory default
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "Default", "Preset A", "Preset B" };
+    g_mockPresets.currentIndex = 2;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setPreset","payload":{"trackIdx":0,"fxIdx":0,"presetIdx":-2},"id":"sp2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Mock treats idx<0 as index 0
+    EXPECT_NE(resp.find("\"presetIndex\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, SetPresetWithMinusOneUserDefault)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "User Default", "Other" };
+    g_mockPresets.currentIndex = 1;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setPreset","payload":{"trackIdx":0,"fxIdx":0,"presetIdx":-1},"id":"sp3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, GetAllPresetNamesReturnsFullListAndRestores)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "Default", "Warm", "Bright", "Dark", "Vintage" };
+    g_mockPresets.currentIndex = 3; // "Dark"
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getAllPresetNames","payload":{"trackIdx":0,"fxIdx":0},"id":"gap1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should return all 5 preset names
+    EXPECT_NE(resp.find("Default"), std::string::npos);
+    EXPECT_NE(resp.find("Warm"), std::string::npos);
+    EXPECT_NE(resp.find("Bright"), std::string::npos);
+    EXPECT_NE(resp.find("Dark"), std::string::npos);
+    EXPECT_NE(resp.find("Vintage"), std::string::npos);
+
+    // Should indicate original index was restored to 3
+    EXPECT_NE(resp.find("\"currentIndex\":3"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify original index was actually restored in the mock
+    EXPECT_EQ(g_mockPresets.currentIndex, 3);
+}
+
+TEST(FxPresetTest, GetAllPresetNamesWithNoPresetsReturnsEmpty)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = {};
+    g_mockPresets.currentIndex = -1;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "NoPresetFX", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getAllPresetNames","payload":{"trackIdx":0,"fxIdx":0},"id":"gap2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"presetNames\":[]"), std::string::npos);
+    EXPECT_NE(resp.find("\"currentIndex\":-1"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, GetPresetInvalidTrackReturnsError)
+{
+    g_mockPresets = MockPresets();
+
+    MockState state;
+    state.tracks = {}; // No tracks
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getPreset","payload":{"trackIdx":0,"fxIdx":0},"id":"gp_bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
 }
 
 

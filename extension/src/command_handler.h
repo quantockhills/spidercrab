@@ -47,7 +47,9 @@ struct ReaperAPI {
     void (*TrackFX_CopyToTrack)(MediaTrack* src_track, int src_fx, MediaTrack* dest_track,
         int dest_fx, bool is_move)                                                    = nullptr;
     int (*TrackFX_GetPresetIndex)(MediaTrack* track, int fx, int* numberOfPresetsOut) = nullptr;
+    bool (*TrackFX_GetPreset)(MediaTrack* track, int fx, char* presetnameOut, int presetnameOut_sz) = nullptr;
     bool (*TrackFX_SetPreset)(MediaTrack* track, int fx, const char* presetname)      = nullptr;
+    bool (*TrackFX_SetPresetByIndex)(MediaTrack* track, int fx, int idx)              = nullptr;
 
     // Transport
     void (*Main_OnCommand)(int command, int flag) = nullptr;
@@ -179,6 +181,11 @@ private:
     void HandleSetFXParam(int clientId, const std::string& id, const std::string& params);
     void HandleAddFX(int clientId, const std::string& id, const std::string& params);
     void HandleDeleteFX(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — FX presets
+    void HandleGetFxPreset(int clientId, const std::string& id, const std::string& params);
+    void HandleSetFxPreset(int clientId, const std::string& id, const std::string& params);
+    void HandleGetAllFxPresetNames(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — Playtime 2 / clip matrix
     void HandleMatrixGetAll(int clientId, const std::string& id, const std::string& params);
