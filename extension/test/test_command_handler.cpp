@@ -479,6 +479,29 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
     return nullptr;
 }
 
+static bool mock_GetSetMediaTrackInfo_String(MediaTrack* trackPtr, const char* parmname, char* setNewValue, bool setNewValue_isAllowed)
+{
+    if (!g_mock || !parmname || !setNewValue) return false;
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(trackPtr)) - 1;
+    if (idx < 0 || idx >= (int)g_mock->tracks.size()) return false;
+    auto& t = g_mock->tracks[idx];
+    std::string name(parmname);
+
+    if (name == "P_NAME") {
+        if (setNewValue_isAllowed) {
+            // Writing is not supported in mock
+            return false;
+        }
+        // Reading: copy track name into buffer
+        size_t len = t.name.size();
+        if (len > 255) len = 255;
+        memcpy(setNewValue, t.name.c_str(), len);
+        setNewValue[len] = '\0';
+        return true;
+    }
+    return false;
+}
+
 // ---- Mock GetTrackStateChunk / SetTrackStateChunk ----
 
 static std::string g_mockChunk;
@@ -557,6 +580,7 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_AddByName    = mock_TrackFX_AddByName;
     api.TrackFX_Delete       = mock_TrackFX_Delete;
     api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
+    api.GetSetMediaTrackInfo_String = mock_GetSetMediaTrackInfo_String;
     api.EnumInstalledFX      = mock_EnumInstalledFX;
     api.GetTrackStateChunk   = mock_GetTrackStateChunk;
     api.SetTrackStateChunk   = mock_SetTrackStateChunk;
@@ -1273,11 +1297,11 @@ TEST(Phase1MVPTest, FullTrackRoundTrip)
     ASSERT_EQ(responses.size(), 1u);
     std::string& tracksResp = responses[0];
 
-    // Verify track response structure (names are server-generated since
-    // GetSetMediaTrackInfo_String crashes from Chromium WS context)
-    EXPECT_NE(tracksResp.find("\"Track 1\""), std::string::npos);
-    EXPECT_NE(tracksResp.find("\"Track 2\""), std::string::npos);
-    EXPECT_NE(tracksResp.find("\"Track 3\""), std::string::npos);
+    // Verify track response structure — track names come from GetSetMediaTrackInfo_String
+    // (Issue #40 fix), matching the mock track names defined above
+    EXPECT_NE(tracksResp.find("\"Kick\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"Snare\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"Hat\""), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":0"), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":1"), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":2"), std::string::npos);

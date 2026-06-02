@@ -185,6 +185,7 @@ private:
     void HandleMatrixGetSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixTriggerSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixTriggerScene(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixSetSlotState(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — step sequencer (Issue #63)
     void HandleSequencerGetAll(int clientId, const std::string& id, const std::string& params);

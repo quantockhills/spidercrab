@@ -239,4 +239,57 @@ describe('SessionView', () => {
     fireEvent.click(screen.getByLabelText('Stop'));
     expect(onStop).toHaveBeenCalled();
   });
+
+  // ── Column header tests (Issue #40) ──
+
+  it('renders column headers with track names when tracks prop is provided', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 1, name: 'Snare', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 2, name: 'Hat', trackNumber: 3, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+    ];
+
+    renderSessionView({
+      matrix,
+      tracks: mockTracks,
+    });
+
+    await waitFor(() => {
+      // Verify column headers show track names
+      expect(screen.getByLabelText('Column 1: Kick')).toBeDefined();
+      expect(screen.getByLabelText('Column 2: Snare')).toBeDefined();
+      expect(screen.getByLabelText('Column 3: Hat')).toBeDefined();
+    });
+  });
+
+  it('renders column headers with fallback names when tracks prop is not provided', async () => {
+    const matrix = makeEmptyMatrix();
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      // Without tracks prop, headers should show "Track N"
+      expect(screen.getByLabelText('Column 1: Track 1')).toBeDefined();
+      expect(screen.getByLabelText('Column 8: Track 8')).toBeDefined();
+    });
+  });
+
+  it('renders column headers with fallback for tracks with empty names', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: '', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 1, name: 'Snare', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+    ];
+
+    renderSessionView({
+      matrix,
+      tracks: mockTracks,
+    });
+
+    await waitFor(() => {
+      // Track with empty name should fall back to "Track N"
+      expect(screen.getByLabelText('Column 1: Track 1')).toBeDefined();
+      expect(screen.getByLabelText('Column 2: Snare')).toBeDefined();
+    });
+  });
 });

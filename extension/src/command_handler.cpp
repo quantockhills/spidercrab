@@ -309,6 +309,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleMatrixTriggerSlot(clientId, id, message);
         } else if (command == "matrix/triggerScene") {
             HandleMatrixTriggerScene(clientId, id, message);
+        } else if (command == "matrix/setSlotState") {
+            HandleMatrixSetSlotState(clientId, id, message);
         } else if (command == "sequencer/getAll") {
             HandleSequencerGetAll(clientId, id, message);
         } else if (command == "sequencer/toggleStep") {
@@ -1186,6 +1188,48 @@ void CommandHandler::HandleMatrixTriggerScene(
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
+}
+
+// Set a specific slot state (used for visual state simulation in tests, Issue #83)
+void CommandHandler::HandleMatrixSetSlotState(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+    std::string state  = parser.getString("state");
+
+    if (colStr.empty() || rowStr.empty() || state.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column', 'row', or 'state' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Validate state string
+    if (state != "playing" && state != "recording" && state != "stopped" && state != "empty") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid state. Must be one of: playing, recording, stopped, empty\"}");
+        return;
+    }
+
+    m_playtimeState.setSlotState(col, row, state);
+
+    // Broadcast slot state change event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
 }
 
 // ============================================================
