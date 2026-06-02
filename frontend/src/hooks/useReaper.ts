@@ -506,6 +506,21 @@ export function useReaper(opts: UseReaperOptions = {}) {
     }
   }, []);
 
+  const convertToClip = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    if (!clientRef.current) return { success: false, error: 'Not connected' };
+    try {
+      const resp = await clientRef.current.send('sequencer/convertToClip');
+      const data = resp.payload as { success: boolean; trackIdx?: number; noteCount?: number; length?: number };
+      if (data?.success) {
+        // After successful conversion, switch to session mode so user can see the new clip
+        return { success: true };
+      }
+      return { success: false, error: resp.payload?.error || 'Conversion failed' };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  }, []);
+
   const updateMatrixSlot = useCallback((column: number, row: number, updates: Partial<ClipSlot>) => {
     setMatrix((prev) => {
       if (!prev) return prev;
@@ -553,6 +568,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     seqClearAll,
     seqSetLength,
     seqSetBaseNote,
+    convertToClip,
     getTrackFx,
     getFxParams,
     setFxParam,

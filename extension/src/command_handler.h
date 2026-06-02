@@ -79,6 +79,15 @@ struct ReaperAPI {
     MIDI_eventlist* (*MIDI_eventlist_Create)() = nullptr;
     void (*MIDI_eventlist_Destroy)(MIDI_eventlist* evtlist) = nullptr;
     double (*GetPlayPosition)() = nullptr;
+
+    // MIDI item creation functions (Issue #92 — convert sequencer to clip)
+    MediaItem* (*CreateNewMIDIItemInProj)(MediaTrack* track, double starttime, double endtime, const bool* qnInOptional) = nullptr;
+    bool (*MIDI_InsertNote)(MediaItem_Take* take, bool selected, bool muted, double startppqpos, double endppqpos, int chan, int pitch, int vel, const bool* noSortInOptional) = nullptr;
+    bool (*SetMediaItemInfo_Value)(MediaItem* item, const char* parmname, double newvalue) = nullptr;
+    double (*GetMediaItemInfo_Value)(MediaItem* item, const char* parmname) = nullptr;
+    MediaItem* (*AddMediaItemToTrack)(MediaTrack* tr) = nullptr;
+    MediaItem_Take* (*AddTakeToMediaItem)(MediaItem* item) = nullptr;
+    int (*CountTrackMediaItems)(MediaTrack* track) = nullptr;
 };
 
 class CommandHandler {
@@ -218,4 +227,7 @@ private:
     void HandleSequencerSetLength(int clientId, const std::string& id, const std::string& params);
     void HandleSequencerSetBaseNote(int clientId, const std::string& id, const std::string& params);
     void HandleSequencerGetPlayhead(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — sequencer convert to clip (Issue #92)
+    void HandleSequencerConvertToClip(int clientId, const std::string& id, const std::string& params);
 };

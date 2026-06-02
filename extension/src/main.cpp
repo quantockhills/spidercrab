@@ -51,6 +51,13 @@
 #define REAPERAPI_WANT_MIDI_eventlist_Create
 #define REAPERAPI_WANT_MIDI_eventlist_Destroy
 #define REAPERAPI_WANT_GetPlayPosition
+#define REAPERAPI_WANT_CreateNewMIDIItemInProj
+#define REAPERAPI_WANT_MIDI_InsertNote
+#define REAPERAPI_WANT_SetMediaItemInfo_Value
+#define REAPERAPI_WANT_GetMediaItemInfo_Value
+#define REAPERAPI_WANT_AddMediaItemToTrack
+#define REAPERAPI_WANT_AddTakeToMediaItem
+#define REAPERAPI_WANT_CountTrackMediaItems
 
 // CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
 // Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.

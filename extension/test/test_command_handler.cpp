@@ -617,6 +617,78 @@ static bool mock_EnumInstalledFX(int index, const char** nameOut, const char** i
     return true;
 }
 
+// ---- Mock MIDI item creation functions (Issue #92) ----
+
+static std::vector<MediaItem*> g_mockCreatedItems;
+static std::vector<MediaItem_Take*> g_mockTakes;
+static int g_mockNoteInsertCount = 0;
+
+static MediaItem* mock_CreateNewMIDIItemInProj(MediaTrack* track, double starttime, double endtime, const bool* qnInOptional)
+{
+    (void)track;
+    (void)starttime;
+    (void)endtime;
+    (void)qnInOptional;
+    // Return a unique non-null pointer
+    MediaItem* item = reinterpret_cast<MediaItem*>(static_cast<uintptr_t>(g_mockCreatedItems.size() + 1000));
+    g_mockCreatedItems.push_back(item);
+    return item;
+}
+
+static MediaItem_Take* mock_GetActiveTake(MediaItem* item)
+{
+    (void)item;
+    // Return a unique non-null pointer
+    MediaItem_Take* take = reinterpret_cast<MediaItem_Take*>(static_cast<uintptr_t>(g_mockTakes.size() + 2000));
+    g_mockTakes.push_back(take);
+    return take;
+}
+
+static bool mock_MIDI_InsertNote(MediaItem_Take* take, bool selected, bool muted, double startppqpos, double endppqpos, int chan, int pitch, int vel, const bool* noSortInOptional)
+{
+    (void)take;
+    (void)selected;
+    (void)muted;
+    (void)startppqpos;
+    (void)endppqpos;
+    (void)chan;
+    (void)pitch;
+    (void)vel;
+    (void)noSortInOptional;
+    g_mockNoteInsertCount++;
+    return true;
+}
+
+static bool mock_SetMediaItemInfo_Value(MediaItem* item, const char* parmname, double newvalue)
+{
+    (void)item;
+    (void)parmname;
+    (void)newvalue;
+    return true;
+}
+
+static double mock_GetMediaItemInfo_Value(MediaItem* item, const char* parmname)
+{
+    (void)item;
+    (void)parmname;
+    // Return 1.0 as default item length (in seconds)
+    return 1.0;
+}
+
+static int mock_CountTrackMediaItems(MediaTrack* track)
+{
+    (void)track;
+    return (int)g_mockCreatedItems.size();
+}
+
+// Reset mock state for MIDI item functions (call before each test)
+static void ResetMidiMockState()
+{
+    g_mockCreatedItems.clear();
+    g_mockTakes.clear();
+    g_mockNoteInsertCount = 0;
+}
+
 // ---- Helper: build a CommandHandler wired to mock API ----
 
 static std::unique_ptr<CommandHandler> MakeMockHandler(
@@ -639,10 +711,16 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_GetPresetIndex    = mock_TrackFX_GetPresetIndex;
     api.TrackFX_GetPreset         = mock_TrackFX_GetPreset;
     api.TrackFX_SetPresetByIndex  = mock_TrackFX_SetPresetByIndex;
-    api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
-    api.EnumInstalledFX      = mock_EnumInstalledFX;
-    api.GetTrackStateChunk   = mock_GetTrackStateChunk;
-    api.SetTrackStateChunk   = mock_SetTrackStateChunk;
+    api.GetSetMediaTrackInfo    = mock_GetSetMediaTrackInfo;
+    api.EnumInstalledFX         = mock_EnumInstalledFX;
+    api.GetTrackStateChunk      = mock_GetTrackStateChunk;
+    api.SetTrackStateChunk      = mock_SetTrackStateChunk;
+    api.CreateNewMIDIItemInProj = mock_CreateNewMIDIItemInProj;
+    api.GetActiveTake           = mock_GetActiveTake;
+    api.MIDI_InsertNote         = mock_MIDI_InsertNote;
+    api.SetMediaItemInfo_Value  = mock_SetMediaItemInfo_Value;
+    api.GetMediaItemInfo_Value  = mock_GetMediaItemInfo_Value;
+    api.CountTrackMediaItems    = mock_CountTrackMediaItems;
     handler->SetApi(api);
     if (outResponses) {
         handler->SetResponseCallback([outResponses](int, const std::string& resp) {
@@ -3163,6 +3241,121 @@ TEST(SequencerTest, ToggleStepPreservesOtherSteps)
     EXPECT_NE(responses[0].find("\"column\":0,\"row\":0,\"active\":true"), std::string::npos);
     EXPECT_NE(responses[0].find("\"column\":1,\"row\":1,\"active\":false"), std::string::npos);
     EXPECT_NE(responses[0].find("\"column\":7,\"row\":7,\"active\":true"), std::string::npos);
+}
+
+// ============================================================
+// Convert sequencer to clip tests (Issue #92)
+// ============================================================
+
+TEST(SequencerConvertTest, ConvertToClipEmptyPatternReturnsError)
+{
+    // Returns error when no steps are active
+    MockState state;
+    MockTrack t;
+    t.idx = 0;
+    state.tracks = { t };
+
+    ResetMidiMockState();
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/convertToClip","id":"cc1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"emptyPattern\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("No active steps to convert"), std::string::npos);
+}
+
+TEST(SequencerConvertTest, ConvertToClipWithActiveStepsSucceeds)
+{
+    // Successfully converts active steps to a MIDI clip
+    MockState state;
+    MockTrack t;
+    t.idx = 0;
+    state.tracks = { t };
+
+    ResetMidiMockState();
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set up some active steps: (0,0) and (3,5) with velocity 110
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":0,"row":0,"active":"true","velocity":110},"id":"ss1"})");
+    responses.clear();
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":3,"row":5,"active":"true","velocity":85},"id":"ss2"})");
+    responses.clear();
+
+    // Now convert to clip
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/convertToClip","id":"cc2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"trackIdx\":0"), std::string::npos);
+
+    // Verify that MIDI notes were actually inserted
+    EXPECT_EQ(g_mockNoteInsertCount, 2);
+}
+
+TEST(SequencerConvertTest, ConvertToCliptWithPartialPattern)
+{
+    // Only convert active steps within the configured length
+    MockState state;
+    MockTrack t;
+    t.idx = 0;
+    state.tracks = { t };
+
+    ResetMidiMockState();
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set length to 4 (only first 4 columns)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setLength","payload":{"length":4},"id":"sl1"})");
+    responses.clear();
+
+    // Set steps at columns within and beyond the 4-step length
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":2,"row":0,"active":"true"},"id":"ss1"})");
+    responses.clear();
+
+    // This step at column 6 would be beyond the 4-step length —
+    // the handler should clamp to min(seqLength, columns)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":6,"row":0,"active":"true"},"id":"ss2"})");
+    responses.clear();
+
+    // Convert to clip (should only convert steps within length 4)
+    ResetMidiMockState();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/convertToClip","id":"cc3"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Should succeed with the 1 step within length
+    EXPECT_EQ(g_mockNoteInsertCount, 1);
+}
+
+TEST(SequencerConvertTest, ConvertToClipNoTracksReturnsError)
+{
+    // Returns error if there are no tracks in the project
+    ResetMidiMockState();
+    std::vector<std::string> responses;
+    // Create a handler with empty state (no tracks)
+    MockState emptyState;
+    auto handler = MakeMockHandler(&emptyState, &responses);
+
+    // Need to set up some active steps first
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":0,"row":0,"active":"true"},"id":"ss1"})");
+    responses.clear();
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/convertToClip","id":"cc4"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("No tracks in project"), std::string::npos);
 }
 
 // ============================================================

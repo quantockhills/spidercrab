@@ -67,6 +67,7 @@ function App() {
     seqClearAll,
     seqSetLength,
     seqSetBaseNote,
+    convertToClip,
   } = useReaper();
 
   const { preference, isDark, setTheme } = useTheme();
@@ -287,6 +288,8 @@ function App() {
                   clearAll={seqClearAll}
                   setLength={seqSetLength}
                   setBaseNote={seqSetBaseNote}
+                  convertToClip={convertToClip}
+                  onSwitchToSession={() => setSessionMode('session')}
                 />
               )}
             </div>
