@@ -107,6 +107,7 @@ static CommandHandler*       g_cmdHandler = nullptr;
 static reaper_plugin_info_t* g_pluginInfo = nullptr;
 static int                   g_port       = 9224; // default port (matching reamo convention)
 static int                   g_httpPort   = 5173;
+static bool                  g_playtimeWasAvailable = false; // Track Playtime availability across Run() polls
 
 // Helper: find the frontend dist directory relative to this extension's location
 static bool FindFrontendDist(std::string& outPath)
@@ -163,9 +164,74 @@ public:
         // Called ~30x/sec — drive the WebSocket + HTTP servers
         g_wsServer.Run();
         g_httpServer.run();
+
         // Retry Playtime API resolution if it wasn't available at init time.
         // helgobox may register its API functions after our extension starts.
         retryPlaytimeApi();
+
+        // Periodic Playtime 2 state polling for real-time sync (Issue #43).
+        // Check instance status approximately every 2 seconds (~60 Run() cycles).
+        // When Playtime becomes available or unavailable, broadcast state
+        // changes so the frontend can update its UI in real-time.
+        {
+            static int pollCounter = 0;
+            pollCounter++;
+            if (pollCounter >= 60) {  // ~2 seconds at 30 Hz
+                pollCounter = 0;
+
+                if (g_cmdHandler && g_wsServer.HasClients()) {
+                    bool wasAvailable = g_playtimeWasAvailable;
+                    bool nowAvailable = isPlaytimeAvailable();
+
+                    if (wasAvailable != nowAvailable) {
+                        g_playtimeWasAvailable = nowAvailable;
+                        // Broadcast availability change event
+                        std::string event = "{";
+                        event += "\"type\":\"event\",";
+                        event += "\"event\":\"playtime/availabilityChanged\",";
+                        event += "\"payload\":{";
+                        event += "\"available\":" + std::string(nowAvailable ? "true" : "false");
+                        event += "}}";
+                        g_wsServer.Broadcast(event);
+
+                        fprintf(stderr,
+                            "[reaper-ipad] Playtime availability changed: %s\n",
+                            nowAvailable ? "available" : "unavailable");
+                    }
+                }
+            }
+        }
+
+        // Periodic MIDI-based state sync for Playtime 2 slots (Issue #43).
+        // Every ~10 seconds, query Playtime instance and broadcast
+        // current matrix state to keep frontend in sync. This handles
+        // the case where clips were triggered from Playtime 2 itself
+        // or from another controller.
+        {
+            static int syncCounter = 0;
+            syncCounter++;
+            if (syncCounter >= 300) {  // ~10 seconds at 30 Hz
+                syncCounter = 0;
+
+                if (g_cmdHandler && g_wsServer.HasClients()) {
+                    // Re-check Playtime instance to detect new matrices
+                    if (isPlaytimeAvailable()) {
+                        int instance = g_cmdHandler->GetPlaytimeState().findPlaytimeInstance();
+                        if (instance >= 0) {
+                            // Broadcast a state sync event so frontend can refresh
+                            std::string event = "{";
+                            event += "\"type\":\"event\",";
+                            event += "\"event\":\"playtime/stateSync\",";
+                            event += "\"payload\":{";
+                            event += "\"instanceId\":" + std::to_string(instance) + ",";
+                            event += "\"available\":true";
+                            event += "}}";
+                            g_wsServer.Broadcast(event);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }

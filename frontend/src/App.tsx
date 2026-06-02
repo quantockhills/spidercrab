@@ -56,6 +56,7 @@ function AppInner() {
     getMatrix,
     triggerSlot,
     triggerScene,
+    recordSlot,
     sequencer,
     getSequencer,
     toggleStep,
@@ -272,6 +273,7 @@ function AppInner() {
                   onGetTransportState={getTransportState}
                   onLaunchPlaytime={launchPlaytime}
                   onCheckPlaytimeAvailable={checkPlaytimeAvailable}
+                  onRecordSlot={recordSlot}
                 />
               ) : (
                 <SequencerView

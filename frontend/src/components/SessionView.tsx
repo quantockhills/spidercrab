@@ -16,6 +16,8 @@ interface SessionViewProps {
   onLaunchPlaytime?: () => Promise<{launched: boolean; message: string}>;
   /** Check if Playtime 2 is available (Issue #88) */
   onCheckPlaytimeAvailable?: () => Promise<{available: boolean}>;
+  /** Record into a clip slot (Issue #43) */
+  onRecordSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
 }
 
 /** Map slot state to display color hex (for the cell accent) */
@@ -41,6 +43,7 @@ export function SessionView({
   onGetTransportState,
   onLaunchPlaytime,
   onCheckPlaytimeAvailable,
+  onRecordSlot,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
@@ -115,12 +118,23 @@ export function SessionView({
   }, [onRecord]);
 
   const handleSlotTap = useCallback(async (col: number, row: number) => {
-    await triggerSlot(col, row);
+    // Issue #43: Audio recording workflow
+    // When transport recording is active and slot is empty/stopped, start recording.
+    // When slot is recording, stop recording.
+    // Otherwise (transport not recording or slot already playing), trigger the clip.
+    const slot = matrix?.slots.find(s => s.column === col && s.row === row);
+    const shouldRecord = recording && slot && (slot.state === 'empty' || slot.state === 'stopped' || slot.state === 'recording');
+
+    if (shouldRecord && onRecordSlot) {
+      await onRecordSlot(col, row);
+    } else {
+      await triggerSlot(col, row);
+    }
     // Issue #80: Refresh matrix after triggering a slot so the grid
     // reflects the new visual state (playing/stopped). Without this,
     // the matrix prop never updates and the grid stays unchanged.
     getMatrix();
-  }, [triggerSlot, getMatrix]);
+  }, [triggerSlot, getMatrix, recording, matrix, onRecordSlot]);
 
   const handleSceneLaunch = useCallback(async (row: number) => {
     setActiveScene(row);

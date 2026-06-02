@@ -3721,3 +3721,372 @@ TEST(PlaytimeCommandTest, LaunchReturnsProperPayloadStructure)
     EXPECT_EQ(depth, 0);
 }
 
+// ============================================================
+// Audio recording workflow tests (Issue #43)
+//
+// Tests for the matrix/recordSlot command which allows starting
+// and stopping audio recording into individual matrix slots.
+// ============================================================
+
+TEST(MatrixRecordSlotTest, RecordSlotOnEmptySlotSetsRecording)
+{
+    // Test that matrix/recordSlot on an empty slot sets it to "recording"
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    std::string cmd = R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":3},"id":"rec1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should succeed and show recording state
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"state\":\"recording\""), std::string::npos);
+    EXPECT_NE(resp.find("\"column\":2"), std::string::npos);
+    EXPECT_NE(resp.find("\"row\":3"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnAlreadyRecordingStopsAndSetsStopped)
+{
+    // Test that calling recordSlot on a slot that's already recording
+    // stops recording and sets state to "stopped"
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Stop recording (call recordSlot again on the same slot)
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec2"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Should now be stopped (clip was created/saved)
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":0"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":0"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnStoppedSlotRestartsRecording)
+{
+    // Test that calling recordSlot on a stopped clip restarts recording
+    // (re-records the clip)
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Stop recording → stopped
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+
+    // Record again → should go back to recording
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnPlayingSlotReportsError)
+{
+    // Test that calling recordSlot on a currently playing slot returns error
+    // (can't record on a playing clip)
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // First trigger a slot to play
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":1,"row":2},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+
+    // Try to record on the playing slot — should error
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":1,"row":2},"id":"rec_bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotMissingParamsReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{},"id":"rec_bad"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Missing 'column' or 'row' parameter"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOutOfRangeReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":99,"row":0},"id":"bad"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Column or row out of range"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotBroadcastsEvent)
+{
+    // Test that recording a slot broadcasts slotStateChanged events
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":3,"row":4},"id":"rec_bc1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_EQ(captured.size(), 1u);
+
+    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"state\":\"recording\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"column\":3"), std::string::npos);
+    EXPECT_NE(captured[0].find("\"row\":4"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotSendsMidiNoteWhenAvailable)
+{
+    // Test that recordSlot sends a MIDI note when MIDI output is available
+    // The recording MIDI note should use channel 1 to distinguish from
+    // trigger notes (channel 0)
+    struct MidiMsg { int status; int d1; int d2; };
+    std::vector<MidiMsg> messages;
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->GetMidi().setSendFunc([&](int s, int d1, int d2) {
+        messages.push_back({s, d1, d2});
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Record slot (0,0)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec_midi1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    // Should have sent MIDI (NoteOn + NoteOff)
+    ASSERT_GE(messages.size(), 1u);
+    // Status for channel 1 (recording uses channel 1 to distinguish from trigger)
+    EXPECT_EQ(messages[0].status & 0x0F, 1) << "Recording MIDI should use channel 1";
+    EXPECT_EQ(messages[0].d1, 36) << "Note 36 for slot (0,0)";
+}
+
+// ============================================================
+// Playtime state polling tests (Issue #43)
+//
+// Tests for real-time slot state sync which periodically checks
+// Playtime 2 instance status and syncs state to frontend clients.
+// ============================================================
+
+TEST(PlaytimePollTest, PollStateReturnsInstanceInfo)
+{
+    // Test that matrix/pollState returns instance info even when
+    // Playtime API is not available
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/pollState","id":"poll1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should succeed and include instance info
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"playtimeAvailable\""), std::string::npos);
+    EXPECT_NE(resp.find("\"instanceId\""), std::string::npos);
+    EXPECT_NE(resp.find("\"hasMatrix\""), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(PlaytimePollTest, PollStateReturnsPlaytimeUnavailableInTests)
+{
+    // When Playtime API is not loaded, pollState should reflect that
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/pollState","id":"poll2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    // playtimeAvailable should be false in tests
+    EXPECT_NE(responses[0].find("\"playtimeAvailable\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"instanceId\":-1"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"hasMatrix\":false"), std::string::npos);
+}
+
+TEST(PlaytimePollTest, PollStateIsRecognizedCommand)
+{
+    // Verify matrix/pollState is registered in the command map
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/pollState","id":"poll3"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_EQ(responses[0].find("Unknown command"), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, SyncEnqueuedEventsOnStateChange)
+{
+    // Verify that when slot state changes, events are sent via broadcast
+    // This tests the BroadcastMatrixEvent mechanism for recording transitions
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger a slot which should broadcast an event
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"sync1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_GE(captured.size(), 1u);
+
+    // Verify the broadcast event has the right structure
+    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, GetAllReflectsRecordingStateChanges)
+{
+    // Verify that matrix/getAll returns the updated state after
+    // recording operations change slot states
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Record a slot
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":3,"row":5},"id":"rec1"})");
+
+    // Now getAll should show the recording state
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getAll","id":"ga1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have the recording slot at column=3,row=5
+    EXPECT_NE(resp.find("\"column\":3,\"row\":5,\"state\":\"recording\""), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, RecordingThenTriggerSlotWorksCorrectly)
+{
+    // Test full lifecycle: record a slot, stop recording, then trigger to play
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Step 1: Record slot
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":4},"id":"r1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Step 2: Stop recording
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":4},"id":"r2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+
+    // Step 3: Trigger to play
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":4},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+}
+
+
