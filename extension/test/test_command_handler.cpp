@@ -3301,3 +3301,330 @@ TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
     fs::remove_all(testDir);
 }
 
+// ============================================================
+// Playtime MIDI output tests (Issue #80)
+//
+// Playtime 2 C API has no clip-triggering functions. Matrix commands
+// must work via MIDI notes sent to the Playtime 2 virtual MIDI input.
+// ============================================================
+
+TEST(PlaytimeMidiTest, MidiOutputAvailableAfterSetSendFunc)
+{
+    // Verify that isAvailable() returns false before setSendFunc,
+    // and true after setSendFunc is called with a valid function.
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+
+    EXPECT_FALSE(handler->GetMidi().isAvailable())
+        << "MIDI should not be available before setSendFunc";
+
+    bool called = false;
+    handler->GetMidi().setSendFunc([&called](int, int, int) {
+        called = true;
+    });
+
+    EXPECT_TRUE(handler->GetMidi().isAvailable())
+        << "MIDI should be available after setSendFunc";
+}
+
+TEST(PlaytimeMidiTest, TriggerSlotCallsMidiSendFunc)
+{
+    // Verify that triggerSlotViaMidi calls the MIDI send function
+    // with the correct status byte, note, and velocity.
+    // Capture ALL MIDI calls in a vector since sendMidiNote sends
+    // NoteOn then NoteOff (2 calls) and the second overwrites captured vars.
+    struct MidiMsg { int status; int d1; int d2; };
+    std::vector<MidiMsg> messages;
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->GetMidi().setSendFunc([&](int status, int d1, int d2) {
+        messages.push_back({status, d1, d2});
+    });
+
+    // Trigger slot at column=2, row=3
+    // Note = baseNote(36) + (3 * 8) + 2 = 36 + 24 + 2 = 62
+    handler->GetMidi().triggerSlotViaMidi(2, 3);
+
+    ASSERT_GE(messages.size(), 1u) << "At least one MIDI message should be sent";
+
+    // First call should be NoteOn: status=0x90|ch, note=62, vel=100
+    EXPECT_EQ(messages[0].status & 0xF0, 0x90) << "Should be Note On";
+    EXPECT_EQ(messages[0].d1, 62) << "MIDI note should be 62 for col=2 row=3";
+    EXPECT_EQ(messages[0].d2, 100) << "MIDI velocity should be 100";
+}
+
+TEST(PlaytimeMidiTest, NoteMappingMatchesPush2Grid)
+{
+    // Verify the note mapping: note = baseNote + (row * 8) + column
+    // Default baseNote = 36 (C2), matching Push 2 grid layout
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+
+    int capturedNote = -1;
+    handler->GetMidi().setSendFunc([&](int, int d1, int) {
+        if (capturedNote < 0) capturedNote = d1; // capture first (NoteOn)
+    });
+
+    // Slot (0,0) → note 36 + 0 + 0 = 36
+    handler->GetMidi().triggerSlotViaMidi(0, 0);
+    EXPECT_EQ(capturedNote, 36) << "Slot (0,0) should map to note 36";
+
+    // Slot (7,7) → note 36 + 56 + 7 = 99
+    capturedNote = -1;
+    handler->GetMidi().triggerSlotViaMidi(7, 7);
+    EXPECT_EQ(capturedNote, 99) << "Slot (7,7) should map to note 99";
+
+    // Slot (0,7) → note 36 + 56 + 0 = 92
+    capturedNote = -1;
+    handler->GetMidi().triggerSlotViaMidi(0, 7);
+    EXPECT_EQ(capturedNote, 92) << "Slot (0,7) should map to note 92";
+
+    // Slot (7,0) → note 36 + 0 + 7 = 43
+    capturedNote = -1;
+    handler->GetMidi().triggerSlotViaMidi(7, 0);
+    EXPECT_EQ(capturedNote, 43) << "Slot (7,0) should map to note 43";
+}
+
+TEST(PlaytimeMidiTest, TriggerSlotSendsNoteOnThenNoteOff)
+{
+    // Verify that triggerSlotViaMidi sends two MIDI messages:
+    // first Note On, then Note Off (same note, velocity 0).
+    struct MidiMsg { int status; int d1; int d2; };
+    std::vector<MidiMsg> messages;
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->GetMidi().setSendFunc([&](int s, int d1, int d2) {
+        messages.push_back({s, d1, d2});
+    });
+
+    handler->GetMidi().triggerSlotViaMidi(1, 1);
+
+    ASSERT_EQ(messages.size(), 2u)
+        << "Should send exactly 2 MIDI messages (NoteOn + NoteOff)";
+
+    // First message: Note On
+    EXPECT_EQ(messages[0].status & 0xF0, 0x90) << "First msg should be NoteOn";
+    EXPECT_EQ(messages[0].d1, 45) << "Note 45 for col=1 row=1"; // 36 + 8 + 1 = 45
+    EXPECT_EQ(messages[0].d2, 100) << "Velocity should be 100";
+
+    // Second message: Note Off (same status, same note, velocity 0)
+    EXPECT_EQ(messages[1].status & 0xF0, 0x90) << "Second msg should also be status 0x90";
+    EXPECT_EQ(messages[1].d1, 45) << "Second msg should be same note";
+    EXPECT_EQ(messages[1].d2, 0) << "Second msg velocity should be 0 (Note Off)";
+}
+
+TEST(PlaytimeMidiTest, TriggerSlotViaMidiOutOfRangeReturnsEarly)
+{
+    // Verify that triggering a slot with note > 127 returns early
+    // without calling the send function.
+    bool called = false;
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->GetMidi().setSendFunc([&](int, int, int) {
+        called = true;
+    });
+
+    // Set baseNote to 120 and trigger row 7, col 7 -> note = 120 + 56 + 7 = 183 > 127
+    handler->GetMidi().setBaseNote(120);
+    handler->GetMidi().triggerSlotViaMidi(7, 7);
+
+    EXPECT_FALSE(called) << "Send function should not be called for out-of-range notes";
+}
+
+TEST(PlaytimeMidiTest, DefaultChannelIsZero)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    EXPECT_EQ(handler->GetMidi().channel(), 0) << "Default MIDI channel should be 0";
+}
+
+TEST(PlaytimeMidiTest, DefaultBaseNoteIs36)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    EXPECT_EQ(handler->GetMidi().baseNote(), 36) << "Default base note should be 36 (C2)";
+}
+
+TEST(PlaytimeMidiTest, SetChannelAndBaseNote)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->GetMidi().setChannel(5);
+    handler->GetMidi().setBaseNote(48);
+
+    EXPECT_EQ(handler->GetMidi().channel(), 5);
+    EXPECT_EQ(handler->GetMidi().baseNote(), 48);
+}
+
+TEST(PlaytimeMidiTest, ChannelClampedTo0to15)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    // setChannel uses & 0x0F to mask to 4 bits, giving values 0-15.
+    handler->GetMidi().setChannel(20); // 20 & 0x0F = 4
+    EXPECT_EQ(handler->GetMidi().channel(), 4);
+
+    handler->GetMidi().setChannel(-1); // (-1 & 0x0F = 15)
+    EXPECT_EQ(handler->GetMidi().channel(), 15);
+}
+
+TEST(PlaytimeMidiTest, HandleMatrixTriggerSlotDoesNotCallMidiWhenUnavailable)
+{
+    // Verify that HandleMatrixTriggerSlot still works (returns slot state)
+    // when MIDI output is not available (no send func set).
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    EXPECT_FALSE(handler->GetMidi().isAvailable());
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"t1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+}
+
+// ============================================================
+// Playtime auto-create matrix tests (Issue #80)
+//
+// When the frontend calls matrix/getAll and Playtime is available
+// but no instance exists, HandleMatrixGetAll should auto-create
+// a Playtime matrix via HB_CreateClipMatrix.
+//
+// Since the Playtime API function pointers are null in tests,
+// we test the code paths that check availability.
+// ============================================================
+
+TEST(MatrixTest, GetAllWhenPlaytimeApiIsNull)
+{
+    // When Playtime API is not available (g_playtimeApi is all zeros),
+    // HandleMatrixGetAll should still work and return the default 8x8 grid.
+    // The auto-create path checks isPlaytimeAvailable() first, which
+    // returns false when function pointers are null.
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getAll","id":"m1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should still return a valid 8x8 grid even without Playtime
+    EXPECT_NE(resp.find("\"columns\":8"), std::string::npos);
+    EXPECT_NE(resp.find("\"rows\":8"), std::string::npos);
+    EXPECT_NE(resp.find("\"slots\":["), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(MatrixTest, GetAllAutoCreatePathNotTakenWhenPlaytimeUnavailable)
+{
+    // Verify that the auto-create code path in HandleMatrixGetAll
+    // is correctly gated by isPlaytimeAvailable(). When Playtime
+    // is not available, the auto-create block should not execute.
+    // We verify this by checking that no crash occurs and the
+    // response is still valid.
+    EXPECT_FALSE(isPlaytimeAvailable())
+        << "Playtime should not be available in test context (no function pointers)";
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getAll","id":"m2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    // Should succeed with default 8x8 grid
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixTest, GetAllSlotPayloadIsDirectSlotNotWrapped)
+{
+    // Verify that triggerSlot returns the slot object directly as the payload
+    // (not wrapped in {slot: ...}), matching what the frontend expects.
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":4,"row":5},"id":"t1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // The payload should directly contain slot fields, not a nested "slot" key
+    // Extract the payload section
+    std::string payloadStr = extractPayload(resp);
+
+    // Parse the payload directly
+    JsonParser parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+    std::string state  = parser.getString("state");
+
+    EXPECT_EQ(colStr, "4");
+    EXPECT_EQ(rowStr, "5");
+    EXPECT_EQ(state, "playing");
+
+    // Verify there's no "slot" key that would indicate wrapping
+    EXPECT_EQ(resp.find("\"slot\":"), std::string::npos)
+        << "Payload should NOT wrap the slot in a 'slot' key";
+}
+
+// ============================================================
+// Playtime isAvailable command tests (Issue #81)
+// ============================================================
+
+TEST(PlaytimeCommandTest, IsAvailableReturnsFalseInTests)
+{
+    // When Playtime API is not loaded (all function pointers null),
+    // playtime/isAvailable should return {available: false}.
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/isAvailable","id":"pa1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"available\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+}
+
+TEST(PlaytimeCommandTest, IsAvailablePayloadIsValid)
+{
+    // Verify the structure of the playtime/isAvailable response
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/isAvailable","id":"pa2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Check the payload contains available, version, and optionally reason
+    EXPECT_NE(resp.find("\"available\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"version\":"), std::string::npos);
+
+    // Verify balanced braces
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+

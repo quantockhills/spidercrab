@@ -97,12 +97,14 @@ describe('usePlaytime', () => {
     expect(sentMsg.column).toBe(0);
     expect(sentMsg.row).toBe(0);
 
+    // Backend returns the slot object directly as the payload, not wrapped in {slot: ...}.
+    // See command_handler.cpp: HandleMatrixTriggerSlot sends updated.toJson() directly.
     act(() => {
       ws.simulateMessage(JSON.stringify({
         type: 'response',
         id: sentMsg.id,
         success: true,
-        payload: { slot: { column: 0, row: 0, state: 'playing', color: '#0f0', name: '', clipType: 'none' } },
+        payload: { column: 0, row: 0, state: 'playing', color: '#0f0', name: '', clipType: 'none' },
       }));
     });
 

@@ -1003,12 +1003,31 @@ void CommandHandler::HandleMatrixGetAll(
     int      rows    = m_playtimeState.rows();
 
     // When Playtime is available, attempt to find the instance
-    // and sync state. For now, we track state locally.
+    // and auto-create one if none exists. Playtime 2 C API has no
+    // clip-triggering functions — matrix commands must work via MIDI notes.
     if (isPlaytimeAvailable()) {
         int instance = m_playtimeState.findPlaytimeInstance();
         if (instance >= 0) {
             fprintf(stderr,
                 "[reaper-ipad] matrix/getAll: Playtime instance %d found\n", instance);
+        } else {
+            // Auto-create a Playtime matrix if none exists in the project.
+            // HB_CreateClipMatrix creates a new clip matrix in the given
+            // Helgobox instance. We first find any Helgobox instance.
+            fprintf(stderr,
+                "[reaper-ipad] matrix/getAll: No Playtime instance found, attempting auto-create...\n");
+            int hgInstance = -1;
+            if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+                hgInstance = g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject(nullptr);
+            }
+            if (hgInstance >= 0 && g_playtimeApi.HB_CreateClipMatrix) {
+                g_playtimeApi.HB_CreateClipMatrix(hgInstance);
+                fprintf(stderr,
+                    "[reaper-ipad] matrix/getAll: Auto-created Playtime matrix on Helgobox instance %d\n", hgInstance);
+            } else {
+                fprintf(stderr,
+                    "[reaper-ipad] matrix/getAll: Could not auto-create — no Helgobox instance or HB_CreateClipMatrix unavailable\n");
+            }
         }
     }
 

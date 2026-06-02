@@ -38,8 +38,9 @@ export function usePlaytime() {
   const triggerSlot = useCallback(async (column: number, row: number): Promise<ClipSlot | null> => {
     try {
       const resp = await send('matrix/triggerSlot', { column, row });
-      const payload = resp.payload as Record<string, unknown>;
-      return (payload?.slot as ClipSlot) ?? null;
+      // Backend returns the slot object directly as the payload, not wrapped in {slot: ...}.
+      // See command_handler.cpp: HandleMatrixTriggerSlot sends updated.toJson() directly.
+      return (resp.payload as unknown as ClipSlot) ?? null;
     } catch {
       return null;
     }
