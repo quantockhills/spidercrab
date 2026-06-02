@@ -39,6 +39,15 @@ function makeMockWsHandler() {
         case 'track/getFx':
           responsePayload = { fx: [] };
           break;
+        case 'fx/enumerate':
+          responsePayload = {
+            fx: [
+              { index: 0, name: 'VST3: ReaEQ', format: 'VST3', ident: 'reaeq' },
+              { index: 1, name: 'VST3: ReaComp', format: 'VST3', ident: 'reacomp' },
+              { index: 2, name: 'VST3: ReaSynth', format: 'VST3', ident: 'reasynth' },
+            ],
+          };
+          break;
         case 'fxchain/getDirectory':
           responsePayload = {
             chains: [
@@ -60,6 +69,10 @@ function makeMockWsHandler() {
         case 'fxchain/load':
         case 'fxchain/save':
           responsePayload = { success: true };
+          break;
+        default:
+          // Unknown command — return empty success to prevent hanging
+          responsePayload = {};
           break;
       }
 
