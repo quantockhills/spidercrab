@@ -45,10 +45,10 @@ export function useReaper(_opts?: UseReaperOptions): ReturnType<typeof useReaper
   ReturnType<typeof useFxChains> &
   ReturnType<typeof useSampleBrowser> &
   ReturnType<typeof usePlaytime> &
-  ReturnType<typeof useSequencer> & { clientRef: React.MutableRefObject<WsClient | null> } {
+  ReturnType<typeof useSequencer> {
   // _opts is unused — host/port are configured via ReaperClientProvider
   void _opts;
-  const { connected, onEvent, clientRef } = useReaperClient();
+  const { connected, send, onEvent, clientRef } = useReaperClient();
   const transport = useTransport();
   const trackState = useTrackState();
   const fx = useFx();
@@ -60,6 +60,7 @@ export function useReaper(_opts?: UseReaperOptions): ReturnType<typeof useReaper
   return {
     // From ReaperClient
     connected,
+    send,
     onEvent,
 
     // From useTransport
