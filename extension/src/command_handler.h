@@ -13,6 +13,10 @@
 // not 'struct'. MSVC ABI mangles them differently causing linker errors.
 class MediaTrack;
 class ReaProject;
+class MediaItem;
+class MediaItem_Take;
+class PCM_source;
+class MIDI_eventlist;
 
 // Reaper API function pointers (loaded via REAPERAPI_LoadAPI)
 struct ReaperAPI {
@@ -66,6 +70,15 @@ struct ReaperAPI {
     bool (*GetTrackStateChunk)(MediaTrack* track, char* strNeedBig, int strNeedBig_sz, bool isundoOptional)
         = nullptr;
     bool (*SetTrackStateChunk)(MediaTrack* track, const char* str, bool isundoOptional) = nullptr;
+
+    // MIDI recording functions (Issue #90)
+    int (*CountMediaItems)(ReaProject* proj) = nullptr;
+    MediaItem* (*GetMediaItem)(ReaProject* proj, int itemidx) = nullptr;
+    MediaItem_Take* (*GetActiveTake)(MediaItem* item) = nullptr;
+    PCM_source* (*GetMediaItemTake_Source)(MediaItem_Take* take) = nullptr;
+    MIDI_eventlist* (*MIDI_eventlist_Create)() = nullptr;
+    void (*MIDI_eventlist_Destroy)(MIDI_eventlist* evtlist) = nullptr;
+    double (*GetPlayPosition)() = nullptr;
 };
 
 class CommandHandler {
@@ -187,6 +200,9 @@ private:
     void HandleGetFxPreset(int clientId, const std::string& id, const std::string& params);
     void HandleSetFxPreset(int clientId, const std::string& id, const std::string& params);
     void HandleGetAllFxPresetNames(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — MIDI recording (Issue #90)
+    void HandleMidiEvent(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — Playtime 2 / clip matrix
     void HandleMatrixGetAll(int clientId, const std::string& id, const std::string& params);

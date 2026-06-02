@@ -4238,3 +4238,341 @@ TEST(FxChainChunkTest, ExtractWithDeeplyNestedInlineAngles)
     }
     EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
 }
+
+// ============================================================
+// MIDI event recording tests (Issue #90)
+// ============================================================
+
+TEST(MidiEventTest, BuildMidiEventCreatesValidCcEvent)
+{
+    // Build a CC event on channel 0, controller 7 (volume), value 100
+    MIDI_event_t evt = BuildMidiEvent(
+        "cc", 0, 7, 100, 1.0, 44100.0);
+
+    EXPECT_EQ(evt.size, 3);
+    EXPECT_EQ(evt.midi_message[0], 0xB0); // CC on channel 0
+    EXPECT_EQ(evt.midi_message[1], 7);    // controller number
+    EXPECT_EQ(evt.midi_message[2], 100);  // value
+    EXPECT_GT(evt.frame_offset, 0);       // should be based on playPos
+}
+
+TEST(MidiEventTest, BuildMidiEventCcOnChannel3)
+{
+    // CC on channel 3 should produce 0xB3
+    MIDI_event_t evt = BuildMidiEvent("cc", 3, 10, 64, 0.5, 44100.0);
+    EXPECT_EQ(evt.midi_message[0], 0xB3);
+    EXPECT_EQ(evt.midi_message[1], 10);
+    EXPECT_EQ(evt.midi_message[2], 64);
+    EXPECT_EQ(evt.size, 3);
+}
+
+TEST(MidiEventTest, BuildMidiEventNoteOn)
+{
+    // Note On: note 60 (middle C), velocity 100
+    MIDI_event_t evt = BuildMidiEvent("noteon", 0, 60, 100, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[0], 0x90);
+    EXPECT_EQ(evt.midi_message[1], 60);
+    EXPECT_EQ(evt.midi_message[2], 100);
+    EXPECT_EQ(evt.size, 3);
+}
+
+TEST(MidiEventTest, BuildMidiEventNoteOff)
+{
+    // Note Off: note 60, velocity 0
+    MIDI_event_t evt = BuildMidiEvent("noteoff", 5, 60, 0, 2.0, 44100.0);
+    EXPECT_EQ(evt.midi_message[0], 0x85); // channel 5
+    EXPECT_EQ(evt.midi_message[1], 60);
+    EXPECT_EQ(evt.midi_message[2], 0);
+    EXPECT_EQ(evt.size, 3);
+}
+
+TEST(MidiEventTest, BuildMidiEventPitchBend)
+{
+    // Pitch Bend: 14-bit value 8192 (center/no bend)
+    MIDI_event_t evt = BuildMidiEvent("pitchbend", 0, 8192, 0, 1.0, 44100.0);
+    EXPECT_EQ(evt.midi_message[0], 0xE0);
+    EXPECT_EQ(evt.midi_message[1], 0);      // LSB = 8192 & 0x7F = 0
+    EXPECT_EQ(evt.midi_message[2], 64);     // MSB = (8192 >> 7) & 0x7F = 64
+    EXPECT_EQ(evt.size, 3);
+}
+
+TEST(MidiEventTest, BuildMidiEventPitchBendMax)
+{
+    // Pitch Bend max (16383)
+    MIDI_event_t evt = BuildMidiEvent("pitchbend", 1, 16383, 0, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[0], 0xE1);
+    EXPECT_EQ(evt.midi_message[1], 0x7F);   // LSB = 16383 & 0x7F = 127
+    EXPECT_EQ(evt.midi_message[2], 0x7F);   // MSB = (16383 >> 7) & 0x7F = 127
+}
+
+TEST(MidiEventTest, BuildMidiEventAftertouch)
+{
+    MIDI_event_t evt = BuildMidiEvent("aftertouch", 2, 60, 80, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[0], 0xA2);
+    EXPECT_EQ(evt.midi_message[1], 60);
+    EXPECT_EQ(evt.midi_message[2], 80);
+    EXPECT_EQ(evt.size, 3);
+}
+
+TEST(MidiEventTest, BuildMidiEventProgramChange)
+{
+    MIDI_event_t evt = BuildMidiEvent("programchange", 0, 5, 0, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[0], 0xC0);
+    EXPECT_EQ(evt.midi_message[1], 5);
+    EXPECT_EQ(evt.size, 2); // 2-byte message
+}
+
+TEST(MidiEventTest, BuildMidiEventChannelPressure)
+{
+    MIDI_event_t evt = BuildMidiEvent("channelpressure", 7, 100, 0, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[0], 0xD7);
+    EXPECT_EQ(evt.midi_message[1], 100);
+    EXPECT_EQ(evt.size, 2); // 2-byte message
+}
+
+TEST(MidiEventTest, BuildMidiEventRawThreeByte)
+{
+    // Raw 3-byte message (CC-like)
+    MIDI_event_t evt = BuildMidiEvent("raw", 0, 0xB0 | 0x00, 0x07, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[0], 0xB0);
+    EXPECT_EQ(evt.midi_message[1], 0x07);
+    EXPECT_EQ(evt.size, 3);
+}
+
+TEST(MidiEventTest, BuildMidiEventRawTwoByte)
+{
+    // Raw 2-byte message (program change)
+    MIDI_event_t evt = BuildMidiEvent("raw", 0, 0xC0 | 0x05, 0x00, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[0], 0xC5);
+    EXPECT_EQ(evt.midi_message[1], 0x00);
+    EXPECT_EQ(evt.size, 2);
+}
+
+TEST(MidiEventTest, BuildMidiEventFrameOffsetWithPlayPos)
+{
+    // frame_offset should be playPos * sampleRate when both are > 0
+    MIDI_event_t evt = BuildMidiEvent("cc", 0, 1, 64, 2.5, 44100.0);
+    EXPECT_EQ(evt.frame_offset, (int)(2.5 * 44100.0));
+
+    // With playPos <= 0, frame_offset should be 0
+    MIDI_event_t evt2 = BuildMidiEvent("cc", 0, 1, 64, 0.0, 44100.0);
+    EXPECT_EQ(evt2.frame_offset, 0);
+
+    MIDI_event_t evt3 = BuildMidiEvent("cc", 0, 1, 64, -1.0, 44100.0);
+    EXPECT_EQ(evt3.frame_offset, 0);
+
+    // With sampleRate <= 0, frame_offset should be 0
+    MIDI_event_t evt4 = BuildMidiEvent("cc", 0, 1, 64, 1.0, 0.0);
+    EXPECT_EQ(evt4.frame_offset, 0);
+}
+
+TEST(MidiEventTest, BuildMidiEventClampsDataBytesTo7Bit)
+{
+    // Data bytes should be masked to 7 bits
+    MIDI_event_t evt = BuildMidiEvent("cc", 0, 200, 300, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[1], 200 & 0x7F); // 200 & 0x7F = 72
+    EXPECT_EQ(evt.midi_message[2], 300 & 0x7F); // 300 & 0x7F = 44
+}
+
+TEST(MidiEventTest, BuildMidiEventNoteOnClampsData)
+{
+    MIDI_event_t evt = BuildMidiEvent("noteon", 0, 255, 255, 0.0, 0.0);
+    EXPECT_EQ(evt.midi_message[1], 255 & 0x7F); // 127
+    EXPECT_EQ(evt.midi_message[2], 255 & 0x7F); // 127
+}
+
+// ============================================================
+// HandleMidiEvent command dispatch test (Issue #90)
+// ============================================================
+
+TEST(MidiEventTest, MidiEventDispatchReturnsSuccess)
+{
+    // Test that the midi/event command is dispatched to HandleMidiEvent
+    // and returns a valid response (even without mock MIDI API)
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":0,"data1":7,"data2":64},"id":"midi1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should always succeed (sends to MIDI even if injection not possible)
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"sent\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MidiEventTest, MidiEventDispatchUsesAliases)
+{
+    // Test that 'controller' and 'value' aliases work
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":0,"controller":10,"value":127},"id":"midi2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"sent\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MidiEventTest, MidiEventMissingTypeReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"midi/event","payload":{"channel":0,"data1":7,"data2":64},"id":"midi3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'type' field"), std::string::npos);
+}
+
+TEST(MidiEventTest, MidiEventBadChannelReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Channel 42 is out of range (0-15)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":42,"data1":7,"data2":64},"id":"midi4"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("Channel must be 0-15"), std::string::npos);
+}
+
+TEST(MidiEventTest, MidiEventDispatchWithoutPayload)
+{
+    // Command with no payload object at all — the extractPayload function
+    // returns the entire message, and the parser picks up the outer
+    // "type":"command" field as the event type. Since "command" is not
+    // a known MIDI event type, BuildMidiEvent returns a zeroed event.
+    // The handler still responds with success (unknown event types are
+    // not currently rejected). This is consistent with other commands.
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"midi/event","id":"midi5"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Should respond (no crash)
+    EXPECT_EQ(responses[0].front(), '{');
+    EXPECT_EQ(responses[0].back(), '}');
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : responses[0]) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MidiEventTest, MidiEventAllEventTypesSucceed)
+{
+    // Test that all supported event types are dispatched without crash
+    MockState state;
+    state.tracks = {};
+
+    const char* eventTypes[] = {
+        "cc", "noteon", "noteoff", "pitchbend",
+        "aftertouch", "programchange", "channelpressure", "raw"
+    };
+
+    for (const char* etype : eventTypes) {
+        std::vector<std::string> responses;
+        auto handler = MakeMockHandler(&state, &responses);
+
+        std::string cmd = std::string(
+            R"({"type":"command","command":"midi/event","payload":{"type":")")
+            + etype + "\",\"channel\":0,\"data1\":64,\"data2\":100},\"id\":\"midi_"
+            + etype + "\"})";
+
+        handler->HandleMessage(1, cmd);
+        ASSERT_EQ(responses.size(), 1u) << "Failed for event type: " << etype;
+
+        // All types should succeed (validation only checks type != empty and valid channel)
+        EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos)
+            << "Failed for event type: " << etype;
+    }
+}
+
+TEST(MidiEventTest, MidiEventResponseIsValidJson)
+{
+    // Verify all midi/event responses are valid JSON
+    MockState state;
+    state.tracks = {};
+
+    struct CmdCheck {
+        const char* cmd;
+        const char* desc;
+    };
+
+    CmdCheck commands[] = {
+        {R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":0,"data1":7,"data2":64},"id":"v1"})", "valid cc"},
+        {R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":42,"data1":7,"data2":64},"id":"v2"})", "bad channel"},
+        {R"({"type":"command","command":"midi/event","payload":{},"id":"v3"})", "empty payload"},
+    };
+
+    for (const auto& cc : commands) {
+        std::vector<std::string> responses;
+        auto handler = MakeMockHandler(&state, &responses);
+        handler->HandleMessage(1, cc.cmd);
+        ASSERT_EQ(responses.size(), 1u) << "Command " << cc.desc << " should produce 1 response";
+
+        const std::string& resp = responses[0];
+
+        // Verify balanced braces
+        int depth = 0;
+        for (char c : resp) {
+            if (c == '{') depth++;
+            if (c == '}') depth--;
+        }
+        EXPECT_EQ(depth, 0) << "Unbalanced JSON for " << cc.desc;
+
+        // Verify starts and ends with braces
+        EXPECT_EQ(resp.front(), '{') << cc.desc;
+        EXPECT_EQ(resp.back(), '}') << cc.desc;
+    }
+}

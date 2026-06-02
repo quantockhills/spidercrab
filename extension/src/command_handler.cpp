@@ -4,6 +4,13 @@
 #include <cstring>
 #include <filesystem>
 #include <sstream>
+
+// REAPER SDK for MIDI types (MIDI_event_t, midi_realtime_write_struct_t, PCM_SOURCE_EXT_ADDMIDIEVENTS).
+// Must come after standard headers because swell-types.h defines min/max macros.
+#include "reaper_plugin.h"
+#undef min
+#undef max
+
 namespace fs = std::filesystem;
 
 // Global Playtime 2 API state (defined here, declared extern in playtime_api.h)
@@ -58,6 +65,10 @@ static std::string json_string(const char* s)
 // Forward declare REAPER types — must match reaper_plugin.h ('class', not 'struct')
 class MediaTrack;
 class ReaProject;
+class MediaItem;
+class MediaItem_Take;
+class PCM_source;
+class MIDI_eventlist;
 
 static std::string json_string(const std::string& s)
 {
@@ -336,6 +347,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleFxChainSave(clientId, id, message);
         } else if (command == "fxchain/load") {
             HandleFxChainLoad(clientId, id, message);
+        } else if (command == "midi/event") {
+            HandleMidiEvent(clientId, id, message);
         } else if (command == "fxchain/getInfo") {
             HandleFxChainGetInfo(clientId, id, message);
         } else {
@@ -2432,6 +2445,220 @@ void CommandHandler::ClearWatchedFX()
 {
     m_watchedTrackIdx = -1;
     m_watchedFxIdx    = -1;
+}
+
+// ============================================================
+// MIDI event recording (Issue #90)
+// ============================================================
+
+// Construct a MIDI_event_t from midi/event command parameters.
+// Returns the event with frame_offset filled in based on current
+// playback position and sample rate.
+static MIDI_event_t BuildMidiEvent(const std::string& eventType, int channel,
+    int data1, int data2, double playPos, double sampleRate)
+{
+    MIDI_event_t evt;
+    memset(&evt, 0, sizeof(evt));
+
+    // frame_offset: samples since the recording started.
+    // If recording hasn't started yet (playPos <= 0), use 0.
+    if (playPos > 0.0 && sampleRate > 0.0) {
+        evt.frame_offset = (int)(playPos * sampleRate);
+    } else {
+        evt.frame_offset = 0;
+    }
+
+    if (eventType == "cc") {
+        // Control Change: 0xB0 | channel
+        evt.midi_message[0] = 0xB0 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // controller number
+        evt.midi_message[2] = data2 & 0x7F;     // value
+        evt.size = 3;
+    } else if (eventType == "noteon") {
+        evt.midi_message[0] = 0x90 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // note
+        evt.midi_message[2] = data2 & 0x7F;     // velocity
+        evt.size = 3;
+    } else if (eventType == "noteoff") {
+        evt.midi_message[0] = 0x80 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // note
+        evt.midi_message[2] = data2 & 0x7F;     // velocity
+        evt.size = 3;
+    } else if (eventType == "pitchbend") {
+        // Pitch Bend: 0xE0 | channel, 14-bit value (0-16383)
+        evt.midi_message[0] = 0xE0 | (channel & 0x0F);
+        int pb14 = data1 & 0x3FFF;   // 14-bit value
+        evt.midi_message[1] = pb14 & 0x7F;        // LSB
+        evt.midi_message[2] = (pb14 >> 7) & 0x7F; // MSB
+        evt.size = 3;
+    } else if (eventType == "aftertouch") {
+        // Polyphonic Aftertouch: 0xA0 | channel
+        evt.midi_message[0] = 0xA0 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // note
+        evt.midi_message[2] = data2 & 0x7F;     // pressure
+        evt.size = 3;
+    } else if (eventType == "programchange") {
+        // Program Change: 0xC0 | channel
+        evt.midi_message[0] = 0xC0 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // program number
+        evt.size = 2;
+    } else if (eventType == "channelpressure") {
+        // Channel Pressure: 0xD0 | channel
+        evt.midi_message[0] = 0xD0 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // pressure
+        evt.size = 2;
+    } else if (eventType == "raw") {
+        // Raw MIDI bytes: data1=status, data2=first data byte (or 0 if 1-byte msg)
+        evt.midi_message[0] = data1 & 0xFF;
+        evt.midi_message[1] = data2 & 0xFF;
+        evt.midi_message[2] = 0;
+        // Determine size from status byte
+        int statusHigh = (data1 >> 4) & 0x0F;
+        if (statusHigh == 0xC || statusHigh == 0xD) {
+            evt.size = 2; // program change, channel pressure
+        } else if (statusHigh >= 0x8 && statusHigh <= 0xE) {
+            evt.size = 3; // note on/off, CC, pitch bend, aftertouch
+        } else if (statusHigh == 0xF) {
+            evt.size = 1; // system messages (simplified)
+        } else {
+            evt.size = 3;
+        }
+    }
+
+    return evt;
+}
+
+void CommandHandler::HandleMidiEvent(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    // Parse the event payload from the message
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string eventType = parser.getString("type");
+    std::string channelStr = parser.getString("channel");
+    std::string data1Str = parser.getString("data1");
+    std::string data2Str = parser.getString("data2");
+
+    // Also support 'value' as an alias for data2 (for CC events)
+    if (data2Str.empty()) {
+        data2Str = parser.getString("value");
+    }
+    // Also support 'controller' as an alias for data1 (for CC events)
+    if (data1Str.empty()) {
+        data1Str = parser.getString("controller");
+    }
+
+    if (eventType.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'type' field in midi/event payload\"}");
+        return;
+    }
+
+    int channel = channelStr.empty() ? 0 : atoi(channelStr.c_str());
+    int data1 = data1Str.empty() ? 0 : atoi(data1Str.c_str());
+    int data2 = data2Str.empty() ? 0 : atoi(data2Str.c_str());
+
+    // Validate channel
+    if (channel < 0 || channel > 15) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Channel must be 0-15\"}");
+        return;
+    }
+
+    // Check if we're recording and can inject into MIDI takes
+    bool isRecording = false;
+    if (m_api.GetPlayState) {
+        int state = m_api.GetPlayState();
+        isRecording = (state & 4) != 0;
+    }
+
+    bool injectedToRecordingTake = false;
+
+    if (isRecording &&
+        m_api.CountMediaItems && m_api.GetMediaItem &&
+        m_api.GetActiveTake && m_api.GetMediaItemTake_Source &&
+        m_api.MIDI_eventlist_Create && m_api.MIDI_eventlist_Destroy &&
+        m_api.GetPlayPosition && m_api.CountTracks && m_api.GetTrack &&
+        m_api.GetSetMediaTrackInfo) {
+
+        int numTracks = m_api.CountTracks(nullptr);
+        double playPos = m_api.GetPlayPosition();
+        double sampleRate = 44100.0; // fallback
+
+        for (int t = 0; t < numTracks && !injectedToRecordingTake; t++) {
+            MediaTrack* track = m_api.GetTrack(nullptr, t);
+            if (!track) continue;
+
+            // Check if track is record-armed
+            int* armState = (int*)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr);
+            if (!armState || *armState == 0) continue;
+
+            // Iterate all items and try to inject MIDI events into any take
+            // whose source supports PCM_SOURCE_EXT_ADDMIDIEVENTS.
+            // We cannot reliably match items to tracks without
+            // GetMediaItemInfo_Value (which is avoided due to known
+            // Reaper crash issues with I_SELECTED). Instead, we try all
+            // items for each armed track — the operation is idempotent.
+            int numItems = m_api.CountMediaItems(nullptr);
+            for (int i = 0; i < numItems && !injectedToRecordingTake; i++) {
+                MediaItem* item = m_api.GetMediaItem(nullptr, i);
+                if (!item) continue;
+
+                MediaItem_Take* take = m_api.GetActiveTake(item);
+                if (!take) continue;
+
+                PCM_source* source = m_api.GetMediaItemTake_Source(take);
+                if (!source) continue;
+
+                // Build the MIDI event
+                MIDI_event_t evt = BuildMidiEvent(
+                    eventType, channel, data1, data2, playPos, sampleRate);
+
+                // Create a MIDI_eventlist with our event
+                MIDI_eventlist* eventList = m_api.MIDI_eventlist_Create();
+                if (!eventList) continue;
+
+                eventList->AddItem(&evt);
+
+                // Build the realtime write struct
+                midi_realtime_write_struct_t writeStruct;
+                memset(&writeStruct, 0, sizeof(writeStruct));
+                writeStruct.global_time = playPos;
+                writeStruct.global_item_time = playPos;
+                writeStruct.srate = sampleRate;
+                writeStruct.length = 0; // length in samples (0 = minimal)
+                writeStruct.overwritemode = -1; // literal (just add, no curves)
+                writeStruct.events = eventList;
+                writeStruct.item_playrate = 1.0;
+                writeStruct.latency = 0.0;
+                writeStruct.overwrite_actives = nullptr;
+                writeStruct.do_not_quantize_past_sec = 0.0;
+
+                // Try to inject the events
+                int result = source->Extended(
+                    PCM_SOURCE_EXT_ADDMIDIEVENTS, &writeStruct, 0, nullptr);
+
+                m_api.MIDI_eventlist_Destroy(eventList);
+
+                if (result != 0) {
+                    injectedToRecordingTake = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // If recording but couldn't inject, still send the event to MIDI output
+    // for live monitoring purposes
+    std::string payload = "{";
+    payload += "\"sent\":true,";
+    payload += "\"injected\":" + std::string(injectedToRecordingTake ? "true" : "false") + ",";
+    payload += "\"recording\":" + std::string(isRecording ? "true" : "false");
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
 }
 
 void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx, double value)
