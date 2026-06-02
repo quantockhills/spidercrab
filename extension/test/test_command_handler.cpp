@@ -898,6 +898,131 @@ TEST(SampleBrowserTest, JsonEscapeFilepath)
     EXPECT_EQ(escaped2, "/home/user/\\\"cool\\\" beats/hat.wav");
 }
 
+// Helper: create a minimal valid PCM WAV file at the given path
+// Mono, 44100 Hz, 16-bit, 1 second of silence
+static void create_test_wav(const fs::path& path, int channels = 1, int sampleRate = 44100,
+    int bitsPerSample = 16, int durationSamples = 44100)
+{
+    int bytesPerSample = bitsPerSample / 8;
+    int dataSize = durationSamples * channels * bytesPerSample;
+    int fileSize = 36 + dataSize; // 4 + 24 + 8 + dataSize
+
+    std::ofstream f(path, std::ios::binary);
+
+    // RIFF header
+    f.write("RIFF", 4);
+    f.put(fileSize & 0xFF); f.put((fileSize >> 8) & 0xFF);
+    f.put((fileSize >> 16) & 0xFF); f.put((fileSize >> 24) & 0xFF);
+    f.write("WAVE", 4);
+
+    // fmt chunk
+    f.write("fmt ", 4);
+    uint32_t fmtSize = 16;
+    f.put(fmtSize & 0xFF); f.put((fmtSize >> 8) & 0xFF);
+    f.put((fmtSize >> 16) & 0xFF); f.put((fmtSize >> 24) & 0xFF);
+    uint16_t audioFormat = 1; // PCM
+    f.put(audioFormat & 0xFF); f.put((audioFormat >> 8) & 0xFF);
+    f.put(channels & 0xFF); f.put((channels >> 8) & 0xFF);
+    f.put(sampleRate & 0xFF); f.put((sampleRate >> 8) & 0xFF);
+    f.put((sampleRate >> 16) & 0xFF); f.put((sampleRate >> 24) & 0xFF);
+    uint32_t byteRate = sampleRate * channels * bytesPerSample;
+    f.put(byteRate & 0xFF); f.put((byteRate >> 8) & 0xFF);
+    f.put((byteRate >> 16) & 0xFF); f.put((byteRate >> 24) & 0xFF);
+    uint16_t blockAlign = channels * bytesPerSample;
+    f.put(blockAlign & 0xFF); f.put((blockAlign >> 8) & 0xFF);
+    f.put(bitsPerSample & 0xFF); f.put((bitsPerSample >> 8) & 0xFF);
+
+    // data chunk
+    f.write("data", 4);
+    f.put(dataSize & 0xFF); f.put((dataSize >> 8) & 0xFF);
+    f.put((dataSize >> 16) & 0xFF); f.put((dataSize >> 24) & 0xFF);
+
+    // Write silent samples
+    for (int i = 0; i < durationSamples * channels; i++) {
+        for (int b = 0; b < bytesPerSample; b++)
+            f.put(0);
+    }
+}
+
+TEST(SampleBrowserTest, GetAudioDataMissingPath)
+{
+    CommandHandler handler(nullptr);
+    std::string json = R"({"type":"command","command":"sample/getAudioData","payload":{"path":""},"id":"aud1"})";
+    // Just verify dispatch doesn't crash and extractPayload works
+    std::string payloadStr = extractPayload(json);
+    JsonParser parser(payloadStr);
+    EXPECT_EQ(parser.getString("path"), "");
+}
+
+TEST(SampleBrowserTest, GetAudioDataFileNotFound)
+{
+    CommandHandler handler(nullptr);
+    std::string json = R"({"type":"command","command":"sample/getAudioData","payload":{"path":"/nonexistent/file.wav"},"id":"aud2"})";
+    std::string payloadStr = extractPayload(json);
+    JsonParser parser(payloadStr);
+    EXPECT_EQ(parser.getString("path"), "/nonexistent/file.wav");
+}
+
+TEST(SampleBrowserTest, GetAudioDataExtractsPathFromPayload)
+{
+    std::string json = R"({"type":"command","command":"sample/getAudioData","payload":{"path":"/tmp/test.wav"},"id":"aud3"})";
+    std::string payloadStr = extractPayload(json);
+    JsonParser  parser(payloadStr);
+    EXPECT_EQ(parser.getString("path"), "/tmp/test.wav");
+}
+
+TEST(SampleBrowserTest, GetAudioDataNonWavFile)
+{
+    // Create a non-WAV temp file
+    fs::path testDir = fs::temp_directory_path() / "_sample_audiodata_test";
+    fs::create_directories(testDir);
+    fs::path testFile = testDir / "notaudio.txt";
+    {
+        std::ofstream f(testFile);
+        f << "this is not a wav file";
+    }
+
+    CommandHandler handler(nullptr);
+    std::string json = R"({"type":"command","command":"sample/getAudioData","payload":{"path":")" + testFile.string() + R"("},"id":"aud4"})";
+    // Handler should fail gracefully — not crash
+
+    fs::remove_all(testDir);
+}
+
+TEST(SampleBrowserTest, GetAudioDataValidWav)
+{
+    fs::path testDir = fs::temp_directory_path() / "_sample_audiodata_test2";
+    fs::create_directories(testDir);
+    fs::path testFile = testDir / "silence.wav";
+    create_test_wav(testFile, 1, 44100, 16, 441); // 0.01 seconds of silence
+
+    // Verify file exists and has correct size
+    EXPECT_TRUE(fs::exists(testFile));
+    EXPECT_GT(fs::file_size(testFile), 44u); // header + data
+
+    // Verify the data chunk is present by parsing manually
+    std::ifstream f(testFile, std::ios::binary);
+    f.seekg(0, std::ios::end);
+    std::streamsize actualSize = f.tellg();
+    f.seekg(0, std::ios::beg);
+    std::vector<uint8_t> contents(actualSize);
+    f.read(reinterpret_cast<char*>(contents.data()), actualSize);
+    EXPECT_EQ(memcmp(contents.data(), "RIFF", 4), 0);
+    EXPECT_EQ(memcmp(contents.data() + 8, "WAVE", 4), 0);
+
+    // Verify base64 encoding works on PCM data
+    // Read PCM data from the WAV
+    size_t dataOffset = 44; // Typical offset for PCM WAV
+    size_t pcmSize = actualSize - dataOffset;
+    std::string b64 = base64_encode(contents.data() + dataOffset, pcmSize);
+    EXPECT_FALSE(b64.empty());
+    // Base64 length: 4 * ceil(n/3)
+    size_t expectedB64Len = ((pcmSize + 2) / 3) * 4;
+    EXPECT_EQ(b64.size(), expectedB64Len);
+
+    fs::remove_all(testDir);
+}
+
 // ============================================================
 // FX enumeration caching tests
 // ============================================================

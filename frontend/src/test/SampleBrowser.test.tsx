@@ -29,11 +29,13 @@ function createMockEntries(): DirEntry[] {
 describe('SampleBrowser', () => {
   const mockGetDirectory = vi.fn();
   const mockSendSampleToTrack = vi.fn();
+  const mockSendCommand = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetDirectory.mockResolvedValue({ entries: createMockEntries() });
     mockSendSampleToTrack.mockResolvedValue(true);
+    mockSendCommand.mockResolvedValue({ payload: {} });
   });
 
   it('renders loading state initially', () => {
@@ -44,6 +46,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -57,6 +60,7 @@ describe('SampleBrowser', () => {
         selectedTrack={0}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -78,6 +82,7 @@ describe('SampleBrowser', () => {
         selectedTrack={0}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -94,6 +99,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -108,6 +114,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -124,6 +131,7 @@ describe('SampleBrowser', () => {
         selectedTrack={0}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -150,6 +158,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -177,6 +186,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -194,6 +204,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -210,6 +221,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -234,6 +246,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={onBack}
       />
     );
@@ -255,6 +268,7 @@ describe('SampleBrowser', () => {
         selectedTrack={null}
         getDirectory={mockGetDirectory}
         sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
         onBack={() => {}}
       />
     );
@@ -268,6 +282,68 @@ describe('SampleBrowser', () => {
 
     await waitFor(() => {
       expect(mockGetDirectory).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  // ── Audio preview tests ──────────────────────────────────────
+
+  it('shows play button on audio file rows', async () => {
+    render(
+      <SampleBrowser
+        tracks={[]}
+        selectedTrack={null}
+        getDirectory={mockGetDirectory}
+        sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
+        onBack={() => {}}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('kick.wav')).toBeDefined();
+    });
+
+    // Audio files should have play buttons
+    const playButtons = screen.getAllByLabelText('Preview');
+    expect(playButtons.length).toBeGreaterThan(0);
+  });
+
+  it('shows audio preview panel when play button is clicked', async () => {
+    // Mock sendCommand to return fake audio data
+    mockSendCommand.mockResolvedValue({
+      payload: {
+        sampleRate: 44100,
+        channels: 1,
+        bitDepth: 16,
+        format: 'wav',
+        fileSize: 1024,
+        dataSize: 1024,
+        data: '', // empty base64 — will cause decode error, but preview panel opens
+      },
+    });
+
+    render(
+      <SampleBrowser
+        tracks={createMockTracks()}
+        selectedTrack={0}
+        getDirectory={mockGetDirectory}
+        sendSampleToTrack={mockSendSampleToTrack}
+        sendCommand={mockSendCommand}
+        onBack={() => {}}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('kick.wav')).toBeDefined();
+    });
+
+    // Click play button on kick.wav
+    const playButtons = screen.getAllByLabelText('Preview');
+    fireEvent.click(playButtons[0]);
+
+    // Preview panel should open with loading state
+    await waitFor(() => {
+      expect(screen.getByText(/Loading audio/i)).toBeDefined();
     });
   });
 });
