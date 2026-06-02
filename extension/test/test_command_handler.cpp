@@ -493,6 +493,40 @@ static bool mock_TrackFX_Delete(MediaTrack* track, int fx)
     return true;
 }
 
+static void mock_TrackFX_CopyToTrack(
+    MediaTrack* src_track, int src_fx, MediaTrack* dest_track, int dest_fx, bool is_move)
+{
+    int src_idx = static_cast<int>(reinterpret_cast<uintptr_t>(src_track)) - 1;
+    int dst_idx = static_cast<int>(reinterpret_cast<uintptr_t>(dest_track)) - 1;
+    if (!g_mock || src_idx < 0 || src_idx >= (int)g_mock->tracks.size()) return;
+    if (!g_mock || dst_idx < 0 || dst_idx >= (int)g_mock->tracks.size()) return;
+    auto& src_t = g_mock->tracks[src_idx];
+    auto& dst_t = g_mock->tracks[dst_idx];
+    if (src_fx < 0 || src_fx >= (int)src_t.fx.size()) return;
+    if (dest_fx < 0) dest_fx = 0;
+    if (dest_fx > (int)dst_t.fx.size()) dest_fx = (int)dst_t.fx.size();
+
+    // Insert a copy of the FX at the destination position
+    MockTrack::MockFX copy = src_t.fx[src_fx];
+    dst_t.fx.insert(dst_t.fx.begin() + dest_fx, copy);
+
+    // Re-index destination track FX
+    for (size_t i = 0; i < dst_t.fx.size(); i++)
+        dst_t.fx[i].idx = (int)i;
+
+    // If is_move, also delete from source
+    if (is_move && src_idx == dst_idx) {
+        // When moving within the same track, the insert shifted everything.
+        // If src_fx >= dest_fx, the original is now at src_fx + 1.
+        int deleteIdx = (src_fx >= dest_fx) ? src_fx + 1 : src_fx;
+        if (deleteIdx >= 0 && deleteIdx < (int)dst_t.fx.size()) {
+            dst_t.fx.erase(dst_t.fx.begin() + deleteIdx);
+            for (size_t i = 0; i < dst_t.fx.size(); i++)
+                dst_t.fx[i].idx = (int)i;
+        }
+    }
+}
+
 static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmname, void* setNewValue)
 {
     if (!g_mock || !parmname) return nullptr;
@@ -601,6 +635,7 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_SetParam     = mock_TrackFX_SetParam;
     api.TrackFX_AddByName    = mock_TrackFX_AddByName;
     api.TrackFX_Delete            = mock_TrackFX_Delete;
+    api.TrackFX_CopyToTrack      = mock_TrackFX_CopyToTrack;
     api.TrackFX_GetPresetIndex    = mock_TrackFX_GetPresetIndex;
     api.TrackFX_GetPreset         = mock_TrackFX_GetPreset;
     api.TrackFX_SetPresetByIndex  = mock_TrackFX_SetPresetByIndex;
@@ -843,6 +878,247 @@ TEST(FXRoundtripTest, ParamMinMaxMidAreCorrect)
     EXPECT_NE(resp.find("\"mid\":1000"), std::string::npos);
 }
 
+
+// ============================================================
+// FX reorder command tests (Issue #89)
+// ============================================================
+
+TEST(FxReorderTest, ReorderFxMovesForward)
+{
+    // Move FX from index 0 to index 2: [A,B,C,D] -> [B,C,A,D]
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    t.fx.push_back({2, "C", {}, {}, {}, {}, {}});
+    t.fx.push_back({3, "D", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":2},"id":"rf1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"reordered\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"trackIdx\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"fromIndex\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"toIndex\":2"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify mock state: [B, C, A, D]
+    ASSERT_EQ(state.tracks[0].fx.size(), 4u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "B");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "C");
+    EXPECT_EQ(state.tracks[0].fx[2].name, "A");
+    EXPECT_EQ(state.tracks[0].fx[3].name, "D");
+}
+
+TEST(FxReorderTest, ReorderFxMovesBackward)
+{
+    // Move FX from index 3 to index 0: [A,B,C,D] -> [D,A,B,C]
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    t.fx.push_back({2, "C", {}, {}, {}, {}, {}});
+    t.fx.push_back({3, "D", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":3,"toIndex":0},"id":"rb1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"reordered\":true"), std::string::npos);
+
+    // Verify mock state: [D, A, B, C]
+    ASSERT_EQ(state.tracks[0].fx.size(), 4u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "D");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "A");
+    EXPECT_EQ(state.tracks[0].fx[2].name, "B");
+    EXPECT_EQ(state.tracks[0].fx[3].name, "C");
+}
+
+TEST(FxReorderTest, ReorderFxSameIndexIsNoOp)
+{
+    // When fromIdx == toIdx, nothing should change
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":1,"toIndex":1},"id":"rnoop"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Should still report success
+    EXPECT_NE(responses[0].find("\"reordered\":true"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+
+    // FX order unchanged
+    ASSERT_EQ(state.tracks[0].fx.size(), 2u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "A");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "B");
+}
+
+TEST(FxReorderTest, ReorderFxInvalidTrackReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":0},"id":"rbad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Invalid track index"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(FxReorderTest, ReorderFxInvalidFromIndexReturnsError)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // fromIndex out of bounds
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":99,"toIndex":0},"id":"rbinv"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(FxReorderTest, ReorderFxInvalidToIndexReturnsError)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // toIndex out of bounds
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":99},"id":"rbinv2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(FxReorderTest, ReorderFxToFirstPosition)
+{
+    // Move FX from index 2 to index 0: [A,B,C,D] -> [C,A,B,D]
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    t.fx.push_back({2, "C", {}, {}, {}, {}, {}});
+    t.fx.push_back({3, "D", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":2,"toIndex":0},"id":"rfirst"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reordered\":true"), std::string::npos);
+
+    ASSERT_EQ(state.tracks[0].fx.size(), 4u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "C");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "A");
+    EXPECT_EQ(state.tracks[0].fx[2].name, "B");
+    EXPECT_EQ(state.tracks[0].fx[3].name, "D");
+}
+
+TEST(FxReorderTest, ReorderFxToLastPosition)
+{
+    // Move FX from index 0 to index 3: [A,B,C,D] -> [B,C,D,A]
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    t.fx.push_back({2, "C", {}, {}, {}, {}, {}});
+    t.fx.push_back({3, "D", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":3},"id":"rlast"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reordered\":true"), std::string::npos);
+
+    ASSERT_EQ(state.tracks[0].fx.size(), 4u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "B");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "C");
+    EXPECT_EQ(state.tracks[0].fx[2].name, "D");
+    EXPECT_EQ(state.tracks[0].fx[3].name, "A");
+}
+
+TEST(FxReorderTest, ReorderFxOnTrackWithSingleFxReturnsSuccess)
+{
+    // Only one FX — reordering is a no-op but should succeed
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "SoloFX", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":0},"id":"rsolo"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reordered\":true"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxReorderTest, ReorderFxResponseIsValidJson)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":1},"id":"rjson"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+    EXPECT_EQ(resp.front(), '{');
+    EXPECT_EQ(resp.back(), '}');
+}
 
 // ============================================================
 // FX Preset command tests (Issue #87)

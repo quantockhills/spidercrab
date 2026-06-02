@@ -182,6 +182,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return resp.success;
   }, []);
 
+  const reorderFx = useCallback(async (trackIdx: number, fromIndex: number, toIndex: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('fx/reorder', { trackIdx, fromIndex, toIndex });
+    return resp.success;
+  }, []);
+
   const refreshTracks = useCallback(async () => {
     const t = await getTracks();
     setTracks(t);
@@ -553,6 +559,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     enumerateFx,
     addFx,
     deleteFx,
+    reorderFx,
     setTrackMute,
     setTrackSolo,
     setTrackArm,

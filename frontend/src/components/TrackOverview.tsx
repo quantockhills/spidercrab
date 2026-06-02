@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Track, FxInfo } from '../hooks/useReaper';
 import { volumeToDb } from '../utils/volume';
 
@@ -20,6 +20,7 @@ interface TrackOverviewProps {
   getTrackFx?: (trackIdx: number) => Promise<FxInfo[]>;
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
   onOpenFx?: (trackIdx: number) => void;
+  onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
 }
 
 
@@ -142,12 +143,23 @@ export function TrackOverview({
   getTrackFx,
   onSelectFx,
   onOpenFx,
+  onReorderFx,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [trackFxMap, setTrackFxMap] = useState<Record<number, FxInfo[]>>({});
   const [fxLoading, setFxLoading] = useState(false);
+
+  // Drag-and-drop state for FX reordering
+  // Note: Refs are used for data that must be available synchronously across
+  // dragStart → dragOver → drop events (React state updates are batched and
+  // not available until the next render cycle).
+  const [dragActiveTrack, setDragActiveTrack] = useState<number | null>(null); // which track has an active drag (for visual rendering)
+  const [dragSourceFxIdx, setDragSourceFxIdx] = useState<number | null>(null); // which FX is being dragged (for visual rendering)
+  const [dropVisualIdx, setDropVisualIdx] = useState<number | null>(null); // visual-only: show insertion indicator
+  const dragDataRef = useRef<{trackIdx: number; fxIdx: number} | null>(null);
+  const dropTargetRef = useRef<{dropIndex: number} | null>(null);
 
   const handleRecord = useCallback(async () => {
     if (!onRecord) return;
@@ -348,30 +360,184 @@ export function TrackOverview({
                 onPanChange={onPanChange ? (v) => onPanChange(track.index, v) : undefined}
                 onOpenFx={onOpenFx ? () => onOpenFx(track.index) : undefined}
               />
-              {/* FX grid cards under the track row */}
-              {getTrackFx && onSelectFx && trackFxMap[track.index]?.length > 0 && (
-                <div className="flex flex-wrap gap-2 px-3 pb-2">
-                  {trackFxMap[track.index].map((fx) => (
-                    <button
-                      key={fx.index}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSelectFx(track.index, fx.index, fx.name);
+              {/* FX grid cards under the track row — draggable for reorder */}
+              {getTrackFx && onSelectFx && (
+                <div
+                  className="flex flex-wrap gap-2 px-3 pb-2"
+                  onDragOver={(e) => {
+                    if (!dragDataRef.current) return;
+                    e.preventDefault();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const dragData = dragDataRef.current;
+                    if (!dragData || !onReorderFx || dragData.trackIdx !== track.index) {
+                      dragDataRef.current = null;
+                      dropTargetRef.current = null;
+                      setDragActiveTrack(null);
+                      setDragSourceFxIdx(null);
+                      setDropVisualIdx(null);
+                      return;
+                    }
+                    const target = dropTargetRef.current;
+                    const toIndex = target?.dropIndex ?? trackFxMap[track.index]?.length ?? 0;
+                    if (dragData.fxIdx !== toIndex) {
+                      onReorderFx(track.index, dragData.fxIdx, toIndex);
+                    }
+                    dragDataRef.current = null;
+                    dropTargetRef.current = null;
+                    setDragActiveTrack(null);
+                    setDragSourceFxIdx(null);
+                    setDropVisualIdx(null);
+                  }}
+                >
+                  {(trackFxMap[track.index] ?? []).map((fx) => {
+                    const isDragSource = dragSourceFxIdx === fx.index && dragActiveTrack === track.index;
+                    const isDropTarget = dropVisualIdx === fx.index && dragActiveTrack === track.index;
+
+                    return (
+                      <button
+                        key={fx.index}
+                        draggable={true}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectFx!(track.index, fx.index, fx.name);
+                        }}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', `${track.index}:${fx.index}`);
+                          e.dataTransfer.effectAllowed = 'move';
+                          dragDataRef.current = { trackIdx: track.index, fxIdx: fx.index };
+                          setDragActiveTrack(track.index);
+                          setDragSourceFxIdx(fx.index);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                          if (!dragDataRef.current || dragDataRef.current.trackIdx !== track.index) return;
+
+                          // Determine where to insert based on cursor X position
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const midX = rect.left + rect.width / 2;
+                          const dropIndex = e.clientX < midX ? fx.index : fx.index + 1;
+
+                          // Write to ref synchronously (for onDrop)
+                          dropTargetRef.current = { dropIndex };
+                          setDropVisualIdx(dropIndex);
+                        }}
+                        onDragLeave={() => {
+                          setDropVisualIdx((prev) =>
+                            prev === fx.index ? null : prev,
+                          );
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const dragData = dragDataRef.current;
+                          if (!dragData || !onReorderFx) {
+                            dragDataRef.current = null;
+                            dropTargetRef.current = null;
+                            setDragActiveTrack(null);
+                            setDragSourceFxIdx(null);
+                            setDropVisualIdx(null);
+                            return;
+                          }
+                          if (dragData.trackIdx !== track.index) {
+                            dragDataRef.current = null;
+                            dropTargetRef.current = null;
+                            setDragActiveTrack(null);
+                            setDragSourceFxIdx(null);
+                            setDropVisualIdx(null);
+                            return;
+                          }
+
+                          // Read from ref for synchronous access (state may be stale)
+                          const target = dropTargetRef.current;
+                          const targetDropIndex = target?.dropIndex ?? fx.index;
+                          if (dragData.fxIdx !== targetDropIndex) {
+                            onReorderFx(track.index, dragData.fxIdx, targetDropIndex);
+                          }
+                          dragDataRef.current = null;
+                          dropTargetRef.current = null;
+                          setDragActiveTrack(null);
+                          setDragSourceFxIdx(null);
+                          setDropVisualIdx(null);
+                        }}
+                        onDragEnd={() => {
+                          dragDataRef.current = null;
+                          dropTargetRef.current = null;
+                          setDragActiveTrack(null);
+                          setDragSourceFxIdx(null);
+                          setDropVisualIdx(null);
+                        }}
+                        className={`
+                          flex flex-col items-center justify-center
+                          w-24 h-18 px-2 py-2
+                          bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
+                          ring-1 ring-[var(--border)]
+                          active:brightness-95 transition-all duration-100
+                          cursor-pointer text-center relative
+                          ${isDragSource ? 'opacity-40' : ''}
+                          ${isDropTarget && !isDragSource ? 'ring-[var(--accent-orange)] bg-[var(--accent-orange)]/10' : ''}
+                        `}
+                      >
+                        <span className="text-xs font-medium truncate w-full leading-tight">
+                          {cleanFxName(fx.name)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                  {/* Drop zone at the end (after last card) */}
+                  {trackFxMap[track.index]?.length > 0 && dragActiveTrack === track.index && (
+                    <div
+                      className={`
+                        w-24 h-18 flex items-center justify-center
+                        ring-1 ring-dashed ring-[var(--border)]
+                        text-[11px] text-[var(--text-secondary)]
+                        transition-all duration-100
+                        ${dropVisualIdx === trackFxMap[track.index].length
+                          ? 'ring-[var(--accent-orange)] bg-[var(--accent-orange)]/10'
+                          : ''}
+                      `}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = 'move';
+                        if (dragDataRef.current?.trackIdx === track.index) {
+                          const dropIndex = trackFxMap[track.index].length;
+                          dropTargetRef.current = { dropIndex };
+                          setDropVisualIdx(dropIndex);
+                        }
                       }}
-                      className="
-                        flex flex-col items-center justify-center
-                        w-24 h-18 px-2 py-2
-                        bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
-                        ring-1 ring-[var(--border)]
-                        active:brightness-95 transition-all duration-100
-                        cursor-pointer text-center
-                      "
+                      onDragLeave={() => {
+                        setDropVisualIdx((prev) =>
+                          prev === trackFxMap[track.index]?.length ? null : prev,
+                        );
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const dragData = dragDataRef.current;
+                        if (!dragData || !onReorderFx || dragData.trackIdx !== track.index) {
+                          dragDataRef.current = null;
+                          dropTargetRef.current = null;
+                          setDragActiveTrack(null);
+                          setDragSourceFxIdx(null);
+                          setDropVisualIdx(null);
+                          return;
+                        }
+                        const toIndex = trackFxMap[track.index].length;
+                        if (dragData.fxIdx !== toIndex) {
+                          onReorderFx(track.index, dragData.fxIdx, toIndex);
+                        }
+                        dragDataRef.current = null;
+                        dropTargetRef.current = null;
+                        setDragActiveTrack(null);
+                        setDragSourceFxIdx(null);
+                        setDropVisualIdx(null);
+                      }}
                     >
-                      <span className="text-xs font-medium truncate w-full leading-tight">
-                        {cleanFxName(fx.name)}
-                      </span>
-                    </button>
-                  ))}
+                      +
+                    </div>
+                  )}
                 </div>
               )}
             </div>

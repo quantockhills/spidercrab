@@ -168,6 +168,227 @@ describe('TrackOverview — FX grid cards', () => {
     expect(screen.queryByText('CLAP: Serum')).toBeNull();
   });
 
+  // ── Drag-and-drop FX reorder tests (Issue #89) ──
+
+  it('FX cards are draggable', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // FX cards should have draggable attribute
+    const reaeqCard = screen.getByText('ReaEQ').closest('button');
+    expect(reaeqCard).not.toBeNull();
+    expect(reaeqCard!.getAttribute('draggable')).toBe('true');
+  });
+
+  it('shows visual feedback on drag start (increased opacity)', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+
+    // Simulate drag start
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer: {
+        setData: vi.fn(),
+        effectAllowed: '',
+      },
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // After drag start, the card should have opacity-40 class
+    await waitFor(() => {
+      expect(reaeqCard.className).toContain('opacity-40');
+    });
+  });
+
+  it('calls onReorderFx when dropping FX card on another position', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+      expect(screen.getByText('ReaComp')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    const reacompCard = screen.getByText('ReaComp').closest('button')!;
+
+    // Start dragging ReaEQ
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Drag over ReaComp (right half — insert after it, i.e., index 2)
+    const rect = { left: 0, top: 0, width: 100, height: 50 };
+    Object.defineProperty(reacompCard, 'getBoundingClientRect', {
+      value: () => rect,
+    });
+
+    fireEvent.dragOver(reacompCard, {
+      dataTransfer,
+      clientX: 80, // right half → insert after
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Drop on ReaComp
+    fireEvent.drop(reacompCard, {
+      dataTransfer,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Verify reorder was called with correct indices
+    await waitFor(() => {
+      expect(onReorderFx).toHaveBeenCalledOnce();
+      // trackIdx=0, fromIndex=0 (ReaEQ), toIndex=2 (after ReaComp)
+      expect(onReorderFx).toHaveBeenCalledWith(0, 0, 2);
+    });
+  });
+
+  it('does not call onReorderFx when dropping on same position (index falls back to fx.index)', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+
+    // Start dragging ReaEQ
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Drop on the same card without a dragOver -
+    // dropTargetRef.current is null, so targetDropIndex falls back to fx.index
+    // which equals dragData.fxIdx → no-op
+    fireEvent.drop(reaeqCard, {
+      dataTransfer,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // onReorderFx should NOT have been called (same position)
+    await waitFor(() => {
+      expect(onReorderFx).not.toHaveBeenCalled();
+    });
+  });
+
+  it('shows empty drop zone at end of FX list when dragging', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Start dragging an FX card first (end drop zone only appears during drag)
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer: {
+        setData: vi.fn(),
+        effectAllowed: '',
+      },
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Now there should be a drop zone at the end of FX cards with a '+' element
+    const plusZones = screen.getAllByText('+');
+    expect(plusZones.length).toBeGreaterThanOrEqual(1);
+
+    // End drag to clean up
+    fireEvent.dragEnd(reaeqCard, {} as unknown as React.DragEvent<HTMLButtonElement>);
+  });
+
+  it('calls onReorderFx when dropping on end drop zone', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+
+    // Start dragging ReaEQ
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Find the end drop zone and drop on it
+    const plusZones = screen.getAllByText('+');
+    const endZone = plusZones[0].closest('div')!;
+
+    fireEvent.dragOver(endZone, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLDivElement>);
+
+    fireEvent.drop(endZone, {
+      dataTransfer,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as React.DragEvent<HTMLDivElement>);
+
+    // Track 0 has 2 FX (ReaEQ at 0, ReaComp at 1), so dropping at end = toIndex 2
+    await waitFor(() => {
+      expect(onReorderFx).toHaveBeenCalledOnce();
+      expect(onReorderFx).toHaveBeenCalledWith(0, 0, 2);
+    });
+  });
+
+  it('clears drag state on drag end', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+    };
+
+    // Start dragging
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+    expect(reaeqCard.className).toContain('opacity-40');
+
+    // End drag
+    fireEvent.dragEnd(reaeqCard, {} as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // After drag end, opacity class should be cleared
+    await waitFor(() => {
+      expect(reaeqCard.className).not.toContain('opacity-40');
+    });
+  });
+
   it('calls onSelectFx when tapping an FX card', async () => {
     const { onSelectFx } = renderTrackOverview();
 
