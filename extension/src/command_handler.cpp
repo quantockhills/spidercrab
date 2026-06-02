@@ -1694,10 +1694,13 @@ static std::string extractFxChainFromChunk(const std::string& chunk)
             // '<' encountered — check if it's a section opener or closer
             // REAPER sections: <TAG ... (no > on same line) or > (close) or /> (self-close)
             if (openAngle + 1 < chunk.size() && chunk[openAngle + 1] == '/') {
-                // Closing tag like </FOO>
+                // Closing tag like </FOO> — decrement depth (XML .RfxChain format)
                 size_t endTag = chunk.find('>', openAngle);
                 if (endTag != std::string::npos) {
-                    // This is NOT REAPER's format, but handle gracefully
+                    depth--;
+                    if (depth == 0) {
+                        return chunk.substr(start, endTag - start + 1);
+                    }
                     pos = endTag + 1;
                 } else {
                     pos = openAngle + 1;
@@ -1816,7 +1819,7 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
         std::string result = chunk.substr(0, start);
         result += newFxChain;
         result += "\n";
-        result += chunk.substr(fxChainEnd);
+        result += chunk.substr(fxChainEnd + 1);
         return result;
     }
 
