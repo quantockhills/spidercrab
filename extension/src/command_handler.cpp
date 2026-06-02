@@ -270,6 +270,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
     m_commandMap["matrix/triggerScene"]     = &CommandHandler::HandleMatrixTriggerScene;
     m_commandMap["matrix/setSlotState"]     = &CommandHandler::HandleMatrixSetSlotState;
+    m_commandMap["matrix/recordSlot"]       = &CommandHandler::HandleMatrixRecordSlot;
+    m_commandMap["matrix/pollState"]        = &CommandHandler::HandleMatrixPollState;
     m_commandMap["sequencer/getAll"]        = &CommandHandler::HandleSequencerGetAll;
     m_commandMap["sequencer/toggleStep"]    = &CommandHandler::HandleSequencerToggleStep;
     m_commandMap["sequencer/setStep"]       = &CommandHandler::HandleSequencerSetStep;
@@ -1216,6 +1218,112 @@ void CommandHandler::HandleMatrixSetSlotState(
     BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
 
     SendResponse(clientId, id, true, updated.toJson());
+}
+
+// Start recording in a slot. Records state transitions:
+// empty → recording, recording → stopped, stopped → recording (re-record)
+// playing → error (can't record while playing)
+void CommandHandler::HandleMatrixRecordSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    SlotState current = m_playtimeState.getSlot(col, row);
+    std::string newState;
+
+    if (current.state == "playing") {
+        // Can't record on a playing slot
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Cannot record on a playing clip. Stop the clip first.\"}");
+        return;
+    } else if (current.state == "recording") {
+        // Stop recording → stopped (clip saved)
+        newState = "stopped";
+    } else {
+        // empty or stopped → start recording
+        newState = "recording";
+    }
+
+    m_playtimeState.setSlotState(col, row, newState);
+
+    // Send MIDI note for recording if MIDI output is available
+    // Use channel 1 (distinct from trigger channel 0) so Playtime 2
+    // can distinguish between clip trigger and record actions via
+    // its MIDI input mapping.
+    if (m_playtimeMidi.isAvailable()) {
+        int note = m_playtimeMidi.baseNote() + (row * 8) + col;
+        if (note <= 127) {
+            m_playtimeMidi.sendMidiNote(1, note, 100);
+        }
+    }
+
+    // Broadcast event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// Poll Playtime 2 instance state for real-time sync.
+// Returns current instance info without modifying state.
+// This is called periodically from Run() and on-demand by the frontend.
+void CommandHandler::HandleMatrixPollState(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    bool playtimeAvail = isPlaytimeAvailable();
+    int  instanceId    = -1;
+    bool hasMatrix      = false;
+
+    if (playtimeAvail) {
+        instanceId = m_playtimeState.findPlaytimeInstance();
+        if (instanceId >= 0) {
+            hasMatrix = true;
+        }
+    }
+
+    // If Playtime is available but no instance found, try to auto-create
+    if (playtimeAvail && instanceId < 0) {
+        int hgInstance = -1;
+        if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+            hgInstance = g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject(nullptr);
+        }
+        if (hgInstance >= 0 && g_playtimeApi.HB_CreateClipMatrix) {
+            g_playtimeApi.HB_CreateClipMatrix(hgInstance);
+            fprintf(stderr,
+                "[reaper-ipad] matrix/pollState: Auto-created Playtime matrix on Helgobox instance %d\n", hgInstance);
+            instanceId = m_playtimeState.findPlaytimeInstance();
+            hasMatrix = (instanceId >= 0);
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("playtimeAvailable") + ":" + (playtimeAvail ? "true" : "false") + ",";
+    payload += json_string("instanceId") + ":" + std::to_string(instanceId) + ",";
+    payload += json_string("hasMatrix") + ":" + (hasMatrix ? "true" : "false");
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
 }
 
 // ============================================================

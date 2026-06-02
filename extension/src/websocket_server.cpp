@@ -262,6 +262,11 @@ bool WebSocketServer::Send(int clientId, const std::string& message)
     return false;
 }
 
+bool WebSocketServer::HasClients() const
+{
+    return m_clients.GetSize() > 0;
+}
+
 void WebSocketServer::Broadcast(const std::string& message)
 {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);

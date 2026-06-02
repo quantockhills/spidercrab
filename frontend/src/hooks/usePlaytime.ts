@@ -18,6 +18,12 @@ export interface MatrixData {
   slots: ClipSlot[];
 }
 
+export interface PlaytimeState {
+  playtimeAvailable: boolean;
+  instanceId: number;
+  hasMatrix: boolean;
+}
+
 // ── Hook ─────────────────────────────────────────────────────
 
 export function usePlaytime() {
@@ -103,6 +109,36 @@ export function usePlaytime() {
     [],
   );
 
+  // Issue #43: Audio recording workflow
+  const recordSlot = useCallback(async (column: number, row: number): Promise<ClipSlot | null> => {
+    try {
+      const resp = await send('matrix/recordSlot', { column, row });
+      const slot = (resp.payload as unknown as ClipSlot) ?? null;
+      // Update local matrix state optimistically
+      if (slot) {
+        updateMatrixSlot(column, row, { state: slot.state, color: slot.color });
+      }
+      return slot;
+    } catch {
+      return null;
+    }
+  }, [send, updateMatrixSlot]);
+
+  // Issue #43: Real-time state polling
+  const pollState = useCallback(async (): Promise<PlaytimeState> => {
+    try {
+      const resp = await send('matrix/pollState');
+      const payload = resp.payload as Record<string, unknown>;
+      return {
+        playtimeAvailable: payload?.playtimeAvailable === true,
+        instanceId: (payload?.instanceId as number) ?? -1,
+        hasMatrix: payload?.hasMatrix === true,
+      };
+    } catch {
+      return { playtimeAvailable: false, instanceId: -1, hasMatrix: false };
+    }
+  }, [send]);
+
   return {
     matrix,
     getMatrix,
@@ -110,6 +146,8 @@ export function usePlaytime() {
     triggerScene,
     setSlotState,
     updateMatrixSlot,
+    recordSlot,
+    pollState,
     launchPlaytime,
     checkPlaytimeAvailable,
   };

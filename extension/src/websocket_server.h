@@ -52,6 +52,9 @@ public:
 
     bool IsRunning() const { return m_listener != nullptr; }
 
+    // Returns true if at least one WebSocket client is connected
+    bool HasClients() const;
+
 private:
     struct Client {
         int               id;

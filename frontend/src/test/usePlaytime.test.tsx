@@ -196,4 +196,211 @@ describe('usePlaytime', () => {
     // Should not crash when matrix is null
     expect(result.current.matrix).toBeNull();
   });
+
+  // ── recordSlot tests (Issue #43) ──
+
+  it('recordSlot sends matrix/recordSlot command', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.recordSlot(3, 5);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('matrix/recordSlot');
+    expect(sentMsg.column).toBe(3);
+    expect(sentMsg.row).toBe(5);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { column: 3, row: 5, state: 'recording', color: '#f00', name: '', clipType: 'none' },
+      }));
+    });
+
+    const slot = await promise;
+    expect(slot).not.toBeNull();
+    expect(slot!.state).toBe('recording');
+    expect(slot!.column).toBe(3);
+    expect(slot!.row).toBe(5);
+  });
+
+  it('recordSlot returns null on failure', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.recordSlot(0, 0);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: false,
+        error: 'Cannot record on a playing clip',
+      }));
+    });
+
+    const slot = await promise;
+    expect(slot).toBeNull();
+  });
+
+  it('recordSlot sends state update to local matrix on success', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    // First get matrix so we have initial state
+    const getPromise = result.current.getMatrix();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+    const getMsgId = JSON.parse(ws.sentMessages[0]).id;
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: getMsgId,
+        success: true,
+        payload: {
+          columns: 8,
+          rows: 8,
+          slots: Array.from({ length: 64 }, (_, i) => ({
+            column: i % 8,
+            row: Math.floor(i / 8),
+            state: 'empty' as const,
+            color: '#ffffff',
+            name: '',
+            clipType: 'none' as const,
+          })),
+        },
+      }));
+    });
+
+    await getPromise;
+    await vi.waitFor(() => expect(result.current.matrix).not.toBeNull());
+
+    // Now record a slot
+    const recPromise = result.current.recordSlot(2, 4);
+    // Find the recordSlot message
+    const recMsg = ws.sentMessages.find(m => {
+      try {
+        const parsed = JSON.parse(m);
+        return parsed.command === 'matrix/recordSlot';
+      } catch { return false; }
+    });
+    expect(recMsg).toBeDefined();
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: JSON.parse(recMsg!).id,
+        success: true,
+        payload: { column: 2, row: 4, state: 'recording', color: '#f00', name: '', clipType: 'none' },
+      }));
+    });
+
+    await recPromise;
+    // Local matrix should now have the recording slot
+    await vi.waitFor(() => {
+      const slot = result.current.matrix?.slots.find(s => s.column === 2 && s.row === 4);
+      expect(slot?.state).toBe('recording');
+    });
+  });
+
+  // ── pollState tests (Issue #43) ──
+
+  it('pollState sends matrix/pollState command', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.pollState();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
+    expect(sentMsg.command).toBe('matrix/pollState');
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: {
+          playtimeAvailable: false,
+          instanceId: -1,
+          hasMatrix: false,
+        },
+      }));
+    });
+
+    const state = await promise;
+    expect(state).not.toBeNull();
+    expect(state!.playtimeAvailable).toBe(false);
+    expect(state!.instanceId).toBe(-1);
+    expect(state!.hasMatrix).toBe(false);
+  });
+
+  it('pollState returns available state', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.pollState();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: {
+          playtimeAvailable: true,
+          instanceId: 5,
+          hasMatrix: true,
+        },
+      }));
+    });
+
+    const state = await promise;
+    expect(state!.playtimeAvailable).toBe(true);
+    expect(state!.instanceId).toBe(5);
+    expect(state!.hasMatrix).toBe(true);
+  });
+
+  it('pollState returns default state on failure', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.pollState();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: false,
+        error: 'Not available',
+      }));
+    });
+
+    const state = await promise;
+    expect(state.playtimeAvailable).toBe(false);
+    expect(state.instanceId).toBe(-1);
+    expect(state.hasMatrix).toBe(false);
+  });
 });
