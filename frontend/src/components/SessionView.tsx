@@ -367,23 +367,19 @@ export function SessionView({
                   className={`
                     relative flex flex-col items-center justify-center
                     aspect-square min-h-[44px] min-w-[44px]
-                    bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]
-                    active:brightness-90 transition-all duration-75
+                    transition-all duration-75
                     cursor-pointer overflow-hidden
-                    ${state === 'playing' ? 'ring-1 ring-[var(--accent-green)]' : ''}
-                    ${state === 'recording' ? 'ring-1 ring-[var(--accent-red)] animate-pulse' : ''}
-                    ${state === 'stopped' ? 'opacity-80' : ''}
+                    ${state === 'empty' ? 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]' : ''}
+                    ${state === 'stopped' ? 'bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)]/30 text-[var(--text-primary)]' : ''}
+                    ${state === 'playing' ? 'bg-[var(--accent-green)] text-black hover:brightness-110' : ''}
+                    ${state === 'recording' ? 'bg-[var(--accent-red)] text-black animate-pulse hover:brightness-110' : ''}
+                    active:brightness-90
                   `}
                   data-col={col}
                   data-row={row}
                   data-state={state}
                   aria-label={`Slot ${col + 1},${row + 1}`}
                 >
-                  {/* Color accent bar at top */}
-                  <div
-                    className="absolute top-0 left-0 right-0 h-1"
-                    style={{ backgroundColor: color }}
-                  />
 
                   {/* Clip type icon */}
                   {clipType === 'midi' && (
