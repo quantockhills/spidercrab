@@ -1,9 +1,17 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Track, DirEntry } from '../hooks/useReaper';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
+import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 
 // ── Types ────────────────────────────────────────────────────
+
+interface FileInfo {
+  name: string;
+  path: string;
+  size: number;
+  type: string;
+}
 
 interface SampleBrowserProps {
   tracks: Track[];
@@ -24,7 +32,9 @@ export function SampleBrowser({
   sendCommand,
   onBack,
 }: SampleBrowserProps) {
-  const [currentPath, setCurrentPath] = useState<string>('/tmp');
+  const [currentPath, setCurrentPath] = useState<string>(
+    () => localStorage.getItem('sampleBrowserRootPath') || '/tmp'
+  );
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -32,6 +42,21 @@ export function SampleBrowser({
   const [sending, setSending] = useState<string | null>(null);
   const [sentFiles, setSentFiles] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+
+  // Context menu state (Issue #28)
+  const [contextMenu, setContextMenu] = useState<{
+    entry: DirEntry;
+    fullPath: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // File info modal state (Issue #28)
+  const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
+
+  // Root path editing state (Issue #28)
+  const [editingRoot, setEditingRoot] = useState(false);
+  const [rootPathInput, setRootPathInput] = useState(currentPath);
 
   const audioPreview = useAudioPreview(selectedFile, sendCommand);
 
@@ -47,6 +72,11 @@ export function SampleBrowser({
       setLoading(false);
     }
   }, [getDirectory]);
+
+  // Save root path to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('sampleBrowserRootPath', currentPath);
+  }, [currentPath]);
 
   // Load directory on mount / path change
   useEffect(() => {
@@ -68,6 +98,15 @@ export function SampleBrowser({
       });
     return () => { cancelled = true; };
   }, [currentPath, getDirectory]);
+
+  const handleRootPathSubmit = useCallback(() => {
+    const trimmed = rootPathInput.trim();
+    if (trimmed) {
+      setCurrentPath(trimmed);
+      setLoading(true);
+    }
+    setEditingRoot(false);
+  }, [rootPathInput]);
 
   const handleNavigate = useCallback((entry: DirEntry) => {
     if (entry.type === 'dir') {
@@ -150,6 +189,72 @@ export function SampleBrowser({
     }
   }, [currentPath, selectedFile, audioPreview]);
 
+  // Long-press handler for context menu (Issue #28)
+  const handleLongPress = useCallback((entry: DirEntry, x: number, y: number) => {
+    if (entry.type !== 'file') return;
+    const fullPath = currentPath + '/' + entry.name;
+    setContextMenu({ entry, fullPath, x, y });
+  }, [currentPath]);
+
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // Context menu actions (Issue #28)
+  const getContextMenuItems = useCallback((entry: DirEntry, fullPath: string): ContextMenuItem[] => {
+    const isAudio = isAudioFile(entry.name);
+    const items: ContextMenuItem[] = [];
+
+    if (isAudio && selectedTrack !== null) {
+      items.push({
+        label: 'Send to Track',
+        icon: '🎯',
+        action: () => {
+          sendSampleToTrack(fullPath, selectedTrack).then((ok) => {
+            if (ok) {
+              setSentFiles((prev) => new Set(prev).add(entry.name));
+              setTimeout(() => {
+                setSentFiles((prev) => {
+                  const next = new Set(prev);
+                  next.delete(entry.name);
+                  return next;
+                });
+              }, 2000);
+            }
+          }).catch(console.error);
+        },
+      });
+    }
+
+    items.push({
+      label: 'Start Drag to Slot',
+      icon: '↗️',
+      action: () => {
+        // Future: trigger drag-to-Playtime behavior (Issue #74)
+        console.log('Drag started:', fullPath);
+      },
+    });
+
+    items.push({
+      label: 'File Info',
+      icon: 'ℹ️',
+      action: () => {
+        setFileInfo({
+          name: entry.name,
+          path: fullPath,
+          size: entry.size,
+          type: isAudio ? 'Audio' : 'File',
+        });
+      },
+    });
+
+    return items;
+  }, [selectedTrack, sendSampleToTrack]);
+
+  const handleCloseFileInfo = useCallback(() => {
+    setFileInfo(null);
+  }, []);
+
   const selectedTrackName = selectedTrack !== null
     ? tracks.find((t) => t.index === selectedTrack)?.name
     : null;
@@ -179,11 +284,45 @@ export function SampleBrowser({
 
       {/* Path breadcrumb + Search */}
       <div className="px-4 py-2.5 border-b border-[var(--border)] space-y-2">
-        {/* Current path */}
+        {/* Current path — clickable to edit (Issue #28) */}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-[var(--text-secondary)] font-mono truncate flex-1">
-            📁 {currentPath || '/'}
-          </span>
+          {editingRoot ? (
+            <div className="flex items-center gap-2 flex-1">
+              <input
+                type="text"
+                value={rootPathInput}
+                onChange={(e) => setRootPathInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleRootPathSubmit();
+                  if (e.key === 'Escape') setEditingRoot(false);
+                }}
+                className="flex-1 px-2 py-1.5 bg-[var(--bg-tertiary)] text-sm font-mono
+                  text-[var(--text-primary)] outline-none ring-1 ring-[var(--accent-orange)]/40
+                  placeholder:text-[var(--text-secondary)]"
+                placeholder="Enter path..."
+                autoFocus
+              />
+              <button
+                onClick={handleRootPathSubmit}
+                className="px-3 py-1.5 text-xs bg-[var(--accent-dim)] text-[var(--accent-orange)] min-h-[36px] active:brightness-95"
+              >
+                Go
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                setRootPathInput(currentPath);
+                setEditingRoot(true);
+              }}
+              className="flex items-center gap-1 flex-1 text-left"
+            >
+              <span className="text-[11px] text-[var(--text-secondary)] font-mono truncate flex-1">
+                📁 {currentPath || '/'}
+              </span>
+              <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0 ml-1">✏️</span>
+            </button>
+          )}
         </div>
 
         {/* Search */}
@@ -264,11 +403,27 @@ export function SampleBrowser({
                 isSelected={selectedFile === currentPath + '/' + entry.name}
                 onSend={() => handleSendToTrack(entry)}
                 onSelect={() => handleFileClick(entry)}
+                onLongPress={(x, y) => handleLongPress(entry, x, y)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Context menu (Issue #28) */}
+      {contextMenu && (
+        <ContextMenu
+          items={getContextMenuItems(contextMenu.entry, contextMenu.fullPath)}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={handleCloseContextMenu}
+        />
+      )}
+
+      {/* File Info modal (Issue #28) */}
+      {fileInfo && (
+        <FileInfoModal info={fileInfo} onClose={handleCloseFileInfo} />
+      )}
 
       {/* Audio preview panel */}
       {selectedFile && (
@@ -396,16 +551,58 @@ interface FileRowProps {
   isSelected: boolean;
   onSend: () => void;
   onSelect: () => void;
+  onLongPress: (x: number, y: number) => void;
 }
 
-function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, isSelected, onSend, onSelect }: FileRowProps) {
+function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, isSelected, onSend, onSelect, onLongPress }: FileRowProps) {
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    longPressTriggered.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      onLongPress(e.clientX, e.clientY);
+    }, 500); // 500ms long-press threshold
+  }, [onLongPress]);
+
+  const handlePointerUp = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handlePointerMove = useCallback(() => {
+    // Cancel long-press on drag/move
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (longPressTriggered.current) {
+      // Long-press already handled, don't fire click
+      longPressTriggered.current = false;
+      return;
+    }
+    if (isAudio) {
+      onSelect();
+    }
+  }, [isAudio, onSelect]);
+
   const icon = isAudio ? '🎵' : '📄';
 
   return (
     <div
-      onClick={isAudio ? onSelect : undefined}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerUp}
+      onClick={handleClick}
       className={`flex items-center gap-2.5 px-3 py-2
-        active:brightness-95 transition-colors duration-100 select-none
+        active:brightness-95 transition-colors duration-100 select-none touch-none
         ${isSelected
           ? 'bg-[var(--accent-orange)]/15 ring-1 ring-[var(--accent-orange)]/30'
           : 'bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60'
@@ -437,6 +634,7 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, is
       {isAudio && (
         <button
           onClick={(e) => { e.stopPropagation(); onSend(); }}
+          onPointerDown={(e) => e.stopPropagation()} // Don't trigger long-press on button
           disabled={!canSend || isSending}
           className={`
             flex-shrink-0 px-3 py-1.5 text-xs font-medium
@@ -454,6 +652,76 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, is
           {isSent ? '✓ Sent' : isSending ? '...' : '🎯 Send'}
         </button>
       )}
+    </div>
+  );
+}
+
+// ── File Info Modal (Issue #28) ───────────────────────────────
+
+interface FileInfoModalProps {
+  info: FileInfo;
+  onClose: () => void;
+}
+
+function FileInfoModal({ info, onClose }: FileInfoModalProps) {
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="bg-[var(--bg-secondary)] border border-[var(--border)] shadow-xl 
+          w-[300px] mx-4 p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">File Info</h3>
+          <button
+            onClick={onClose}
+            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] min-h-[36px] px-2"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <InfoRow label="Name" value={info.name} />
+          <InfoRow label="Type" value={info.type} />
+          <InfoRow label="Size" value={formatFileSize(info.size)} />
+          <div>
+            <span className="text-[11px] text-[var(--text-secondary)] block mb-1">Path</span>
+            <div className="text-xs text-[var(--text-primary)] font-mono bg-[var(--bg-tertiary)] p-2 break-all">
+              {info.path}
+            </div>
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full py-2.5 text-sm bg-[var(--accent-dim)] text-[var(--accent-orange)] min-h-[44px] active:brightness-95"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[11px] text-[var(--text-secondary)]">{label}</span>
+      <span className="text-xs text-[var(--text-primary)] font-medium truncate ml-2 max-w-[200px]">
+        {value}
+      </span>
     </div>
   );
 }
