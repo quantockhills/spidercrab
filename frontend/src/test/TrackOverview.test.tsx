@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TrackOverview } from '../components/TrackOverview';
+import { volumeToDb } from '../utils/volume';
 import type { Track, FxInfo } from '../hooks/useReaper';
 
 // ── Mock data ────────────────────────────────────────────────
@@ -33,6 +35,10 @@ function renderTrackOverview(props: Partial<Parameters<typeof TrackOverview>[0]>
   const onToggleArm = vi.fn();
   const onRefresh = vi.fn();
 
+  // Default mocks for inline drawer props (Issue #94)
+  const getFxParams = vi.fn().mockResolvedValue({ params: [], total: 0, offset: 0, limit: 8 });
+  const setFxParam = vi.fn().mockResolvedValue({ success: true });
+
   const utils = render(
     <TrackOverview
       tracks={mockTracks}
@@ -44,6 +50,8 @@ function renderTrackOverview(props: Partial<Parameters<typeof TrackOverview>[0]>
       onRefresh={onRefresh}
       getTrackFx={getTrackFx}
       onSelectFx={onSelectFx}
+      getFxParams={getFxParams}
+      setFxParam={setFxParam}
       {...props}
     />,
   );
@@ -166,19 +174,245 @@ describe('TrackOverview — FX grid cards', () => {
     expect(screen.queryByText('CLAP: Serum')).toBeNull();
   });
 
-  it('calls onSelectFx when tapping an FX card', async () => {
+  // ── Drag-and-drop FX reorder tests (Issue #89) ──
+
+  it('FX cards are draggable', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // FX cards should have draggable attribute
+    const reaeqCard = screen.getByText('ReaEQ').closest('button');
+    expect(reaeqCard).not.toBeNull();
+    expect(reaeqCard!.getAttribute('draggable')).toBe('true');
+  });
+
+  it('shows visual feedback on drag start (increased opacity)', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+
+    // Simulate drag start
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer: {
+        setData: vi.fn(),
+        effectAllowed: '',
+      },
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // After drag start, the card should have opacity-40 class
+    await waitFor(() => {
+      expect(reaeqCard.className).toContain('opacity-40');
+    });
+  });
+
+  it('calls onReorderFx when dropping FX card on another position', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+      expect(screen.getByText('ReaComp')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    const reacompCard = screen.getByText('ReaComp').closest('button')!;
+
+    // Start dragging ReaEQ
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Drag over ReaComp (right half — insert after it, i.e., index 2)
+    const rect = { left: 0, top: 0, width: 100, height: 50 };
+    Object.defineProperty(reacompCard, 'getBoundingClientRect', {
+      value: () => rect,
+    });
+
+    fireEvent.dragOver(reacompCard, {
+      dataTransfer,
+      clientX: 80, // right half → insert after
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Drop on ReaComp
+    fireEvent.drop(reacompCard, {
+      dataTransfer,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Verify reorder was called with correct indices
+    await waitFor(() => {
+      expect(onReorderFx).toHaveBeenCalledOnce();
+      // trackIdx=0, fromIndex=0 (ReaEQ), toIndex=2 (after ReaComp)
+      expect(onReorderFx).toHaveBeenCalledWith(0, 0, 2);
+    });
+  });
+
+  it('does not call onReorderFx when dropping on same position (index falls back to fx.index)', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+
+    // Start dragging ReaEQ
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Drop on the same card without a dragOver -
+    // dropTargetRef.current is null, so targetDropIndex falls back to fx.index
+    // which equals dragData.fxIdx → no-op
+    fireEvent.drop(reaeqCard, {
+      dataTransfer,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // onReorderFx should NOT have been called (same position)
+    await waitFor(() => {
+      expect(onReorderFx).not.toHaveBeenCalled();
+    });
+  });
+
+  it('shows empty drop zone at end of FX list when dragging', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Start dragging an FX card first (end drop zone only appears during drag)
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer: {
+        setData: vi.fn(),
+        effectAllowed: '',
+      },
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Now there should be a drop zone at the end of FX cards with a '+' element
+    const plusZones = screen.getAllByText('+');
+    expect(plusZones.length).toBeGreaterThanOrEqual(1);
+
+    // End drag to clean up
+    fireEvent.dragEnd(reaeqCard, {} as unknown as React.DragEvent<HTMLButtonElement>);
+  });
+
+  it('calls onReorderFx when dropping on end drop zone', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+
+    // Start dragging ReaEQ
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // Find the end drop zone and drop on it
+    const plusZones = screen.getAllByText('+');
+    const endZone = plusZones[0].closest('div')!;
+
+    fireEvent.dragOver(endZone, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLDivElement>);
+
+    fireEvent.drop(endZone, {
+      dataTransfer,
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as React.DragEvent<HTMLDivElement>);
+
+    // Track 0 has 2 FX (ReaEQ at 0, ReaComp at 1), so dropping at end = toIndex 2
+    await waitFor(() => {
+      expect(onReorderFx).toHaveBeenCalledOnce();
+      expect(onReorderFx).toHaveBeenCalledWith(0, 0, 2);
+    });
+  });
+
+  it('clears drag state on drag end', async () => {
+    const onReorderFx = vi.fn().mockResolvedValue(true);
+    renderTrackOverview({ onReorderFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+
+    const dataTransfer = {
+      setData: vi.fn(),
+      effectAllowed: '',
+    };
+
+    // Start dragging
+    fireEvent.dragStart(reaeqCard, {
+      dataTransfer,
+    } as unknown as React.DragEvent<HTMLButtonElement>);
+    expect(reaeqCard.className).toContain('opacity-40');
+
+    // End drag
+    fireEvent.dragEnd(reaeqCard, {} as unknown as React.DragEvent<HTMLButtonElement>);
+
+    // After drag end, opacity class should be cleared
+    await waitFor(() => {
+      expect(reaeqCard.className).not.toContain('opacity-40');
+    });
+  });
+
+  it('opens inline drawer when FX card is tapped (Issue #94)', async () => {
+    // FX cards now open inline drawer instead of calling onSelectFx
     const { onSelectFx } = renderTrackOverview();
 
     await waitFor(() => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Click the ReaEQ card
+    // Click the ReaEQ card — should open inline drawer
     fireEvent.click(screen.getByText('ReaEQ'));
 
-    expect(onSelectFx).toHaveBeenCalledOnce();
-    // trackIdx=0, fxIdx=0, fxName='VST3: ReaEQ' (raw name, not cleaned)
-    expect(onSelectFx).toHaveBeenCalledWith(0, 0, 'VST3: ReaEQ');
+    // Drawer shows a close button (✕) which is unique to the drawer
+    await waitFor(() => {
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
+    });
+
+    // onSelectFx should NOT have been called (no navigation away)
+    expect(onSelectFx).not.toHaveBeenCalled();
   });
 
   it('shows loading indicator while FX are being fetched', async () => {
@@ -193,6 +427,121 @@ describe('TrackOverview — FX grid cards', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('Loading FX…')).toBeNull();
+    });
+  });
+
+  // ── volumeToDb unit tests (Issue #85) ──
+
+  describe('volumeToDb', () => {
+    it('returns "0.0dB" for volume 1.0', () => {
+      expect(volumeToDb(1.0)).toBe('0.0dB');
+    });
+
+    it('returns "-∞" for volume 0', () => {
+      expect(volumeToDb(0)).toBe('-∞');
+    });
+
+    it('returns "-∞" for negative volume', () => {
+      expect(volumeToDb(-1)).toBe('-∞');
+    });
+
+    it('returns "-6.0dB" for volume 0.5', () => {
+      expect(volumeToDb(0.5)).toBe('-6.0dB');
+    });
+
+    it('returns "-12.0dB" for volume 0.25', () => {
+      expect(volumeToDb(0.25)).toBe('-12.0dB');
+    });
+
+    it('returns "-3.0dB" for volume 0.7079 (approx -3dB)', () => {
+      // 20*log10(0.7079) ≈ -3.0
+      expect(volumeToDb(0.7079)).toBe('-3.0dB');
+    });
+
+    it('rounds to one decimal place', () => {
+      // 20*log10(0.8) = -1.938... should be '-1.9dB'
+      expect(volumeToDb(0.8)).toBe('-1.9dB');
+    });
+  });
+
+  // ── Volume slider integration tests (Issue #85) ──
+
+  it('updates dB label when volume slider is changed (optimistic local state)', async () => {
+    // Simulate a parent component that maintains tracks state (like App.tsx)
+    function TestHarness() {
+      const [testTracks, setTestTracks] = useState<Track[]>(mockTracks);
+
+      const handleVolumeChange = (index: number, volume: number) => {
+        setTestTracks((prev) =>
+          prev.map((t) => (t.index === index ? { ...t, volume } : t)),
+        );
+      };
+
+      return (
+        <TrackOverview
+          tracks={testTracks}
+          selectedTrack={0}
+          onSelectTrack={vi.fn()}
+          onToggleMute={vi.fn()}
+          onToggleSolo={vi.fn()}
+          onToggleArm={vi.fn()}
+          onVolumeChange={handleVolumeChange}
+          onRefresh={vi.fn()}
+        />
+      );
+    }
+
+    render(<TestHarness />);
+
+    // Track 0 has volume 0.8, should show "-1.9dB"
+    expect(screen.getByText('-1.9dB')).toBeDefined();
+
+    // Change volume of track 0 to 0.5
+    const sliders = screen.getAllByTestId('track-volume-slider');
+    fireEvent.change(sliders[0], { target: { value: '0.5' } });
+
+    // dB label should now show "-6.0dB"
+    await waitFor(() => {
+      expect(screen.getByText('-6.0dB')).toBeDefined();
+    });
+  });
+
+  it('updates pan label when pan slider is changed (optimistic local state)', async () => {
+    function TestHarness() {
+      const [testTracks, setTestTracks] = useState<Track[]>(mockTracks);
+
+      const handlePanChange = (index: number, pan: number) => {
+        setTestTracks((prev) =>
+          prev.map((t) => (t.index === index ? { ...t, pan } : t)),
+        );
+      };
+
+      return (
+        <TrackOverview
+          tracks={testTracks}
+          selectedTrack={0}
+          onSelectTrack={vi.fn()}
+          onToggleMute={vi.fn()}
+          onToggleSolo={vi.fn()}
+          onToggleArm={vi.fn()}
+          onPanChange={handlePanChange}
+          onRefresh={vi.fn()}
+        />
+      );
+    }
+
+    render(<TestHarness />);
+
+    // Track 0 has pan=0, should show "C"
+    expect(screen.getByText('C')).toBeDefined();
+
+    // Change pan of track 0 to -0.5
+    const panSliders = screen.getAllByTestId('track-pan-slider');
+    fireEvent.change(panSliders[0], { target: { value: '-0.5' } });
+
+    // Pan label should now show "L 50%"
+    await waitFor(() => {
+      expect(screen.getByText('L 50%')).toBeDefined();
     });
   });
 
@@ -486,6 +835,48 @@ describe('TrackOverview — FX grid cards', () => {
     expect(screen.queryByTestId('add-track-empty')).toBeNull();
   });
 
+  // ── FX open button tests (Issue #86) ──
+
+  describe('FX open button', () => {
+    it('renders FX button on each track when onOpenFx is provided', () => {
+      const onOpenFx = vi.fn();
+      renderTrackOverview({ onOpenFx });
+
+      const fxButtons = screen.getAllByTestId('open-fx-button');
+      expect(fxButtons).toHaveLength(2); // 2 mock tracks
+    });
+
+    it('does not render FX button when onOpenFx is not provided', () => {
+      renderTrackOverview();
+      expect(screen.queryByTestId('open-fx-button')).toBeNull();
+    });
+
+    it('calls onOpenFx with track index when FX button is clicked', () => {
+      const onOpenFx = vi.fn();
+      renderTrackOverview({ onOpenFx });
+
+      const fxButtons = screen.getAllByTestId('open-fx-button');
+      fireEvent.click(fxButtons[1]); // Click FX button on track 1 (Snare)
+
+      expect(onOpenFx).toHaveBeenCalledOnce();
+      expect(onOpenFx).toHaveBeenCalledWith(1);
+    });
+
+    it('stops click propagation so track selection does not trigger', () => {
+      const onOpenFx = vi.fn();
+      const onSelectTrack = vi.fn();
+      renderTrackOverview({ onOpenFx, onSelectTrack });
+
+      const fxButton = screen.getAllByTestId('open-fx-button')[0];
+      fireEvent.click(fxButton);
+
+      // Track selection should NOT have been called
+      expect(onSelectTrack).not.toHaveBeenCalled();
+      // FX callback should have been called
+      expect(onOpenFx).toHaveBeenCalledOnce();
+    });
+  });
+
   // ── Original test continues below ──
 
   it('does not render FX section when getTrackFx and onSelectFx are not provided', async () => {
@@ -506,5 +897,350 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.queryByText('ReaEQ')).toBeNull();
       expect(screen.queryByText('Loading FX…')).toBeNull();
     });
+  });
+});
+
+// ── Inline FX drawer tests (Issue #94) ────────────────────────
+
+describe('TrackOverview — Inline FX drawer', () => {
+  const mockParams: import('../hooks/useReaper').FxParam[] = Array.from({ length: 12 }, (_, i) => ({
+    index: i,
+    name: `Param ${i}`,
+    value: 0.5 + i * 0.05,
+    min: 0,
+    max: 1,
+    mid: 0.5,
+    formatted: `${Math.round((0.5 + i * 0.05) * 100)}%`,
+  }));
+
+  const mockPresetInfo: import('../hooks/useReaper').FxPresetInfo = {
+    presetIndex: 2,
+    presetName: 'Hall Reverb',
+    numPresets: 5,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+  });
+
+  function renderWithInlineDrawer(props: Partial<Parameters<typeof TrackOverview>[0]> = {}) {
+    const getFxParams = vi.fn().mockImplementation(
+      async (_trackIdx: number, _fxIdx: number, offset: number = 0, limit: number = 8) => {
+        const sliced = mockParams.slice(offset, offset + limit);
+        return {
+          params: sliced,
+          total: mockParams.length,
+          offset,
+          limit,
+        };
+      },
+    );
+    const setFxParam = vi.fn().mockResolvedValue({ success: true });
+    const getFxPreset = vi.fn().mockResolvedValue(mockPresetInfo);
+    const setFxPreset = vi.fn().mockImplementation(
+      async (_trackIdx: number, _fxIdx: number, presetIdx: number) => ({
+        presetIndex: presetIdx,
+        presetName: `Preset ${presetIdx}`,
+        numPresets: 5,
+      }),
+    );
+    const getAllFxPresetNames = vi.fn().mockResolvedValue({
+      presetNames: ['Room', 'Hall', 'Plate', 'Spring', 'Reverse'],
+      currentIndex: 2,
+    });
+
+    const utils = renderTrackOverview({
+      getFxParams,
+      setFxParam,
+      getFxPreset,
+      setFxPreset,
+      getAllFxPresetNames,
+      ...props,
+    });
+
+    return { ...utils, getFxParams, setFxParam, getFxPreset, setFxPreset, getAllFxPresetNames };
+  }
+
+  it('opens inline drawer when FX card is tapped (instead of navigating away)', async () => {
+    const onSelectFx = vi.fn();
+    renderWithInlineDrawer({ onSelectFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Tap ReaEQ card
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    // Drawer should open — look for close button which is unique to drawer
+    await waitFor(() => {
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
+    });
+
+    // onSelectFx should NOT have been called (no navigation away)
+    expect(onSelectFx).not.toHaveBeenCalled();
+  });
+
+  it('collapses inline drawer when same FX card is tapped again', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Tap to open — use getAllByText and take first (the FX card, not drawer header)
+    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
+    });
+
+    // Tap same card again to close — use first ReaEQ element (FX card)
+    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+
+    // Drawer should be closed — close button should disappear
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Close drawer')).toBeNull();
+    });
+  });
+
+  it('closes current drawer and opens new one when different FX is tapped', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Open ReaEQ drawer
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Hall Reverb')).toBeDefined();
+    });
+
+    // Tap ReaComp (different FX)
+    fireEvent.click(screen.getByText('ReaComp'));
+
+    // Previous drawer's preset name should be gone
+    await waitFor(() => {
+      expect(screen.queryByText('Hall Reverb')).toBeNull();
+    });
+  });
+
+  it('shows preset info with current preset name and navigation buttons', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Open ReaEQ drawer
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Hall Reverb')).toBeDefined();
+    });
+
+    // Should have preset navigation buttons
+    const prevBtn = screen.getByLabelText('Previous preset');
+    const nextBtn = screen.getByLabelText('Next preset');
+    expect(prevBtn).toBeDefined();
+    expect(nextBtn).toBeDefined();
+  });
+
+  it('cycles presets with Next/Prev buttons', async () => {
+    const { setFxPreset } = renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Hall Reverb')).toBeDefined();
+    });
+
+    // Click Next
+    fireEvent.click(screen.getByLabelText('Next preset'));
+    await waitFor(() => {
+      expect(setFxPreset).toHaveBeenCalled();
+    });
+    const lastCallArgs = setFxPreset.mock.lastCall;
+    expect(lastCallArgs[2]).toBe(3); // Next from index 2 should go to 3
+  });
+
+  it('shows 8 params per page with page indicator', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    // Wait for params to load
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+      expect(screen.getByText('Param 7')).toBeDefined();
+    });
+
+    // Page indicator: 1–8 of 12
+    expect(screen.getByText('1–8 of 12')).toBeDefined();
+
+    // Param 8 should NOT be visible (it's on page 2)
+    expect(screen.queryByText('Param 8')).toBeNull();
+  });
+
+  it('paginates to next and previous page', async () => {
+    const { getFxParams } = renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+      expect(screen.getByText('1–8 of 12')).toBeDefined();
+    });
+
+    // Click Next
+    fireEvent.click(screen.getByText('Next →'));
+    await waitFor(() => {
+      expect(getFxParams).toHaveBeenCalledWith(0, 0, 8, 8);
+    });
+  });
+
+  it('hides pagination when 8 or fewer params', async () => {
+    const fewMockParams: import('../hooks/useReaper').FxParam[] = Array.from({ length: 5 }, (_, i) => ({
+      index: i,
+      name: `FewParam ${i}`,
+      value: 0.5,
+      min: 0,
+      max: 1,
+      mid: 0.5,
+    }));
+
+    const getFxParams = vi.fn().mockResolvedValue({
+      params: fewMockParams,
+      total: fewMockParams.length,
+      offset: 0,
+      limit: 8,
+    });
+
+    renderTrackOverview({
+      getFxParams,
+      setFxParam: vi.fn().mockResolvedValue({ success: true }),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('FewParam 0')).toBeDefined();
+    });
+
+    // Pagination buttons should not appear
+    expect(screen.queryByText('Next →')).toBeNull();
+    expect(screen.queryByText('← Prev')).toBeNull();
+  });
+
+  it('pins and unpins params with pin icon toggle', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+    });
+
+    // Find the pin buttons — there should be at least 8 (one per param)
+    const pinButtons = screen.getAllByLabelText('Pin parameter');
+    expect(pinButtons.length).toBeGreaterThanOrEqual(8);
+
+    // Pin Param 0 (first pin button)
+    fireEvent.click(pinButtons[0]);
+
+    // Now the first pin button should show 'Unpin parameter'
+    await waitFor(() => {
+      const unpinButtons = screen.getAllByLabelText('Unpin parameter');
+      expect(unpinButtons.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Pinned section should be visible
+    expect(screen.getByText('Pinned')).toBeDefined();
+
+    // Unpin by clicking first unpin button
+    const unpinButtons = screen.getAllByLabelText('Unpin parameter');
+    fireEvent.click(unpinButtons[0]);
+
+    await waitFor(() => {
+      // After unpinning, all buttons should be back to 'Pin parameter'
+      expect(screen.queryAllByLabelText('Unpin parameter').length).toBe(0);
+    });
+  });
+
+  it('persists pinned params to localStorage', async () => {
+    renderWithInlineDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+    });
+
+    // Pin a param
+    const pinBtns = screen.getAllByLabelText('Pin parameter');
+    fireEvent.click(pinBtns[1]); // Pin Param 1
+
+    // localStorage should have the pin data
+    const stored = localStorage.getItem('fx:pinned:0:0');
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored!);
+    expect(parsed).toContain(1);
+  });
+
+  it('hides preset section when no presets available', async () => {
+    const getFxPreset = vi.fn().mockResolvedValue(null);
+    renderTrackOverview({
+      getFxParams: vi.fn().mockImplementation(
+        async (_trackIdx: number, _fxIdx: number, offset: number = 0, limit: number = 8) => ({
+          params: mockParams.slice(offset, offset + limit),
+          total: mockParams.length,
+          offset,
+          limit,
+        }),
+      ),
+      setFxParam: vi.fn().mockResolvedValue({ success: true }),
+      getFxPreset,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Wait for drawer to open with params
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Param 0')).toBeDefined();
+    });
+
+    // Should show 'No presets' instead of preset navigation
+    expect(screen.getByText(/No presets/i)).toBeDefined();
   });
 });

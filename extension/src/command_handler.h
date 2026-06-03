@@ -9,11 +9,16 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 // Forward declare REAPER types — must match reaper_plugin.h which uses 'class',
 // not 'struct'. MSVC ABI mangles them differently causing linker errors.
 class MediaTrack;
 class ReaProject;
+class MediaItem;
+class MediaItem_Take;
+class PCM_source;
+class MIDI_eventlist;
 
 // Reaper API function pointers (loaded via REAPERAPI_LoadAPI)
 struct ReaperAPI {
@@ -48,7 +53,9 @@ struct ReaperAPI {
     void (*TrackFX_CopyToTrack)(MediaTrack* src_track, int src_fx, MediaTrack* dest_track,
         int dest_fx, bool is_move)                                                    = nullptr;
     int (*TrackFX_GetPresetIndex)(MediaTrack* track, int fx, int* numberOfPresetsOut) = nullptr;
+    bool (*TrackFX_GetPreset)(MediaTrack* track, int fx, char* presetnameOut, int presetnameOut_sz) = nullptr;
     bool (*TrackFX_SetPreset)(MediaTrack* track, int fx, const char* presetname)      = nullptr;
+    bool (*TrackFX_SetPresetByIndex)(MediaTrack* track, int fx, int idx)              = nullptr;
 
     // Transport
     void (*Main_OnCommand)(int command, int flag) = nullptr;
@@ -65,6 +72,24 @@ struct ReaperAPI {
     bool (*GetTrackStateChunk)(MediaTrack* track, char* strNeedBig, int strNeedBig_sz, bool isundoOptional)
         = nullptr;
     bool (*SetTrackStateChunk)(MediaTrack* track, const char* str, bool isundoOptional) = nullptr;
+
+    // MIDI recording functions (Issue #90)
+    int (*CountMediaItems)(ReaProject* proj) = nullptr;
+    MediaItem* (*GetMediaItem)(ReaProject* proj, int itemidx) = nullptr;
+    MediaItem_Take* (*GetActiveTake)(MediaItem* item) = nullptr;
+    PCM_source* (*GetMediaItemTake_Source)(MediaItem_Take* take) = nullptr;
+    MIDI_eventlist* (*MIDI_eventlist_Create)() = nullptr;
+    void (*MIDI_eventlist_Destroy)(MIDI_eventlist* evtlist) = nullptr;
+    double (*GetPlayPosition)() = nullptr;
+
+    // MIDI item creation functions (Issue #92 — convert sequencer to clip)
+    MediaItem* (*CreateNewMIDIItemInProj)(MediaTrack* track, double starttime, double endtime, const bool* qnInOptional) = nullptr;
+    bool (*MIDI_InsertNote)(MediaItem_Take* take, bool selected, bool muted, double startppqpos, double endppqpos, int chan, int pitch, int vel, const bool* noSortInOptional) = nullptr;
+    bool (*SetMediaItemInfo_Value)(MediaItem* item, const char* parmname, double newvalue) = nullptr;
+    double (*GetMediaItemInfo_Value)(MediaItem* item, const char* parmname) = nullptr;
+    MediaItem* (*AddMediaItemToTrack)(MediaTrack* tr) = nullptr;
+    MediaItem_Take* (*AddTakeToMediaItem)(MediaItem* item) = nullptr;
+    int (*CountTrackMediaItems)(MediaTrack* track) = nullptr;
 };
 
 class CommandHandler {
@@ -142,6 +167,19 @@ private:
     // REAPER's OnFxParamChanged talkback (Issue #73)
     struct { int trackIdx; int fxIdx; int paramIdx; } m_lastSetParam = {-1, -1, -1};
 
+    // Chain-source tracking: maps trackIdx -> list of chain groups
+    // Each chain group records the .RfxChain file path and the FX index range
+    struct ChainSource {
+        std::string filePath;
+        int fxStartIdx;
+        int fxEndIdx; // exclusive
+    };
+    std::map<int, std::vector<ChainSource>> m_trackChainSources;
+
+    // Helper to shift chain-source indices when FX are added/removed/reordered
+    static void ShiftChainSourceIndices(
+        std::vector<ChainSource>& sources, int beforeIndex, int delta);
+
     // Run the actual EnumInstalledFX loop (no response, just populate cache)
     // Returns the JSON string of the FX list
     std::string RunFXEnumeration();
@@ -176,6 +214,12 @@ private:
     void HandleFxChainLoad(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainGetInfo(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainSearchRecursive(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainCycle(int clientId, const std::string& id, const std::string& params);
+
+    // Internal: load a chain file onto a track, replacing only chain-group FX
+    // Returns true on success, false on failure.
+    // If mode is "direction" (next/prev), computes target direction from current chain path.
+    bool doLoadChain(int trackIdx, const std::string& filePath, const std::string& direction);
 
     // Command handlers — FX
     void HandleEnumerateFX(int clientId, const std::string& id, const std::string& params);
@@ -185,6 +229,15 @@ private:
     void HandleSetFXParam(int clientId, const std::string& id, const std::string& params);
     void HandleAddFX(int clientId, const std::string& id, const std::string& params);
     void HandleDeleteFX(int clientId, const std::string& id, const std::string& params);
+    void HandleReorderFX(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — FX presets
+    void HandleGetFxPreset(int clientId, const std::string& id, const std::string& params);
+    void HandleSetFxPreset(int clientId, const std::string& id, const std::string& params);
+    void HandleGetAllFxPresetNames(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — MIDI recording (Issue #90)
+    void HandleMidiEvent(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — Playtime 2 / clip matrix
     void HandleMatrixGetAll(int clientId, const std::string& id, const std::string& params);
@@ -209,4 +262,7 @@ private:
 
     // Command handler — Playtime 2 launch (Issue #88)
     void HandlePlaytimeLaunch(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — sequencer convert to clip (Issue #92)
+    void HandleSequencerConvertToClip(int clientId, const std::string& id, const std::string& params);
 };

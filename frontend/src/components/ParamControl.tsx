@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { FxParam } from '../hooks/useReaper';
+import type { FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -15,6 +15,9 @@ interface ParamControlProps {
   deleteFx: (trackIdx: number, fxIdx: number) => Promise<boolean>;
   onEvent: (pattern: string, handler: (data: unknown) => void) => () => void;
   onBack: () => void;
+  getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
+  setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
+  getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
 }
 
 // Clean FX name for display
@@ -34,6 +37,9 @@ export function ParamControl({
   deleteFx,
   onEvent,
   onBack,
+  getFxPreset,
+  setFxPreset,
+  getAllFxPresetNames,
 }: ParamControlProps) {
   const [params, setParams] = useState<FxParam[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,6 +49,45 @@ export function ParamControl({
   const [totalParams, setTotalParams] = useState(0);
   const PAGE_SIZE = 32;
   const draggingParamRef = useRef<number | null>(null);
+
+  // ── Preset state ──
+  const [presetInfo, setPresetInfo] = useState<FxPresetInfo | null>(null);
+  const [presetLoading, setPresetLoading] = useState(true);
+  const [presetNames, setPresetNames] = useState<string[] | null>(null);
+  const [presetSearchOpen, setPresetSearchOpen] = useState(false);
+  const [presetSearchQuery, setPresetSearchQuery] = useState('');
+  const presetDropdownRef = useRef<HTMLDivElement>(null);
+  // Load preset info on mount or when trackIdx/fxIdx changes
+  // Use a callback ref pattern to avoid setState directly in effect
+  const getFxPresetRef = useRef(getFxPreset);
+  useEffect(() => { getFxPresetRef.current = getFxPreset; });
+
+  useEffect(() => {
+    const ref = getFxPresetRef.current;
+    if (!ref) return;
+    ref(trackIdx, fxIdx).then((info) => {
+      setPresetInfo(info);
+      setPresetLoading(false);
+      setPresetSearchOpen(false);
+      setPresetSearchQuery('');
+      setPresetNames(null);
+    }).catch(() => {
+      setPresetInfo(null);
+      setPresetLoading(false);
+      setPresetSearchOpen(false);
+      setPresetSearchQuery('');
+      setPresetNames(null);
+    });
+  }, [trackIdx, fxIdx, getFxPresetRef]);
+
+  // Filter presets based on search query
+  const filteredPresets = presetNames && presetSearchQuery
+    ? presetNames
+        .map((name, idx) => ({ name, idx }))
+        .filter((p) => p.name.toLowerCase().includes(presetSearchQuery.toLowerCase()))
+    : presetNames
+        ? presetNames.map((name, idx) => ({ name, idx }))
+        : [];
 
   // Load params on mount + subscribe to real-time updates
   const loadParams = useCallback(async (offset: number) => {
@@ -61,6 +106,8 @@ export function ParamControl({
   }, [trackIdx, fxIdx, getFxParams]);
 
   useEffect(() => {
+    // Schedule initial load — setLoading(true) inside loadParams is intentional
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadParams(0);
   }, [loadParams]);
 
@@ -73,6 +120,79 @@ export function ParamControl({
     const prev = Math.max(0, paramOffset - PAGE_SIZE);
     loadParams(prev);
   }, [paramOffset, loadParams]);
+
+  // ── Preset handlers ──
+
+  const handlePrevPreset = useCallback(() => {
+    if (!presetInfo || !setFxPreset || presetInfo.numPresets <= 0) return;
+    let newIdx = presetInfo.presetIndex - 1;
+    if (newIdx < 0) newIdx = presetInfo.numPresets - 1;
+    setFxPreset(trackIdx, fxIdx, newIdx).then((info) => {
+      if (info) setPresetInfo(info);
+      // Re-fetch params since they may change with preset
+      loadParams(paramOffset);
+    });
+  }, [presetInfo, setFxPreset, trackIdx, fxIdx, paramOffset, loadParams]);
+
+  const handleNextPreset = useCallback(() => {
+    if (!presetInfo || !setFxPreset || presetInfo.numPresets <= 0) return;
+    let newIdx = presetInfo.presetIndex + 1;
+    if (newIdx >= presetInfo.numPresets) newIdx = 0;
+    setFxPreset(trackIdx, fxIdx, newIdx).then((info) => {
+      if (info) setPresetInfo(info);
+      // Re-fetch params since they may change with preset
+      loadParams(paramOffset);
+    });
+  }, [presetInfo, setFxPreset, trackIdx, fxIdx, paramOffset, loadParams]);
+
+  const handleSelectPreset = useCallback(async (idx: number) => {
+    if (!setFxPreset) return;
+    const info = await setFxPreset(trackIdx, fxIdx, idx);
+    if (info) {
+      setPresetInfo(info);
+      setPresetSearchOpen(false);
+      setPresetSearchQuery('');
+      loadParams(paramOffset);
+    }
+  }, [setFxPreset, trackIdx, fxIdx, paramOffset, loadParams]);
+
+  const handleToggleSearch = useCallback(async () => {
+    if (presetSearchOpen) {
+      setPresetSearchOpen(false);
+      setPresetSearchQuery('');
+      return;
+    }
+    setPresetSearchOpen(true);
+    // Fetch all preset names if not already cached
+    if (presetNames === null && getAllFxPresetNames) {
+      try {
+        const data = await getAllFxPresetNames(trackIdx, fxIdx);
+        if (data) {
+          setPresetNames(data.presetNames);
+        } else if (presetInfo && presetInfo.numPresets > 0) {
+          setPresetNames(Array.from({ length: presetInfo.numPresets }, (_, i) => `Preset ${i + 1}`));
+        }
+      } catch {
+        if (presetInfo && presetInfo.numPresets > 0) {
+          setPresetNames(Array.from({ length: presetInfo.numPresets }, (_, i) => `Preset ${i + 1}`));
+        }
+      }
+    }
+  }, [presetSearchOpen, presetNames, getAllFxPresetNames, trackIdx, fxIdx, presetInfo]);
+
+  // Close search dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (presetDropdownRef.current && !presetDropdownRef.current.contains(e.target as Node)) {
+        setPresetSearchOpen(false);
+        setPresetSearchQuery('');
+      }
+    };
+    if (presetSearchOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [presetSearchOpen]);
 
   // Subscribe to real-time param change events (Issue #52)
   // While dragging a param, ignore events for that param to avoid
@@ -202,6 +322,98 @@ export function ParamControl({
         </div>
       </div>
 
+      {/* ── Preset Bar ── */}
+      {(getFxPreset || setFxPreset) && (
+        <div className="px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-secondary)]/50">
+          {presetLoading ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-secondary)]">Presets:</span>
+              <div className="h-4 w-24 bg-[var(--bg-tertiary)] animate-pulse rounded" />
+            </div>
+          ) : !presetInfo || presetInfo.numPresets <= 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-secondary)]">Presets:</span>
+              <span className="text-xs text-[var(--text-tertiary)]">—  No presets  —</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 relative" ref={presetDropdownRef}>
+              <span className="text-xs text-[var(--text-secondary)] whitespace-nowrap">Preset:</span>
+              <button
+                onClick={handlePrevPreset}
+                className="px-2 py-1 text-xs bg-[var(--bg-tertiary)] text-[var(--text-primary)]
+                  active:brightness-95 transition-colors hover:bg-[var(--bg-tertiary)]/80"
+                aria-label="Previous preset"
+              >
+                ◀
+              </button>
+              <button
+                onClick={() => handleSelectPreset(presetInfo.presetIndex)}
+                className="flex-1 min-w-0 text-xs text-center truncate px-2 py-1
+                  bg-[var(--bg-tertiary)] text-[var(--text-primary)]
+                  active:brightness-95 transition-colors hover:bg-[var(--bg-tertiary)]/80"
+                title={presetInfo.presetName || `Preset ${presetInfo.presetIndex}`}
+              >
+                {presetInfo.presetName || `Preset ${presetInfo.presetIndex + 1}`}
+              </button>
+              <button
+                onClick={handleNextPreset}
+                className="px-2 py-1 text-xs bg-[var(--bg-tertiary)] text-[var(--text-primary)]
+                  active:brightness-95 transition-colors hover:bg-[var(--bg-tertiary)]/80"
+                aria-label="Next preset"
+              >
+                ▶
+              </button>
+              <button
+                onClick={handleToggleSearch}
+                className="px-2 py-1 text-xs bg-[var(--bg-tertiary)] text-[var(--text-secondary)]
+                  active:brightness-95 transition-colors hover:bg-[var(--bg-tertiary)]/80"
+                aria-label="Search presets"
+              >
+                🔍
+              </button>
+
+              {/* Preset search dropdown */}
+              {presetSearchOpen && (
+                <div className="absolute top-full left-0 right-0 mt-1 z-50 bg-[var(--bg-primary)]
+                  border border-[var(--border)] shadow-lg max-h-48 overflow-y-auto"
+                >
+                  <div className="sticky top-0 bg-[var(--bg-primary)] p-1 border-b border-[var(--border)]">
+                    <input
+                      type="text"
+                      value={presetSearchQuery}
+                      onChange={(e) => setPresetSearchQuery(e.target.value)}
+                      placeholder="Search presets..."
+                      className="w-full px-2 py-1 text-xs bg-[var(--bg-tertiary)] text-[var(--text-primary)]
+                        border border-[var(--border)] outline-none placeholder-[var(--text-tertiary)]"
+                      autoFocus
+                    />
+                  </div>
+                  {filteredPresets.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-[var(--text-tertiary)] text-center">
+                      No matching presets
+                    </div>
+                  ) : (
+                    filteredPresets.map((p) => (
+                      <button
+                        key={p.idx}
+                        onClick={() => handleSelectPreset(p.idx)}
+                        className={`w-full text-left px-3 py-1.5 text-xs transition-colors
+                          ${p.idx === presetInfo?.presetIndex
+                            ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)]'
+                            : 'text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]'
+                          }`}
+                      >
+                        {p.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {loading ? (
@@ -279,14 +491,14 @@ export function ParamControl({
 
 // ── Parameter Slider ─────────────────────────────────────────
 
-interface ParamSliderProps {
+export interface ParamSliderProps {
   param: FxParam;
   onChange: (value: number) => void;
   onDragStart: (paramIdx: number) => void;
   onDragEnd: () => void;
 }
 
-function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSliderProps) {
+export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localValue, setLocalValue] = useState(param.value);

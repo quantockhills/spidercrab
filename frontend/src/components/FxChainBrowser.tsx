@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Track, FxChainEntry, FxChainInfo, FxChainSearchResult } from '../hooks/useReaper';
 
+
+interface FxChainSearchResult {
+  filePath: string;
+  name: string;
+  size: number;
+}
+
 interface DirData { chains: FxChainEntry[]; dirs: string[] }
 
 interface FxChainBrowserProps {
@@ -11,6 +18,7 @@ interface FxChainBrowserProps {
   fxChainLoad: (trackIdx: number, filePath: string, mode?: 'replace' | 'append') => Promise<boolean>;
   fxChainGetInfo: (filePath: string) => Promise<FxChainInfo | null>;
   fxChainSearchRecursive?: (query: string, rootPath: string) => Promise<{ query: string; results: FxChainSearchResult[] }>;
+
   onBack: () => void;
   initialPath?: string;
 }
@@ -39,6 +47,7 @@ export function FxChainBrowser({
 }: FxChainBrowserProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [rootPath, setRootPath] = useState(initialPath || '');
+
   const [rootData, setRootData] = useState<DirData>({ chains: [], dirs: [] });
   const [rootLoading, setRootLoading] = useState(false);
   const [rootError, setRootError] = useState<string | null>(null);
@@ -51,6 +60,7 @@ export function FxChainBrowser({
   const [search, setSearch] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<FxChainSearchResult[] | null>(null);
   const [remoteSearching, setRemoteSearching] = useState(false);
+
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loadingFile, setLoadingFile] = useState<string | null>(null);
   const [loadedFiles, setLoadedFiles] = useState<Set<string>>(new Set());
@@ -78,6 +88,7 @@ export function FxChainBrowser({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadRoot(rootPath); }, [rootPath]);
+
 
   const toggleDir = useCallback(async (dirPath: string) => {
     if (expanded.has(dirPath)) {
@@ -183,6 +194,7 @@ export function FxChainBrowser({
   }, [search, rootPath, fxChainSearchRecursive]);
 
   // Merge local and remote results, deduplicate by filePath
+
   const searchResults = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
@@ -204,6 +216,7 @@ export function FxChainBrowser({
     }
     return merged;
   }, [search, allVisibleChains, remoteSearchResults]);
+
 
   const selectedTrackName = selectedTrack !== null ? tracks.find(t => t.index === selectedTrack)?.name : null;
 
@@ -315,6 +328,7 @@ export function FxChainBrowser({
               />
               {remoteSearching && (
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--accent-orange)] animate-pulse">Searching all folders…</span>
+
               )}
             </div>
           </div>

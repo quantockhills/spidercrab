@@ -27,6 +27,8 @@ interface SequencerViewProps {
   clearAll: () => Promise<boolean>;
   setLength: (length: number) => Promise<boolean>;
   setBaseNote: (note: number) => Promise<boolean>;
+  convertToClip: () => Promise<{ success: boolean; error?: string }>;
+  onSwitchToSession: () => void;
 }
 
 // ── Note names for display ──
@@ -49,6 +51,8 @@ export function SequencerView({
   clearAll,
   setLength,
   setBaseNote,
+  convertToClip,
+  onSwitchToSession,
 }: SequencerViewProps) {
   const [loading, setLoading] = useState(!sequencer);
   const [lengthInput, setLengthInput] = useState(sequencer?.length ?? 16);
@@ -56,7 +60,17 @@ export function SequencerView({
   const [velocityEdit, setVelocityEdit] = useState<{col: number; row: number} | null>(null);
   const [velocityValue, setVelocityValue] = useState(100);
   const [_selectedNote, setSelectedNote] = useState(36);
+  const [converting, setConverting] = useState(false);
+  const [toast, setToast] = useState<{type: 'success' | 'error'; message: string} | null>(null);
   const initializedRef = useRef(false);
+
+  // Auto-dismiss toast after 3 seconds
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // Load sequencer on mount
   useEffect(() => {
@@ -108,6 +122,28 @@ export function SequencerView({
     await getSequencer();
   }, [clearAll, getSequencer]);
 
+  const handleConvertToClip = useCallback(async () => {
+    if (converting) return;
+    setConverting(true);
+    try {
+      const result = await convertToClip();
+      if (result.success) {
+        setToast({ type: 'success', message: 'Pattern converted to clip!' });
+        // Switch to session mode so the user can immediately trigger the clip
+        onSwitchToSession();
+      } else {
+        setToast({ type: 'error', message: result.error || 'Conversion failed' });
+      }
+    } catch {
+      setToast({ type: 'error', message: 'Unexpected error during conversion' });
+    } finally {
+      setConverting(false);
+    }
+  }, [convertToClip, converting, onSwitchToSession]);
+
+  // Check if there are any active steps
+  const hasActiveSteps = sequencer?.steps?.some(s => s.active) ?? false;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-[var(--text-secondary)] text-sm">
@@ -137,12 +173,38 @@ export function SequencerView({
 
   return (
     <div className="flex flex-col h-full">
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className={`px-4 py-2 text-[11px] font-medium transition-all ${
+            toast.type === 'success'
+              ? 'bg-[var(--accent-green)]/15 text-[var(--accent-green)]'
+              : 'bg-[var(--accent-red)]/15 text-[var(--accent-red)]'
+          }`}
+        >
+          {toast.message}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
         <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
           Step Sequencer
         </h2>
         <div className="flex items-center gap-2">
+          {/* Convert to Clip button */}
+          <button
+            onClick={handleConvertToClip}
+            disabled={!hasActiveSteps || converting}
+            className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+              !hasActiveSteps || converting
+                ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/40 cursor-not-allowed'
+                : 'bg-[var(--accent-green)]/20 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/30 ring-1 ring-[var(--accent-green)]/30'
+            }`}
+            title="Convert pattern to MIDI clip"
+          >
+            {converting ? '…' : '⇩ Clip'}
+          </button>
           {/* Velocity mode toggle */}
           <button
             onClick={() => setVelocityMode(!velocityMode)}

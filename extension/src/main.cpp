@@ -27,7 +27,9 @@
 #define REAPERAPI_WANT_TrackFX_Delete
 #define REAPERAPI_WANT_TrackFX_CopyToTrack
 #define REAPERAPI_WANT_TrackFX_GetPresetIndex
+#define REAPERAPI_WANT_TrackFX_GetPreset
 #define REAPERAPI_WANT_TrackFX_SetPreset
+#define REAPERAPI_WANT_TrackFX_SetPresetByIndex
 #define REAPERAPI_WANT_EnumInstalledFX
 #define REAPERAPI_WANT_Main_OnCommand
 #define REAPERAPI_WANT_CSurf_OnPlay
@@ -41,7 +43,22 @@
 #define REAPERAPI_WANT_GetTrackStateChunk
 #define REAPERAPI_WANT_SetTrackStateChunk
 #define REAPERAPI_WANT_CreateMIDIOutput
+#define REAPERAPI_WANT_CreateMIDIInput
 #define REAPERAPI_WANT_GetMaxMidiOutputs
+#define REAPERAPI_WANT_CountMediaItems
+#define REAPERAPI_WANT_GetMediaItem
+#define REAPERAPI_WANT_GetActiveTake
+#define REAPERAPI_WANT_GetMediaItemTake_Source
+#define REAPERAPI_WANT_MIDI_eventlist_Create
+#define REAPERAPI_WANT_MIDI_eventlist_Destroy
+#define REAPERAPI_WANT_GetPlayPosition
+#define REAPERAPI_WANT_CreateNewMIDIItemInProj
+#define REAPERAPI_WANT_MIDI_InsertNote
+#define REAPERAPI_WANT_SetMediaItemInfo_Value
+#define REAPERAPI_WANT_GetMediaItemInfo_Value
+#define REAPERAPI_WANT_AddMediaItemToTrack
+#define REAPERAPI_WANT_AddTakeToMediaItem
+#define REAPERAPI_WANT_CountTrackMediaItems
 
 // CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
 // Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.
@@ -108,6 +125,9 @@ static reaper_plugin_info_t* g_pluginInfo = nullptr;
 static int                   g_port       = 9224; // default port (matching reamo convention)
 static int                   g_httpPort   = 5173;
 static bool                  g_playtimeWasAvailable = false; // Track Playtime availability across Run() polls
+
+// MIDI feedback listener for Playtime 2 clip launcher (Issue #91)
+static midi_Input*           g_midiInput  = nullptr;
 
 // Helper: find the frontend dist directory relative to this extension's location
 static bool FindFrontendDist(std::string& outPath)
@@ -232,6 +252,41 @@ public:
                 }
             }
         }
+
+        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91)
+        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91)
+        if (g_midiInput) {
+            // Swap buffers to get latest MIDI events
+            g_midiInput->SwapBufsPrecise(0, 0.0);
+            MIDI_eventlist* evtList = g_midiInput->GetReadBuf();
+            if (evtList) {
+                int bpos = 0;
+                MIDI_event_t* evt = evtList->EnumItems(&bpos);
+                while (evt) {
+                    int status = evt->midi_message[0] & 0xF0;
+                    int note   = evt->midi_message[1];
+                    int vel    = evt->midi_message[2];
+                    if (status == 0x90 && note >= 36 && note <= 99) {
+                        // This is a slot state feedback note
+                        int index = note - 36;
+                        int col = index % 8;
+                        int row = index / 8;
+                        // Map velocity to slot state
+                        // ReaLearn sends: vel=0=stopped, vel=127=playing
+                        if (g_cmdHandler) {
+                            std::string newState = (vel >= 64) ? "playing" : "stopped";
+                            g_cmdHandler->GetPlaytimeState().setSlotState(col, row, newState);
+                            SlotState s = g_cmdHandler->GetPlaytimeState().getSlot(col, row);
+                            g_cmdHandler->BroadcastMatrixEvent("matrix/slotStateChanged", s.toJson());
+                        }
+                    }
+                    evt = evtList->EnumItems(&bpos);
+                }
+            }
+        }
+
+
+
     }
 
     void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }
@@ -583,6 +638,7 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     InitializeCoreServices();
 
     // 2. Register the control surface type (appears in Reaper prefs)
+
     rec->Register("csurf", &g_csurfReg);
 
     // 3. Create surface + start servers + register instance

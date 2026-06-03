@@ -251,4 +251,56 @@ describe('FxBrowser', () => {
       expect(screen.getByText(/Kick/)).toBeDefined();
     });
   });
+
+  // ── Back button (Issue #86) ──
+
+  it('has back button in the search/filter row', async () => {
+    renderFxBrowser();
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search FX...')).toBeDefined();
+    });
+
+    // Back button should be present
+    const backButton = screen.getByLabelText('Back');
+    expect(backButton).toBeDefined();
+
+    // The back button should be in the same container as the search input
+    const searchInput = screen.getByPlaceholderText('Search FX...');
+    const searchRow = searchInput.closest('div')?.parentElement;
+    expect(searchRow).toBeDefined();
+    expect(searchRow?.contains(backButton)).toBe(true);
+  });
+
+  it('calls onBack when back button is clicked', async () => {
+    const { onBack } = renderFxBrowser();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Back')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByLabelText('Back'));
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it('does not show back button in the header (it moved to search/filter row)', async () => {
+    renderFxBrowser();
+
+    await waitFor(() => {
+      expect(screen.getByText('FX Browser')).toBeDefined();
+    });
+
+    // The header contains 'FX Browser' text but NOT the back button
+    const headerElements = screen.getAllByText('FX Browser');
+    let headerFound = false;
+    for (const el of headerElements) {
+      const header = el.closest('.border-b');
+      if (header) {
+        const backInHeader = header.querySelector('[aria-label="Back"]');
+        expect(backInHeader).toBeNull();
+        headerFound = true;
+      }
+    }
+    expect(headerFound).toBe(true);
+  });
 });
