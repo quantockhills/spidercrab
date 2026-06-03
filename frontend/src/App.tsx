@@ -53,6 +53,7 @@ function App() {
     fxChainSave,
     fxChainLoad,
     fxChainGetInfo,
+    fxChainSearchRecursive,
     getFxPreset,
     setFxPreset,
     getAllFxPresetNames,
@@ -320,6 +321,7 @@ function App() {
             fxChainSave={fxChainSave}
             fxChainLoad={fxChainLoad}
             fxChainGetInfo={fxChainGetInfo}
+            fxChainSearchRecursive={fxChainSearchRecursive}
             onBack={handleBackFromFxChains}
             initialPath={fxChainPath || undefined}
           />
