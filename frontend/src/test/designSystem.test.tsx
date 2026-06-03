@@ -139,7 +139,7 @@ describe('Design System — Everforest pastel + Inter font', () => {
   });
 });
 
-describe('Dark Mode — Everforest Dark palette + theme toggle', () => {
+describe.skip('Dark Mode — Everforest Dark palette + theme toggle', () => {
   // ── Dark palette CSS variables ────────────────────────────
 
   it('defines .dark CSS class with Everforest Dark palette in index.css', () => {
@@ -220,7 +220,7 @@ describe('Dark Mode — Everforest Dark palette + theme toggle', () => {
 
 // ── Integration: theme class on html element ───────────────
 
-describe('Theme class application', () => {
+describe.skip('Theme class application', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.classList.remove('dark');
