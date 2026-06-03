@@ -16,6 +16,7 @@
  *   const { play } = useTransport();
  */
 
+import { useCallback } from 'react';
 import { useReaperClient } from './useReaperClient';
 import { useTransport } from './useTransport';
 import { useTrackState } from './useTrackState';
