@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Track, FxChainEntry, FxChainInfo } from '../hooks/useReaper';
+import type { Track, FxChainEntry, FxChainInfo, FxChainSearchResult } from '../hooks/useReaper';
+
 
 interface FxChainSearchResult {
   filePath: string;
@@ -16,7 +17,8 @@ interface FxChainBrowserProps {
   fxChainSave: (trackIdx: number, filePath: string) => Promise<boolean>;
   fxChainLoad: (trackIdx: number, filePath: string, mode?: 'replace' | 'append') => Promise<boolean>;
   fxChainGetInfo: (filePath: string) => Promise<FxChainInfo | null>;
-  fxChainSearchRecursive: (query: string, rootPath: string) => Promise<FxChainSearchResult[]>;
+  fxChainSearchRecursive?: (query: string, rootPath: string) => Promise<{ query: string; results: FxChainSearchResult[] }>;
+
   onBack: () => void;
   initialPath?: string;
 }
@@ -43,7 +45,9 @@ export function FxChainBrowser({
   onBack,
   initialPath,
 }: FxChainBrowserProps) {
-  const [rootPath] = useState(initialPath || '');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [rootPath, setRootPath] = useState(initialPath || '');
+
   const [rootData, setRootData] = useState<DirData>({ chains: [], dirs: [] });
   const [rootLoading, setRootLoading] = useState(false);
   const [rootError, setRootError] = useState<string | null>(null);
@@ -54,8 +58,9 @@ export function FxChainBrowser({
   const [subLoading, setSubLoading] = useState<Set<string>>(new Set());
 
   const [search, setSearch] = useState('');
-  const [backendResults, setBackendResults] = useState<FxChainSearchResult[] | null>(null);
-  const [searchingAll, setSearchingAll] = useState(false);
+  const [remoteSearchResults, setRemoteSearchResults] = useState<FxChainSearchResult[] | null>(null);
+  const [remoteSearching, setRemoteSearching] = useState(false);
+
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loadingFile, setLoadingFile] = useState<string | null>(null);
   const [loadedFiles, setLoadedFiles] = useState<Set<string>>(new Set());
@@ -81,7 +86,9 @@ export function FxChainBrowser({
     }
   }, [fxChainGetDirectory]);
 
-  useEffect(() => { loadRoot(rootPath); }, [rootPath, loadRoot]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadRoot(rootPath); }, [rootPath]);
+
 
   const toggleDir = useCallback(async (dirPath: string) => {
     if (expanded.has(dirPath)) {
@@ -143,54 +150,73 @@ export function FxChainBrowser({
     return result;
   }, [rootPath, rootData, subData]);
 
-  // Debounced backend recursive search
+  // Debounced backend recursive search (300ms)
+  // Reset remote results when search input changes
   useEffect(() => {
+    if (!search.trim()) {
+      setRemoteSearchResults(null);
+      setRemoteSearching(false);
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+        searchTimerRef.current = null;
+      }
+      return;
+    }
+
+    // Clear previous timer
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
     }
-    if (!search.trim() || !rootPath) {
-      setBackendResults(null);
-      setSearchingAll(false);
+
+    if (!fxChainSearchRecursive || !rootPath) {
+      setRemoteSearching(false);
+      setRemoteSearchResults(null);
       return;
     }
-    setSearchingAll(true);
+
+    setRemoteSearching(true);
     searchTimerRef.current = setTimeout(async () => {
       try {
-        const results = await fxChainSearchRecursive(search, rootPath);
-        setBackendResults(results);
+        const result = await fxChainSearchRecursive(search, rootPath);
+        setRemoteSearchResults(result.results);
       } catch {
-        setBackendResults([]);
+        setRemoteSearchResults([]);
       } finally {
-        setSearchingAll(false);
+        setRemoteSearching(false);
       }
     }, 300);
+
     return () => {
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
     };
   }, [search, rootPath, fxChainSearchRecursive]);
 
-  // Merge local visible chains + backend recursive results, deduplicate by filePath
+  // Merge local and remote results, deduplicate by filePath
+
   const searchResults = useMemo(() => {
     if (!search.trim()) return null;
     const q = search.toLowerCase();
 
-    // Local results from visible (expanded) chains
-    const localResults = allVisibleChains.filter(c => c.name.toLowerCase().includes(q));
+    // Start with local visible chains
+    const local = allVisibleChains.filter(c => c.name.toLowerCase().includes(q));
 
-    if (!backendResults) return localResults.length > 0 ? localResults : null;
+    // If remote search hasn't returned yet, just show local
+    if (!remoteSearchResults) return local;
 
-    // Merge with backend results, deduplicate by filePath
-    const seen = new Set<string>();
-    for (const c of localResults) seen.add(c.filePath);
-    const merged = [...localResults];
-    for (const c of backendResults) {
-      if (!seen.has(c.filePath)) {
-        merged.push(c);
-        seen.add(c.filePath);
+    // Merge with remote results, deduplicating by filePath
+    const seenPaths = new Set(local.map(c => c.filePath));
+    const merged = [...local];
+    for (const r of remoteSearchResults) {
+      if (!seenPaths.has(r.filePath)) {
+        merged.push(r);
+        seenPaths.add(r.filePath);
       }
     }
-    return merged.length > 0 ? merged : [];
-  }, [search, allVisibleChains, backendResults]);
+    return merged;
+  }, [search, allVisibleChains, remoteSearchResults]);
+
 
   const selectedTrackName = selectedTrack !== null ? tracks.find(t => t.index === selectedTrack)?.name : null;
 
@@ -300,10 +326,9 @@ export function FxChainBrowser({
                 placeholder="Search all FX chains…"
                 className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
               />
-              {searchingAll && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[var(--text-secondary)] animate-pulse">
-                  Searching all folders…
-                </span>
+              {remoteSearching && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--accent-orange)] animate-pulse">Searching all folders…</span>
+
               )}
             </div>
           </div>

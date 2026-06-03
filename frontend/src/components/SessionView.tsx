@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { MatrixData, ClipSlot } from '../hooks/useReaper';
+import type { MatrixData, ClipSlot, Track } from '../hooks/useReaper';
 
 interface SessionViewProps {
   matrix: MatrixData | null;
+  tracks?: Track[];
   getMatrix: () => Promise<MatrixData | null>;
   triggerSlot: (column: number, row: number) => Promise<ClipSlot | null>;
   triggerScene: (row: number) => Promise<ClipSlot[] | null>;
@@ -11,6 +12,12 @@ interface SessionViewProps {
   onStop?: () => Promise<boolean>;
   onRecord?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
+  /** Launch Playtime 2 (Issue #88) */
+  onLaunchPlaytime?: () => Promise<{launched: boolean; message: string}>;
+  /** Check if Playtime 2 is available (Issue #88) */
+  onCheckPlaytimeAvailable?: () => Promise<{available: boolean}>;
+  /** Record into a clip slot (Issue #43) */
+  onRecordSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
 }
 
 /** Map slot state to display color hex (for the cell accent) */
@@ -25,6 +32,7 @@ function stateColor(state: ClipSlot['state']): string {
 
 export function SessionView({
   matrix,
+  tracks,
   getMatrix,
   triggerSlot,
   triggerScene,
@@ -33,11 +41,17 @@ export function SessionView({
   onStop,
   onRecord,
   onGetTransportState,
+  onLaunchPlaytime,
+  onCheckPlaytimeAvailable,
+  onRecordSlot,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [playtimeAvailable, setPlaytimeAvailable] = useState<boolean | null>(null);
+  const [playtimeLaunching, setPlaytimeLaunching] = useState(false);
+  const [playtimeError, setPlaytimeError] = useState<string | null>(null);
   const initializedRef = useRef(false);
 
   // Load matrix on mount if not provided
@@ -45,8 +59,18 @@ export function SessionView({
     if (!initializedRef.current) {
       initializedRef.current = true;
       getMatrix().then(() => setLoading(false));
+      // Check if Playtime is available
+      if (onCheckPlaytimeAvailable) {
+        onCheckPlaytimeAvailable().then(result => {
+          setPlaytimeAvailable(result.available);
+        }).catch(() => {
+          setPlaytimeAvailable(false);
+        });
+      } else {
+        setPlaytimeAvailable(false);
+      }
     }
-  }, [getMatrix]);
+  }, [getMatrix, onCheckPlaytimeAvailable]);
 
   // Load initial transport state on mount
   useEffect(() => {
@@ -94,14 +118,52 @@ export function SessionView({
   }, [onRecord]);
 
   const handleSlotTap = useCallback(async (col: number, row: number) => {
-    await triggerSlot(col, row);
-  }, [triggerSlot]);
+    // Issue #43: Audio recording workflow
+    // When transport recording is active and slot is empty/stopped, start recording.
+    // When slot is recording, stop recording.
+    // Otherwise (transport not recording or slot already playing), trigger the clip.
+    const slot = matrix?.slots.find(s => s.column === col && s.row === row);
+    const shouldRecord = recording && slot && (slot.state === 'empty' || slot.state === 'stopped' || slot.state === 'recording');
+
+    if (shouldRecord && onRecordSlot) {
+      await onRecordSlot(col, row);
+    } else {
+      await triggerSlot(col, row);
+    }
+    // Issue #80: Refresh matrix after triggering a slot so the grid
+    // reflects the new visual state (playing/stopped). Without this,
+    // the matrix prop never updates and the grid stays unchanged.
+    getMatrix();
+  }, [triggerSlot, getMatrix, recording, matrix, onRecordSlot]);
 
   const handleSceneLaunch = useCallback(async (row: number) => {
     setActiveScene(row);
     await triggerScene(row);
     setActiveScene(null);
-  }, [triggerScene]);
+    // Issue #80: Also refresh matrix after scene trigger so all
+    // slots in the scene row update their visual state.
+    getMatrix();
+  }, [triggerScene, getMatrix]);
+
+  const handleLaunchPlaytime = useCallback(async () => {
+    if (!onLaunchPlaytime) return;
+    setPlaytimeLaunching(true);
+    setPlaytimeError(null);
+    try {
+      const result = await onLaunchPlaytime();
+      if (result.launched) {
+        setPlaytimeAvailable(true);
+        // Refresh matrix now that Playtime is running
+        getMatrix();
+      } else {
+        setPlaytimeError(result.message || 'Failed to launch Playtime');
+      }
+    } catch {
+      setPlaytimeError('Failed to send launch command');
+    } finally {
+      setPlaytimeLaunching(false);
+    }
+  }, [onLaunchPlaytime, getMatrix]);
 
   if (loading) {
     return (
@@ -111,10 +173,90 @@ export function SessionView({
     );
   }
 
+  // Show Launch Playtime prompt when matrix is unavailable and Playtime is not running
   if (!matrix) {
+    const showLaunchButton = playtimeAvailable === false || playtimeAvailable === null;
+    const isActive = playtimeAvailable === true;
+
     return (
-      <div className="flex items-center justify-center h-full text-[var(--text-secondary)] text-sm">
-        No matrix data available
+      <div className="flex flex-col items-center justify-center h-full gap-6 px-6">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <div className="w-16 h-16 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-2xl opacity-60">
+            🎵
+          </div>
+          <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
+            {isActive ? 'Playtime Active' : 'Playtime 2'}
+          </h3>
+          <p className="text-[11px] text-[var(--text-secondary)]/60 max-w-[240px]">
+            {isActive
+              ? 'Playtime 2 is running but no clip matrix was found. Try refreshing or creating a matrix in REAPER.'
+              : 'Playtime 2 powers the clip launcher. Launch it to start triggering clips from your iPad.'}
+          </p>
+        </div>
+
+        {showLaunchButton && (
+          <div className="flex flex-col items-center gap-3">
+            <button
+              onClick={handleLaunchPlaytime}
+              disabled={playtimeLaunching}
+              className={`
+                flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold
+                transition-all active:brightness-90
+                ${playtimeLaunching
+                  ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] cursor-not-allowed'
+                  : playtimeError
+                    ? 'bg-[var(--accent-red)]/20 text-[var(--accent-red)] hover:bg-[var(--accent-red)]/30 ring-1 ring-[var(--accent-red)]/30'
+                    : 'bg-[var(--accent-orange)] text-black hover:brightness-110'
+                }
+              `}
+              aria-label="Launch Playtime"
+            >
+              {playtimeLaunching ? (
+                <>
+                  <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Launching…
+                </>
+              ) : playtimeError ? (
+                <>
+                  <span>⚠</span>
+                  {playtimeError}
+                </>
+              ) : (
+                <>
+                  <span>▶</span>
+                  Launch Playtime
+                </>
+              )}
+            </button>
+
+            {/* Retry button if Playtime check failed */}
+            {onCheckPlaytimeAvailable && playtimeAvailable === null && !playtimeLaunching && (
+              <button
+                onClick={() => {
+                  onCheckPlaytimeAvailable().then(result => {
+                    setPlaytimeAvailable(result.available);
+                  }).catch(() => {
+                    setPlaytimeAvailable(false);
+                  });
+                }}
+                className="text-[10px] text-[var(--text-secondary)]/50 hover:text-[var(--text-secondary)] underline"
+                aria-label="Retry Playtime check"
+              >
+                Check again
+              </button>
+            )}
+          </div>
+        )}
+
+        {isActive && (
+          <button
+            onClick={() => getMatrix()}
+            className="flex items-center gap-2 px-4 py-2 rounded text-sm bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-all active:brightness-90"
+            aria-label="Refresh matrix"
+          >
+            ↻ Refresh Matrix
+          </button>
+        )}
       </div>
     );
   }
@@ -196,6 +338,27 @@ export function SessionView({
         </button>
       </div>
 
+      {/* Column headers */}
+      <div className="grid gap-px px-3 pt-2 border-b border-[var(--border)]" style={{
+        gridTemplateColumns: `repeat(${cols}, 1fr) 32px`,
+      }}>
+        {Array.from({ length: cols }, (_, col) => {
+          const trackName = tracks?.[col]?.name || `Track ${col + 1}`;
+          return (
+            <div
+              key={`col-header-${col}`}
+              className="flex items-center justify-center text-[10px] font-semibold text-[var(--text-secondary)] truncate px-1 py-1.5 border-b border-[var(--border)]"
+              title={trackName}
+              data-col={col}
+              aria-label={`Column ${col + 1}: ${trackName}`}
+            >
+              {trackName}
+            </div>
+          );
+        })}
+        <div className="border-b border-[var(--border)]" />
+      </div>
+
       {/* Grid area */}
       <div className="flex-1 overflow-y-auto p-3">
         <div className="grid gap-px" style={{
@@ -218,23 +381,19 @@ export function SessionView({
                   className={`
                     relative flex flex-col items-center justify-center
                     aspect-square min-h-[44px] min-w-[44px]
-                    bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]
-                    active:brightness-90 transition-all duration-75
+                    transition-all duration-75
                     cursor-pointer overflow-hidden
-                    ${state === 'playing' ? 'ring-1 ring-[var(--accent-green)]' : ''}
-                    ${state === 'recording' ? 'ring-1 ring-[var(--accent-red)] animate-pulse' : ''}
-                    ${state === 'stopped' ? 'opacity-80' : ''}
+                    ${state === 'empty' ? 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]' : ''}
+                    ${state === 'stopped' ? 'bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)]/30 text-[var(--text-primary)]' : ''}
+                    ${state === 'playing' ? 'bg-[var(--accent-green)] text-black hover:brightness-110' : ''}
+                    ${state === 'recording' ? 'bg-[var(--accent-red)] text-black animate-pulse hover:brightness-110' : ''}
+                    active:brightness-90
                   `}
                   data-col={col}
                   data-row={row}
                   data-state={state}
                   aria-label={`Slot ${col + 1},${row + 1}`}
                 >
-                  {/* Color accent bar at top */}
-                  <div
-                    className="absolute top-0 left-0 right-0 h-1"
-                    style={{ backgroundColor: color }}
-                  />
 
                   {/* Clip type icon */}
                   {clipType === 'midi' && (

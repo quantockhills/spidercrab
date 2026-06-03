@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // Forward declare REAPER types — must match reaper_plugin.h which uses 'class',
@@ -93,6 +94,7 @@ struct ReaperAPI {
 
 class CommandHandler {
 public:
+    using HandlerFn = void (CommandHandler::*)(int clientId, const std::string& id, const std::string& rawMessage);
     using ResponseCallback = std::function<void(int clientId, const std::string& response)>;
     using BroadcastCallback = std::function<void(const std::string& message)>;
 
@@ -150,6 +152,9 @@ private:
     // Watched FX for callback-based param change filtering (Issue #58)
     int         m_watchedTrackIdx = -1;
     int         m_watchedFxIdx    = -1;
+
+    // Command dispatch map: command string → handler method
+    std::unordered_map<std::string, HandlerFn> m_commandMap;
 
     // Playtime 2 clip launcher state (Issues #61)
     PlaytimeState m_playtimeState;
@@ -239,6 +244,9 @@ private:
     void HandleMatrixGetSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixTriggerSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixTriggerScene(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixSetSlotState(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixRecordSlot(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixPollState(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — step sequencer (Issue #63)
     void HandleSequencerGetAll(int clientId, const std::string& id, const std::string& params);
@@ -248,6 +256,12 @@ private:
     void HandleSequencerSetLength(int clientId, const std::string& id, const std::string& params);
     void HandleSequencerSetBaseNote(int clientId, const std::string& id, const std::string& params);
     void HandleSequencerGetPlayhead(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — Playtime 2 (Issue #81)
+    void HandlePlaytimeIsAvailable(int clientId, const std::string& id, const std::string& params);
+
+    // Command handler — Playtime 2 launch (Issue #88)
+    void HandlePlaytimeLaunch(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — sequencer convert to clip (Issue #92)
     void HandleSequencerConvertToClip(int clientId, const std::string& id, const std::string& params);

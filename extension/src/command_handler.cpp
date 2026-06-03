@@ -15,6 +15,7 @@ namespace fs = std::filesystem;
 
 // Global Playtime 2 API state (defined here, declared extern in playtime_api.h)
 PlaytimeApi g_playtimeApi;
+void* (*g_playtimeGetFunc)(const char*) = nullptr;
 
 // Minimal JSON builder (no dependencies)
 static std::string json_escape(const std::string& s)
@@ -253,6 +254,56 @@ static std::string extractPayload(const std::string& message)
 CommandHandler::CommandHandler(WebSocketServer* ws)
     : m_ws(ws)
 {
+    // Populate command dispatch map
+    m_commandMap["track/getAll"]           = &CommandHandler::HandleGetTracks;
+    m_commandMap["track/add"]              = &CommandHandler::HandleAddTrack;
+    m_commandMap["track/getFx"]            = &CommandHandler::HandleGetTrackFX;
+    m_commandMap["track/setMute"]          = &CommandHandler::HandleSetTrackMute;
+    m_commandMap["track/setSolo"]          = &CommandHandler::HandleSetTrackSolo;
+    m_commandMap["track/setArm"]           = &CommandHandler::HandleSetTrackArm;
+    m_commandMap["track/setSelected"]      = &CommandHandler::HandleSetTrackSelected;
+    m_commandMap["track/setVolume"]        = &CommandHandler::HandleSetTrackVolume;
+    m_commandMap["track/setPan"]           = &CommandHandler::HandleSetTrackPan;
+    m_commandMap["fx/getParams"]           = &CommandHandler::HandleGetFXParams;
+    m_commandMap["fx/setParam"]            = &CommandHandler::HandleSetFXParam;
+    m_commandMap["fx/add"]                 = &CommandHandler::HandleAddFX;
+    m_commandMap["fx/delete"]              = &CommandHandler::HandleDeleteFX;
+    m_commandMap["fx/enumerate"]           = &CommandHandler::HandleEnumerateFX;
+    m_commandMap["fx/refreshCache"]        = &CommandHandler::HandleRefreshFxCache;
+    m_commandMap["transport/getState"]     = &CommandHandler::HandleGetTransport;
+    m_commandMap["transport/play"]         = &CommandHandler::HandlePlay;
+    m_commandMap["transport/stop"]         = &CommandHandler::HandleStop;
+    m_commandMap["transport/record"]       = &CommandHandler::HandleRecord;
+    m_commandMap["sample/getDirectory"]    = &CommandHandler::HandleSampleGetDirectory;
+    m_commandMap["sample/sendToTrack"]     = &CommandHandler::HandleSampleSendToTrack;
+    m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
+    m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
+    m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
+    m_commandMap["matrix/triggerScene"]     = &CommandHandler::HandleMatrixTriggerScene;
+    m_commandMap["matrix/setSlotState"]     = &CommandHandler::HandleMatrixSetSlotState;
+    m_commandMap["matrix/recordSlot"]       = &CommandHandler::HandleMatrixRecordSlot;
+    m_commandMap["matrix/pollState"]        = &CommandHandler::HandleMatrixPollState;
+    m_commandMap["sequencer/getAll"]        = &CommandHandler::HandleSequencerGetAll;
+    m_commandMap["sequencer/toggleStep"]    = &CommandHandler::HandleSequencerToggleStep;
+    m_commandMap["sequencer/setStep"]       = &CommandHandler::HandleSequencerSetStep;
+    m_commandMap["sequencer/clearAll"]      = &CommandHandler::HandleSequencerClearAll;
+    m_commandMap["sequencer/setLength"]     = &CommandHandler::HandleSequencerSetLength;
+    m_commandMap["sequencer/setBaseNote"]   = &CommandHandler::HandleSequencerSetBaseNote;
+    m_commandMap["sequencer/getPlayhead"]   = &CommandHandler::HandleSequencerGetPlayhead;
+    m_commandMap["fxchain/getDirectory"]    = &CommandHandler::HandleFxChainGetDirectory;
+    m_commandMap["fxchain/save"]            = &CommandHandler::HandleFxChainSave;
+    m_commandMap["fxchain/load"]            = &CommandHandler::HandleFxChainLoad;
+    m_commandMap["fxchain/getInfo"]         = &CommandHandler::HandleFxChainGetInfo;
+    m_commandMap["fxchain/searchRecursive"] = &CommandHandler::HandleFxChainSearchRecursive;
+    m_commandMap["fxchain/cycle"]           = &CommandHandler::HandleFxChainCycle;
+    m_commandMap["fx/reorder"]              = &CommandHandler::HandleReorderFX;
+    m_commandMap["fx/getPreset"]            = &CommandHandler::HandleGetFxPreset;
+    m_commandMap["fx/setPreset"]            = &CommandHandler::HandleSetFxPreset;
+    m_commandMap["fx/getAllPresetNames"]    = &CommandHandler::HandleGetAllFxPresetNames;
+    m_commandMap["sequencer/convertToClip"] = &CommandHandler::HandleSequencerConvertToClip;
+    m_commandMap["midi/event"]              = &CommandHandler::HandleMidiEvent;
+    m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
+    m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -269,94 +320,9 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
 
     // Simple dispatch
     if (type.empty() || type == "command") {
-        if (command == "track/getAll") {
-            HandleGetTracks(clientId, id, message);
-        } else if (command == "track/add") {
-            HandleAddTrack(clientId, id, message);
-        } else if (command == "track/getFx") {
-            HandleGetTrackFX(clientId, id, message);
-        } else if (command == "fx/getParams") {
-            HandleGetFXParams(clientId, id, message);
-        } else if (command == "fx/setParam") {
-            HandleSetFXParam(clientId, id, message);
-        } else if (command == "fx/add") {
-            HandleAddFX(clientId, id, message);
-        } else if (command == "fx/delete") {
-            HandleDeleteFX(clientId, id, message);
-        } else if (command == "fx/reorder") {
-            HandleReorderFX(clientId, id, message);
-        } else if (command == "fx/getPreset") {
-            HandleGetFxPreset(clientId, id, message);
-        } else if (command == "fx/setPreset") {
-            HandleSetFxPreset(clientId, id, message);
-        } else if (command == "fx/getAllPresetNames") {
-            HandleGetAllFxPresetNames(clientId, id, message);
-        } else if (command == "transport/getState") {
-            HandleGetTransport(clientId, id, message);
-        } else if (command == "transport/play") {
-            HandlePlay(clientId, id, message);
-        } else if (command == "transport/stop") {
-            HandleStop(clientId, id, message);
-        } else if (command == "transport/record") {
-            HandleRecord(clientId, id, message);
-        } else if (command == "fx/enumerate") {
-            HandleEnumerateFX(clientId, id, message);
-        } else if (command == "fx/refreshCache") {
-            HandleRefreshFxCache(clientId, id, message);
-        } else if (command == "track/setMute") {
-            HandleSetTrackMute(clientId, id, message);
-        } else if (command == "track/setSolo") {
-            HandleSetTrackSolo(clientId, id, message);
-        } else if (command == "track/setArm") {
-            HandleSetTrackArm(clientId, id, message);
-        } else if (command == "track/setSelected") {
-            HandleSetTrackSelected(clientId, id, message);
-        } else if (command == "track/setVolume") {
-            HandleSetTrackVolume(clientId, id, message);
-        } else if (command == "track/setPan") {
-            HandleSetTrackPan(clientId, id, message);
-        } else if (command == "sample/getDirectory") {
-            HandleSampleGetDirectory(clientId, id, message);
-        } else if (command == "sample/sendToTrack") {
-            HandleSampleSendToTrack(clientId, id, message);
-        } else if (command == "matrix/getAll") {
-            HandleMatrixGetAll(clientId, id, message);
-        } else if (command == "matrix/getSlot") {
-            HandleMatrixGetSlot(clientId, id, message);
-        } else if (command == "matrix/triggerSlot") {
-            HandleMatrixTriggerSlot(clientId, id, message);
-        } else if (command == "matrix/triggerScene") {
-            HandleMatrixTriggerScene(clientId, id, message);
-        } else if (command == "sequencer/getAll") {
-            HandleSequencerGetAll(clientId, id, message);
-        } else if (command == "sequencer/toggleStep") {
-            HandleSequencerToggleStep(clientId, id, message);
-        } else if (command == "sequencer/setStep") {
-            HandleSequencerSetStep(clientId, id, message);
-        } else if (command == "sequencer/clearAll") {
-            HandleSequencerClearAll(clientId, id, message);
-        } else if (command == "sequencer/setLength") {
-            HandleSequencerSetLength(clientId, id, message);
-        } else if (command == "sequencer/setBaseNote") {
-            HandleSequencerSetBaseNote(clientId, id, message);
-        } else if (command == "sequencer/getPlayhead") {
-            HandleSequencerGetPlayhead(clientId, id, message);
-        } else if (command == "sequencer/convertToClip") {
-            HandleSequencerConvertToClip(clientId, id, message);
-        } else if (command == "fxchain/getDirectory") {
-            HandleFxChainGetDirectory(clientId, id, message);
-        } else if (command == "fxchain/save") {
-            HandleFxChainSave(clientId, id, message);
-        } else if (command == "fxchain/load") {
-            HandleFxChainLoad(clientId, id, message);
-        } else if (command == "midi/event") {
-            HandleMidiEvent(clientId, id, message);
-        } else if (command == "fxchain/getInfo") {
-            HandleFxChainGetInfo(clientId, id, message);
-        } else if (command == "fxchain/cycle") {
-            HandleFxChainCycle(clientId, id, message);
-        } else if (command == "fxchain/searchRecursive") {
-            HandleFxChainSearchRecursive(clientId, id, message);
+        auto it = m_commandMap.find(command);
+        if (it != m_commandMap.end()) {
+            (this->*(it->second))(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -437,9 +403,24 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (pp) pan = *pp;
         }
 
+        // Read real track name via GetSetMediaTrackInfo_String (Issue #40)
+        // Fallback to "Track N" if API unavailable or name is empty
+        char trackName[256] = {0};
+        bool gotName = false;
+        if (m_api.GetSetMediaTrackInfo_String) {
+            gotName = m_api.GetSetMediaTrackInfo_String(track, "P_NAME", trackName, false);
+        }
+        std::string displayName;
+        if (gotName && trackName[0] != '\0') {
+            displayName = trackName;
+        } else {
+            // Master track returns NULL/P_NAME empty per docs; fallback for all empty names
+            displayName = "Track " + std::to_string(i + 1);
+        }
+
         tracksJson += "{";
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
-        tracksJson += json_string("name") + ":" + json_string("Track " + std::to_string(i + 1)) + ",";
+        tracksJson += json_string("name") + ":" + json_string(displayName) + ",";
         tracksJson += json_string("trackNumber") + ":" + std::to_string(i + 1) + ",";
         tracksJson += json_string("selected") + ":false,";
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
@@ -1328,12 +1309,31 @@ void CommandHandler::HandleMatrixGetAll(
     int      rows    = m_playtimeState.rows();
 
     // When Playtime is available, attempt to find the instance
-    // and sync state. For now, we track state locally.
+    // and auto-create one if none exists. Playtime 2 C API has no
+    // clip-triggering functions — matrix commands must work via MIDI notes.
     if (isPlaytimeAvailable()) {
         int instance = m_playtimeState.findPlaytimeInstance();
         if (instance >= 0) {
             fprintf(stderr,
                 "[reaper-ipad] matrix/getAll: Playtime instance %d found\n", instance);
+        } else {
+            // Auto-create a Playtime matrix if none exists in the project.
+            // HB_CreateClipMatrix creates a new clip matrix in the given
+            // Helgobox instance. We first find any Helgobox instance.
+            fprintf(stderr,
+                "[reaper-ipad] matrix/getAll: No Playtime instance found, attempting auto-create...\n");
+            int hgInstance = -1;
+            if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+                hgInstance = g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject(nullptr);
+            }
+            if (hgInstance >= 0 && g_playtimeApi.HB_CreateClipMatrix) {
+                g_playtimeApi.HB_CreateClipMatrix(hgInstance);
+                fprintf(stderr,
+                    "[reaper-ipad] matrix/getAll: Auto-created Playtime matrix on Helgobox instance %d\n", hgInstance);
+            } else {
+                fprintf(stderr,
+                    "[reaper-ipad] matrix/getAll: Could not auto-create — no Helgobox instance or HB_CreateClipMatrix unavailable\n");
+            }
         }
     }
 
@@ -1476,6 +1476,154 @@ void CommandHandler::HandleMatrixTriggerScene(
     payload += json_string("triggered") + ":true,";
     payload += json_string("row") + ":" + std::to_string(row) + ",";
     payload += json_string("slots") + ":" + sceneSlots;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// Set a specific slot state (used for visual state simulation in tests, Issue #83)
+void CommandHandler::HandleMatrixSetSlotState(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+    std::string state  = parser.getString("state");
+
+    if (colStr.empty() || rowStr.empty() || state.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column', 'row', or 'state' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Validate state string
+    if (state != "playing" && state != "recording" && state != "stopped" && state != "empty") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid state. Must be one of: playing, recording, stopped, empty\"}");
+        return;
+    }
+
+    m_playtimeState.setSlotState(col, row, state);
+
+    // Broadcast slot state change event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// Start recording in a slot. Records state transitions:
+// empty → recording, recording → stopped, stopped → recording (re-record)
+// playing → error (can't record while playing)
+void CommandHandler::HandleMatrixRecordSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    SlotState current = m_playtimeState.getSlot(col, row);
+    std::string newState;
+
+    if (current.state == "playing") {
+        // Can't record on a playing slot
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Cannot record on a playing clip. Stop the clip first.\"}");
+        return;
+    } else if (current.state == "recording") {
+        // Stop recording → stopped (clip saved)
+        newState = "stopped";
+    } else {
+        // empty or stopped → start recording
+        newState = "recording";
+    }
+
+    m_playtimeState.setSlotState(col, row, newState);
+
+    // Send MIDI note for recording if MIDI output is available
+    // Use channel 1 (distinct from trigger channel 0) so Playtime 2
+    // can distinguish between clip trigger and record actions via
+    // its MIDI input mapping.
+    if (m_playtimeMidi.isAvailable()) {
+        int note = m_playtimeMidi.baseNote() + (row * 8) + col;
+        if (note <= 127) {
+            m_playtimeMidi.sendMidiNote(1, note, 100);
+        }
+    }
+
+    // Broadcast event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// Poll Playtime 2 instance state for real-time sync.
+// Returns current instance info without modifying state.
+// This is called periodically from Run() and on-demand by the frontend.
+void CommandHandler::HandleMatrixPollState(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    bool playtimeAvail = isPlaytimeAvailable();
+    int  instanceId    = -1;
+    bool hasMatrix      = false;
+
+    if (playtimeAvail) {
+        instanceId = m_playtimeState.findPlaytimeInstance();
+        if (instanceId >= 0) {
+            hasMatrix = true;
+        }
+    }
+
+    // If Playtime is available but no instance found, try to auto-create
+    if (playtimeAvail && instanceId < 0) {
+        int hgInstance = -1;
+        if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+            hgInstance = g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject(nullptr);
+        }
+        if (hgInstance >= 0 && g_playtimeApi.HB_CreateClipMatrix) {
+            g_playtimeApi.HB_CreateClipMatrix(hgInstance);
+            fprintf(stderr,
+                "[reaper-ipad] matrix/pollState: Auto-created Playtime matrix on Helgobox instance %d\n", hgInstance);
+            instanceId = m_playtimeState.findPlaytimeInstance();
+            hasMatrix = (instanceId >= 0);
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("playtimeAvailable") + ":" + (playtimeAvail ? "true" : "false") + ",";
+    payload += json_string("instanceId") + ":" + std::to_string(instanceId) + ",";
+    payload += json_string("hasMatrix") + ":" + (hasMatrix ? "true" : "false");
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
@@ -2712,6 +2860,89 @@ void CommandHandler::HandleFxChainSearchRecursive(
 }
 
 // ============================================================
+// Recursive FX chain search across all subdirectories (Issue #93)
+// ============================================================
+
+void CommandHandler::HandleFxChainSearchRecursive(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string query    = parser.getString("query");
+    std::string rootPath = parser.getString("rootPath");
+
+    if (rootPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'rootPath' parameter\"}");
+        return;
+    }
+
+    std::string results = "[";
+    bool first = true;
+
+    try {
+        if (!fs::exists(rootPath)) {
+            // Non-existent path returns empty results, not error
+            results += "]";
+            std::string payload = "{";
+            payload += json_string("query")   + ":" + json_string(query) + ",";
+            payload += json_string("results") + ":" + results;
+            payload += "}";
+            SendResponse(clientId, id, true, payload);
+            return;
+        }
+
+        std::string lowerQuery;
+        for (char c : query) lowerQuery += tolower((unsigned char)c);
+
+        for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
+            if (!entry.is_regular_file())
+                continue;
+
+            std::string name = entry.path().filename().string();
+            std::string ext;
+            size_t dotPos = name.rfind('.');
+            if (dotPos == std::string::npos) continue;
+            ext = name.substr(dotPos);
+            std::string lowerExt;
+            for (char c : ext) lowerExt += tolower((unsigned char)c);
+            if (lowerExt != ".rfxchain") continue;
+
+            // Apply query filter (case-insensitive substring match)
+            if (!query.empty()) {
+                std::string lowerName;
+                for (char c : name) lowerName += tolower((unsigned char)c);
+                if (lowerName.find(lowerQuery) == std::string::npos)
+                    continue;
+            }
+
+            std::string fullPath = entry.path().string();
+            uintmax_t fileSize = 0;
+            try { fileSize = fs::file_size(entry.path()); } catch (...) {}
+
+            if (!first) results += ",";
+            first = false;
+            results += "{";
+            results += json_string("filePath") + ":" + json_string(fullPath) + ",";
+            results += json_string("name")     + ":" + json_string(name)     + ",";
+            results += json_string("size")     + ":" + std::to_string(fileSize);
+            results += "}";
+        }
+    } catch (const fs::filesystem_error&) {
+        // Graceful: return what we have so far
+    }
+
+    results += "]";
+
+    std::string payload = "{";
+    payload += json_string("query")   + ":" + json_string(query) + ",";
+    payload += json_string("results") + ":" + results;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
 // Real-time FX param change via CSURF_EXT callback (Issue #58)
 // ============================================================
 
@@ -3243,4 +3474,87 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     else if (m_ws)
         m_ws->Broadcast(event);
 }
+// ============================================================
+// Playtime 2 API - isAvailable command
+// ============================================================
+void CommandHandler::HandlePlaytimeIsAvailable(
+    int clientId, const std::string& id, const std::string& /* params */)
+{
+    bool available = isPlaytimeAvailable();
 
+    // Build version info
+    std::string versionInfo = "unknown";
+    if (g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject) {
+        versionInfo = "HB_FindFirstPlaytimeHelgoboxInstanceInProject: yes";
+        if (g_playtimeApi.HB_CreateClipMatrix) versionInfo += ", HB_CreateClipMatrix: yes";
+        if (g_playtimeApi.HB_ShowOrHidePlaytime) versionInfo += ", HB_ShowOrHidePlaytime: yes";
+    }
+
+    std::string payload = "{\"available\":";
+    payload += (available ? "true" : "false");
+    payload += ",\"version\":\"";
+    payload += json_escape(versionInfo);
+    payload += "\"";
+    if (!available) {
+        payload += ",\"reason\":\"";
+        if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+            payload += "Playtime API not registered (Helgobox installed but Playtime API missing)";
+        } else {
+            payload += "Helgobox API not registered";
+        }
+        payload += "\"";
+    }
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Playtime 2 launch command (Issue #88)
+// ============================================================
+void CommandHandler::HandlePlaytimeLaunch(
+    int clientId, const std::string& id, const std::string& /* params */)
+{
+    // Attempt to launch/show Playtime 2 by calling HB_ShowOrHidePlaytime
+    // on the first available Helgobox/Playtime instance.
+    bool launched = false;
+    std::string message;
+
+    if (isPlaytimeAvailable()) {
+        // Find the first Playtime/Helgobox instance in the current project
+        int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
+        if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
+            g_playtimeApi.HB_ShowOrHidePlaytime(instance);
+            launched = true;
+            message = "Playtime 2 launched";
+            fprintf(stderr, "[reaper-ipad] Playtime 2 launched (instance %d)\n", instance);
+        } else {
+            message = "Playtime instance not found or HB_ShowOrHidePlaytime unavailable";
+            fprintf(stderr, "[reaper-ipad] Playtime launch failed: instance=%d, HB_ShowOrHidePlaytime=%p\n",
+                instance, (void*)g_playtimeApi.HB_ShowOrHidePlaytime);
+        }
+    } else {
+        // Retry resolution in case Helgobox registered after our startup
+        retryPlaytimeApi();
+        if (isPlaytimeAvailable()) {
+            // Retry succeeded — try to launch
+            int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
+            if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
+                g_playtimeApi.HB_ShowOrHidePlaytime(instance);
+                launched = true;
+                message = "Playtime 2 launched (after retry)";
+                fprintf(stderr, "[reaper-ipad] Playtime 2 launched after retry (instance %d)\n", instance);
+            } else {
+                message = "Playtime API available but instance or ShowOrHide function not ready";
+            }
+        } else {
+            message = "Playtime 2 API not available \u2014 Helgobox may not be loaded";
+            fprintf(stderr, "[reaper-ipad] Playtime 2 not available: cannot launch\n");
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("launched") + ":" + (launched ? "true" : "false") + ",";
+    payload += json_string("message") + ":" + json_string(message);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}

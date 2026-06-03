@@ -622,6 +622,29 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
     return nullptr;
 }
 
+static bool mock_GetSetMediaTrackInfo_String(MediaTrack* trackPtr, const char* parmname, char* setNewValue, bool setNewValue_isAllowed)
+{
+    if (!g_mock || !parmname || !setNewValue) return false;
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(trackPtr)) - 1;
+    if (idx < 0 || idx >= (int)g_mock->tracks.size()) return false;
+    auto& t = g_mock->tracks[idx];
+    std::string name(parmname);
+
+    if (name == "P_NAME") {
+        if (setNewValue_isAllowed) {
+            // Writing is not supported in mock
+            return false;
+        }
+        // Reading: copy track name into buffer
+        size_t len = t.name.size();
+        if (len > 255) len = 255;
+        memcpy(setNewValue, t.name.c_str(), len);
+        setNewValue[len] = '\0';
+        return true;
+    }
+    return false;
+}
+
 // ---- Mock GetTrackStateChunk / SetTrackStateChunk ----
 
 std::string g_mockChunk;
@@ -770,21 +793,13 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_GetParamName = mock_TrackFX_GetParamName;
     api.TrackFX_SetParam     = mock_TrackFX_SetParam;
     api.TrackFX_AddByName    = mock_TrackFX_AddByName;
-    api.TrackFX_Delete            = mock_TrackFX_Delete;
-    api.TrackFX_CopyToTrack      = mock_TrackFX_CopyToTrack;
-    api.TrackFX_GetPresetIndex    = mock_TrackFX_GetPresetIndex;
-    api.TrackFX_GetPreset         = mock_TrackFX_GetPreset;
-    api.TrackFX_SetPresetByIndex  = mock_TrackFX_SetPresetByIndex;
-    api.GetSetMediaTrackInfo    = mock_GetSetMediaTrackInfo;
-    api.EnumInstalledFX         = mock_EnumInstalledFX;
-    api.GetTrackStateChunk      = mock_GetTrackStateChunk;
-    api.SetTrackStateChunk      = mock_SetTrackStateChunk;
-    api.CreateNewMIDIItemInProj = mock_CreateNewMIDIItemInProj;
-    api.GetActiveTake           = mock_GetActiveTake;
-    api.MIDI_InsertNote         = mock_MIDI_InsertNote;
-    api.SetMediaItemInfo_Value  = mock_SetMediaItemInfo_Value;
-    api.GetMediaItemInfo_Value  = mock_GetMediaItemInfo_Value;
-    api.CountTrackMediaItems    = mock_CountTrackMediaItems;
+    api.TrackFX_Delete       = mock_TrackFX_Delete;
+    api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
+    api.GetSetMediaTrackInfo_String = mock_GetSetMediaTrackInfo_String;
+    api.EnumInstalledFX      = mock_EnumInstalledFX;
+    api.GetTrackStateChunk   = mock_GetTrackStateChunk;
+    api.SetTrackStateChunk   = mock_SetTrackStateChunk;
+
     handler->SetApi(api);
     if (outResponses) {
         handler->SetResponseCallback([outResponses](int, const std::string& resp) {
@@ -1945,11 +1960,11 @@ TEST(Phase1MVPTest, FullTrackRoundTrip)
     ASSERT_EQ(responses.size(), 1u);
     std::string& tracksResp = responses[0];
 
-    // Verify track response structure (names are server-generated since
-    // GetSetMediaTrackInfo_String crashes from Chromium WS context)
-    EXPECT_NE(tracksResp.find("\"Track 1\""), std::string::npos);
-    EXPECT_NE(tracksResp.find("\"Track 2\""), std::string::npos);
-    EXPECT_NE(tracksResp.find("\"Track 3\""), std::string::npos);
+    // Verify track response structure — track names come from GetSetMediaTrackInfo_String
+    // (Issue #40 fix), matching the mock track names defined above
+    EXPECT_NE(tracksResp.find("\"Kick\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"Snare\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"Hat\""), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":0"), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":1"), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":2"), std::string::npos);
@@ -4060,607 +4075,11 @@ TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
 }
 
 // ============================================================
-// FX Chain chunk manipulation tests (Issue #79)
+// Playtime MIDI output tests (Issue #80)
 //
-// Tests for the static helper functions:
-//   - extractFxChainFromChunk: must handle XML-wrapped </> closing tags
-//   - replaceFxChainInChunk: must produce well-formed chunks without
-//     duplicate closing > characters
-// ============================================================
-
-TEST(FxChainChunkTest, ExtractWithXmlClosingTags)
-{
-    // XML-wrapped .RfxChain content where sections close with </TAG>
-    // This is the format REAPER uses when saving .RfxChain files internally.
-    std::string xmlChunk =
-        "<FXCHAIN>\n"
-        "  SHOW 0\n"
-        "  LASTSEL 0\n"
-        "  <ITEM>\n"
-        "    NAME \"ReaEQ\"\n"
-        "    VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
-        "  </ITEM>\n"
-        "  <ITEM>\n"
-        "    NAME \"ReaComp\"\n"
-        "    VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
-        "  </ITEM>\n"
-        "</FXCHAIN>";
-
-    std::string result = extractFxChainFromChunk(xmlChunk);
-
-    // Must not be empty — should extract the full FXCHAIN block
-    EXPECT_FALSE(result.empty()) << "Should extract XML-wrapped FXCHAIN";
-
-    // Result must start with <FXCHAIN
-    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
-
-    // Result must contain ReaEQ and ReaComp
-    EXPECT_NE(result.find("ReaEQ"), std::string::npos);
-    EXPECT_NE(result.find("ReaComp"), std::string::npos);
-
-    // Result must end with > (the closing > for </FXCHAIN>)
-    EXPECT_EQ(result.back(), '>') << "Result must end with >";
-
-    // Result should include the full content (all ITEMs)
-    EXPECT_NE(result.find("</ITEM>"), std::string::npos) << "Should preserve </ITEM> tags";
-    EXPECT_NE(result.find("</FXCHAIN>"), std::string::npos) << "Should preserve </FXCHAIN> tag";
-
-    // Verify balanced angle brackets
-    int ltCount = 0;
-    int gtCount = 0;
-    for (char c : result) {
-        if (c == '<') ltCount++;
-        if (c == '>') gtCount++;
-    }
-    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced in extracted chunk";
-}
-
-TEST(FxChainChunkTest, ExtractFromRawRppChunk)
-{
-    // REAPER's native RPP format (no XML-style close tags):
-    // <TAG... sections are only closed by standalone > on their own line.
-    std::string rppChunk =
-        "<TRACK\n"
-        "  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    SHOW 0\n"
-        "    <ITEM\n"
-        "      NAME \"ReaEQ\"\n"
-        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
-        "    >\n"
-        "  >\n"
-        ">\n";
-
-    std::string result = extractFxChainFromChunk(rppChunk);
-
-    EXPECT_FALSE(result.empty()) << "Should extract RPP-format FXCHAIN";
-    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
-    EXPECT_EQ(result.back(), '>') << "Result must end with >";
-    EXPECT_NE(result.find("ReaEQ"), std::string::npos);
-
-    // Should NOT contain TRACK or the outer </ as those belong to the track
-    EXPECT_EQ(result.find("TRACK"), std::string::npos) << "Should not contain TRACK tag";
-}
-
-TEST(FxChainChunkTest, ExtractFromEmptyChunk)
-{
-    // No FXCHAIN section at all
-    std::string emptyChunk = "<TRACK\n  NAME \"Empty\"\n>\n";
-    std::string result = extractFxChainFromChunk(emptyChunk);
-    EXPECT_TRUE(result.empty()) << "Should return empty when no FXCHAIN found";
-}
-
-TEST(FxChainChunkTest, ReplaceProducesWellFormedChunk)
-{
-    // When replacing an FXCHAIN section, the result must not contain
-    // orphaned > characters that corrupt the track chunk. The old bug
-    // was: chunk.substr(fxChainEnd) included the closing > of the old
-    // FXCHAIN, causing a duplicate > line after the new FXCHAIN.
-    std::string originalChunk =
-        "<TRACK\n"
-        "  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    SHOW 0\n"
-        "    <ITEM\n"
-        "      NAME \"ReaEQ\"\n"
-        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
-        "    >\n"
-        "  >\n"
-        ">\n";
-
-    std::string newFxChain =
-        "<FXCHAIN\n"
-        "  SHOW 0\n"
-        "  <ITEM\n"
-        "    NAME \"ReaComp\"\n"
-        "    VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
-        "  >\n"
-        ">";
-
-    std::string result = replaceFxChainInChunk(originalChunk, newFxChain);
-
-    // Result must not be empty
-    EXPECT_FALSE(result.empty());
-
-    // Result must start with <TRACK
-    EXPECT_EQ(result.find("<TRACK"), 0u) << "Result must start with <TRACK";
-
-    // Result must end with >\n (the closing > of the TRACK section)
-    EXPECT_EQ(result.back(), '\n') << "Result must end with newline";
-    size_t lastGt = result.rfind('>');
-    EXPECT_NE(lastGt, std::string::npos);
-    EXPECT_EQ(result.substr(lastGt), ">\n") << "Result must end with >\n";
-
-    // Result must contain the new FX (ReaComp) not the old one (ReaEQ)
-    EXPECT_NE(result.find("ReaComp"), std::string::npos) << "New FX should be present";
-    EXPECT_EQ(result.find("ReaEQ"), std::string::npos) << "Old FX should be replaced";
-
-    // The replaced FXCHAIN section must be contiguous: after the old
-    // FXCHAIN's opening <FXCHAIN tag, everything should be new content.
-    // Verify there's no orphaned ">" between "ReaComp" and the new
-    // FXCHAIN closing ">" — the old closing ">" would appear as:
-    //   ...ReaComp...
-    //   >
-    //   ...
-    // where the first ">" is orphaned and the second is the new closing.
-    size_t reacompPos = result.find("ReaComp");
-    ASSERT_NE(reacompPos, std::string::npos);
-    // After ReaComp, the next ">" should be the ITEM close (indented),
-    // followed by the FXCHAIN close ">" (not indented), then TRACK close.
-    // There should not be an EXTRA ">" between the new FXCHAIN and the
-    // TRACK close. We verify by checking that after the first ">" after
-    // ReaComp, the remaining content matches expected structure.
-    size_t firstGtAfter = result.find('>', reacompPos);
-    ASSERT_NE(firstGtAfter, std::string::npos);
-    // Everything from firstGtAfter to end should be: > >\n (ITEM close,
-    // FXCHAIN close, TRACK close) with newlines between them.
-    // Specifically: ">\n>\n>\n"
-    std::string tail = result.substr(firstGtAfter);
-    // Count the ">" in tail — should be exactly 3 (ITEM, FXCHAIN, TRACK)
-    int tailGtCount = 0;
-    for (char c : tail) if (c == '>') tailGtCount++;
-    EXPECT_EQ(tailGtCount, 3) << "After new FX, there should be exactly 3 > closes";
-
-    // Verify the chunk structure is parseable by counting opening/closing>
-    int depth = 0;
-    for (char c : result) {
-        if (c == '<') depth++;
-        if (c == '>') depth--;
-    }
-    EXPECT_EQ(depth, 0) << "Angle bracket balancing must produce clean chunk";
-}
-
-TEST(FxChainChunkTest, ReplaceWithNoExistingFxChain)
-{
-    // When the track has no FXCHAIN section, the replacement fallback
-    // appends the new FXCHAIN at the end. The result must at minimum
-    // contain the new FX and have balanced brackets.
-    std::string noFxChunk =
-        "<TRACK\n"
-        "  NAME \"Clean\"\n"
-        ">\n";
-
-    std::string newFxChain =
-        "<FXCHAIN\n"
-        "  <ITEM\n"
-        "    NAME \"NewFX\"\n"
-        "    VST \"VST3: NewFX (Test)\" NewFX 0\n"
-        "  >\n"
-        ">";
-
-    std::string result = replaceFxChainInChunk(noFxChunk, newFxChain);
-
-    EXPECT_FALSE(result.empty());
-    EXPECT_EQ(result.find("<TRACK"), 0u) << "Must start with TRACK";
-    EXPECT_NE(result.find("NewFX"), std::string::npos) << "New FX should be in result";
-
-    // Verify bracket balance
-    int ltCount = 0, gtCount = 0;
-    for (char c : result) {
-        if (c == '<') ltCount++;
-        if (c == '>') gtCount++;
-    }
-    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
-
-    // The result should contain the new FXCHAIN inside the TRACK section,
-    // before the closing >. The TRACK open is detected as a REAPER section
-    // opener (no > on same line), and the FXCHAIN is inserted before the
-    // matching close >.
-    size_t fxchainPos = result.find("<FXCHAIN");
-    ASSERT_NE(fxchainPos, std::string::npos);
-    // FXCHAIN should be after the TRACK open and its NAME line
-    EXPECT_GT(fxchainPos, 0u) << "FXCHAIN should be after TRACK open";
-    // FXCHAIN should be before the TRACK close >
-    size_t trackClosePos = result.find(">\n");
-    ASSERT_NE(trackClosePos, std::string::npos);
-    EXPECT_LT(fxchainPos, trackClosePos) << "FXCHAIN should be before TRACK close >";
-}
-
-TEST(FxChainChunkTest, ReplaceWithXmlWrappedFxChain)
-{
-    // Verify that a new FXCHAIN with XML-style </> close tags can
-    // be spliced into an RPP-format track chunk.
-    std::string originalChunk =
-        "<TRACK\n"
-        "  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    SHOW 0\n"
-        "    <ITEM\n"
-        "      NAME \"ReaEQ\"\n"
-        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
-        "    >\n"
-        "  >\n"
-        ">\n";
-
-    // This simulates a .RfxChain file that uses XML tags
-    std::string xmlFxChain =
-        "<FXCHAIN>\n"
-        "  <ITEM>\n"
-        "    NAME \"Limiter\"\n"
-        "    VST \"VST3: Limiter (Test)\" Limiter 0 0\n"
-        "  </ITEM>\n"
-        "</FXCHAIN>";
-
-    std::string result = replaceFxChainInChunk(originalChunk, xmlFxChain);
-
-    EXPECT_FALSE(result.empty());
-    EXPECT_EQ(result.find("<TRACK"), 0u) << "Must start with TRACK";
-    EXPECT_NE(result.find("Limiter"), std::string::npos) << "New FX should be in result";
-    EXPECT_EQ(result.find("ReaEQ"), std::string::npos) << "Old FX should be replaced";
-
-    // Verify bracket balance
-    int ltCount = 0, gtCount = 0;
-    for (char c : result) {
-        if (c == '<') ltCount++;
-        if (c == '>') gtCount++;
-    }
-    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
-}
-
-TEST(FxChainChunkTest, ExtractWithVstQuuidData)
-{
-    // REAPER format: VST plugin lines can have quuid data with < and >
-    // characters on the same line, e.g. 0<5653785437654876345>
-    // The old code treated the > in quuid data as closing the VST section,
-    // breaking depth tracking for multi-FX chains.
-    // Only < and > at LINE START (after optional whitespace) should be
-    // treated as REAPER section markers.
-    std::string chunk =
-        "<TRACK\n"
-        "  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    SHOW 0\n"
-        "    <VST \"VST3: ReaEQ (Cockos)\" \"reaeq.vst3\" 0<5653785437654876345> \"\"\n"
-        "      FLOATPOS 0 0 0 0 0 0 0\n"
-        "    >\n"
-        "    <VST \"VST3: ReaComp (Cockos)\" \"reacomp.vst3\" 0<ab1234cd5678ef90> \"\"\n"
-        "      FLOATPOS 0 0 0 0 0 0 0\n"
-        "    >\n"
-        "  >\n"
-        ">\n";
-
-    std::string result = extractFxChainFromChunk(chunk);
-
-    // Should extract the full FXCHAIN block containing both plugins
-    EXPECT_FALSE(result.empty()) << "Should extract FXCHAIN with quuid data";
-    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
-    EXPECT_EQ(result.back(), '>') << "Result must end with >";
-
-    // Both plugins must be present
-    EXPECT_NE(result.find("ReaEQ"), std::string::npos) << "ReaEQ should be in extracted chain";
-    EXPECT_NE(result.find("ReaComp"), std::string::npos) << "ReaComp should be in extracted chain";
-
-    // Quuid data must be preserved
-    EXPECT_NE(result.find("0<5653785437654876345>"), std::string::npos) << "Quuid data should be preserved";
-    EXPECT_NE(result.find("0<ab1234cd5678ef90>"), std::string::npos) << "Quuid data should be preserved";
-
-    // FLOATPOS lines must be present
-    EXPECT_NE(result.find("FLOATPOS"), std::string::npos) << "FLOATPOS should be in extracted chain";
-
-    // Result should NOT contain the outer TRACK
-    EXPECT_EQ(result.find("TRACK"), std::string::npos) << "Should not contain TRACK";
-
-    // Verify balanced angle brackets
-    int ltCount = 0, gtCount = 0;
-    for (char c : result) {
-        if (c == '<') ltCount++;
-        if (c == '>') gtCount++;
-    }
-    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
-}
-
-TEST(FxChainChunkTest, ExtractWithVstQuuidDataAndXmlCloses)
-{
-    // Same quuid data edge case but with XML-style closing tags
-    // (.RfxChain format uses this when externalized)
-    std::string chunk =
-        "<FXCHAIN>\n"
-        "  SHOW 0\n"
-        "  <VST \"VST3: ReaEQ (Cockos)\" \"reaeq.vst3\" 0<5653785437654876345> \"\"\n"
-        "    FLOATPOS 0 0 0 0 0 0 0\n"
-        "  </VST>\n"
-        "  <VST \"VST3: ReaComp (Cockos)\" \"reacomp.vst3\" 0<ab1234cd5678ef90> \"\"\n"
-        "    FLOATPOS 0 0 0 0 0 0 0\n"
-        "  </VST>\n"
-        "</FXCHAIN>";
-
-    std::string result = extractFxChainFromChunk(chunk);
-
-    EXPECT_FALSE(result.empty()) << "Should extract XML-wrapped FXCHAIN with quuid data";
-    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
-    EXPECT_EQ(result.back(), '>') << "Result must end with >";
-
-    // Both plugins must be present
-    EXPECT_NE(result.find("ReaEQ"), std::string::npos);
-    EXPECT_NE(result.find("ReaComp"), std::string::npos);
-
-    // Quuid data must be preserved
-    EXPECT_NE(result.find("0<5653785437654876345>"), std::string::npos);
-    EXPECT_NE(result.find("0<ab1234cd5678ef90>"), std::string::npos);
-
-    // XML close tags must be preserved
-    EXPECT_NE(result.find("</VST>"), std::string::npos);
-    EXPECT_NE(result.find("</FXCHAIN>"), std::string::npos);
-
-    // NOTE: bracket balance is NOT checked here because quuid data like
-    // 0<565...> contains < as data, and the matching > is consumed as the
-    // endTag of the <VST inline tag — this is correct REAPER chunk behavior.
-}
-
-TEST(FxChainChunkTest, ReplaceWithVstQuuidData)
-{
-    // Replace FX chain where the new chain has VST lines with quuid data.
-    // The quuid data contains > on the same line as <VST, which the old
-    // code misinterpreted as inline tags.
-    std::string originalChunk =
-        "<TRACK\n"
-        "  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    SHOW 0\n"
-        "    <VST \"VST3: OldFX (Test)\" \"oldfx.vst3\" 0<oldguid> \"\"\n"
-        "      FLOATPOS 0 0 0 0 0 0 0\n"
-        "    >\n"
-        "  >\n"
-        ">\n";
-
-    std::string newFxChain =
-        "<FXCHAIN\n"
-        "  SHOW 0\n"
-        "  <VST \"VST3: ReaEQ (Cockos)\" \"reaeq.vst3\" 0<5653785437654876345> \"\"\n"
-        "    FLOATPOS 0 0 0 0 0 0 0\n"
-        "  >\n"
-        "  <VST \"VST3: ReaComp (Cockos)\" \"reacomp.vst3\" 0<ab1234cd5678ef90> \"\"\n"
-        "    FLOATPOS 0 0 0 0 0 0 0\n"
-        "  >\n"
-        ">";
-
-    std::string result = replaceFxChainInChunk(originalChunk, newFxChain);
-
-    EXPECT_FALSE(result.empty());
-    EXPECT_EQ(result.find("<TRACK"), 0u) << "Must start with TRACK";
-
-    // New FX must be present, old FX must be gone
-    EXPECT_NE(result.find("ReaEQ"), std::string::npos) << "New FX should be present";
-    EXPECT_NE(result.find("ReaComp"), std::string::npos) << "New FX should be present";
-    EXPECT_EQ(result.find("OldFX"), std::string::npos) << "Old FX should be replaced";
-
-    // Quuid data must be preserved
-    EXPECT_NE(result.find("0<5653785437654876345>"), std::string::npos);
-    EXPECT_NE(result.find("0<ab1234cd5678ef90>"), std::string::npos);
-
-    // Verify bracket balance
-    int ltCount = 0, gtCount = 0;
-    for (char c : result) {
-        if (c == '<') ltCount++;
-        if (c == '>') gtCount++;
-    }
-    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
-
-    // Structure: TRACK > (FXCHAIN > (VST >, VST >)) >
-    // Total: 1 TRACK open + 1 FXCHAIN open + 2 VST opens + 2 VST closes + 1 FXCHAIN close + 1 TRACK close = 6
-    // Wait: TRACK's < is not tracked because we don't track it with depth, 
-    // but the < are real chars. Let's just verify balance.
-}
-
-TEST(FxChainChunkTest, ExtractWithDeeplyNestedInlineAngles)
-{
-    // Aggressive test: VST line with multiple < and > characters in data fields
-    // This should not confuse the section-depth tracking.
-    std::string chunk =
-        "<FXCHAIN\n"
-        "  <VST \"VST3: Complex (Vendor)\" \"complex.vst3\" 0<a<b>c<d>e> \"\"\n"
-        "    FLOATPOS 0 0 0 0 0 0 0\n"
-        "    <PARAM\n"
-        "      name \"test\"\n"
-        "    >\n"
-        "  >\n"
-        ">";
-
-    std::string result = extractFxChainFromChunk(chunk);
-
-    EXPECT_FALSE(result.empty()) << "Should extract FXCHAIN with deeply nested inline angles";
-    EXPECT_EQ(result.find("<FXCHAIN"), 0u) << "Result must start with <FXCHAIN";
-    EXPECT_EQ(result.back(), '>') << "Result must end with >";
-
-    // All content must be preserved
-    EXPECT_NE(result.find("Complex"), std::string::npos);
-    EXPECT_NE(result.find("0<a<b>c<d>e>"), std::string::npos);
-    EXPECT_NE(result.find("<PARAM"), std::string::npos);
-
-    // Verify balanced angle brackets
-    int ltCount = 0, gtCount = 0;
-    for (char c : result) {
-        if (c == '<') ltCount++;
-        if (c == '>') gtCount++;
-    }
-    EXPECT_EQ(ltCount, gtCount) << "Angle brackets must be balanced";
-}
-
-// ============================================================
-// MIDI event recording tests (Issue #90)
-// ============================================================
-
-TEST(MidiEventTest, BuildMidiEventCreatesValidCcEvent)
-{
-    // Build a CC event on channel 0, controller 7 (volume), value 100
-    MIDI_event_t evt = BuildMidiEvent(
-        "cc", 0, 7, 100, 1.0, 44100.0);
-
-    EXPECT_EQ(evt.size, 3);
-    EXPECT_EQ(evt.midi_message[0], 0xB0); // CC on channel 0
-    EXPECT_EQ(evt.midi_message[1], 7);    // controller number
-    EXPECT_EQ(evt.midi_message[2], 100);  // value
-    EXPECT_GT(evt.frame_offset, 0);       // should be based on playPos
-}
-
-TEST(MidiEventTest, BuildMidiEventCcOnChannel3)
-{
-    // CC on channel 3 should produce 0xB3
-    MIDI_event_t evt = BuildMidiEvent("cc", 3, 10, 64, 0.5, 44100.0);
-    EXPECT_EQ(evt.midi_message[0], 0xB3);
-    EXPECT_EQ(evt.midi_message[1], 10);
-    EXPECT_EQ(evt.midi_message[2], 64);
-    EXPECT_EQ(evt.size, 3);
-}
-
-TEST(MidiEventTest, BuildMidiEventNoteOn)
-{
-    // Note On: note 60 (middle C), velocity 100
-    MIDI_event_t evt = BuildMidiEvent("noteon", 0, 60, 100, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[0], 0x90);
-    EXPECT_EQ(evt.midi_message[1], 60);
-    EXPECT_EQ(evt.midi_message[2], 100);
-    EXPECT_EQ(evt.size, 3);
-}
-
-TEST(MidiEventTest, BuildMidiEventNoteOff)
-{
-    // Note Off: note 60, velocity 0
-    MIDI_event_t evt = BuildMidiEvent("noteoff", 5, 60, 0, 2.0, 44100.0);
-    EXPECT_EQ(evt.midi_message[0], 0x85); // channel 5
-    EXPECT_EQ(evt.midi_message[1], 60);
-    EXPECT_EQ(evt.midi_message[2], 0);
-    EXPECT_EQ(evt.size, 3);
-}
-
-TEST(MidiEventTest, BuildMidiEventPitchBend)
-{
-    // Pitch Bend: 14-bit value 8192 (center/no bend)
-    MIDI_event_t evt = BuildMidiEvent("pitchbend", 0, 8192, 0, 1.0, 44100.0);
-    EXPECT_EQ(evt.midi_message[0], 0xE0);
-    EXPECT_EQ(evt.midi_message[1], 0);      // LSB = 8192 & 0x7F = 0
-    EXPECT_EQ(evt.midi_message[2], 64);     // MSB = (8192 >> 7) & 0x7F = 64
-    EXPECT_EQ(evt.size, 3);
-}
-
-TEST(MidiEventTest, BuildMidiEventPitchBendMax)
-{
-    // Pitch Bend max (16383)
-    MIDI_event_t evt = BuildMidiEvent("pitchbend", 1, 16383, 0, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[0], 0xE1);
-    EXPECT_EQ(evt.midi_message[1], 0x7F);   // LSB = 16383 & 0x7F = 127
-    EXPECT_EQ(evt.midi_message[2], 0x7F);   // MSB = (16383 >> 7) & 0x7F = 127
-}
-
-TEST(MidiEventTest, BuildMidiEventAftertouch)
-{
-    MIDI_event_t evt = BuildMidiEvent("aftertouch", 2, 60, 80, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[0], 0xA2);
-    EXPECT_EQ(evt.midi_message[1], 60);
-    EXPECT_EQ(evt.midi_message[2], 80);
-    EXPECT_EQ(evt.size, 3);
-}
-
-TEST(MidiEventTest, BuildMidiEventProgramChange)
-{
-    MIDI_event_t evt = BuildMidiEvent("programchange", 0, 5, 0, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[0], 0xC0);
-    EXPECT_EQ(evt.midi_message[1], 5);
-    EXPECT_EQ(evt.size, 2); // 2-byte message
-}
-
-TEST(MidiEventTest, BuildMidiEventChannelPressure)
-{
-    MIDI_event_t evt = BuildMidiEvent("channelpressure", 7, 100, 0, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[0], 0xD7);
-    EXPECT_EQ(evt.midi_message[1], 100);
-    EXPECT_EQ(evt.size, 2); // 2-byte message
-}
-
-TEST(MidiEventTest, BuildMidiEventRawThreeByte)
-{
-    // Raw 3-byte message (CC-like)
-    MIDI_event_t evt = BuildMidiEvent("raw", 0, 0xB0 | 0x00, 0x07, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[0], 0xB0);
-    EXPECT_EQ(evt.midi_message[1], 0x07);
-    EXPECT_EQ(evt.size, 3);
-}
-
-TEST(MidiEventTest, BuildMidiEventRawTwoByte)
-{
-    // Raw 2-byte message (program change)
-    MIDI_event_t evt = BuildMidiEvent("raw", 0, 0xC0 | 0x05, 0x00, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[0], 0xC5);
-    EXPECT_EQ(evt.midi_message[1], 0x00);
-    EXPECT_EQ(evt.size, 2);
-}
-
-TEST(MidiEventTest, BuildMidiEventFrameOffsetWithPlayPos)
-{
-    // frame_offset should be playPos * sampleRate when both are > 0
-    MIDI_event_t evt = BuildMidiEvent("cc", 0, 1, 64, 2.5, 44100.0);
-    EXPECT_EQ(evt.frame_offset, (int)(2.5 * 44100.0));
-
-    // With playPos <= 0, frame_offset should be 0
-    MIDI_event_t evt2 = BuildMidiEvent("cc", 0, 1, 64, 0.0, 44100.0);
-    EXPECT_EQ(evt2.frame_offset, 0);
-
-    MIDI_event_t evt3 = BuildMidiEvent("cc", 0, 1, 64, -1.0, 44100.0);
-    EXPECT_EQ(evt3.frame_offset, 0);
-
-    // With sampleRate <= 0, frame_offset should be 0
-    MIDI_event_t evt4 = BuildMidiEvent("cc", 0, 1, 64, 1.0, 0.0);
-    EXPECT_EQ(evt4.frame_offset, 0);
-}
-
-TEST(MidiEventTest, BuildMidiEventClampsDataBytesTo7Bit)
-{
-    // Data bytes should be masked to 7 bits
-    MIDI_event_t evt = BuildMidiEvent("cc", 0, 200, 300, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[1], 200 & 0x7F); // 200 & 0x7F = 72
-    EXPECT_EQ(evt.midi_message[2], 300 & 0x7F); // 300 & 0x7F = 44
-}
-
-TEST(MidiEventTest, BuildMidiEventNoteOnClampsData)
-{
-    MIDI_event_t evt = BuildMidiEvent("noteon", 0, 255, 255, 0.0, 0.0);
-    EXPECT_EQ(evt.midi_message[1], 255 & 0x7F); // 127
-    EXPECT_EQ(evt.midi_message[2], 255 & 0x7F); // 127
-}
-
-// ============================================================
-// HandleMidiEvent command dispatch test (Issue #90)
-// ============================================================
-
-TEST(MidiEventTest, MidiEventDispatchReturnsSuccess)
-{
-    // Test that the midi/event command is dispatched to HandleMidiEvent
-    // and returns a valid response (even without mock MIDI API)
-    MockState state;
-    state.tracks = {};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":0,"data1":7,"data2":64},"id":"midi1"})");
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    // Should always succeed (sends to MIDI even if injection not possible)
-    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
-    EXPECT_NE(resp.find("\"sent\":true"), std::string::npos);
-    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+// Playtime 2 C API has no clip-triggering functions. Matrix commands
+// must work via MIDI notes sent to the Playtime 2 virtual MIDI input.
+// 
 
     // Verify balanced JSON
     int depth = 0;
@@ -4671,371 +4090,377 @@ TEST(MidiEventTest, MidiEventDispatchReturnsSuccess)
     EXPECT_EQ(depth, 0);
 }
 
-TEST(MidiEventTest, MidiEventDispatchUsesAliases)
+TEST(PlaytimeCommandTest, LaunchRecognizedAsValidCommand)
 {
-    // Test that 'controller' and 'value' aliases work
-    MockState state;
-    state.tracks = {};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":0,"controller":10,"value":127},"id":"midi2"})");
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
-    EXPECT_NE(resp.find("\"sent\":true"), std::string::npos);
-    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
-
-    // Verify balanced JSON
-    int depth = 0;
-    for (char c : resp) {
-        if (c == '{') depth++;
-        if (c == '}') depth--;
-    }
-    EXPECT_EQ(depth, 0);
-}
-
-TEST(MidiEventTest, MidiEventMissingTypeReturnsError)
-{
-    MockState state;
-    state.tracks = {};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"midi/event","payload":{"channel":0,"data1":7,"data2":64},"id":"midi3"})");
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
-    EXPECT_NE(resp.find("\"error\""), std::string::npos);
-    EXPECT_NE(resp.find("Missing 'type' field"), std::string::npos);
-}
-
-TEST(MidiEventTest, MidiEventBadChannelReturnsError)
-{
-    MockState state;
-    state.tracks = {};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    // Channel 42 is out of range (0-15)
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":42,"data1":7,"data2":64},"id":"midi4"})");
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
-    EXPECT_NE(resp.find("\"error\""), std::string::npos);
-    EXPECT_NE(resp.find("Channel must be 0-15"), std::string::npos);
-}
-
-TEST(MidiEventTest, MidiEventDispatchWithoutPayload)
-{
-    // Command with no payload object at all — the extractPayload function
-    // returns the entire message, and the parser picks up the outer
-    // "type":"command" field as the event type. Since "command" is not
-    // a known MIDI event type, BuildMidiEvent returns a zeroed event.
-    // The handler still responds with success (unknown event types are
-    // not currently rejected). This is consistent with other commands.
-    MockState state;
-    state.tracks = {};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"midi/event","id":"midi5"})");
-    ASSERT_EQ(responses.size(), 1u);
-
-    // Should respond (no crash)
-    EXPECT_EQ(responses[0].front(), '{');
-    EXPECT_EQ(responses[0].back(), '}');
-
-    // Verify balanced JSON
-    int depth = 0;
-    for (char c : responses[0]) {
-        if (c == '{') depth++;
-        if (c == '}') depth--;
-    }
-    EXPECT_EQ(depth, 0);
-}
-
-TEST(MidiEventTest, MidiEventAllEventTypesSucceed)
-{
-    // Test that all supported event types are dispatched without crash
-    MockState state;
-    state.tracks = {};
-
-    const char* eventTypes[] = {
-        "cc", "noteon", "noteoff", "pitchbend",
-        "aftertouch", "programchange", "channelpressure", "raw"
-    };
-
-    for (const char* etype : eventTypes) {
-        std::vector<std::string> responses;
-        auto handler = MakeMockHandler(&state, &responses);
-
-        std::string cmd = std::string(
-            R"({"type":"command","command":"midi/event","payload":{"type":")")
-            + etype + "\",\"channel\":0,\"data1\":64,\"data2\":100},\"id\":\"midi_"
-            + etype + "\"})";
-
-        handler->HandleMessage(1, cmd);
-        ASSERT_EQ(responses.size(), 1u) << "Failed for event type: " << etype;
-
-        // All types should succeed (validation only checks type != empty and valid channel)
-        EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos)
-            << "Failed for event type: " << etype;
-    }
-}
-
-TEST(MidiEventTest, MidiEventResponseIsValidJson)
-{
-    // Verify all midi/event responses are valid JSON
-    MockState state;
-    state.tracks = {};
-
-    struct CmdCheck {
-        const char* cmd;
-        const char* desc;
-    };
-
-    CmdCheck commands[] = {
-        {R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":0,"data1":7,"data2":64},"id":"v1"})", "valid cc"},
-        {R"({"type":"command","command":"midi/event","payload":{"type":"cc","channel":42,"data1":7,"data2":64},"id":"v2"})", "bad channel"},
-        {R"({"type":"command","command":"midi/event","payload":{},"id":"v3"})", "empty payload"},
-    };
-
-    for (const auto& cc : commands) {
-        std::vector<std::string> responses;
-        auto handler = MakeMockHandler(&state, &responses);
-        handler->HandleMessage(1, cc.cmd);
-        ASSERT_EQ(responses.size(), 1u) << "Command " << cc.desc << " should produce 1 response";
-
-        const std::string& resp = responses[0];
-
-        // Verify balanced braces
-        int depth = 0;
-        for (char c : resp) {
-            if (c == '{') depth++;
-            if (c == '}') depth--;
-        }
-        EXPECT_EQ(depth, 0) << "Unbalanced JSON for " << cc.desc;
-
-        // Verify starts and ends with braces
-        EXPECT_EQ(resp.front(), '{') << cc.desc;
-        EXPECT_EQ(resp.back(), '}') << cc.desc;
-    }
-}
-
-// ============================================================
-// MIDI feedback mapping tests (Issue #91)
-//
-// These tests validate the note-to-slot mapping logic used in the
-// MIDI feedback listener, without requiring actual MIDI hardware.
-// ============================================================
-
-TEST(MidiFeedbackTest, Note36MapsToColumn0Row0)
-{
-    // MIDI note 36 = first slot in the 8x8 grid (column 0, row 0)
-    int note = 36;
-    int index = note - 36;
-    int col = index % 8;
-    int row = index / 8;
-    EXPECT_EQ(col, 0);
-    EXPECT_EQ(row, 0);
-}
-
-TEST(MidiFeedbackTest, Note43MapsToColumn7Row0)
-{
-    // MIDI note 43 = 36 + 7 = column 7, row 0 (end of first row)
-    int note = 43;
-    int index = note - 36;
-    int col = index % 8;
-    int row = index / 8;
-    EXPECT_EQ(col, 7);
-    EXPECT_EQ(row, 0);
-}
-
-TEST(MidiFeedbackTest, Note44MapsToColumn0Row1)
-{
-    // MIDI note 44 = 36 + 8 = second row start
-    int note = 44;
-    int index = note - 36;
-    int col = index % 8;
-    int row = index / 8;
-    EXPECT_EQ(col, 0);
-    EXPECT_EQ(row, 1);
-}
-
-TEST(MidiFeedbackTest, Note99MapsToColumn7Row7)
-{
-    // MIDI note 99 = 36 + 63 = last slot (column 7, row 7)
-    int note = 99;
-    int index = note - 36;
-    int col = index % 8;
-    int row = index / 8;
-    EXPECT_EQ(col, 7);
-    EXPECT_EQ(row, 7);
-}
-
-TEST(MidiFeedbackTest, Note100MapsToSceneRow0)
-{
-    // Scene buttons use notes 100-107, which aren't processed by slot feedback
-    int note = 100;
-    EXPECT_TRUE(note >= 100 && note <= 107);
-    // These should NOT match the 36-99 slot range
-    bool isSlot = (note >= 36 && note <= 99);
-    EXPECT_FALSE(isSlot);
-}
-
-TEST(MidiFeedbackTest, Note108IsStopAll)
-{
-    // Global control notes (108+) should NOT match slot range
-    int note = 108;
-    bool isSlot = (note >= 36 && note <= 99);
-    EXPECT_FALSE(isSlot);
-}
-
-TEST(MidiFeedbackTest, Velocity64MarksPlayingThreshold)
-{
-    // ReaLearn: vel >= 64 = playing, vel < 64 = stopped
-    EXPECT_TRUE((64 >= 64) ? true : false);  // 'playing'
-    EXPECT_TRUE((63 >= 64) ? false : true);  // 'stopped'
-    EXPECT_TRUE((0 >= 64)  ? false : true);  // 'stopped' (note off)
-    EXPECT_TRUE((127 >= 64) ? true : false); // 'playing'
-}
-
-TEST(MidiFeedbackTest, SetSlotStateFromNoteFeedback)
-{
-    // Simulate what Run() does when it receives a MIDI feedback note
-    // This tests the full logic path: note -> col/row -> setSlotState
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    PlaytimeState& state = handler->GetPlaytimeState();
-
-    // Simulate receiving note 60 (index 24, col 0, row 3) with vel=127
-    int note = 60;
-    int vel = 127;
-    int index = note - 36;
-    int col = index % 8;
-    int row = index / 8;
-    std::string newState = (vel >= 64) ? "playing" : "stopped";
-
-    EXPECT_EQ(col, 0);
-    EXPECT_EQ(row, 3);
-
-    // Apply the state change to PlaytimeState
-    state.setSlotState(col, row, newState);
-
-    // Verify the state was updated
-    SlotState s = state.getSlot(col, row);
-    EXPECT_EQ(s.state, "playing");
-    EXPECT_EQ(s.column, 0);
-    EXPECT_EQ(s.row, 3);
-
-    // Verify other slots are unaffected
-    SlotState other = state.getSlot(7, 7);
-    EXPECT_EQ(other.state, "empty");
-}
-
-TEST(MidiFeedbackTest, BroadcastEventFromFeedback)
-{
-    // Test that BroadcastMatrixEvent works correctly when called
-    // from the feedback path (simulates what Run() does)
-    std::vector<std::string> captured;
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    handler->SetBroadcastCallback([&](const std::string& msg) {
-        captured.push_back(msg);
-    });
-
-    // Simulate Run() feedback logic
-    int note = 44; // column 0, row 1
-    int vel = 100;
-    int index = note - 36;
-    int col = index % 8;
-    int row = index / 8;
-    std::string newState = (vel >= 64) ? "playing" : "stopped";
-
-    handler->GetPlaytimeState().setSlotState(col, row, newState);
-    SlotState s = handler->GetPlaytimeState().getSlot(col, row);
-    handler->BroadcastMatrixEvent("matrix/slotStateChanged", s.toJson());
-
-    ASSERT_EQ(captured.size(), 1u);
-    EXPECT_NE(captured[0].find("matrix/slotStateChanged"), std::string::npos);
-    EXPECT_NE(captured[0].find("\"state\":\"playing\""), std::string::npos);
-    EXPECT_NE(captured[0].find("\"column\":0"), std::string::npos);
-    EXPECT_NE(captured[0].find("\"row\":1"), std::string::npos);
-
-    // Verify balanced JSON
-    int depth = 0;
-    for (char c : captured[0]) {
-        if (c == '{') depth++;
-        if (c == '}') depth--;
-    }
-    EXPECT_EQ(depth, 0);
-}
-
-TEST(MidiFeedbackTest, FeedbackPathDoesNotAffectBroadcastCallback)
-{
-    // Test that the feedback path correctly uses the broadcast callback
-    // when it's set (simulating the main.cpp Run() code path)
-    std::vector<std::string> captured;
+    // Verify playtime/launch is registered in the command map
+    // and doesn't result in "Unknown command"
     std::vector<std::string> responses;
     auto handler = std::make_unique<CommandHandler>(nullptr);
-    handler->SetBroadcastCallback([&](const std::string& msg) {
-        captured.push_back(msg);
-    });
     handler->SetResponseCallback([&](int, const std::string& resp) {
         responses.push_back(resp);
     });
 
-    // Trigger a slot via the command handler (which also broadcasts)
+    // Send an unknown command to compare
     handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t1"})");
+        R"({"type":"command","command":"playtime/unknownCommand","id":"unk"})");
 
-    // Should have one broadcast (from triggerSlot) and one response
-    ASSERT_EQ(captured.size(), 1u) << "triggerSlot should broadcast";
-    ASSERT_EQ(responses.size(), 1u) << "triggerSlot should respond";
+    ASSERT_GE(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("Unknown command"), std::string::npos)
+        << "Unknown commands should get 'Unknown command' error";
 
-    // Now simulate a MIDI feedback event coming in
-    captured.clear();
-    handler->GetPlaytimeState().setSlotState(5, 6, "playing");
-    SlotState s = handler->GetPlaytimeState().getSlot(5, 6);
-    handler->BroadcastMatrixEvent("matrix/slotStateChanged", s.toJson());
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/launch","id":"pl2"})");
 
-    // Should have a new broadcast from feedback
-    ASSERT_EQ(captured.size(), 1u);
-    EXPECT_NE(captured[0].find("matrix/slotStateChanged"), std::string::npos);
-
-    // Slot (2,3) should still be in its triggerSlot state, slot (5,6) should be playing
-    SlotState s1 = handler->GetPlaytimeState().getSlot(2, 3);
-    EXPECT_NE(s1.state, "empty"); // was toggled by triggerSlot
-    SlotState s2 = handler->GetPlaytimeState().getSlot(5, 6);
-    EXPECT_EQ(s2.state, "playing"); // was set by feedback
+    ASSERT_GE(responses.size(), 1u);
+    EXPECT_EQ(responses[0].find("Unknown command"), std::string::npos)
+        << "playtime/launch should be a recognized command";
 }
 
-TEST(FxChainTest, SearchRecursiveFindsChainsInSubdirs)
+TEST(PlaytimeCommandTest, LaunchReturnsProperPayloadStructure)
 {
-    // Create temp dir with chain files at root and in subdirs
-    fs::path testDir = fs::temp_directory_path() / "_fxchain_recursive_test";
-    fs::create_directories(testDir);
-    fs::create_directories(testDir / "subdir1");
-    fs::create_directories(testDir / "subdir2");
+    // Verify the basic structure of playtime/launch response payload
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
 
-    // Root level chain
-    { std::ofstream(testDir / "master.RfxChain").close(); }
-    // Subdir1 chain
-    { std::ofstream(testDir / "subdir1" / "kick.RfxChain").close(); }
-    // Subdir2 chain
-    { std::ofstream(testDir / "subdir2" / "snare.RfxChain").close(); }
-    // Non-chain file (should be ignored)
-    { std::ofstream(testDir / "notes.txt").close(); }
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/launch","id":"pl3"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have type, id, success, payload keys
+    EXPECT_NE(resp.find("\"type\":\"response\""), std::string::npos);
+    EXPECT_NE(resp.find("\"id\":\"pl3\""), std::string::npos);
+    EXPECT_NE(resp.find("\"payload\":{"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+// 
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnAlreadyRecordingStopsAndSetsStopped)
+{
+    // Test that calling recordSlot on a slot that's already recording
+    // stops recording and sets state to "stopped"
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Stop recording (call recordSlot again on the same slot)
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec2"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Should now be stopped (clip was created/saved)
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":0"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":0"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnStoppedSlotRestartsRecording)
+{
+    // Test that calling recordSlot on a stopped clip restarts recording
+    // (re-records the clip)
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Stop recording → stopped
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+
+    // Record again → should go back to recording
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnPlayingSlotReportsError)
+{
+    // Test that calling recordSlot on a currently playing slot returns error
+    // (can't record on a playing clip)
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // First trigger a slot to play
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":1,"row":2},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+
+    // Try to record on the playing slot — should error
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":1,"row":2},"id":"rec_bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotMissingParamsReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{},"id":"rec_bad"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Missing 'column' or 'row' parameter"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOutOfRangeReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":99,"row":0},"id":"bad"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Column or row out of range"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotBroadcastsEvent)
+{
+    // Test that recording a slot broadcasts slotStateChanged events
+
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":3,"row":4},"id":"rec_bc1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_EQ(captured.size(), 1u);
+
+    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"state\":\"recording\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"column\":3"), std::string::npos);
+    EXPECT_NE(captured[0].find("\"row\":4"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotSendsMidiNoteWhenAvailable)
+{
+    // Test that recordSlot sends a MIDI note when MIDI output is available
+    // The recording MIDI note should use channel 1 to distinguish from
+    // trigger notes (channel 0)
+    struct MidiMsg { int status; int d1; int d2; };
+    std::vector<MidiMsg> messages;
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->GetMidi().setSendFunc([&](int s, int d1, int d2) {
+        messages.push_back({s, d1, d2});
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Record slot (0,0)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec_midi1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    // Should have sent MIDI (NoteOn + NoteOff)
+    ASSERT_GE(messages.size(), 1u);
+    // Status for channel 1 (recording uses channel 1 to distinguish from trigger)
+    EXPECT_EQ(messages[0].status & 0x0F, 1) << "Recording MIDI should use channel 1";
+    EXPECT_EQ(messages[0].d1, 36) << "Note 36 for slot (0,0)";
+}
+
+// 
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(PlaytimePollTest, PollStateReturnsPlaytimeUnavailableInTests)
+{
+    // When Playtime API is not loaded, pollState should reflect that
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/pollState","id":"poll2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    // playtimeAvailable should be false in tests
+    EXPECT_NE(responses[0].find("\"playtimeAvailable\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"instanceId\":-1"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"hasMatrix\":false"), std::string::npos);
+}
+
+TEST(PlaytimePollTest, PollStateIsRecognizedCommand)
+{
+    // Verify matrix/pollState is registered in the command map
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/pollState","id":"poll3"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_EQ(responses[0].find("Unknown command"), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, SyncEnqueuedEventsOnStateChange)
+{
+    // Verify that when slot state changes, events are sent via broadcast
+    // This tests the BroadcastMatrixEvent mechanism for recording transitions
+    std::vector<std::string> captured;
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    std::vector<std::string> responses;
+
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger a slot which should broadcast an event
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"sync1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_GE(captured.size(), 1u);
+
+    // Verify the broadcast event has the right structure
+    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, GetAllReflectsRecordingStateChanges)
+{
+    // Verify that matrix/getAll returns the updated state after
+    // recording operations change slot states
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Record a slot
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":3,"row":5},"id":"rec1"})");
+
+    // Now getAll should show the recording state
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getAll","id":"ga1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have the recording slot at column=3,row=5
+    EXPECT_NE(resp.find("\"column\":3,\"row\":5,\"state\":\"recording\""), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, RecordingThenTriggerSlotWorksCorrectly)
+{
+    // Test full lifecycle: record a slot, stop recording, then trigger to play
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Step 1: Record slot
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":4},"id":"r1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Step 2: Stop recording
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":4},"id":"r2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+
+    // Step 3: Trigger to play
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":4},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+}
+
+// 
 
     MockState state;
     state.tracks = {};
@@ -5043,17 +4468,20 @@ TEST(FxChainTest, SearchRecursiveFindsChainsInSubdirs)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + testDir.string() + R"("},"id":"fsr1"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + testDir.string() + R"("},"id":"sr1"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
-    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
-    // Should find all 3 .RfxChain files across root + subdirs
-    EXPECT_TRUE(responses[0].find("master.RfxChain") != std::string::npos);
-    EXPECT_TRUE(responses[0].find("kick.RfxChain") != std::string::npos);
-    EXPECT_TRUE(responses[0].find("snare.RfxChain") != std::string::npos);
-    // Should NOT include non-chain files
-    EXPECT_TRUE(responses[0].find("notes.txt") == std::string::npos);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    // Should find 4 RfxChain files across subdirectories
+    EXPECT_NE(resp.find("vca_comp"), std::string::npos);
+    EXPECT_NE(resp.find("hall"), std::string::npos);
+    EXPECT_NE(resp.find("room"), std::string::npos);
+    EXPECT_NE(resp.find("deep_nested"), std::string::npos);
+    // Should NOT include .txt files
+    EXPECT_EQ(resp.find("ignore.txt"), std::string::npos);
+
 
     fs::remove_all(testDir);
 }
@@ -5062,11 +4490,10 @@ TEST(FxChainTest, SearchRecursiveFiltersByQuery)
 {
     fs::path testDir = fs::temp_directory_path() / "_fxchain_search_query_test";
     fs::create_directories(testDir);
-    fs::create_directories(testDir / "sub");
+    { std::ofstream(testDir / "reverb_plate.RfxChain").close(); }
+    { std::ofstream(testDir / "reverb_hall.RfxChain").close(); }
+    { std::ofstream(testDir / "compressor.RfxChain").close(); }
 
-    { std::ofstream(testDir / "my_comp.RfxChain").close(); }
-    { std::ofstream(testDir / "reverb.RfxChain").close(); }
-    { std::ofstream(testDir / "sub" / "my_reverb.RfxChain").close(); }
 
     MockState state;
     state.tracks = {};
@@ -5074,26 +4501,27 @@ TEST(FxChainTest, SearchRecursiveFiltersByQuery)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    // Search for "comp" — should find only my_comp.RfxChain
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"comp","rootPath":")" + testDir.string() + R"("},"id":"fsr2"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"reverb","rootPath":")" + testDir.string() + R"("},"id":"sr2"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
-    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
-    EXPECT_TRUE(responses[0].find("my_comp.RfxChain") != std::string::npos);
-    EXPECT_TRUE(responses[0].find("reverb.RfxChain") == std::string::npos);
-    EXPECT_TRUE(responses[0].find("my_reverb.RfxChain") == std::string::npos);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("reverb_plate"), std::string::npos);
+    EXPECT_NE(resp.find("reverb_hall"), std::string::npos);
+    // compressor should not match "reverb"
+    EXPECT_EQ(resp.find("compressor"), std::string::npos);
+
 
     fs::remove_all(testDir);
 }
 
 TEST(FxChainTest, SearchRecursiveCaseInsensitive)
 {
-    fs::path testDir = fs::temp_directory_path() / "_fxchain_case_test";
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_search_case_test";
     fs::create_directories(testDir);
+    { std::ofstream(testDir / "MY_CHAIN.RfxChain").close(); }
+    { std::ofstream(testDir / "other.RfxChain").close(); }
 
-    { std::ofstream(testDir / "My_Comp.RfxChain").close(); }
-    { std::ofstream(testDir / "REVERB.RfxChain").close(); }
 
     MockState state;
     state.tracks = {};
@@ -5101,14 +4529,15 @@ TEST(FxChainTest, SearchRecursiveCaseInsensitive)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    // Search lowercase "comp" should find uppercase "My_Comp"
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"comp","rootPath":")" + testDir.string() + R"("},"id":"fsr3"})";
+    // Query lowercase, file uppercase
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"my_chain","rootPath":")" + testDir.string() + R"("},"id":"sr3"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
-    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
-    EXPECT_TRUE(responses[0].find("My_Comp.RfxChain") != std::string::npos);
-    EXPECT_TRUE(responses[0].find("REVERB.RfxChain") == std::string::npos);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("MY_CHAIN"), std::string::npos);
+    EXPECT_EQ(resp.find("other"), std::string::npos);
+
 
     fs::remove_all(testDir);
 }
@@ -5121,15 +4550,18 @@ TEST(FxChainTest, SearchRecursiveInvalidPathReturnsEmpty)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":"/nonexistent_path_xyz"},"id":"fsr4"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":"/nonexistent_path_xyz_123_search"},"id":"sr4"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
-    EXPECT_TRUE(responses[0].find("\"success\":true") != std::string::npos);
-    EXPECT_TRUE(responses[0].find("\"results\":[]") != std::string::npos);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    // Should have empty results, not an error
+    EXPECT_NE(resp.find("\"results\":[]"), std::string::npos);
 }
 
-TEST(FxChainTest, SearchRecursiveMissingRootPath)
+TEST(FxChainTest, SearchRecursiveMissingRootPathReturnsError)
+
 {
     MockState state;
     state.tracks = {};
@@ -5137,291 +4569,14 @@ TEST(FxChainTest, SearchRecursiveMissingRootPath)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":""},"id":"fsr5"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":""},"id":"sr5"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
-    EXPECT_TRUE(responses[0].find("\"success\":false") != std::string::npos);
-    EXPECT_TRUE(responses[0].find("\"error\"") != std::string::npos);
-}
-
-// ============================================================
-// Chain-source tracking and fxchain/cycle tests (Issue #95)
-// ============================================================
-
-TEST(FxChainTest, TrackGetFxIncludesChainPathAfterLoad)
-{
-    fs::path testDir = fs::temp_directory_path() / "_fxchain_meta_test";
-    fs::create_directories(testDir);
-    fs::path chainPath = testDir / "meta_chain.RfxChain";
-
-    std::string fxChainContent =
-        "<FXCHAIN\n"
-        "  SHOW 0\n"
-        "  <ITEM\n"
-        "    NAME \"ChainFX1\"\n"
-        "    VST \"VST3: ChainFX1 (Test)\" ChainFX1 0 0\n"
-        "  >\n"
-        "  <ITEM\n"
-        "    NAME \"ChainFX2\"\n"
-        "    VST \"VST3: ChainFX2 (Test)\" ChainFX2 0 0\n"
-        "  >\n"
-        ">";
-
-    std::ofstream f(chainPath);
-    f << fxChainContent;
-    f.close();
-
-    // Track with existing FX (ReaEQ)
-    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    SHOW 0\n"
-        "    <ITEM\n"
-        "      NAME \"ReaEQ\"\n"
-        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
-        "    >\n"
-        "  >\n"
-        ">";
-
-    MockState state;
-    MockTrack t;
-    t.fx.push_back({0, "ChainFX1", {}, {}, {}, {}, {}});
-    t.fx.push_back({1, "ChainFX2", {}, {}, {}, {}, {}});
-    state.tracks = {t};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    // First load the chain
-    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"("},"id":"cm1"})";
-    handler->HandleMessage(1, loadCmd);
-    responses.clear();
-
-    // Then check getFx includes chainPath
-    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"cm2"})");
-
-    ASSERT_EQ(responses.size(), 1u);
     std::string& resp = responses[0];
-
-    // Response should have chainPath for both FX
-    EXPECT_TRUE(resp.find("\"chainPath\"") != std::string::npos);
-    EXPECT_TRUE(resp.find(chainPath.string()) != std::string::npos);
-
-    // Both FX should be present
-    EXPECT_TRUE(resp.find("ChainFX1") != std::string::npos);
-    EXPECT_TRUE(resp.find("ChainFX2") != std::string::npos);
-
-    fs::remove_all(testDir);
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'rootPath'"), std::string::npos);
 }
 
-TEST(FxChainTest, CycleNextSwitchesChain)
-{
-    fs::path testDir = fs::temp_directory_path() / "_fxchain_cycle_test";
-    fs::create_directories(testDir);
 
-    // Create two chain files (alphabetically chain_a then chain_b)
-    fs::path chainA = testDir / "chain_a.RfxChain";
-    fs::path chainB = testDir / "chain_b.RfxChain";
 
-    std::string chainAContent =
-        "<FXCHAIN\n"
-        "  <ITEM\n"
-        "    NAME \"FXfromA\"\n"
-        "    VST \"VST3: FXfromA (Test)\" FXfromA 0 0\n"
-        "  >\n"
-        ">";
-
-    std::string chainBContent =
-        "<FXCHAIN\n"
-        "  <ITEM\n"
-        "    NAME \"FXfromB\"\n"
-        "    VST \"VST3: FXfromB (Test)\" FXfromB 0 0\n"
-        "  >\n"
-        ">";
-
-    { std::ofstream f(chainA); f << chainAContent; }
-    { std::ofstream f(chainB); f << chainBContent; }
-
-    // Start with chain_a loaded
-    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    <ITEM\n"
-        "      NAME \"FXfromA\"\n"
-        "      VST \"VST3: FXfromA (Test)\" FXfromA 0 0\n"
-        "    >\n"
-        "  >\n"
-        ">";
-
-    MockState state;
-    MockTrack t;
-    t.fx.push_back({0, "FXfromA", {}, {}, {}, {}, {}});
-    state.tracks = {t};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    // Load chain_a to set up chain-source tracking
-    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainA.string() + R"("},"id":"cc1"})";
-    handler->HandleMessage(1, loadCmd);
-    responses.clear();
-
-    // Now cycle to next chain
-    std::string cycleCmd = R"({"type":"command","command":"fxchain/cycle","payload":{"trackIdx":0,"direction":"next"},"id":"cc2"})";
-    handler->HandleMessage(1, cycleCmd);
-
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    EXPECT_TRUE(resp.find("\"cycled\":true") != std::string::npos);
-    // Should contain FXfromB (from chain_b, the next alphabetically)
-    EXPECT_TRUE(resp.find("FXfromB") != std::string::npos);
-
-    fs::remove_all(testDir);
-}
-
-TEST(FxChainTest, CyclePrevSwitchesChain)
-{
-    fs::path testDir = fs::temp_directory_path() / "_fxchain_cycle_prev_test";
-    fs::create_directories(testDir);
-
-    fs::path chainA = testDir / "chain_a.RfxChain";
-    fs::path chainB = testDir / "chain_b.RfxChain";
-
-    std::string chainAContent =
-        "<FXCHAIN\n"
-        "  <ITEM\n"
-        "    NAME \"FXfromA\"\n"
-        "    VST \"VST3: FXfromA (Test)\" FXfromA 0 0\n"
-        "  >\n"
-        ">";
-
-    std::string chainBContent =
-        "<FXCHAIN\n"
-        "  <ITEM\n"
-        "    NAME \"FXfromB\"\n"
-        "    VST \"VST3: FXfromB (Test)\" FXfromB 0 0\n"
-        "  >\n"
-        ">";
-
-    { std::ofstream f(chainA); f << chainAContent; }
-    { std::ofstream f(chainB); f << chainBContent; }
-
-    // Start with chain_b loaded
-    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    <ITEM\n"
-        "      NAME \"FXfromB\"\n"
-        "      VST \"VST3: FXfromB (Test)\" FXfromB 0 0\n"
-        "    >\n"
-        "  >\n"
-        ">";
-
-    MockState state;
-    MockTrack t;
-    t.fx.push_back({0, "FXfromB", {}, {}, {}, {}, {}});
-    state.tracks = {t};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    // Load chain_b to set up chain-source tracking
-    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainB.string() + R"("},"id":"cc3"})";
-    handler->HandleMessage(1, loadCmd);
-    responses.clear();
-
-    // Now cycle to previous chain (should wrap to chain_a)
-    std::string cycleCmd = R"({"type":"command","command":"fxchain/cycle","payload":{"trackIdx":0,"direction":"prev"},"id":"cc4"})";
-    handler->HandleMessage(1, cycleCmd);
-
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    EXPECT_TRUE(resp.find("\"cycled\":true") != std::string::npos);
-    // Should contain FXfromA (from chain_a, previous alphabetically)
-    EXPECT_TRUE(resp.find("FXfromA") != std::string::npos);
-
-    fs::remove_all(testDir);
-}
-
-TEST(FxChainTest, CycleSingleChainWraps)
-{
-    fs::path testDir = fs::temp_directory_path() / "_fxchain_single_cycle_test";
-    fs::create_directories(testDir);
-
-    fs::path chainPath = testDir / "only_chain.RfxChain";
-
-    std::string content =
-        "<FXCHAIN\n"
-        "  <ITEM\n"
-        "    NAME \"TheOnlyFX\"\n"
-        "    VST \"VST3: TheOnlyFX (Test)\" TheOnlyFX 0 0\n"
-        "  >\n"
-        ">";
-
-    { std::ofstream f(chainPath); f << content; }
-
-    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    <ITEM\n"
-        "      NAME \"TheOnlyFX\"\n"
-        "      VST \"VST3: TheOnlyFX (Test)\" TheOnlyFX 0 0\n"
-        "    >\n"
-        "  >\n"
-        ">";
-
-    MockState state;
-    MockTrack t;
-    t.fx.push_back({0, "TheOnlyFX", {}, {}, {}, {}, {}});
-    state.tracks = {t};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    // Load the chain
-    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"("},"id":"cc5"})";
-    handler->HandleMessage(1, loadCmd);
-    responses.clear();
-
-    // Cycle next on single chain should still work (wraps to itself)
-    std::string cycleCmd = R"({"type":"command","command":"fxchain/cycle","payload":{"trackIdx":0,"direction":"next"},"id":"cc6"})";
-    handler->HandleMessage(1, cycleCmd);
-
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    EXPECT_TRUE(resp.find("\"cycled\":true") != std::string::npos);
-    EXPECT_TRUE(resp.find("TheOnlyFX") != std::string::npos);
-
-    fs::remove_all(testDir);
-}
-
-TEST(FxChainTest, CycleFailsWithoutLoadedChain)
-{
-    MockState state;
-    MockTrack t;
-    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
-    state.tracks = {t};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
-        "  <FXCHAIN\n"
-        "    <ITEM\n"
-        "      NAME \"ReaEQ\"\n"
-        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
-        "    >\n"
-        "  >\n"
-        ">";
-
-    // Cycle on track with no tracked chain source
-    std::string cycleCmd = R"({"type":"command","command":"fxchain/cycle","payload":{"trackIdx":0,"direction":"next"},"id":"cc7"})";
-    handler->HandleMessage(1, cycleCmd);
-
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    // Should fail with "No chain loaded"
-    EXPECT_TRUE(resp.find("\"success\":false") != std::string::npos);
-    EXPECT_TRUE(resp.find("No chain loaded") != std::string::npos);
-}

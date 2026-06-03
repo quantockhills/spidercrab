@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useTheme } from './hooks/useTheme';
+import { ReaperClientProvider, useTheme } from './hooks';
 import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
@@ -20,7 +20,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'settings',label: 'Settings',icon: '⚙️' },
 ];
 
-function App() {
+function AppInner() {
   const {
     connected,
     tracks,
@@ -62,6 +62,7 @@ function App() {
     getMatrix,
     triggerSlot,
     triggerScene,
+    recordSlot,
     sequencer,
     getSequencer,
     toggleStep,
@@ -69,6 +70,8 @@ function App() {
     seqClearAll,
     seqSetLength,
     seqSetBaseNote,
+    launchPlaytime,
+    checkPlaytimeAvailable,
     convertToClip,
   } = useReaper();
 
@@ -119,8 +122,14 @@ function App() {
     });
     const unsubList = onEvent('event:track_list_changed', () => {
       refreshTracks();
+      // Matrix dimensions may change when tracks are added/removed
+      getMatrix();
     });
-    const unsubSlot = onEvent('event:slotStateChanged', () => {
+    // Note: the C++ backend broadcasts events with the event name
+    // 'matrix/slotStateChanged' not 'slotStateChanged'. The WsClient
+    // dispatches to 'event:{msg.event}', so we must match 'matrix/slotStateChanged'.
+    // See command_handler.cpp: BroadcastMatrixEvent("matrix/slotStateChanged", ...)
+    const unsubSlot = onEvent('event:matrix/slotStateChanged', () => {
       // Refresh matrix state on any slot change
       getMatrix();
     });
@@ -202,7 +211,7 @@ function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col text-[var(--text-primary)]">
+    <div className="h-dvh bg-[var(--bg-primary)] flex flex-col text-[var(--text-primary)] overflow-hidden">
       {/* ── Status Bar ── */}
       <header className="sticky top-0 z-10 bg-[var(--bg-secondary)] border-b border-[var(--border)] px-4 py-2.5 safe-area-top">
         <div className="flex items-center justify-between">
@@ -231,7 +240,7 @@ function App() {
       </header>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-hidden min-h-0">
         <ErrorBoundary>
         {activeTab === 'media' && (
           <SampleBrowser
@@ -244,7 +253,7 @@ function App() {
         )}
 
         {activeTab === 'clips' && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full min-h-0">
             {/* Mode toggle */}
             <div className="flex border-b border-[var(--border)]">
               <button
@@ -268,10 +277,11 @@ function App() {
                 Sequencer
               </button>
             </div>
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden min-h-0">
               {sessionMode === 'session' ? (
                 <SessionView
                   matrix={matrix}
+                  tracks={tracks}
                   getMatrix={getMatrix}
                   triggerSlot={triggerSlot}
                   triggerScene={triggerScene}
@@ -280,6 +290,9 @@ function App() {
                   onStop={stop}
                   onRecord={record}
                   onGetTransportState={getTransportState}
+                  onLaunchPlaytime={launchPlaytime}
+                  onCheckPlaytimeAvailable={checkPlaytimeAvailable}
+                  onRecordSlot={recordSlot}
                 />
               ) : (
                 <SequencerView
@@ -492,4 +505,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <ReaperClientProvider>
+      <AppInner />
+    </ReaperClientProvider>
+  );
+}
