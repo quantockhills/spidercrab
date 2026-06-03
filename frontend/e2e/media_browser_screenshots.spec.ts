@@ -14,8 +14,8 @@ const MOCK_DIR_ENTRIES = [
   { name: 'vocals.mp3', type: 'file', size: 512000 },
 ];
 
-function setupMockWs(page: any): void {
-  page.routeWebSocket(WS_REAL, (ws) => {
+async function setupMockWs(page: any): Promise<void> {
+  await page.routeWebSocket(WS_REAL, (ws) => {
     ws.onMessage((message: string) => {
       const msgStr = message.toString();
       let parsed: any;
@@ -82,7 +82,7 @@ test.describe('Media Browser Screenshots', () => {
   test.setTimeout(120000);
 
   test('SS-27: Media browser screenshots', async ({ page }) => {
-    setupMockWs(page);
+    await setupMockWs(page);
     await page.setViewportSize(IPAD_PRO);
     await page.goto('/');
     await page.waitForTimeout(3000);
