@@ -48,69 +48,97 @@ function setupMockReaper() {
     refreshFxCache: vi.fn(),
     play: vi.fn(),
     stop: vi.fn(),
+    record: vi.fn(),
     getTransportState: vi.fn().mockResolvedValue({playing: false, recording: false}),
     onEvent: mockOnEvent,
     updateTrack: vi.fn(),
+    launchPlaytime: vi.fn(),
+    checkPlaytimeAvailable: vi.fn(),
+    getMatrix: vi.fn(),
+    triggerSlot: vi.fn(),
+    triggerScene: vi.fn(),
+    sequencer: null,
+    getSequencer: vi.fn(),
+    toggleStep: vi.fn(),
+    setStep: vi.fn(),
+    seqClearAll: vi.fn(),
+    seqSetLength: vi.fn(),
+    seqSetBaseNote: vi.fn(),
+    addTrack: vi.fn(),
   });
 
   return { mockGetTrackFx, mockOnEvent, mockGetFxParams, mockSetFxParam, mockDeleteFx };
 }
 
 describe('App — FX card navigation to ParamControl', () => {
-  it('navigates to FX tab when FX card is tapped on TrackOverview', async () => {
+  it('opens inline FX drawer when FX card is tapped on TrackOverview (Issue #94)', async () => {
+    setupMockReaper();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Click the ReaEQ card — opens inline drawer on Tracks tab
+    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+
+    // The inline drawer shows close button
+    await waitFor(() => {
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
+    });
+
+    // Should still be on the Tracks tab (not navigated away)
+    expect(screen.getByText('Tracks (2)')).toBeDefined();
+  });
+
+  it('closes inline FX drawer when close button is pressed', async () => {
+    setupMockReaper();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Click FX card to open drawer
+    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Close drawer')).toBeDefined();
+    });
+
+    // Click Close
+    fireEvent.click(screen.getByLabelText('Close drawer'));
+
+    await waitFor(() => {
+      // Drawer should be closed
+      expect(screen.queryByLabelText('Close drawer')).toBeNull();
+    });
+  });
+
+  // ── FX button from TrackOverview (Issue #86) ──
+
+  it('navigates to FX tab when FX button is tapped on TrackOverview', async () => {
     setupMockReaper();
     render(<App />);
 
     // Should start on the Tracks tab
     expect(screen.getByText('Kick')).toBeDefined();
 
-    // Wait for FX cards to appear
+    // Find the FX button on track 0
     await waitFor(() => {
-      expect(screen.getByText('ReaEQ')).toBeDefined();
+      const fxButtons = screen.getAllByTestId('open-fx-button');
+      expect(fxButtons.length).toBeGreaterThanOrEqual(1);
     });
 
-    // Verify we're on the Tracks tab (not FX tab)
-    expect(screen.queryByText('Loading parameters...')).toBeNull();
+    const fxButtons = screen.getAllByTestId('open-fx-button');
+    fireEvent.click(fxButtons[0]);
 
-    // Click the ReaEQ FX card
-    fireEvent.click(screen.getByText('ReaEQ'));
-
-    // Should now navigate to the FX tab and show loading params
+    // Should navigate to FX tab showing FxBrowser
     await waitFor(() => {
-      expect(screen.getByText('Loading parameters...')).toBeDefined();
-    });
-
-    // The ParamControl view should show the FX name and track info
-    expect(screen.getByText('ReaEQ')).toBeDefined();
-    expect(screen.getByText('Track: Kick')).toBeDefined();
-    expect(screen.getByText('Remove FX')).toBeDefined();
-  });
-
-  it('switches back to FX browser when pressing Back from ParamControl', async () => {
-    setupMockReaper();
-    render(<App />);
-
-    await waitFor(() => {
-      expect(screen.getByText('ReaEQ')).toBeDefined();
-    });
-
-    // Click FX card
-    fireEvent.click(screen.getByText('ReaEQ'));
-
-    await waitFor(() => {
-      expect(screen.getByText('Loading parameters...')).toBeDefined();
-    });
-
-    // Click Back — goes back to FX tab (showing FxBrowser), not to Tracks tab
-    fireEvent.click(screen.getByLabelText('Back'));
-
-    await waitFor(() => {
-      // Should show the FX browser (not ParamControl anymore)
-      expect(screen.queryByText('Loading parameters...')).toBeNull();
+      expect(screen.getByText('FX Browser')).toBeDefined();
     });
   });
 });
-
 describe('App — Settings tab', () => {
   it('switches to Settings tab and shows Refresh Plugin List button', async () => {
     setupMockReaper();
@@ -150,9 +178,23 @@ describe('App — Settings tab', () => {
       refreshFxCache: vi.fn(),
       play: vi.fn(),
       stop: vi.fn(),
+      record: vi.fn(),
       getTransportState: vi.fn(),
       onEvent: mockOnEvent,
       updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
     });
 
     render(<App />);
@@ -193,9 +235,23 @@ describe('App — Settings tab', () => {
       refreshFxCache: mockRefreshFxCache,
       play: vi.fn(),
       stop: vi.fn(),
+      record: vi.fn(),
       getTransportState: vi.fn(),
       onEvent: mockOnEvent,
       updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
     });
 
     render(<App />);
