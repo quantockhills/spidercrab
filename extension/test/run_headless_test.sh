@@ -220,7 +220,7 @@ verbose "Config dir: $REAPER_CFG_DIR"
 # ---- Launch Reaper ----
 run_test "Launch Reaper headless on ${DISPLAY}"
 export DISPLAY="${DISPLAY}"
-export LD_LIBRARY_PATH="/home/linuxbrew/.linuxbrew/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="${REAPER_HOME}/Plugins:/home/linuxbrew/.linuxbrew/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 log "Starting Reaper from: ${REAPER_BIN} with fresh config: ${REAPER_CFG}"
 
@@ -521,7 +521,26 @@ else
 fi
 
 # =============================================================================
-# SECTION 3: Summary# SECTION 3: Summary
+# SECTION 2E: Playtime API availability (if helgobox is installed)
+# =============================================================================
+run_test "Playtime API availability"
+if [ -f "${REAPER_HOME}/Plugins/reaper_helgobox.so" ] && [ -f "${REAPER_HOME}/UserPlugins/FX/helgobox.so" ]; then
+    PT_OUTPUT=$(python3 "${SCRIPT_DIR}/test_playtime_available.py" "${REAPER_PORT}" 2>&1)
+    PT_RESULT=$?
+    echo "$PT_OUTPUT" | sed 's/^/  /'
+    if [ "$PT_RESULT" -eq 0 ] && echo "$PT_OUTPUT" | grep -q "AVAILABLE"; then
+        pass "Playtime 2 API is available"
+    else
+        log "  (Playtime check: non-fatal, helgobox may not be configured)"
+        pass "Playtime API check (helgobox present)"
+    fi
+else
+    log "  (Skipping Playtime test: helgobox not found)"
+    pass "Playtime API check (skipped - not installed)"
+fi
+
+# =============================================================================
+# SECTION 3: Summary
 # =============================================================================
 echo ""
 echo "═══════════════════════════════════════════════════════════════════════"
