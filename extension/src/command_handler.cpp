@@ -353,6 +353,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleMidiEvent(clientId, id, message);
         } else if (command == "fxchain/getInfo") {
             HandleFxChainGetInfo(clientId, id, message);
+        } else if (command == "fxchain/cycle") {
+            HandleFxChainCycle(clientId, id, message);
         } else if (command == "fxchain/searchRecursive") {
             HandleFxChainSearchRecursive(clientId, id, message);
         } else {
@@ -471,6 +473,18 @@ void CommandHandler::HandleGetTrackFX(
 
     int         fxCount = m_api.TrackFX_GetCount(track);
     std::string fxList  = "[";
+
+    // Build a chainPath lookup: fxIdx -> chainPath (or empty if not in a chain group)
+    std::map<int, std::string> fxChainPath;
+    auto it = m_trackChainSources.find(trackIdx);
+    if (it != m_trackChainSources.end()) {
+        for (const auto& cs : it->second) {
+            for (int i = cs.fxStartIdx; i < cs.fxEndIdx && i < fxCount; i++) {
+                fxChainPath[i] = cs.filePath;
+            }
+        }
+    }
+
     for (int i = 0; i < fxCount; i++) {
         if (i > 0)
             fxList += ",";
@@ -478,7 +492,13 @@ void CommandHandler::HandleGetTrackFX(
         m_api.TrackFX_GetFXName(track, i, name, sizeof(name));
         fxList += "{";
         fxList += json_string("index") + ":" + std::to_string(i) + ",";
-        fxList += json_string("name") + ":" + json_string(name);
+        fxList += json_string("name") + ":" + json_string(name) + ",";
+        auto cpIt = fxChainPath.find(i);
+        if (cpIt != fxChainPath.end() && !cpIt->second.empty()) {
+            fxList += json_string("chainPath") + ":" + json_string(cpIt->second);
+        } else {
+            fxList += json_string("chainPath") + ":null";
+        }
         fxList += "}";
     }
     fxList += "]";
@@ -661,6 +681,13 @@ void CommandHandler::HandleAddFX(int clientId, const std::string& id, const std:
 
     // instantiate=1 means: don't prompt, just add the FX
     int fxIdx = m_api.TrackFX_AddByName(track, fxName.c_str(), false, 1);
+
+    // Update chain-source indices: new FX inserted at fxIdx
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end() && fxIdx >= 0) {
+        ShiftChainSourceIndices(sit->second, fxIdx, 1);
+    }
+
     SendResponse(clientId, id, fxIdx >= 0, "{\"fxIdx\":" + std::to_string(fxIdx) + "}");
 }
 
@@ -836,6 +863,23 @@ void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const s
     }
 
     bool success = m_api.TrackFX_Delete(track, fxIdx);
+
+    // Update chain-source indices: FX at fxIdx removed, shift down
+    if (success) {
+        auto sit = m_trackChainSources.find(trackIdx);
+        if (sit != m_trackChainSources.end()) {
+            ShiftChainSourceIndices(sit->second, fxIdx, -1);
+            // Clean up empty chain groups
+            sit->second.erase(
+                std::remove_if(sit->second.begin(), sit->second.end(),
+                    [](const ChainSource& cs) { return cs.fxStartIdx >= cs.fxEndIdx; }),
+                sit->second.end());
+            if (sit->second.empty()) {
+                m_trackChainSources.erase(sit);
+            }
+        }
+    }
+
     SendResponse(
         clientId, id, success, "{\"deleted\":" + std::string(success ? "true" : "false") + "}");
 }
@@ -905,6 +949,26 @@ void CommandHandler::HandleReorderFX(int clientId, const std::string& id, const 
     }
 
     m_api.TrackFX_Delete(track, deleteIdx);
+
+    // Update chain-source indices for the reorder
+    // Copy at destCopyIdx shifts subsequent indices by 1
+    // Delete at deleteIdx shifts subsequent indices by -1
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end()) {
+        // First: the copy inserts at destCopyIdx, shift everything after up
+        ShiftChainSourceIndices(sit->second, destCopyIdx, 1);
+        // Second: the delete at deleteIdx removes an element, shift after down
+        int adjustedDeleteIdx = (toIdx > fromIdx) ? fromIdx : (fromIdx + 1);
+        ShiftChainSourceIndices(sit->second, adjustedDeleteIdx, -1);
+        // Clean up empty chain groups
+        sit->second.erase(
+            std::remove_if(sit->second.begin(), sit->second.end(),
+                [](const ChainSource& cs) { return cs.fxStartIdx >= cs.fxEndIdx; }),
+            sit->second.end());
+        if (sit->second.empty()) {
+            m_trackChainSources.erase(sit);
+        }
+    }
 
     SendResponse(clientId, id, true,
         "{\"reordered\":true,\"trackIdx\":" + std::to_string(trackIdx)
@@ -2342,6 +2406,12 @@ void CommandHandler::HandleFxChainLoad(
         return;
     }
 
+    // Capture old FX count for chain-source tracking
+    int oldFxCount = 0;
+    if (m_api.TrackFX_GetCount) {
+        oldFxCount = m_api.TrackFX_GetCount(track);
+    }
+
     // Read the .RfxChain file
     std::string fxChain;
     try {
@@ -2445,6 +2515,27 @@ void CommandHandler::HandleFxChainLoad(
     // Write the new track state chunk
     bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
     if (ok) {
+        // Record chain-source tracking
+        if (m_api.TrackFX_GetCount) {
+            int newFxCount = m_api.TrackFX_GetCount(track);
+            ChainSource cs;
+            cs.filePath = filePath;
+            if (append) {
+                cs.fxStartIdx = oldFxCount;
+                cs.fxEndIdx = newFxCount;
+            } else {
+                cs.fxStartIdx = 0;
+                cs.fxEndIdx = newFxCount;
+            }
+            // Replace any existing chain source for this track (if replacing)
+            // or append a new one
+            if (!append || m_trackChainSources.find(trackIdx) == m_trackChainSources.end()) {
+                m_trackChainSources[trackIdx] = {cs};
+            } else {
+                m_trackChainSources[trackIdx].push_back(cs);
+            }
+        }
+
         SendResponse(clientId, id, true,
             "{\"loaded\":true,\"filePath\":" + json_string(filePath) + ",\"append\":"
                 + (append ? "true" : "false") + "}");
@@ -2850,6 +2941,236 @@ void CommandHandler::HandleMidiEvent(
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Chain-source index maintenance helpers (Issue #95)
+// ============================================================
+
+// Adjust chain-source indices when FX are added/removed/reordered
+// beforeIndex: the index of the added/removed/moved FX
+// delta: +1 for add, -1 for delete/reorder-away
+void CommandHandler::ShiftChainSourceIndices(
+    std::vector<ChainSource>& sources, int beforeIndex, int delta)
+{
+    for (auto& cs : sources) {
+        if (cs.fxStartIdx >= beforeIndex) {
+            cs.fxStartIdx += delta;
+            cs.fxEndIdx += delta;
+        } else if (cs.fxEndIdx > beforeIndex) {
+            // The modification is inside this chain group
+            cs.fxEndIdx += delta;
+        }
+    }
+}
+
+// ============================================================
+// doLoadChain — Internal chain-load helper (Issue #95)
+// ============================================================
+
+bool CommandHandler::doLoadChain(int trackIdx, const std::string& filePath, const std::string& direction)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk || !m_api.GetTrack) {
+        return false;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) return false;
+
+    std::string targetPath = filePath;
+
+    if (!direction.empty() && direction != "none") {
+        // Direction-based cycling: compute next/prev chain path
+        fs::path currentDir = fs::path(filePath).parent_path();
+        if (!fs::exists(currentDir)) return false;
+
+        std::vector<std::string> chainFiles;
+        try {
+            for (const auto& entry : fs::directory_iterator(currentDir)) {
+                if (!entry.is_regular_file()) continue;
+                std::string name = entry.path().filename().string();
+                std::string ext;
+                size_t dotPos = name.rfind('.');
+                if (dotPos == std::string::npos) continue;
+                ext = name.substr(dotPos);
+                std::string lowerExt;
+                for (char c : ext) lowerExt += tolower((unsigned char)c);
+                if (lowerExt != ".rfxchain") continue;
+                chainFiles.push_back(entry.path().string());
+            }
+        } catch (...) {
+            return false;
+        }
+
+        if (chainFiles.empty()) return false;
+
+        std::sort(chainFiles.begin(), chainFiles.end());
+
+        // Find current index
+        int currentIdx = -1;
+        for (size_t i = 0; i < chainFiles.size(); i++) {
+            if (chainFiles[i] == filePath) {
+                currentIdx = (int)i;
+                break;
+            }
+        }
+        if (currentIdx < 0) return false;
+
+        if (direction == "next") {
+            int nextIdx = (currentIdx + 1) % (int)chainFiles.size();
+            targetPath = chainFiles[nextIdx];
+        } else if (direction == "prev") {
+            int prevIdx = (currentIdx - 1 + (int)chainFiles.size()) % (int)chainFiles.size();
+            targetPath = chainFiles[prevIdx];
+        } else {
+            return false;
+        }
+    }
+
+    // Read the target chain file
+    std::string fxChain;
+    try {
+        FILE* f = fopen(targetPath.c_str(), "r");
+        if (!f) return false;
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            fxChain.append(buf, nread);
+        }
+        fclose(f);
+    } catch (...) {
+        return false;
+    }
+
+    if (fxChain.empty()) return false;
+
+    // Get current track chunk
+    const int CHUNK_SIZE = 4 * 1024 * 1024;
+    std::vector<char> chunkBuf(CHUNK_SIZE, 0);
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf.data(), CHUNK_SIZE, false);
+    if (!gotChunk || chunkBuf[0] == 0) return false;
+
+    std::string currentChunk(chunkBuf.data());
+
+    // Wrap the loaded chain if needed
+    std::string loadedFxChain;
+    std::string extracted = extractFxChainFromChunk(fxChain);
+    if (!extracted.empty()) {
+        loadedFxChain = extracted;
+    } else {
+        loadedFxChain = "<FXCHAIN\n" + fxChain;
+        if (loadedFxChain.back() != '\n') loadedFxChain += '\n';
+        loadedFxChain += '>';
+    }
+
+    std::string newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+    bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
+
+    if (ok && m_api.TrackFX_GetCount) {
+        // Record chain-source tracking
+        int newFxCount = m_api.TrackFX_GetCount(track);
+        ChainSource cs;
+        cs.filePath = targetPath;
+        cs.fxStartIdx = 0;
+        cs.fxEndIdx = newFxCount;
+        m_trackChainSources[trackIdx] = {cs};
+    }
+
+    return ok;
+}
+
+// ============================================================
+// HandleFxChainCycle — Cycle through chains (Issue #95)
+// ============================================================
+
+void CommandHandler::HandleFxChainCycle(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrack || !m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string direction   = parser.getString("direction"); // "next" or "prev"
+    std::string chainPath   = parser.getString("chainPath"); // optional: explicit path
+
+    if (trackIdxStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' parameter\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+
+    // Determine the current chain path from chain-source tracking
+    std::string currentPath;
+    auto it = m_trackChainSources.find(trackIdx);
+    if (it != m_trackChainSources.end() && !it->second.empty()) {
+        currentPath = it->second[0].filePath;
+    }
+    if (currentPath.empty() && !chainPath.empty()) {
+        currentPath = chainPath;
+    }
+
+    if (currentPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"No chain loaded on this track\"}");
+        return;
+    }
+
+    std::string directionArg = direction;
+    if (chainPath.empty() && !direction.empty() && currentPath.empty()) {
+        directionArg.clear();
+    }
+
+    bool ok = doLoadChain(trackIdx, currentPath, directionArg);
+    if (ok) {
+        // Get updated FX list
+        std::string fxList = "[]";
+        MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+        if (track && m_api.TrackFX_GetCount && m_api.TrackFX_GetFXName) {
+            int fxCount = m_api.TrackFX_GetCount(track);
+            fxList = "[";
+            for (int i = 0; i < fxCount; i++) {
+                if (i > 0) fxList += ",";
+                char name[512] = {0};
+                m_api.TrackFX_GetFXName(track, i, name, sizeof(name));
+                fxList += "{";
+                fxList += json_string("index") + ":" + std::to_string(i) + ",";
+                fxList += json_string("name") + ":" + json_string(name);
+                // Determine chain path for this FX
+                std::string cp;
+                auto cit = m_trackChainSources.find(trackIdx);
+                if (cit != m_trackChainSources.end()) {
+                    for (const auto& cs : cit->second) {
+                        if (i >= cs.fxStartIdx && i < cs.fxEndIdx) {
+                            cp = cs.filePath;
+                            break;
+                        }
+                    }
+                }
+                if (!cp.empty()) {
+                    fxList += "," + json_string("chainPath") + ":" + json_string(cp);
+                } else {
+                    fxList += "," + json_string("chainPath") + ":null";
+                }
+                fxList += "}";
+            }
+            fxList += "]";
+        }
+
+        std::string payload = "{";
+        payload += json_string("cycled") + ":true,";
+        payload += json_string("fx") + ":" + fxList;
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to cycle chain\"}");
+    }
 }
 
 void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx, double value)

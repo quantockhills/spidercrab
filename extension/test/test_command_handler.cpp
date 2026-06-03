@@ -293,6 +293,9 @@ TEST(JsonStringTest, EmptyString)
 // Reaper instance is required.
 // ============================================================
 
+// Forward declaration for mock functions that need g_mockChunk
+extern std::string g_mockChunk;
+
 struct MockTrack {
     int         idx;
     std::string name;
@@ -337,6 +340,22 @@ static int mock_TrackFX_GetCount(MediaTrack* track)
     int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
     if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
         return 0;
+
+    // Count <ITEM entries in g_mockChunk (authoritative after SetTrackStateChunk)
+    int chunkCount = 0;
+    {
+        size_t p = 0;
+        while ((p = g_mockChunk.find("<ITEM", p)) != std::string::npos) {
+            chunkCount++;
+            p++;
+        }
+    }
+
+    // If chunk has items, use that count (more up-to-date)
+    if (chunkCount > 0)
+        return chunkCount;
+
+    // Fallback to explicit mock FX list
     return (int)g_mock->tracks[idx].fx.size();
 }
 
@@ -345,6 +364,51 @@ static bool mock_TrackFX_GetFXName(MediaTrack* track, int fx, char* buf, int buf
     int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
     if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
         return false;
+
+    // First check g_mockChunk for ITEM entries (authoritative after SetTrackStateChunk)
+    size_t chunkItemCount = 0;
+    {
+        size_t p = 0;
+        while ((p = g_mockChunk.find("<ITEM", p)) != std::string::npos) {
+            chunkItemCount++;
+            p++;
+        }
+    }
+
+    if (chunkItemCount > 0) {
+        // Read from chunk (more up-to-date after SetTrackStateChunk)
+        size_t pos = 0;
+        int itemIdx = 0;
+        while (itemIdx <= fx) {
+            size_t found = g_mockChunk.find("<ITEM", pos);
+            if (found == std::string::npos) return false;
+            if (itemIdx == fx) {
+                size_t namePos = g_mockChunk.find("NAME", found);
+                if (namePos == std::string::npos) {
+                    snprintf(buf, (size_t)buf_sz, "FX %d", fx);
+                    return true;
+                }
+                size_t quote1 = g_mockChunk.find('"', namePos);
+                if (quote1 == std::string::npos) {
+                    snprintf(buf, (size_t)buf_sz, "FX %d", fx);
+                    return true;
+                }
+                size_t quote2 = g_mockChunk.find('"', quote1 + 1);
+                if (quote2 == std::string::npos) {
+                    snprintf(buf, (size_t)buf_sz, "FX %d", fx);
+                    return true;
+                }
+                std::string fxName = g_mockChunk.substr(quote1 + 1, quote2 - quote1 - 1);
+                snprintf(buf, (size_t)buf_sz, "%s", fxName.c_str());
+                return true;
+            }
+            itemIdx++;
+            pos = found + 1;
+        }
+        return false;
+    }
+
+    // Fallback to mock state
     auto& t = g_mock->tracks[idx];
     if (fx < 0 || fx >= (int)t.fx.size())
         return false;
@@ -560,7 +624,7 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
 
 // ---- Mock GetTrackStateChunk / SetTrackStateChunk ----
 
-static std::string g_mockChunk;
+std::string g_mockChunk;
 
 static bool mock_GetTrackStateChunk(MediaTrack* track, char* buf, int buf_sz, bool)
 {
@@ -5079,4 +5143,285 @@ TEST(FxChainTest, SearchRecursiveMissingRootPath)
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_TRUE(responses[0].find("\"success\":false") != std::string::npos);
     EXPECT_TRUE(responses[0].find("\"error\"") != std::string::npos);
+}
+
+// ============================================================
+// Chain-source tracking and fxchain/cycle tests (Issue #95)
+// ============================================================
+
+TEST(FxChainTest, TrackGetFxIncludesChainPathAfterLoad)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_meta_test";
+    fs::create_directories(testDir);
+    fs::path chainPath = testDir / "meta_chain.RfxChain";
+
+    std::string fxChainContent =
+        "<FXCHAIN\n"
+        "  SHOW 0\n"
+        "  <ITEM\n"
+        "    NAME \"ChainFX1\"\n"
+        "    VST \"VST3: ChainFX1 (Test)\" ChainFX1 0 0\n"
+        "  >\n"
+        "  <ITEM\n"
+        "    NAME \"ChainFX2\"\n"
+        "    VST \"VST3: ChainFX2 (Test)\" ChainFX2 0 0\n"
+        "  >\n"
+        ">";
+
+    std::ofstream f(chainPath);
+    f << fxChainContent;
+    f.close();
+
+    // Track with existing FX (ReaEQ)
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    SHOW 0\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ChainFX1", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "ChainFX2", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // First load the chain
+    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"("},"id":"cm1"})";
+    handler->HandleMessage(1, loadCmd);
+    responses.clear();
+
+    // Then check getFx includes chainPath
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"cm2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Response should have chainPath for both FX
+    EXPECT_TRUE(resp.find("\"chainPath\"") != std::string::npos);
+    EXPECT_TRUE(resp.find(chainPath.string()) != std::string::npos);
+
+    // Both FX should be present
+    EXPECT_TRUE(resp.find("ChainFX1") != std::string::npos);
+    EXPECT_TRUE(resp.find("ChainFX2") != std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, CycleNextSwitchesChain)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_cycle_test";
+    fs::create_directories(testDir);
+
+    // Create two chain files (alphabetically chain_a then chain_b)
+    fs::path chainA = testDir / "chain_a.RfxChain";
+    fs::path chainB = testDir / "chain_b.RfxChain";
+
+    std::string chainAContent =
+        "<FXCHAIN\n"
+        "  <ITEM\n"
+        "    NAME \"FXfromA\"\n"
+        "    VST \"VST3: FXfromA (Test)\" FXfromA 0 0\n"
+        "  >\n"
+        ">";
+
+    std::string chainBContent =
+        "<FXCHAIN\n"
+        "  <ITEM\n"
+        "    NAME \"FXfromB\"\n"
+        "    VST \"VST3: FXfromB (Test)\" FXfromB 0 0\n"
+        "  >\n"
+        ">";
+
+    { std::ofstream f(chainA); f << chainAContent; }
+    { std::ofstream f(chainB); f << chainBContent; }
+
+    // Start with chain_a loaded
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    <ITEM\n"
+        "      NAME \"FXfromA\"\n"
+        "      VST \"VST3: FXfromA (Test)\" FXfromA 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "FXfromA", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Load chain_a to set up chain-source tracking
+    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainA.string() + R"("},"id":"cc1"})";
+    handler->HandleMessage(1, loadCmd);
+    responses.clear();
+
+    // Now cycle to next chain
+    std::string cycleCmd = R"({"type":"command","command":"fxchain/cycle","payload":{"trackIdx":0,"direction":"next"},"id":"cc2"})";
+    handler->HandleMessage(1, cycleCmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_TRUE(resp.find("\"cycled\":true") != std::string::npos);
+    // Should contain FXfromB (from chain_b, the next alphabetically)
+    EXPECT_TRUE(resp.find("FXfromB") != std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, CyclePrevSwitchesChain)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_cycle_prev_test";
+    fs::create_directories(testDir);
+
+    fs::path chainA = testDir / "chain_a.RfxChain";
+    fs::path chainB = testDir / "chain_b.RfxChain";
+
+    std::string chainAContent =
+        "<FXCHAIN\n"
+        "  <ITEM\n"
+        "    NAME \"FXfromA\"\n"
+        "    VST \"VST3: FXfromA (Test)\" FXfromA 0 0\n"
+        "  >\n"
+        ">";
+
+    std::string chainBContent =
+        "<FXCHAIN\n"
+        "  <ITEM\n"
+        "    NAME \"FXfromB\"\n"
+        "    VST \"VST3: FXfromB (Test)\" FXfromB 0 0\n"
+        "  >\n"
+        ">";
+
+    { std::ofstream f(chainA); f << chainAContent; }
+    { std::ofstream f(chainB); f << chainBContent; }
+
+    // Start with chain_b loaded
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    <ITEM\n"
+        "      NAME \"FXfromB\"\n"
+        "      VST \"VST3: FXfromB (Test)\" FXfromB 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "FXfromB", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Load chain_b to set up chain-source tracking
+    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainB.string() + R"("},"id":"cc3"})";
+    handler->HandleMessage(1, loadCmd);
+    responses.clear();
+
+    // Now cycle to previous chain (should wrap to chain_a)
+    std::string cycleCmd = R"({"type":"command","command":"fxchain/cycle","payload":{"trackIdx":0,"direction":"prev"},"id":"cc4"})";
+    handler->HandleMessage(1, cycleCmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_TRUE(resp.find("\"cycled\":true") != std::string::npos);
+    // Should contain FXfromA (from chain_a, previous alphabetically)
+    EXPECT_TRUE(resp.find("FXfromA") != std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, CycleSingleChainWraps)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_single_cycle_test";
+    fs::create_directories(testDir);
+
+    fs::path chainPath = testDir / "only_chain.RfxChain";
+
+    std::string content =
+        "<FXCHAIN\n"
+        "  <ITEM\n"
+        "    NAME \"TheOnlyFX\"\n"
+        "    VST \"VST3: TheOnlyFX (Test)\" TheOnlyFX 0 0\n"
+        "  >\n"
+        ">";
+
+    { std::ofstream f(chainPath); f << content; }
+
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    <ITEM\n"
+        "      NAME \"TheOnlyFX\"\n"
+        "      VST \"VST3: TheOnlyFX (Test)\" TheOnlyFX 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "TheOnlyFX", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Load the chain
+    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"("},"id":"cc5"})";
+    handler->HandleMessage(1, loadCmd);
+    responses.clear();
+
+    // Cycle next on single chain should still work (wraps to itself)
+    std::string cycleCmd = R"({"type":"command","command":"fxchain/cycle","payload":{"trackIdx":0,"direction":"next"},"id":"cc6"})";
+    handler->HandleMessage(1, cycleCmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_TRUE(resp.find("\"cycled\":true") != std::string::npos);
+    EXPECT_TRUE(resp.find("TheOnlyFX") != std::string::npos);
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, CycleFailsWithoutLoadedChain)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
+        "  <FXCHAIN\n"
+        "    <ITEM\n"
+        "      NAME \"ReaEQ\"\n"
+        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
+        "    >\n"
+        "  >\n"
+        ">";
+
+    // Cycle on track with no tracked chain source
+    std::string cycleCmd = R"({"type":"command","command":"fxchain/cycle","payload":{"trackIdx":0,"direction":"next"},"id":"cc7"})";
+    handler->HandleMessage(1, cycleCmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should fail with "No chain loaded"
+    EXPECT_TRUE(resp.find("\"success\":false") != std::string::npos);
+    EXPECT_TRUE(resp.find("No chain loaded") != std::string::npos);
 }

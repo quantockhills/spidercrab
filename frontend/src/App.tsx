@@ -54,6 +54,7 @@ function App() {
     fxChainLoad,
     fxChainGetInfo,
     fxChainSearchRecursive,
+    fxChainCycle,
     getFxPreset,
     setFxPreset,
     getAllFxPresetNames,
@@ -363,6 +364,7 @@ function App() {
             getFxPreset={getFxPreset}
             setFxPreset={setFxPreset}
             getAllFxPresetNames={getAllFxPresetNames}
+            fxChainCycle={fxChainCycle}
           />
         )}
 
