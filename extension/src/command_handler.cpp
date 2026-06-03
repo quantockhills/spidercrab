@@ -6,10 +6,18 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+
+// REAPER SDK for MIDI types (MIDI_event_t, midi_realtime_write_struct_t, PCM_SOURCE_EXT_ADDMIDIEVENTS).
+// Must come after standard headers because swell-types.h defines min/max macros.
+#include "reaper_plugin.h"
+#undef min
+#undef max
+
 namespace fs = std::filesystem;
 
 // Global Playtime 2 API state (defined here, declared extern in playtime_api.h)
 PlaytimeApi g_playtimeApi;
+void* (*g_playtimeGetFunc)(const char*) = nullptr;
 
 // Minimal JSON builder (no dependencies)
 static std::string json_escape(const std::string& s)
@@ -60,6 +68,10 @@ static std::string json_string(const char* s)
 // Forward declare REAPER types — must match reaper_plugin.h ('class', not 'struct')
 class MediaTrack;
 class ReaProject;
+class MediaItem;
+class MediaItem_Take;
+class PCM_source;
+class MIDI_eventlist;
 
 static std::string json_string(const std::string& s)
 {
@@ -244,6 +256,56 @@ static std::string extractPayload(const std::string& message)
 CommandHandler::CommandHandler(WebSocketServer* ws)
     : m_ws(ws)
 {
+    // Populate command dispatch map
+    m_commandMap["track/getAll"]           = &CommandHandler::HandleGetTracks;
+    m_commandMap["track/add"]              = &CommandHandler::HandleAddTrack;
+    m_commandMap["track/getFx"]            = &CommandHandler::HandleGetTrackFX;
+    m_commandMap["track/setMute"]          = &CommandHandler::HandleSetTrackMute;
+    m_commandMap["track/setSolo"]          = &CommandHandler::HandleSetTrackSolo;
+    m_commandMap["track/setArm"]           = &CommandHandler::HandleSetTrackArm;
+    m_commandMap["track/setSelected"]      = &CommandHandler::HandleSetTrackSelected;
+    m_commandMap["track/setVolume"]        = &CommandHandler::HandleSetTrackVolume;
+    m_commandMap["track/setPan"]           = &CommandHandler::HandleSetTrackPan;
+    m_commandMap["fx/getParams"]           = &CommandHandler::HandleGetFXParams;
+    m_commandMap["fx/setParam"]            = &CommandHandler::HandleSetFXParam;
+    m_commandMap["fx/add"]                 = &CommandHandler::HandleAddFX;
+    m_commandMap["fx/delete"]              = &CommandHandler::HandleDeleteFX;
+    m_commandMap["fx/enumerate"]           = &CommandHandler::HandleEnumerateFX;
+    m_commandMap["fx/refreshCache"]        = &CommandHandler::HandleRefreshFxCache;
+    m_commandMap["transport/getState"]     = &CommandHandler::HandleGetTransport;
+    m_commandMap["transport/play"]         = &CommandHandler::HandlePlay;
+    m_commandMap["transport/stop"]         = &CommandHandler::HandleStop;
+    m_commandMap["transport/record"]       = &CommandHandler::HandleRecord;
+    m_commandMap["sample/getDirectory"]    = &CommandHandler::HandleSampleGetDirectory;
+    m_commandMap["sample/sendToTrack"]     = &CommandHandler::HandleSampleSendToTrack;
+    m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
+    m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
+    m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
+    m_commandMap["matrix/triggerScene"]     = &CommandHandler::HandleMatrixTriggerScene;
+    m_commandMap["matrix/setSlotState"]     = &CommandHandler::HandleMatrixSetSlotState;
+    m_commandMap["matrix/recordSlot"]       = &CommandHandler::HandleMatrixRecordSlot;
+    m_commandMap["matrix/pollState"]        = &CommandHandler::HandleMatrixPollState;
+    m_commandMap["sequencer/getAll"]        = &CommandHandler::HandleSequencerGetAll;
+    m_commandMap["sequencer/toggleStep"]    = &CommandHandler::HandleSequencerToggleStep;
+    m_commandMap["sequencer/setStep"]       = &CommandHandler::HandleSequencerSetStep;
+    m_commandMap["sequencer/clearAll"]      = &CommandHandler::HandleSequencerClearAll;
+    m_commandMap["sequencer/setLength"]     = &CommandHandler::HandleSequencerSetLength;
+    m_commandMap["sequencer/setBaseNote"]   = &CommandHandler::HandleSequencerSetBaseNote;
+    m_commandMap["sequencer/getPlayhead"]   = &CommandHandler::HandleSequencerGetPlayhead;
+    m_commandMap["fxchain/getDirectory"]    = &CommandHandler::HandleFxChainGetDirectory;
+    m_commandMap["fxchain/save"]            = &CommandHandler::HandleFxChainSave;
+    m_commandMap["fxchain/load"]            = &CommandHandler::HandleFxChainLoad;
+    m_commandMap["fxchain/getInfo"]         = &CommandHandler::HandleFxChainGetInfo;
+    m_commandMap["fxchain/searchRecursive"] = &CommandHandler::HandleFxChainSearchRecursive;
+    m_commandMap["fxchain/cycle"]           = &CommandHandler::HandleFxChainCycle;
+    m_commandMap["fx/reorder"]              = &CommandHandler::HandleReorderFX;
+    m_commandMap["fx/getPreset"]            = &CommandHandler::HandleGetFxPreset;
+    m_commandMap["fx/setPreset"]            = &CommandHandler::HandleSetFxPreset;
+    m_commandMap["fx/getAllPresetNames"]    = &CommandHandler::HandleGetAllFxPresetNames;
+    m_commandMap["sequencer/convertToClip"] = &CommandHandler::HandleSequencerConvertToClip;
+    m_commandMap["midi/event"]              = &CommandHandler::HandleMidiEvent;
+    m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
+    m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -260,80 +322,9 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
 
     // Simple dispatch
     if (type.empty() || type == "command") {
-        if (command == "track/getAll") {
-            HandleGetTracks(clientId, id, message);
-        } else if (command == "track/add") {
-            HandleAddTrack(clientId, id, message);
-        } else if (command == "track/getFx") {
-            HandleGetTrackFX(clientId, id, message);
-        } else if (command == "fx/getParams") {
-            HandleGetFXParams(clientId, id, message);
-        } else if (command == "fx/setParam") {
-            HandleSetFXParam(clientId, id, message);
-        } else if (command == "fx/add") {
-            HandleAddFX(clientId, id, message);
-        } else if (command == "fx/delete") {
-            HandleDeleteFX(clientId, id, message);
-        } else if (command == "transport/getState") {
-            HandleGetTransport(clientId, id, message);
-        } else if (command == "transport/play") {
-            HandlePlay(clientId, id, message);
-        } else if (command == "transport/stop") {
-            HandleStop(clientId, id, message);
-        } else if (command == "transport/record") {
-            HandleRecord(clientId, id, message);
-        } else if (command == "fx/enumerate") {
-            HandleEnumerateFX(clientId, id, message);
-        } else if (command == "fx/refreshCache") {
-            HandleRefreshFxCache(clientId, id, message);
-        } else if (command == "track/setMute") {
-            HandleSetTrackMute(clientId, id, message);
-        } else if (command == "track/setSolo") {
-            HandleSetTrackSolo(clientId, id, message);
-        } else if (command == "track/setArm") {
-            HandleSetTrackArm(clientId, id, message);
-        } else if (command == "track/setSelected") {
-            HandleSetTrackSelected(clientId, id, message);
-        } else if (command == "track/setVolume") {
-            HandleSetTrackVolume(clientId, id, message);
-        } else if (command == "track/setPan") {
-            HandleSetTrackPan(clientId, id, message);
-        } else if (command == "sample/getDirectory") {
-            HandleSampleGetDirectory(clientId, id, message);
-        } else if (command == "sample/sendToTrack") {
-            HandleSampleSendToTrack(clientId, id, message);
-        } else if (command == "sample/sendToSlot") {
-            HandleSampleSendToSlot(clientId, id, message);
-        } else if (command == "matrix/getAll") {
-            HandleMatrixGetAll(clientId, id, message);
-        } else if (command == "matrix/getSlot") {
-            HandleMatrixGetSlot(clientId, id, message);
-        } else if (command == "matrix/triggerSlot") {
-            HandleMatrixTriggerSlot(clientId, id, message);
-        } else if (command == "matrix/triggerScene") {
-            HandleMatrixTriggerScene(clientId, id, message);
-        } else if (command == "sequencer/getAll") {
-            HandleSequencerGetAll(clientId, id, message);
-        } else if (command == "sequencer/toggleStep") {
-            HandleSequencerToggleStep(clientId, id, message);
-        } else if (command == "sequencer/setStep") {
-            HandleSequencerSetStep(clientId, id, message);
-        } else if (command == "sequencer/clearAll") {
-            HandleSequencerClearAll(clientId, id, message);
-        } else if (command == "sequencer/setLength") {
-            HandleSequencerSetLength(clientId, id, message);
-        } else if (command == "sequencer/setBaseNote") {
-            HandleSequencerSetBaseNote(clientId, id, message);
-        } else if (command == "sequencer/getPlayhead") {
-            HandleSequencerGetPlayhead(clientId, id, message);
-        } else if (command == "fxchain/getDirectory") {
-            HandleFxChainGetDirectory(clientId, id, message);
-        } else if (command == "fxchain/save") {
-            HandleFxChainSave(clientId, id, message);
-        } else if (command == "fxchain/load") {
-            HandleFxChainLoad(clientId, id, message);
-        } else if (command == "fxchain/getInfo") {
-            HandleFxChainGetInfo(clientId, id, message);
+        auto it = m_commandMap.find(command);
+        if (it != m_commandMap.end()) {
+            (this->*(it->second))(clientId, id, message);
         } else {
             SendResponse(clientId, id, false, "{\"error\":\"Unknown command\"}");
         }
@@ -414,9 +405,24 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (pp) pan = *pp;
         }
 
+        // Read real track name via GetSetMediaTrackInfo_String (Issue #40)
+        // Fallback to "Track N" if API unavailable or name is empty
+        char trackName[256] = {0};
+        bool gotName = false;
+        if (m_api.GetSetMediaTrackInfo_String) {
+            gotName = m_api.GetSetMediaTrackInfo_String(track, "P_NAME", trackName, false);
+        }
+        std::string displayName;
+        if (gotName && trackName[0] != '\0') {
+            displayName = trackName;
+        } else {
+            // Master track returns NULL/P_NAME empty per docs; fallback for all empty names
+            displayName = "Track " + std::to_string(i + 1);
+        }
+
         tracksJson += "{";
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
-        tracksJson += json_string("name") + ":" + json_string("Track " + std::to_string(i + 1)) + ",";
+        tracksJson += json_string("name") + ":" + json_string(displayName) + ",";
         tracksJson += json_string("trackNumber") + ":" + std::to_string(i + 1) + ",";
         tracksJson += json_string("selected") + ":false,";
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
@@ -450,6 +456,18 @@ void CommandHandler::HandleGetTrackFX(
 
     int         fxCount = m_api.TrackFX_GetCount(track);
     std::string fxList  = "[";
+
+    // Build a chainPath lookup: fxIdx -> chainPath (or empty if not in a chain group)
+    std::map<int, std::string> fxChainPath;
+    auto it = m_trackChainSources.find(trackIdx);
+    if (it != m_trackChainSources.end()) {
+        for (const auto& cs : it->second) {
+            for (int i = cs.fxStartIdx; i < cs.fxEndIdx && i < fxCount; i++) {
+                fxChainPath[i] = cs.filePath;
+            }
+        }
+    }
+
     for (int i = 0; i < fxCount; i++) {
         if (i > 0)
             fxList += ",";
@@ -457,7 +475,13 @@ void CommandHandler::HandleGetTrackFX(
         m_api.TrackFX_GetFXName(track, i, name, sizeof(name));
         fxList += "{";
         fxList += json_string("index") + ":" + std::to_string(i) + ",";
-        fxList += json_string("name") + ":" + json_string(name);
+        fxList += json_string("name") + ":" + json_string(name) + ",";
+        auto cpIt = fxChainPath.find(i);
+        if (cpIt != fxChainPath.end() && !cpIt->second.empty()) {
+            fxList += json_string("chainPath") + ":" + json_string(cpIt->second);
+        } else {
+            fxList += json_string("chainPath") + ":null";
+        }
         fxList += "}";
     }
     fxList += "]";
@@ -640,7 +664,164 @@ void CommandHandler::HandleAddFX(int clientId, const std::string& id, const std:
 
     // instantiate=1 means: don't prompt, just add the FX
     int fxIdx = m_api.TrackFX_AddByName(track, fxName.c_str(), false, 1);
+
+    // Update chain-source indices: new FX inserted at fxIdx
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end() && fxIdx >= 0) {
+        ShiftChainSourceIndices(sit->second, fxIdx, 1);
+    }
+
     SendResponse(clientId, id, fxIdx >= 0, "{\"fxIdx\":" + std::to_string(fxIdx) + "}");
+}
+
+// ============================================================
+// FX preset command handlers (Issue #87)
+// ============================================================
+
+void CommandHandler::HandleGetFxPreset(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string fxIdxStr    = parser.getString("fxIdx");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    int         fxIdx       = atoi(fxIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int numPresets = 0;
+    int presetIdx  = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
+
+    std::string presetName;
+    if (presetIdx >= 0) {
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            presetName = nameBuf;
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("presetIndex") + ":" + std::to_string(presetIdx) + ",";
+    payload += json_string("presetName") + ":" + (presetName.empty() ? "null" : json_string(presetName)) + ",";
+    payload += json_string("numPresets") + ":" + std::to_string(numPresets);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSetFxPreset(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_SetPresetByIndex || !m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr  = parser.getString("trackIdx");
+    std::string fxIdxStr     = parser.getString("fxIdx");
+    std::string presetIdxStr = parser.getString("presetIdx");
+    int trackIdx  = atoi(trackIdxStr.c_str());
+    int fxIdx     = atoi(fxIdxStr.c_str());
+    int presetIdx = atoi(presetIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    bool success = m_api.TrackFX_SetPresetByIndex(track, fxIdx, presetIdx);
+    if (!success) {
+        SendResponse(clientId, id, false, "{\"error\":\"Failed to set preset\"}");
+        return;
+    }
+
+    // Read back the committed state
+    int numPresets = 0;
+    int committedIdx = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
+
+    std::string presetName;
+    if (committedIdx >= 0) {
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            presetName = nameBuf;
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("presetIndex") + ":" + std::to_string(committedIdx) + ",";
+    payload += json_string("presetName") + ":" + (presetName.empty() ? "null" : json_string(presetName)) + ",";
+    payload += json_string("numPresets") + ":" + std::to_string(numPresets);
+    payload += "}";
+
+    SendResponse(clientId, id, success, payload);
+}
+
+void CommandHandler::HandleGetAllFxPresetNames(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset || !m_api.TrackFX_SetPresetByIndex) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string fxIdxStr    = parser.getString("fxIdx");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    int         fxIdx       = atoi(fxIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int numPresets = 0;
+    int originalIdx = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
+
+    if (numPresets <= 0) {
+        std::string payload = "{";
+        payload += json_string("presetNames") + ":[],";
+        payload += json_string("currentIndex") + ":" + std::to_string(originalIdx);
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+        return;
+    }
+
+    // Enumerate all presets by index
+    std::string nameList = "[";
+    for (int i = 0; i < numPresets; i++) {
+        if (i > 0) nameList += ",";
+        m_api.TrackFX_SetPresetByIndex(track, fxIdx, i);
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            nameList += json_string(nameBuf);
+        } else {
+            nameList += json_string("");
+        }
+    }
+    nameList += "]";
+
+    // Restore original preset (important for correctness)
+    m_api.TrackFX_SetPresetByIndex(track, fxIdx, originalIdx);
+
+    std::string payload = "{";
+    payload += json_string("presetNames") + ":" + nameList + ",";
+    payload += json_string("currentIndex") + ":" + std::to_string(originalIdx);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
 }
 
 void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const std::string& params)
@@ -665,8 +846,117 @@ void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const s
     }
 
     bool success = m_api.TrackFX_Delete(track, fxIdx);
+
+    // Update chain-source indices: FX at fxIdx removed, shift down
+    if (success) {
+        auto sit = m_trackChainSources.find(trackIdx);
+        if (sit != m_trackChainSources.end()) {
+            ShiftChainSourceIndices(sit->second, fxIdx, -1);
+            // Clean up empty chain groups
+            sit->second.erase(
+                std::remove_if(sit->second.begin(), sit->second.end(),
+                    [](const ChainSource& cs) { return cs.fxStartIdx >= cs.fxEndIdx; }),
+                sit->second.end());
+            if (sit->second.empty()) {
+                m_trackChainSources.erase(sit);
+            }
+        }
+    }
+
     SendResponse(
         clientId, id, success, "{\"deleted\":" + std::string(success ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleReorderFX(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_CopyToTrack || !m_api.TrackFX_Delete || !m_api.TrackFX_GetCount) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr  = parser.getString("trackIdx");
+    std::string fromIdxStr   = parser.getString("fromIndex");
+    std::string toIdxStr     = parser.getString("toIndex");
+
+    if (trackIdxStr.empty() || fromIdxStr.empty() || toIdxStr.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Missing required parameters\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+    int fromIdx  = atoi(fromIdxStr.c_str());
+    int toIdx    = atoi(toIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+
+    // Validate indices
+    if (fromIdx < 0 || fromIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"fromIndex out of range: " + std::to_string(fromIdx) + " (0-" + std::to_string(fxCount - 1) + ")\"}");
+        return;
+    }
+    if (toIdx < 0 || toIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"toIndex out of range: " + std::to_string(toIdx) + " (0-" + std::to_string(fxCount - 1) + ")\"}");
+        return;
+    }
+
+    // No-op if moving to same position
+    if (fromIdx == toIdx) {
+        SendResponse(clientId, id, true,
+            "{\"reordered\":true,\"trackIdx\":" + std::to_string(trackIdx)
+            + ",\"fromIndex\":" + std::to_string(fromIdx)
+            + ",\"toIndex\":" + std::to_string(toIdx) + "}");
+        return;
+    }
+
+    // Index shift logic:
+    // If toIdx < fromIdx: copy to toIdx first (shift right), then delete at fromIdx + 1
+    // If toIdx > fromIdx: copy to toIdx+1 first (shift right past original), then delete at fromIdx
+    int destCopyIdx = (toIdx > fromIdx) ? toIdx + 1 : toIdx;
+    m_api.TrackFX_CopyToTrack(track, fromIdx, track, destCopyIdx, false);
+
+    int deleteIdx;
+    if (toIdx < fromIdx) {
+        deleteIdx = fromIdx + 1;
+    } else {
+        deleteIdx = fromIdx;
+    }
+
+    m_api.TrackFX_Delete(track, deleteIdx);
+
+    // Update chain-source indices for the reorder
+    // Copy at destCopyIdx shifts subsequent indices by 1
+    // Delete at deleteIdx shifts subsequent indices by -1
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end()) {
+        // First: the copy inserts at destCopyIdx, shift everything after up
+        ShiftChainSourceIndices(sit->second, destCopyIdx, 1);
+        // Second: the delete at deleteIdx removes an element, shift after down
+        int adjustedDeleteIdx = (toIdx > fromIdx) ? fromIdx : (fromIdx + 1);
+        ShiftChainSourceIndices(sit->second, adjustedDeleteIdx, -1);
+        // Clean up empty chain groups
+        sit->second.erase(
+            std::remove_if(sit->second.begin(), sit->second.end(),
+                [](const ChainSource& cs) { return cs.fxStartIdx >= cs.fxEndIdx; }),
+            sit->second.end());
+        if (sit->second.empty()) {
+            m_trackChainSources.erase(sit);
+        }
+    }
+
+    SendResponse(clientId, id, true,
+        "{\"reordered\":true,\"trackIdx\":" + std::to_string(trackIdx)
+        + ",\"fromIndex\":" + std::to_string(fromIdx)
+        + ",\"toIndex\":" + std::to_string(toIdx) + "}");
 }
 
 void CommandHandler::HandleGetTransport(
@@ -1021,12 +1311,31 @@ void CommandHandler::HandleMatrixGetAll(
     int      rows    = m_playtimeState.rows();
 
     // When Playtime is available, attempt to find the instance
-    // and sync state. For now, we track state locally.
+    // and auto-create one if none exists. Playtime 2 C API has no
+    // clip-triggering functions — matrix commands must work via MIDI notes.
     if (isPlaytimeAvailable()) {
         int instance = m_playtimeState.findPlaytimeInstance();
         if (instance >= 0) {
             fprintf(stderr,
                 "[reaper-ipad] matrix/getAll: Playtime instance %d found\n", instance);
+        } else {
+            // Auto-create a Playtime matrix if none exists in the project.
+            // HB_CreateClipMatrix creates a new clip matrix in the given
+            // Helgobox instance. We first find any Helgobox instance.
+            fprintf(stderr,
+                "[reaper-ipad] matrix/getAll: No Playtime instance found, attempting auto-create...\n");
+            int hgInstance = -1;
+            if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+                hgInstance = g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject(nullptr);
+            }
+            if (hgInstance >= 0 && g_playtimeApi.HB_CreateClipMatrix) {
+                g_playtimeApi.HB_CreateClipMatrix(hgInstance);
+                fprintf(stderr,
+                    "[reaper-ipad] matrix/getAll: Auto-created Playtime matrix on Helgobox instance %d\n", hgInstance);
+            } else {
+                fprintf(stderr,
+                    "[reaper-ipad] matrix/getAll: Could not auto-create — no Helgobox instance or HB_CreateClipMatrix unavailable\n");
+            }
         }
     }
 
@@ -1169,6 +1478,154 @@ void CommandHandler::HandleMatrixTriggerScene(
     payload += json_string("triggered") + ":true,";
     payload += json_string("row") + ":" + std::to_string(row) + ",";
     payload += json_string("slots") + ":" + sceneSlots;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// Set a specific slot state (used for visual state simulation in tests, Issue #83)
+void CommandHandler::HandleMatrixSetSlotState(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+    std::string state  = parser.getString("state");
+
+    if (colStr.empty() || rowStr.empty() || state.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column', 'row', or 'state' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Validate state string
+    if (state != "playing" && state != "recording" && state != "stopped" && state != "empty") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid state. Must be one of: playing, recording, stopped, empty\"}");
+        return;
+    }
+
+    m_playtimeState.setSlotState(col, row, state);
+
+    // Broadcast slot state change event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// Start recording in a slot. Records state transitions:
+// empty → recording, recording → stopped, stopped → recording (re-record)
+// playing → error (can't record while playing)
+void CommandHandler::HandleMatrixRecordSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    SlotState current = m_playtimeState.getSlot(col, row);
+    std::string newState;
+
+    if (current.state == "playing") {
+        // Can't record on a playing slot
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Cannot record on a playing clip. Stop the clip first.\"}");
+        return;
+    } else if (current.state == "recording") {
+        // Stop recording → stopped (clip saved)
+        newState = "stopped";
+    } else {
+        // empty or stopped → start recording
+        newState = "recording";
+    }
+
+    m_playtimeState.setSlotState(col, row, newState);
+
+    // Send MIDI note for recording if MIDI output is available
+    // Use channel 1 (distinct from trigger channel 0) so Playtime 2
+    // can distinguish between clip trigger and record actions via
+    // its MIDI input mapping.
+    if (m_playtimeMidi.isAvailable()) {
+        int note = m_playtimeMidi.baseNote() + (row * 8) + col;
+        if (note <= 127) {
+            m_playtimeMidi.sendMidiNote(1, note, 100);
+        }
+    }
+
+    // Broadcast event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// Poll Playtime 2 instance state for real-time sync.
+// Returns current instance info without modifying state.
+// This is called periodically from Run() and on-demand by the frontend.
+void CommandHandler::HandleMatrixPollState(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    bool playtimeAvail = isPlaytimeAvailable();
+    int  instanceId    = -1;
+    bool hasMatrix      = false;
+
+    if (playtimeAvail) {
+        instanceId = m_playtimeState.findPlaytimeInstance();
+        if (instanceId >= 0) {
+            hasMatrix = true;
+        }
+    }
+
+    // If Playtime is available but no instance found, try to auto-create
+    if (playtimeAvail && instanceId < 0) {
+        int hgInstance = -1;
+        if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+            hgInstance = g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject(nullptr);
+        }
+        if (hgInstance >= 0 && g_playtimeApi.HB_CreateClipMatrix) {
+            g_playtimeApi.HB_CreateClipMatrix(hgInstance);
+            fprintf(stderr,
+                "[reaper-ipad] matrix/pollState: Auto-created Playtime matrix on Helgobox instance %d\n", hgInstance);
+            instanceId = m_playtimeState.findPlaytimeInstance();
+            hasMatrix = (instanceId >= 0);
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("playtimeAvailable") + ":" + (playtimeAvail ? "true" : "false") + ",";
+    payload += json_string("instanceId") + ":" + std::to_string(instanceId) + ",";
+    payload += json_string("hasMatrix") + ":" + (hasMatrix ? "true" : "false");
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
@@ -1662,6 +2119,125 @@ void CommandHandler::HandleSequencerGetPlayhead(
 }
 
 // ============================================================
+// HandleSequencerConvertToClip — Convert step sequencer pattern
+// to a MIDI clip on the target track (Issue #92)
+// ============================================================
+
+void CommandHandler::HandleSequencerConvertToClip(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    // Check that required MIDI item APIs are available
+    if (!m_api.CreateNewMIDIItemInProj || !m_api.MIDI_InsertNote ||
+        !m_api.SetMediaItemInfo_Value || !m_api.GetMediaItemInfo_Value ||
+        !m_api.GetTrack || !m_api.CountTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Required MIDI API functions not loaded\"}");
+        return;
+    }
+
+    // Collect all active steps from the sequencer state
+    int seqLength = m_sequencerState.length();
+    int cols = m_sequencerState.columns();
+
+    // First pass: check if there are any active steps at all
+    bool hasActiveSteps = false;
+    for (int c = 0; c < std::min(seqLength, cols) && !hasActiveSteps; c++) {
+        std::vector<StepData> colSteps = m_sequencerState.getActiveStepsAtColumn(c);
+        if (!colSteps.empty()) hasActiveSteps = true;
+    }
+
+    // Edge case: empty pattern
+    if (!hasActiveSteps) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"No active steps to convert\",\"emptyPattern\":true}");
+        return;
+    }
+
+    // Determine target track: use first track as default
+    int numTracks = m_api.CountTracks(nullptr);
+    if (numTracks < 1) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"No tracks in project\"}");
+        return;
+    }
+    int trackIdx = 0;
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+
+    // Calculate item length in seconds (1/8th note per step at 120 BPM defaults)
+    const double stepDuration = 0.25; // 1/8th note at 120 BPM in seconds
+    double itemStart = 0.0;           // Start at beginning of project
+    double itemEnd = itemStart + (seqLength * stepDuration);
+
+    // Create the MIDI item
+    bool qnMode = false; // time in seconds (not quarter notes)
+    MediaItem* item = m_api.CreateNewMIDIItemInProj(track, itemStart, itemEnd, &qnMode);
+    if (!item) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to create MIDI item\"}");
+        return;
+    }
+
+    // Get the active take from the newly created item
+    MediaItem_Take* take = m_api.GetActiveTake(item);
+    if (!take) {
+        // If CreateNewMIDIItemInProj didn't create a take, try AddTakeToMediaItem
+        if (m_api.AddTakeToMediaItem) {
+            take = m_api.AddTakeToMediaItem(item);
+        }
+        if (!take) {
+            SendResponse(clientId, id, false,
+                "{\"error\":\"Failed to get MIDI take\"}");
+            return;
+        }
+    }
+
+    // REAPER default PPQ is 960 ticks per quarter note
+    // 1/8th note = 480 PPQ ticks
+    const double ppqPerStep = 480.0;
+
+    // Insert MIDI notes for each active step
+    int noteCount = 0;
+    bool noSort = true; // batch insert, sort at end
+
+    for (int c = 0; c < std::min(seqLength, cols); c++) {
+        std::vector<StepData> colSteps = m_sequencerState.getActiveStepsAtColumn(c);
+        for (const auto& step : colSteps) {
+            double startPpq = c * ppqPerStep;
+            double endPpq = startPpq + ppqPerStep;
+            bool ok = m_api.MIDI_InsertNote(take, false, false,
+                startPpq, endPpq, 0, step.note, step.velocity, &noSort);
+            if (ok) noteCount++;
+        }
+    }
+
+    // Set the item length to cover the full pattern
+    double currentLen = m_api.GetMediaItemInfo_Value(item, "D_LENGTH");
+    double desiredLen = seqLength * stepDuration;
+    if (desiredLen > currentLen) {
+        m_api.SetMediaItemInfo_Value(item, "D_LENGTH", desiredLen);
+    }
+
+    // Count items on the target track for identification
+    int trackItemCount = 0;
+    if (m_api.CountTrackMediaItems) {
+        trackItemCount = m_api.CountTrackMediaItems(track);
+    }
+
+    // Build success response
+    std::string payload = "{";
+    payload += json_string("success") + ":true,";
+    payload += json_string("trackIdx") + ":" + std::to_string(trackIdx) + ",";
+    payload += json_string("itemCount") + ":" + std::to_string(trackItemCount) + ",";
+    payload += json_string("noteCount") + ":" + std::to_string(noteCount) + ",";
+    payload += json_string("length") + ":" + std::to_string(seqLength);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
 // HandleSetTrackVolume (Issue #66)
 // ============================================================
 
@@ -1739,6 +2315,100 @@ void CommandHandler::HandleSetTrackPan(
 
 // Helper: Find the <FXCHAIN> section in a track chunk and extract it
 // Returns empty string if not found
+// Helper: find next REAPER section marker (&lt; or &gt;) that appears at the
+// start of a line (after optional whitespace). REAPER RPP/RfxChain format
+// always places section markers at line start, so characters like < and >
+// within data fields (e.g. VST quuid data like 0&lt;guid&gt;) are ignored.
+// Returns npos if no more markers found.
+// Sets *isOpen=true if marker is '<' (opening), false if '>' or '</...>' (closing).
+// Sets *isCloseTag=true if marker is '</...>' XML-style close tag.
+static size_t findNextSectionMarker(const std::string& chunk, size_t pos,
+                                     bool* isOpen, bool* isCloseTag)
+{
+    while (pos < chunk.size()) {
+        size_t lt = chunk.find('<', pos);
+        size_t gt = chunk.find('>', pos);
+
+        if (lt == std::string::npos && gt == std::string::npos)
+            return std::string::npos;
+
+        // Determine which comes first, but only if at line start
+        // A character at line start means: position 0, or the previous
+        // non-whitespace character before it is '\n'.
+        bool ltAtLineStart = false;
+        bool gtAtLineStart = false;
+
+        if (lt != std::string::npos) {
+            if (lt == 0) ltAtLineStart = true;
+            else {
+                // Scan backwards: all content from last \n to lt must be whitespace
+                size_t scan = lt;
+                while (scan > 0) {
+                    --scan;
+                    char c = chunk[scan];
+                    if (c == '\n') { ltAtLineStart = true; break; }
+                    if (c != ' ' && c != '\t') break;
+                }
+                if (scan == 0) ltAtLineStart = true; // start of string
+            }
+        }
+
+        if (gt != std::string::npos) {
+            if (gt == 0) gtAtLineStart = true;
+            else {
+                size_t scan = gt;
+                while (scan > 0) {
+                    --scan;
+                    char c = chunk[scan];
+                    if (c == '\n') { gtAtLineStart = true; break; }
+                    if (c != ' ' && c != '\t') break;
+                }
+                if (scan == 0) gtAtLineStart = true;
+            }
+        }
+
+        // If neither is at line start, advance past both and continue
+        if (!ltAtLineStart && !gtAtLineStart) {
+            size_t next = std::string::npos;
+            if (lt != std::string::npos && gt != std::string::npos)
+                next = std::min(lt, gt) + 1;
+            else if (lt != std::string::npos)
+                next = lt + 1;
+            else
+                next = gt + 1;
+
+            if (next <= pos) next = pos + 1;
+            pos = next;
+            continue;
+        }
+
+        // At least one is at line start — pick the earliest one that qualifies
+        if (gtAtLineStart && (!ltAtLineStart || gt < lt)) {
+            // '>' at line start is a section close
+            *isOpen = false;
+            *isCloseTag = false;
+            return gt;
+        }
+
+        if (ltAtLineStart) {
+            if (lt + 1 < chunk.size() && chunk[lt + 1] == '/') {
+                // XML-style close tag </...>
+                *isOpen = false;
+                *isCloseTag = true;
+                return lt;
+            }
+            // Opening tag '<'
+            *isOpen = true;
+            *isCloseTag = false;
+            return lt;
+        }
+
+        // Should not reach here, but just in case, advance and retry
+        pos = (lt != std::string::npos ? lt : gt) + 1;
+    }
+    return std::string::npos;
+}
+
 static std::string extractFxChainFromChunk(const std::string& chunk)
 {
     size_t start = chunk.find("<FXCHAIN");
@@ -1747,56 +2417,71 @@ static std::string extractFxChainFromChunk(const std::string& chunk)
 
     // REAPER RPPXML format: sections open with <TAG... (no > on opening line)
     // and close with > on its own line. Count depth to find matching close.
+    // Only section markers at LINE START are considered (ignoring < and > in
+    // data fields like VST quuid data).
     int depth = 0;
     size_t pos = start;
     while (pos < chunk.size()) {
-        size_t openAngle = chunk.find('<', pos);
-        size_t closeAngle = chunk.find('>', pos);
-        if (openAngle == std::string::npos && closeAngle == std::string::npos)
+        bool isOpen = false;
+        bool isCloseTag = false;
+        size_t marker = findNextSectionMarker(chunk, pos, &isOpen, &isCloseTag);
+        if (marker == std::string::npos)
             break;
 
-        if (closeAngle != std::string::npos && (openAngle == std::string::npos || closeAngle < openAngle)) {
-            // '>' encountered — close one level
+        if (!isOpen) {
+            // '>' at line start or XML close tag </...>
             depth--;
             if (depth == 0) {
-                // Found the closing > for FXCHAIN
-                return chunk.substr(start, closeAngle - start + 1);
+                if (isCloseTag) {
+                    // XML close tag: return up to and including the '>'
+                    size_t closeGt = chunk.find('>', marker);
+                    if (closeGt != std::string::npos)
+                        return chunk.substr(start, closeGt - start + 1);
+                }
+                // Plain '>' at line start
+                return chunk.substr(start, marker - start + 1);
             }
-            pos = closeAngle + 1;
-        } else if (openAngle != std::string::npos) {
-            // '<' encountered — check if it's a section opener or closer
-            // REAPER sections: <TAG ... (no > on same line) or > (close) or /> (self-close)
-            if (openAngle + 1 < chunk.size() && chunk[openAngle + 1] == '/') {
-                // Closing tag like </FOO>
-                size_t endTag = chunk.find('>', openAngle);
-                if (endTag != std::string::npos) {
-                    // This is NOT REAPER's format, but handle gracefully
-                    pos = endTag + 1;
+            if (isCloseTag) {
+                // Move past the entire </...> tag
+                size_t closeGt = chunk.find('>', marker);
+                if (closeGt != std::string::npos) {
+                    pos = closeGt + 1;
                 } else {
-                    pos = openAngle + 1;
+                    pos = marker + 1;
                 }
             } else {
-                // Opening tag like <FOO or self-closing like <FOO ... />
-                size_t endTag = chunk.find('>', openAngle);
-                if (endTag != std::string::npos) {
-                    // It's <TAG...> or <TAG ... />
-                    std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
+                pos = marker + 1;
+            }
+        } else {
+            // '<' at line start — opening tag
+            size_t endTag = chunk.find('>', marker);
+            if (endTag != std::string::npos) {
+                size_t newline = chunk.find('\n', marker);
+                if (newline != std::string::npos && newline < endTag) {
+                    // REAPER section opener: <TAG without > on same line
+                    // e.g. <FXCHAIN or <TRACK — the > is on a subsequent line
+                    depth++;
+                    pos = marker + 1;
+                } else {
+                    // Inline tag <...> — all on one line
+                    std::string tagContent = chunk.substr(marker + 1, endTag - marker - 1);
                     // Trim trailing whitespace
-                    while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                    while (!tagContent.empty() &&
+                           (tagContent.back() == ' ' || tagContent.back() == '\t'))
                         tagContent.pop_back();
                     if (!tagContent.empty() && tagContent.back() == '/') {
                         // Self-closing tag <... /> — no depth change
                         pos = endTag + 1;
                     } else {
-                        // Regular opening tag
+                        // Regular opening tag (inline)
                         depth++;
                         pos = endTag + 1;
                     }
-                } else {
-                    // <TAG without > on same line — REAPER section opener
-                    depth++;
-                    pos = openAngle + 1;
                 }
+            } else {
+                // <TAG without any > — section opener
+                depth++;
+                pos = marker + 1;
             }
         }
     }
@@ -1814,31 +2499,51 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
         size_t trackOpen = chunk.find("<TRACK");
         size_t trackClose = std::string::npos;
         if (trackOpen != std::string::npos) {
-            // Find the closing > of the TRACK section
+            // Find the closing > of the TRACK section using section markers
             int depth = 0;
             size_t pos = trackOpen;
             while (pos < chunk.size()) {
-                size_t openAngle = chunk.find('<', pos);
-                size_t closeAngle = chunk.find('>', pos);
-                if (closeAngle == std::string::npos) break;
-                if (openAngle == std::string::npos || closeAngle < openAngle) {
+                bool isOpen = false;
+                bool isCloseTag = false;
+                size_t marker = findNextSectionMarker(chunk, pos, &isOpen, &isCloseTag);
+                if (marker == std::string::npos) break;
+
+                if (!isOpen) {
                     depth--;
-                    if (depth == 0) { trackClose = closeAngle; break; }
-                    pos = closeAngle + 1;
+                    if (depth == 0) {
+                        size_t closeGt = chunk.find('>', marker);
+                        if (closeGt != std::string::npos)
+                            trackClose = closeGt;
+                        else
+                            trackClose = marker;
+                        break;
+                    }
+                    pos = marker + 1;
+                    if (isCloseTag) {
+                        size_t closeGt = chunk.find('>', marker);
+                        if (closeGt != std::string::npos) pos = closeGt + 1;
+                    }
                 } else {
-                    // Check if self-closing
-                    size_t endTag = chunk.find('>', openAngle);
+                    size_t endTag = chunk.find('>', marker);
                     if (endTag != std::string::npos) {
-                        std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
-                        while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
-                            tagContent.pop_back();
-                        if (tagContent.empty() || tagContent.back() != '/') {
+                        size_t newline = chunk.find('\n', marker);
+                        if (newline != std::string::npos && newline < endTag) {
+                            // REAPER section opener
                             depth++;
+                            pos = marker + 1;
+                        } else {
+                            // Inline tag
+                            std::string tagContent = chunk.substr(marker + 1, endTag - marker - 1);
+                            while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                                tagContent.pop_back();
+                            if (tagContent.empty() || tagContent.back() != '/') {
+                                depth++;
+                            }
+                            pos = endTag + 1;
                         }
-                        pos = endTag + 1;
                     } else {
                         depth++;
-                        pos = openAngle + 1;
+                        pos = marker + 1;
                     }
                 }
             }
@@ -1855,32 +2560,57 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
     }
 
     // Find the matching closing > for this FXCHAIN section
+    // Only process section markers at line start (ignoring quuid data)
     int depth = 0;
     size_t pos = start;
     size_t fxChainEnd = std::string::npos;
     while (pos < chunk.size()) {
-        size_t openAngle = chunk.find('<', pos);
-        size_t closeAngle = chunk.find('>', pos);
-        if (closeAngle == std::string::npos) break;
+        bool isOpen = false;
+        bool isCloseTag = false;
+        size_t marker = findNextSectionMarker(chunk, pos, &isOpen, &isCloseTag);
+        if (marker == std::string::npos) break;
 
-        if (openAngle == std::string::npos || closeAngle < openAngle) {
+        if (!isOpen) {
+            // '>' encountered, or close tag </...>
             depth--;
-            if (depth == 0) { fxChainEnd = closeAngle; break; }
-            pos = closeAngle + 1;
+            if (depth == 0) {
+                // Need to find the actual '>' position for the close marker
+                size_t closePos = chunk.find('>', marker);
+                if (closePos != std::string::npos)
+                    fxChainEnd = closePos;
+                else
+                    fxChainEnd = marker;
+                break;
+            }
+            pos = marker + 1;
+            // For close tags </...>, move past the > too
+            if (isCloseTag) {
+                size_t endGt = chunk.find('>', marker);
+                if (endGt != std::string::npos) pos = endGt + 1;
+            }
         } else {
-            // Opening tag
-            size_t endTag = chunk.find('>', openAngle);
+            // '<' encountered (opening tag)
+            // Check if > is on same line (inline) or different line (section opener)
+            size_t endTag = chunk.find('>', marker);
             if (endTag != std::string::npos) {
-                std::string tagContent = chunk.substr(openAngle + 1, endTag - openAngle - 1);
-                while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
-                    tagContent.pop_back();
-                if (!tagContent.empty() && tagContent.back() != '/') {
+                size_t newline = chunk.find('\n', marker);
+                if (newline != std::string::npos && newline < endTag) {
+                    // REAPER section opener: <TAG without > on same line
                     depth++;
+                    pos = marker + 1;
+                } else {
+                    // Inline tag <...> — check for self-closing
+                    std::string tagContent = chunk.substr(marker + 1, endTag - marker - 1);
+                    while (!tagContent.empty() && (tagContent.back() == ' ' || tagContent.back() == '\t'))
+                        tagContent.pop_back();
+                    if (!tagContent.empty() && tagContent.back() != '/') {
+                        depth++;
+                    }
+                    pos = endTag + 1;
                 }
-                pos = endTag + 1;
             } else {
                 depth++;
-                pos = openAngle + 1;
+                pos = marker + 1;
             }
         }
     }
@@ -1889,7 +2619,7 @@ static std::string replaceFxChainInChunk(const std::string& chunk, const std::st
         std::string result = chunk.substr(0, start);
         result += newFxChain;
         result += "\n";
-        result += chunk.substr(fxChainEnd);
+        result += chunk.substr(fxChainEnd + 1);
         return result;
     }
 
@@ -2051,6 +2781,12 @@ void CommandHandler::HandleFxChainLoad(
         return;
     }
 
+    // Capture old FX count for chain-source tracking
+    int oldFxCount = 0;
+    if (m_api.TrackFX_GetCount) {
+        oldFxCount = m_api.TrackFX_GetCount(track);
+    }
+
     // Read the .RfxChain file
     std::string fxChain;
     try {
@@ -2154,6 +2890,27 @@ void CommandHandler::HandleFxChainLoad(
     // Write the new track state chunk
     bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
     if (ok) {
+        // Record chain-source tracking
+        if (m_api.TrackFX_GetCount) {
+            int newFxCount = m_api.TrackFX_GetCount(track);
+            ChainSource cs;
+            cs.filePath = filePath;
+            if (append) {
+                cs.fxStartIdx = oldFxCount;
+                cs.fxEndIdx = newFxCount;
+            } else {
+                cs.fxStartIdx = 0;
+                cs.fxEndIdx = newFxCount;
+            }
+            // Replace any existing chain source for this track (if replacing)
+            // or append a new one
+            if (!append || m_trackChainSources.find(trackIdx) == m_trackChainSources.end()) {
+                m_trackChainSources[trackIdx] = {cs};
+            } else {
+                m_trackChainSources[trackIdx].push_back(cs);
+            }
+        }
+
         SendResponse(clientId, id, true,
             "{\"loaded\":true,\"filePath\":" + json_string(filePath) + ",\"append\":"
                 + (append ? "true" : "false") + "}");
@@ -2197,47 +2954,49 @@ void CommandHandler::HandleFxChainGetInfo(
         return;
     }
 
-    // Parse the FXCHAIN: count ITEM entries and extract names
+    // Parse the FXCHAIN: count FX entries and extract names
+    // .RfxChain files use plugin-type tags like <VST, <VST3, <JS, <AU
     int fxCount = 0;
     std::string fxNames = "[";
     size_t pos = 0;
     bool first = true;
 
-    while ((pos = content.find("<ITEM", pos)) != std::string::npos) {
+    // Helper to find the next plugin tag, handling <VST vs <VST3 overlap
+    auto findNextPluginTag = [&](size_t from) -> size_t {
+        size_t vstPos  = content.find("<VST ", from);
+        size_t vst3Pos = content.find("<VST3", from);
+        size_t jsPos   = content.find("<JS ", from);
+        size_t auPos   = content.find("<AU ", from);
+        size_t best = std::string::npos;
+        if (vstPos != std::string::npos)  best = vstPos;
+        if (vst3Pos != std::string::npos && (best == std::string::npos || vst3Pos < best)) best = vst3Pos;
+        if (jsPos != std::string::npos && (best == std::string::npos || jsPos < best)) best = jsPos;
+        if (auPos != std::string::npos && (best == std::string::npos || auPos < best)) best = auPos;
+        return best;
+    };
+
+    pos = findNextPluginTag(0);
+    while (pos != std::string::npos) {
         fxCount++;
-        size_t nameStart = content.find("NAME", pos);
-        if (nameStart != std::string::npos && nameStart < content.find(">", pos)) {
-            // NAME="..."
-            size_t quote1 = content.find('"', nameStart);
-            if (quote1 != std::string::npos) {
-                size_t quote2 = content.find('"', quote1 + 1);
-                if (quote2 != std::string::npos) {
-                    std::string fxName = content.substr(quote1 + 1, quote2 - quote1 - 1);
-                    if (!first) fxNames += ",";
-                    first = false;
-                    fxNames += json_string(fxName);
-                }
+
+        // Extract plugin name from quoted string after tag: e.g. <VST "VST: ReaEQ (Cockos)"
+        size_t quote1 = content.find('"', pos);
+        if (quote1 != std::string::npos) {
+            size_t quote2 = content.find('"', quote1 + 1);
+            if (quote2 != std::string::npos) {
+                std::string fxName = content.substr(quote1 + 1, quote2 - quote1 - 1);
+                if (!first) fxNames += ",";
+                first = false;
+                fxNames += json_string(fxName);
             }
         }
-        // Move past this ITEM
-        size_t itemClose = content.find(">", pos);
-        if (itemClose != std::string::npos) {
-            // Move past the rest of this ITEM block — find VST / JS or the next ITEM
-            size_t nextItem = content.find("<ITEM", pos + 5);
-            if (nextItem != std::string::npos) {
-                pos = nextItem;
-            } else {
-                // Last item - find the end of the FXCHAIN section
-                size_t fxChainClose = content.find("</FXCHAIN>", pos);
-                if (fxChainClose != std::string::npos) {
-                    pos = fxChainClose;
-                } else {
-                    pos = content.size();
-                }
-            }
-        } else {
-            pos++;
-        }
+
+        // Move past the closing > of this plugin's opening tag
+        size_t tagClose = content.find(">", pos);
+        if (tagClose == std::string::npos) break;
+
+        // Find the next plugin tag
+        pos = findNextPluginTag(tagClose + 1);
     }
     fxNames += "]";
 
@@ -2259,6 +3018,78 @@ void CommandHandler::HandleFxChainGetInfo(
     SendResponse(clientId, id, true, payload);
 }
 
+void CommandHandler::HandleFxChainSearchRecursive(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string query    = parser.getString("query");
+    std::string rootPath = parser.getString("rootPath");
+
+    if (rootPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"rootPath\\\" parameter\"}");
+        return;
+    }
+
+    // Build lowercase query for case-insensitive matching
+    std::string lowerQuery;
+    for (char c : query) lowerQuery += tolower((unsigned char)c);
+
+    std::string results = "[";
+    bool first = true;
+
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
+            if (!entry.is_regular_file()) continue;
+
+            std::string name = entry.path().filename().string();
+            std::string ext;
+            size_t dotPos = name.rfind('.');
+            if (dotPos == std::string::npos) continue;
+            ext = name.substr(dotPos);
+            std::string lowerExt;
+            for (char c : ext) lowerExt += tolower((unsigned char)c);
+            if (lowerExt != ".rfxchain") continue;
+
+            // If query is non-empty, filter by case-insensitive substring match
+            if (!lowerQuery.empty()) {
+                std::string lowerName;
+                for (char c : name) lowerName += tolower((unsigned char)c);
+                if (lowerName.find(lowerQuery) == std::string::npos) continue;
+            }
+
+            if (!first) results += ",";
+            first = false;
+
+            uintmax_t fileSize = 0;
+            std::error_code ec;
+            fileSize = fs::file_size(entry.path(), ec);
+            results += "{";
+            results += json_string("filePath") + ":" + json_string(entry.path().string()) + ",";
+            results += json_string("name") + ":" + json_string(name) + ",";
+            results += json_string("size") + ":" + std::to_string(fileSize);
+            results += "}";
+        }
+    } catch (const fs::filesystem_error&) {
+        // Non-existent rootPath returns empty results, not error (graceful)
+        results = "[";
+        first = true;
+    }
+
+    results += "]";
+
+    std::string payload = "{";
+    payload += json_string("results") + ":" + results;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Recursive FX chain search across all subdirectories (Issue #93)
+// ============================================================
+
 // ============================================================
 // Real-time FX param change via CSURF_EXT callback (Issue #58)
 // ============================================================
@@ -2275,6 +3106,450 @@ void CommandHandler::ClearWatchedFX()
 {
     m_watchedTrackIdx = -1;
     m_watchedFxIdx    = -1;
+}
+
+// ============================================================
+// MIDI event recording (Issue #90)
+// ============================================================
+
+// Construct a MIDI_event_t from midi/event command parameters.
+// Returns the event with frame_offset filled in based on current
+// playback position and sample rate.
+static MIDI_event_t BuildMidiEvent(const std::string& eventType, int channel,
+    int data1, int data2, double playPos, double sampleRate)
+{
+    MIDI_event_t evt;
+    memset(&evt, 0, sizeof(evt));
+
+    // frame_offset: samples since the recording started.
+    // If recording hasn't started yet (playPos <= 0), use 0.
+    if (playPos > 0.0 && sampleRate > 0.0) {
+        evt.frame_offset = (int)(playPos * sampleRate);
+    } else {
+        evt.frame_offset = 0;
+    }
+
+    if (eventType == "cc") {
+        // Control Change: 0xB0 | channel
+        evt.midi_message[0] = 0xB0 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // controller number
+        evt.midi_message[2] = data2 & 0x7F;     // value
+        evt.size = 3;
+    } else if (eventType == "noteon") {
+        evt.midi_message[0] = 0x90 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // note
+        evt.midi_message[2] = data2 & 0x7F;     // velocity
+        evt.size = 3;
+    } else if (eventType == "noteoff") {
+        evt.midi_message[0] = 0x80 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // note
+        evt.midi_message[2] = data2 & 0x7F;     // velocity
+        evt.size = 3;
+    } else if (eventType == "pitchbend") {
+        // Pitch Bend: 0xE0 | channel, 14-bit value (0-16383)
+        evt.midi_message[0] = 0xE0 | (channel & 0x0F);
+        int pb14 = data1 & 0x3FFF;   // 14-bit value
+        evt.midi_message[1] = pb14 & 0x7F;        // LSB
+        evt.midi_message[2] = (pb14 >> 7) & 0x7F; // MSB
+        evt.size = 3;
+    } else if (eventType == "aftertouch") {
+        // Polyphonic Aftertouch: 0xA0 | channel
+        evt.midi_message[0] = 0xA0 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // note
+        evt.midi_message[2] = data2 & 0x7F;     // pressure
+        evt.size = 3;
+    } else if (eventType == "programchange") {
+        // Program Change: 0xC0 | channel
+        evt.midi_message[0] = 0xC0 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // program number
+        evt.size = 2;
+    } else if (eventType == "channelpressure") {
+        // Channel Pressure: 0xD0 | channel
+        evt.midi_message[0] = 0xD0 | (channel & 0x0F);
+        evt.midi_message[1] = data1 & 0x7F;     // pressure
+        evt.size = 2;
+    } else if (eventType == "raw") {
+        // Raw MIDI bytes: data1=status, data2=first data byte (or 0 if 1-byte msg)
+        evt.midi_message[0] = data1 & 0xFF;
+        evt.midi_message[1] = data2 & 0xFF;
+        evt.midi_message[2] = 0;
+        // Determine size from status byte
+        int statusHigh = (data1 >> 4) & 0x0F;
+        if (statusHigh == 0xC || statusHigh == 0xD) {
+            evt.size = 2; // program change, channel pressure
+        } else if (statusHigh >= 0x8 && statusHigh <= 0xE) {
+            evt.size = 3; // note on/off, CC, pitch bend, aftertouch
+        } else if (statusHigh == 0xF) {
+            evt.size = 1; // system messages (simplified)
+        } else {
+            evt.size = 3;
+        }
+    }
+
+    return evt;
+}
+
+void CommandHandler::HandleMidiEvent(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    // Parse the event payload from the message
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string eventType = parser.getString("type");
+    std::string channelStr = parser.getString("channel");
+    std::string data1Str = parser.getString("data1");
+    std::string data2Str = parser.getString("data2");
+
+    // Also support 'value' as an alias for data2 (for CC events)
+    if (data2Str.empty()) {
+        data2Str = parser.getString("value");
+    }
+    // Also support 'controller' as an alias for data1 (for CC events)
+    if (data1Str.empty()) {
+        data1Str = parser.getString("controller");
+    }
+
+    if (eventType.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'type' field in midi/event payload\"}");
+        return;
+    }
+
+    int channel = channelStr.empty() ? 0 : atoi(channelStr.c_str());
+    int data1 = data1Str.empty() ? 0 : atoi(data1Str.c_str());
+    int data2 = data2Str.empty() ? 0 : atoi(data2Str.c_str());
+
+    // Validate channel
+    if (channel < 0 || channel > 15) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Channel must be 0-15\"}");
+        return;
+    }
+
+    // Check if we're recording and can inject into MIDI takes
+    bool isRecording = false;
+    if (m_api.GetPlayState) {
+        int state = m_api.GetPlayState();
+        isRecording = (state & 4) != 0;
+    }
+
+    bool injectedToRecordingTake = false;
+
+    if (isRecording &&
+        m_api.CountMediaItems && m_api.GetMediaItem &&
+        m_api.GetActiveTake && m_api.GetMediaItemTake_Source &&
+        m_api.MIDI_eventlist_Create && m_api.MIDI_eventlist_Destroy &&
+        m_api.GetPlayPosition && m_api.CountTracks && m_api.GetTrack &&
+        m_api.GetSetMediaTrackInfo) {
+
+        int numTracks = m_api.CountTracks(nullptr);
+        double playPos = m_api.GetPlayPosition();
+        double sampleRate = 44100.0; // fallback
+
+        for (int t = 0; t < numTracks && !injectedToRecordingTake; t++) {
+            MediaTrack* track = m_api.GetTrack(nullptr, t);
+            if (!track) continue;
+
+            // Check if track is record-armed
+            int* armState = (int*)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr);
+            if (!armState || *armState == 0) continue;
+
+            // Iterate all items and try to inject MIDI events into any take
+            // whose source supports PCM_SOURCE_EXT_ADDMIDIEVENTS.
+            // We cannot reliably match items to tracks without
+            // GetMediaItemInfo_Value (which is avoided due to known
+            // Reaper crash issues with I_SELECTED). Instead, we try all
+            // items for each armed track — the operation is idempotent.
+            int numItems = m_api.CountMediaItems(nullptr);
+            for (int i = 0; i < numItems && !injectedToRecordingTake; i++) {
+                MediaItem* item = m_api.GetMediaItem(nullptr, i);
+                if (!item) continue;
+
+                MediaItem_Take* take = m_api.GetActiveTake(item);
+                if (!take) continue;
+
+                PCM_source* source = m_api.GetMediaItemTake_Source(take);
+                if (!source) continue;
+
+                // Build the MIDI event
+                MIDI_event_t evt = BuildMidiEvent(
+                    eventType, channel, data1, data2, playPos, sampleRate);
+
+                // Create a MIDI_eventlist with our event
+                MIDI_eventlist* eventList = m_api.MIDI_eventlist_Create();
+                if (!eventList) continue;
+
+                eventList->AddItem(&evt);
+
+                // Build the realtime write struct
+                midi_realtime_write_struct_t writeStruct;
+                memset(&writeStruct, 0, sizeof(writeStruct));
+                writeStruct.global_time = playPos;
+                writeStruct.global_item_time = playPos;
+                writeStruct.srate = sampleRate;
+                writeStruct.length = 0; // length in samples (0 = minimal)
+                writeStruct.overwritemode = -1; // literal (just add, no curves)
+                writeStruct.events = eventList;
+                writeStruct.item_playrate = 1.0;
+                writeStruct.latency = 0.0;
+                writeStruct.overwrite_actives = nullptr;
+                writeStruct.do_not_quantize_past_sec = 0.0;
+
+                // Try to inject the events
+                int result = source->Extended(
+                    PCM_SOURCE_EXT_ADDMIDIEVENTS, &writeStruct, 0, nullptr);
+
+                m_api.MIDI_eventlist_Destroy(eventList);
+
+                if (result != 0) {
+                    injectedToRecordingTake = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // If recording but couldn't inject, still send the event to MIDI output
+    // for live monitoring purposes
+    std::string payload = "{";
+    payload += "\"sent\":true,";
+    payload += "\"injected\":" + std::string(injectedToRecordingTake ? "true" : "false") + ",";
+    payload += "\"recording\":" + std::string(isRecording ? "true" : "false");
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Chain-source index maintenance helpers (Issue #95)
+// ============================================================
+
+// Adjust chain-source indices when FX are added/removed/reordered
+// beforeIndex: the index of the added/removed/moved FX
+// delta: +1 for add, -1 for delete/reorder-away
+void CommandHandler::ShiftChainSourceIndices(
+    std::vector<ChainSource>& sources, int beforeIndex, int delta)
+{
+    for (auto& cs : sources) {
+        if (cs.fxStartIdx >= beforeIndex) {
+            cs.fxStartIdx += delta;
+            cs.fxEndIdx += delta;
+        } else if (cs.fxEndIdx > beforeIndex) {
+            // The modification is inside this chain group
+            cs.fxEndIdx += delta;
+        }
+    }
+}
+
+// ============================================================
+// doLoadChain — Internal chain-load helper (Issue #95)
+// ============================================================
+
+bool CommandHandler::doLoadChain(int trackIdx, const std::string& filePath, const std::string& direction)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk || !m_api.GetTrack) {
+        return false;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) return false;
+
+    std::string targetPath = filePath;
+
+    if (!direction.empty() && direction != "none") {
+        // Direction-based cycling: compute next/prev chain path
+        fs::path currentDir = fs::path(filePath).parent_path();
+        if (!fs::exists(currentDir)) return false;
+
+        std::vector<std::string> chainFiles;
+        try {
+            for (const auto& entry : fs::directory_iterator(currentDir)) {
+                if (!entry.is_regular_file()) continue;
+                std::string name = entry.path().filename().string();
+                std::string ext;
+                size_t dotPos = name.rfind('.');
+                if (dotPos == std::string::npos) continue;
+                ext = name.substr(dotPos);
+                std::string lowerExt;
+                for (char c : ext) lowerExt += tolower((unsigned char)c);
+                if (lowerExt != ".rfxchain") continue;
+                chainFiles.push_back(entry.path().string());
+            }
+        } catch (...) {
+            return false;
+        }
+
+        if (chainFiles.empty()) return false;
+
+        std::sort(chainFiles.begin(), chainFiles.end());
+
+        // Find current index
+        int currentIdx = -1;
+        for (size_t i = 0; i < chainFiles.size(); i++) {
+            if (chainFiles[i] == filePath) {
+                currentIdx = (int)i;
+                break;
+            }
+        }
+        if (currentIdx < 0) return false;
+
+        if (direction == "next") {
+            int nextIdx = (currentIdx + 1) % (int)chainFiles.size();
+            targetPath = chainFiles[nextIdx];
+        } else if (direction == "prev") {
+            int prevIdx = (currentIdx - 1 + (int)chainFiles.size()) % (int)chainFiles.size();
+            targetPath = chainFiles[prevIdx];
+        } else {
+            return false;
+        }
+    }
+
+    // Read the target chain file
+    std::string fxChain;
+    try {
+        FILE* f = fopen(targetPath.c_str(), "r");
+        if (!f) return false;
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            fxChain.append(buf, nread);
+        }
+        fclose(f);
+    } catch (...) {
+        return false;
+    }
+
+    if (fxChain.empty()) return false;
+
+    // Get current track chunk
+    const int CHUNK_SIZE = 4 * 1024 * 1024;
+    std::vector<char> chunkBuf(CHUNK_SIZE, 0);
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf.data(), CHUNK_SIZE, false);
+    if (!gotChunk || chunkBuf[0] == 0) return false;
+
+    std::string currentChunk(chunkBuf.data());
+
+    // Wrap the loaded chain if needed
+    std::string loadedFxChain;
+    std::string extracted = extractFxChainFromChunk(fxChain);
+    if (!extracted.empty()) {
+        loadedFxChain = extracted;
+    } else {
+        loadedFxChain = "<FXCHAIN\n" + fxChain;
+        if (loadedFxChain.back() != '\n') loadedFxChain += '\n';
+        loadedFxChain += '>';
+    }
+
+    std::string newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+    bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
+
+    if (ok && m_api.TrackFX_GetCount) {
+        // Record chain-source tracking
+        int newFxCount = m_api.TrackFX_GetCount(track);
+        ChainSource cs;
+        cs.filePath = targetPath;
+        cs.fxStartIdx = 0;
+        cs.fxEndIdx = newFxCount;
+        m_trackChainSources[trackIdx] = {cs};
+    }
+
+    return ok;
+}
+
+// ============================================================
+// HandleFxChainCycle — Cycle through chains (Issue #95)
+// ============================================================
+
+void CommandHandler::HandleFxChainCycle(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrack || !m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string direction   = parser.getString("direction"); // "next" or "prev"
+    std::string chainPath   = parser.getString("chainPath"); // optional: explicit path
+
+    if (trackIdxStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' parameter\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+
+    // Determine the current chain path from chain-source tracking
+    std::string currentPath;
+    auto it = m_trackChainSources.find(trackIdx);
+    if (it != m_trackChainSources.end() && !it->second.empty()) {
+        currentPath = it->second[0].filePath;
+    }
+    if (currentPath.empty() && !chainPath.empty()) {
+        currentPath = chainPath;
+    }
+
+    if (currentPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"No chain loaded on this track\"}");
+        return;
+    }
+
+    std::string directionArg = direction;
+    if (chainPath.empty() && !direction.empty() && currentPath.empty()) {
+        directionArg.clear();
+    }
+
+    bool ok = doLoadChain(trackIdx, currentPath, directionArg);
+    if (ok) {
+        // Get updated FX list
+        std::string fxList = "[]";
+        MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+        if (track && m_api.TrackFX_GetCount && m_api.TrackFX_GetFXName) {
+            int fxCount = m_api.TrackFX_GetCount(track);
+            fxList = "[";
+            for (int i = 0; i < fxCount; i++) {
+                if (i > 0) fxList += ",";
+                char name[512] = {0};
+                m_api.TrackFX_GetFXName(track, i, name, sizeof(name));
+                fxList += "{";
+                fxList += json_string("index") + ":" + std::to_string(i) + ",";
+                fxList += json_string("name") + ":" + json_string(name);
+                // Determine chain path for this FX
+                std::string cp;
+                auto cit = m_trackChainSources.find(trackIdx);
+                if (cit != m_trackChainSources.end()) {
+                    for (const auto& cs : cit->second) {
+                        if (i >= cs.fxStartIdx && i < cs.fxEndIdx) {
+                            cp = cs.filePath;
+                            break;
+                        }
+                    }
+                }
+                if (!cp.empty()) {
+                    fxList += "," + json_string("chainPath") + ":" + json_string(cp);
+                } else {
+                    fxList += "," + json_string("chainPath") + ":null";
+                }
+                fxList += "}";
+            }
+            fxList += "]";
+        }
+
+        std::string payload = "{";
+        payload += json_string("cycled") + ":true,";
+        payload += json_string("fx") + ":" + fxList;
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to cycle chain\"}");
+    }
 }
 
 void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx, double value)
@@ -2347,4 +3622,87 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
     else if (m_ws)
         m_ws->Broadcast(event);
 }
+// ============================================================
+// Playtime 2 API - isAvailable command
+// ============================================================
+void CommandHandler::HandlePlaytimeIsAvailable(
+    int clientId, const std::string& id, const std::string& /* params */)
+{
+    bool available = isPlaytimeAvailable();
 
+    // Build version info
+    std::string versionInfo = "unknown";
+    if (g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject) {
+        versionInfo = "HB_FindFirstPlaytimeHelgoboxInstanceInProject: yes";
+        if (g_playtimeApi.HB_CreateClipMatrix) versionInfo += ", HB_CreateClipMatrix: yes";
+        if (g_playtimeApi.HB_ShowOrHidePlaytime) versionInfo += ", HB_ShowOrHidePlaytime: yes";
+    }
+
+    std::string payload = "{\"available\":";
+    payload += (available ? "true" : "false");
+    payload += ",\"version\":\"";
+    payload += json_escape(versionInfo);
+    payload += "\"";
+    if (!available) {
+        payload += ",\"reason\":\"";
+        if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
+            payload += "Playtime API not registered (Helgobox installed but Playtime API missing)";
+        } else {
+            payload += "Helgobox API not registered";
+        }
+        payload += "\"";
+    }
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// Playtime 2 launch command (Issue #88)
+// ============================================================
+void CommandHandler::HandlePlaytimeLaunch(
+    int clientId, const std::string& id, const std::string& /* params */)
+{
+    // Attempt to launch/show Playtime 2 by calling HB_ShowOrHidePlaytime
+    // on the first available Helgobox/Playtime instance.
+    bool launched = false;
+    std::string message;
+
+    if (isPlaytimeAvailable()) {
+        // Find the first Playtime/Helgobox instance in the current project
+        int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
+        if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
+            g_playtimeApi.HB_ShowOrHidePlaytime(instance);
+            launched = true;
+            message = "Playtime 2 launched";
+            fprintf(stderr, "[reaper-ipad] Playtime 2 launched (instance %d)\n", instance);
+        } else {
+            message = "Playtime instance not found or HB_ShowOrHidePlaytime unavailable";
+            fprintf(stderr, "[reaper-ipad] Playtime launch failed: instance=%d, HB_ShowOrHidePlaytime=%p\n",
+                instance, (void*)g_playtimeApi.HB_ShowOrHidePlaytime);
+        }
+    } else {
+        // Retry resolution in case Helgobox registered after our startup
+        retryPlaytimeApi();
+        if (isPlaytimeAvailable()) {
+            // Retry succeeded — try to launch
+            int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
+            if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
+                g_playtimeApi.HB_ShowOrHidePlaytime(instance);
+                launched = true;
+                message = "Playtime 2 launched (after retry)";
+                fprintf(stderr, "[reaper-ipad] Playtime 2 launched after retry (instance %d)\n", instance);
+            } else {
+                message = "Playtime API available but instance or ShowOrHide function not ready";
+            }
+        } else {
+            message = "Playtime 2 API not available \u2014 Helgobox may not be loaded";
+            fprintf(stderr, "[reaper-ipad] Playtime 2 not available: cannot launch\n");
+        }
+    }
+
+    std::string payload = "{";
+    payload += json_string("launched") + ":" + (launched ? "true" : "false") + ",";
+    payload += json_string("message") + ":" + json_string(message);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}

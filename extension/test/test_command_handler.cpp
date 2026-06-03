@@ -293,6 +293,9 @@ TEST(JsonStringTest, EmptyString)
 // Reaper instance is required.
 // ============================================================
 
+// Forward declaration for mock functions that need g_mockChunk
+extern std::string g_mockChunk;
+
 struct MockTrack {
     int         idx;
     std::string name;
@@ -337,6 +340,22 @@ static int mock_TrackFX_GetCount(MediaTrack* track)
     int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
     if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
         return 0;
+
+    // Count <ITEM entries in g_mockChunk (authoritative after SetTrackStateChunk)
+    int chunkCount = 0;
+    {
+        size_t p = 0;
+        while ((p = g_mockChunk.find("<ITEM", p)) != std::string::npos) {
+            chunkCount++;
+            p++;
+        }
+    }
+
+    // If chunk has items, use that count (more up-to-date)
+    if (chunkCount > 0)
+        return chunkCount;
+
+    // Fallback to explicit mock FX list
     return (int)g_mock->tracks[idx].fx.size();
 }
 
@@ -345,6 +364,51 @@ static bool mock_TrackFX_GetFXName(MediaTrack* track, int fx, char* buf, int buf
     int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
     if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
         return false;
+
+    // First check g_mockChunk for ITEM entries (authoritative after SetTrackStateChunk)
+    size_t chunkItemCount = 0;
+    {
+        size_t p = 0;
+        while ((p = g_mockChunk.find("<ITEM", p)) != std::string::npos) {
+            chunkItemCount++;
+            p++;
+        }
+    }
+
+    if (chunkItemCount > 0) {
+        // Read from chunk (more up-to-date after SetTrackStateChunk)
+        size_t pos = 0;
+        int itemIdx = 0;
+        while (itemIdx <= fx) {
+            size_t found = g_mockChunk.find("<ITEM", pos);
+            if (found == std::string::npos) return false;
+            if (itemIdx == fx) {
+                size_t namePos = g_mockChunk.find("NAME", found);
+                if (namePos == std::string::npos) {
+                    snprintf(buf, (size_t)buf_sz, "FX %d", fx);
+                    return true;
+                }
+                size_t quote1 = g_mockChunk.find('"', namePos);
+                if (quote1 == std::string::npos) {
+                    snprintf(buf, (size_t)buf_sz, "FX %d", fx);
+                    return true;
+                }
+                size_t quote2 = g_mockChunk.find('"', quote1 + 1);
+                if (quote2 == std::string::npos) {
+                    snprintf(buf, (size_t)buf_sz, "FX %d", fx);
+                    return true;
+                }
+                std::string fxName = g_mockChunk.substr(quote1 + 1, quote2 - quote1 - 1);
+                snprintf(buf, (size_t)buf_sz, "%s", fxName.c_str());
+                return true;
+            }
+            itemIdx++;
+            pos = found + 1;
+        }
+        return false;
+    }
+
+    // Fallback to mock state
     auto& t = g_mock->tracks[idx];
     if (fx < 0 || fx >= (int)t.fx.size())
         return false;
@@ -433,6 +497,51 @@ static int mock_TrackFX_AddByName(MediaTrack* track, const char* fxname, bool, i
     return f.idx;
 }
 
+// ── Mock preset functions ─────────────────────────────────
+
+struct MockPresets {
+    std::vector<std::string> names;
+    int currentIndex = 0;
+};
+
+static MockPresets g_mockPresets;
+
+static int mock_TrackFX_GetPresetIndex(MediaTrack* track, int fx, int* numberOfPresetsOut)
+{
+    (void)track;
+    (void)fx;
+    if (numberOfPresetsOut) *numberOfPresetsOut = (int)g_mockPresets.names.size();
+    if (g_mockPresets.names.empty()) return -1;
+    return g_mockPresets.currentIndex;
+}
+
+static bool mock_TrackFX_GetPreset(MediaTrack* track, int fx, char* presetnameOut, int presetnameOut_sz)
+{
+    (void)track;
+    (void)fx;
+    int idx = g_mockPresets.currentIndex;
+    if (idx < 0 || idx >= (int)g_mockPresets.names.size()) {
+        if (presetnameOut && presetnameOut_sz > 0) presetnameOut[0] = 0;
+        return false;
+    }
+    snprintf(presetnameOut, (size_t)presetnameOut_sz, "%s", g_mockPresets.names[idx].c_str());
+    return true;
+}
+
+static bool mock_TrackFX_SetPresetByIndex(MediaTrack* track, int fx, int idx)
+{
+    (void)track;
+    (void)fx;
+    // idx=-2 = factory default, idx=-1 = user default
+    if (idx < 0) {
+        g_mockPresets.currentIndex = 0;
+        return true;
+    }
+    if (idx >= (int)g_mockPresets.names.size()) return false;
+    g_mockPresets.currentIndex = idx;
+    return true;
+}
+
 static bool mock_TrackFX_Delete(MediaTrack* track, int fx)
 {
     int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
@@ -446,6 +555,40 @@ static bool mock_TrackFX_Delete(MediaTrack* track, int fx)
     for (size_t i = 0; i < t.fx.size(); i++)
         t.fx[i].idx = (int)i;
     return true;
+}
+
+static void mock_TrackFX_CopyToTrack(
+    MediaTrack* src_track, int src_fx, MediaTrack* dest_track, int dest_fx, bool is_move)
+{
+    int src_idx = static_cast<int>(reinterpret_cast<uintptr_t>(src_track)) - 1;
+    int dst_idx = static_cast<int>(reinterpret_cast<uintptr_t>(dest_track)) - 1;
+    if (!g_mock || src_idx < 0 || src_idx >= (int)g_mock->tracks.size()) return;
+    if (!g_mock || dst_idx < 0 || dst_idx >= (int)g_mock->tracks.size()) return;
+    auto& src_t = g_mock->tracks[src_idx];
+    auto& dst_t = g_mock->tracks[dst_idx];
+    if (src_fx < 0 || src_fx >= (int)src_t.fx.size()) return;
+    if (dest_fx < 0) dest_fx = 0;
+    if (dest_fx > (int)dst_t.fx.size()) dest_fx = (int)dst_t.fx.size();
+
+    // Insert a copy of the FX at the destination position
+    MockTrack::MockFX copy = src_t.fx[src_fx];
+    dst_t.fx.insert(dst_t.fx.begin() + dest_fx, copy);
+
+    // Re-index destination track FX
+    for (size_t i = 0; i < dst_t.fx.size(); i++)
+        dst_t.fx[i].idx = (int)i;
+
+    // If is_move, also delete from source
+    if (is_move && src_idx == dst_idx) {
+        // When moving within the same track, the insert shifted everything.
+        // If src_fx >= dest_fx, the original is now at src_fx + 1.
+        int deleteIdx = (src_fx >= dest_fx) ? src_fx + 1 : src_fx;
+        if (deleteIdx >= 0 && deleteIdx < (int)dst_t.fx.size()) {
+            dst_t.fx.erase(dst_t.fx.begin() + deleteIdx);
+            for (size_t i = 0; i < dst_t.fx.size(); i++)
+                dst_t.fx[i].idx = (int)i;
+        }
+    }
 }
 
 static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmname, void* setNewValue)
@@ -479,9 +622,32 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
     return nullptr;
 }
 
+static bool mock_GetSetMediaTrackInfo_String(MediaTrack* trackPtr, const char* parmname, char* setNewValue, bool setNewValue_isAllowed)
+{
+    if (!g_mock || !parmname || !setNewValue) return false;
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(trackPtr)) - 1;
+    if (idx < 0 || idx >= (int)g_mock->tracks.size()) return false;
+    auto& t = g_mock->tracks[idx];
+    std::string name(parmname);
+
+    if (name == "P_NAME") {
+        if (setNewValue_isAllowed) {
+            // Writing is not supported in mock
+            return false;
+        }
+        // Reading: copy track name into buffer
+        size_t len = t.name.size();
+        if (len > 255) len = 255;
+        memcpy(setNewValue, t.name.c_str(), len);
+        setNewValue[len] = '\0';
+        return true;
+    }
+    return false;
+}
+
 // ---- Mock GetTrackStateChunk / SetTrackStateChunk ----
 
-static std::string g_mockChunk;
+std::string g_mockChunk;
 
 static bool mock_GetTrackStateChunk(MediaTrack* track, char* buf, int buf_sz, bool)
 {
@@ -538,6 +704,78 @@ static bool mock_EnumInstalledFX(int index, const char** nameOut, const char** i
     return true;
 }
 
+// ---- Mock MIDI item creation functions (Issue #92) ----
+
+static std::vector<MediaItem*> g_mockCreatedItems;
+static std::vector<MediaItem_Take*> g_mockTakes;
+static int g_mockNoteInsertCount = 0;
+
+static MediaItem* mock_CreateNewMIDIItemInProj(MediaTrack* track, double starttime, double endtime, const bool* qnInOptional)
+{
+    (void)track;
+    (void)starttime;
+    (void)endtime;
+    (void)qnInOptional;
+    // Return a unique non-null pointer
+    MediaItem* item = reinterpret_cast<MediaItem*>(static_cast<uintptr_t>(g_mockCreatedItems.size() + 1000));
+    g_mockCreatedItems.push_back(item);
+    return item;
+}
+
+static MediaItem_Take* mock_GetActiveTake(MediaItem* item)
+{
+    (void)item;
+    // Return a unique non-null pointer
+    MediaItem_Take* take = reinterpret_cast<MediaItem_Take*>(static_cast<uintptr_t>(g_mockTakes.size() + 2000));
+    g_mockTakes.push_back(take);
+    return take;
+}
+
+static bool mock_MIDI_InsertNote(MediaItem_Take* take, bool selected, bool muted, double startppqpos, double endppqpos, int chan, int pitch, int vel, const bool* noSortInOptional)
+{
+    (void)take;
+    (void)selected;
+    (void)muted;
+    (void)startppqpos;
+    (void)endppqpos;
+    (void)chan;
+    (void)pitch;
+    (void)vel;
+    (void)noSortInOptional;
+    g_mockNoteInsertCount++;
+    return true;
+}
+
+static bool mock_SetMediaItemInfo_Value(MediaItem* item, const char* parmname, double newvalue)
+{
+    (void)item;
+    (void)parmname;
+    (void)newvalue;
+    return true;
+}
+
+static double mock_GetMediaItemInfo_Value(MediaItem* item, const char* parmname)
+{
+    (void)item;
+    (void)parmname;
+    // Return 1.0 as default item length (in seconds)
+    return 1.0;
+}
+
+static int mock_CountTrackMediaItems(MediaTrack* track)
+{
+    (void)track;
+    return (int)g_mockCreatedItems.size();
+}
+
+// Reset mock state for MIDI item functions (call before each test)
+static void ResetMidiMockState()
+{
+    g_mockCreatedItems.clear();
+    g_mockTakes.clear();
+    g_mockNoteInsertCount = 0;
+}
+
 // ---- Helper: build a CommandHandler wired to mock API ----
 
 static std::unique_ptr<CommandHandler> MakeMockHandler(
@@ -557,9 +795,11 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_AddByName    = mock_TrackFX_AddByName;
     api.TrackFX_Delete       = mock_TrackFX_Delete;
     api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
+    api.GetSetMediaTrackInfo_String = mock_GetSetMediaTrackInfo_String;
     api.EnumInstalledFX      = mock_EnumInstalledFX;
     api.GetTrackStateChunk   = mock_GetTrackStateChunk;
     api.SetTrackStateChunk   = mock_SetTrackStateChunk;
+
     handler->SetApi(api);
     if (outResponses) {
         handler->SetResponseCallback([outResponses](int, const std::string& resp) {
@@ -796,6 +1036,453 @@ TEST(FXRoundtripTest, ParamMinMaxMidAreCorrect)
 }
 
 
+// ============================================================
+// FX reorder command tests (Issue #89)
+// ============================================================
+
+TEST(FxReorderTest, ReorderFxMovesForward)
+{
+    // Move FX from index 0 to index 2: [A,B,C,D] -> [B,C,A,D]
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    t.fx.push_back({2, "C", {}, {}, {}, {}, {}});
+    t.fx.push_back({3, "D", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":2},"id":"rf1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"reordered\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"trackIdx\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"fromIndex\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"toIndex\":2"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify mock state: [B, C, A, D]
+    ASSERT_EQ(state.tracks[0].fx.size(), 4u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "B");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "C");
+    EXPECT_EQ(state.tracks[0].fx[2].name, "A");
+    EXPECT_EQ(state.tracks[0].fx[3].name, "D");
+}
+
+TEST(FxReorderTest, ReorderFxMovesBackward)
+{
+    // Move FX from index 3 to index 0: [A,B,C,D] -> [D,A,B,C]
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    t.fx.push_back({2, "C", {}, {}, {}, {}, {}});
+    t.fx.push_back({3, "D", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":3,"toIndex":0},"id":"rb1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"reordered\":true"), std::string::npos);
+
+    // Verify mock state: [D, A, B, C]
+    ASSERT_EQ(state.tracks[0].fx.size(), 4u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "D");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "A");
+    EXPECT_EQ(state.tracks[0].fx[2].name, "B");
+    EXPECT_EQ(state.tracks[0].fx[3].name, "C");
+}
+
+TEST(FxReorderTest, ReorderFxSameIndexIsNoOp)
+{
+    // When fromIdx == toIdx, nothing should change
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":1,"toIndex":1},"id":"rnoop"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Should still report success
+    EXPECT_NE(responses[0].find("\"reordered\":true"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+
+    // FX order unchanged
+    ASSERT_EQ(state.tracks[0].fx.size(), 2u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "A");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "B");
+}
+
+TEST(FxReorderTest, ReorderFxInvalidTrackReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":0},"id":"rbad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Invalid track index"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(FxReorderTest, ReorderFxInvalidFromIndexReturnsError)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // fromIndex out of bounds
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":99,"toIndex":0},"id":"rbinv"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(FxReorderTest, ReorderFxInvalidToIndexReturnsError)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // toIndex out of bounds
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":99},"id":"rbinv2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(FxReorderTest, ReorderFxToFirstPosition)
+{
+    // Move FX from index 2 to index 0: [A,B,C,D] -> [C,A,B,D]
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    t.fx.push_back({2, "C", {}, {}, {}, {}, {}});
+    t.fx.push_back({3, "D", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":2,"toIndex":0},"id":"rfirst"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reordered\":true"), std::string::npos);
+
+    ASSERT_EQ(state.tracks[0].fx.size(), 4u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "C");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "A");
+    EXPECT_EQ(state.tracks[0].fx[2].name, "B");
+    EXPECT_EQ(state.tracks[0].fx[3].name, "D");
+}
+
+TEST(FxReorderTest, ReorderFxToLastPosition)
+{
+    // Move FX from index 0 to index 3: [A,B,C,D] -> [B,C,D,A]
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    t.fx.push_back({2, "C", {}, {}, {}, {}, {}});
+    t.fx.push_back({3, "D", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":3},"id":"rlast"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reordered\":true"), std::string::npos);
+
+    ASSERT_EQ(state.tracks[0].fx.size(), 4u);
+    EXPECT_EQ(state.tracks[0].fx[0].name, "B");
+    EXPECT_EQ(state.tracks[0].fx[1].name, "C");
+    EXPECT_EQ(state.tracks[0].fx[2].name, "D");
+    EXPECT_EQ(state.tracks[0].fx[3].name, "A");
+}
+
+TEST(FxReorderTest, ReorderFxOnTrackWithSingleFxReturnsSuccess)
+{
+    // Only one FX — reordering is a no-op but should succeed
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "SoloFX", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":0},"id":"rsolo"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reordered\":true"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxReorderTest, ReorderFxResponseIsValidJson)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "A", {}, {}, {}, {}, {}});
+    t.fx.push_back({1, "B", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/reorder","payload":{"trackIdx":0,"fromIndex":0,"toIndex":1},"id":"rjson"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+    EXPECT_EQ(resp.front(), '{');
+    EXPECT_EQ(resp.back(), '}');
+}
+
+// ============================================================
+// FX Preset command tests (Issue #87)
+// ============================================================
+
+TEST(FxPresetTest, GetPresetReturnsCurrentPresetInfo)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "Default", "Classic EQ", "Bright EQ", "Dark EQ" };
+    g_mockPresets.currentIndex = 1; // "Classic EQ"
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getPreset","payload":{"trackIdx":0,"fxIdx":0},"id":"gp1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have presetIndex=1, presetName="Classic EQ", numPresets=4
+    EXPECT_NE(resp.find("\"presetIndex\":1"), std::string::npos);
+    EXPECT_NE(resp.find("Classic EQ"), std::string::npos);
+    EXPECT_NE(resp.find("\"numPresets\":4"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, GetPresetWithNoPresetsReturnsNegOne)
+{
+    // FX with no presets: GetPresetIndex returns -1, numPresets=0
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = {};
+    g_mockPresets.currentIndex = -1;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "NoPresetFX", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getPreset","payload":{"trackIdx":0,"fxIdx":0},"id":"gp2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"presetIndex\":-1"), std::string::npos);
+    EXPECT_NE(resp.find("\"presetName\":null"), std::string::npos);
+    EXPECT_NE(resp.find("\"numPresets\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, SetPresetByIndexAndVerify)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "Default", "Preset A", "Preset B", "Preset C" };
+    g_mockPresets.currentIndex = 0;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set to preset index 2 ("Preset B")
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setPreset","payload":{"trackIdx":0,"fxIdx":0,"presetIdx":2},"id":"sp1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"presetIndex\":2"), std::string::npos);
+    EXPECT_NE(resp.find("Preset B"), std::string::npos);
+    EXPECT_NE(resp.find("\"numPresets\":4"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+}
+
+TEST(FxPresetTest, SetPresetWithMinusTwoFactoryDefault)
+{
+    // presetIdx=-2 should select factory default
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "Default", "Preset A", "Preset B" };
+    g_mockPresets.currentIndex = 2;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setPreset","payload":{"trackIdx":0,"fxIdx":0,"presetIdx":-2},"id":"sp2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Mock treats idx<0 as index 0
+    EXPECT_NE(resp.find("\"presetIndex\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, SetPresetWithMinusOneUserDefault)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "User Default", "Other" };
+    g_mockPresets.currentIndex = 1;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setPreset","payload":{"trackIdx":0,"fxIdx":0,"presetIdx":-1},"id":"sp3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, GetAllPresetNamesReturnsFullListAndRestores)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = { "Default", "Warm", "Bright", "Dark", "Vintage" };
+    g_mockPresets.currentIndex = 3; // "Dark"
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getAllPresetNames","payload":{"trackIdx":0,"fxIdx":0},"id":"gap1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should return all 5 preset names
+    EXPECT_NE(resp.find("Default"), std::string::npos);
+    EXPECT_NE(resp.find("Warm"), std::string::npos);
+    EXPECT_NE(resp.find("Bright"), std::string::npos);
+    EXPECT_NE(resp.find("Dark"), std::string::npos);
+    EXPECT_NE(resp.find("Vintage"), std::string::npos);
+
+    // Should indicate original index was restored to 3
+    EXPECT_NE(resp.find("\"currentIndex\":3"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Verify original index was actually restored in the mock
+    EXPECT_EQ(g_mockPresets.currentIndex, 3);
+}
+
+TEST(FxPresetTest, GetAllPresetNamesWithNoPresetsReturnsEmpty)
+{
+    g_mockPresets = MockPresets();
+    g_mockPresets.names = {};
+    g_mockPresets.currentIndex = -1;
+
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "NoPresetFX", {}, {}, {}, {}, {}});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getAllPresetNames","payload":{"trackIdx":0,"fxIdx":0},"id":"gap2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"presetNames\":[]"), std::string::npos);
+    EXPECT_NE(resp.find("\"currentIndex\":-1"), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxPresetTest, GetPresetInvalidTrackReturnsError)
+{
+    g_mockPresets = MockPresets();
+
+    MockState state;
+    state.tracks = {}; // No tracks
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getPreset","payload":{"trackIdx":0,"fxIdx":0},"id":"gp_bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+
 TEST(SampleBrowserTest, GetDirectoryMissingPath)
 {
     // Empty path in payload should return error
@@ -896,131 +1583,6 @@ TEST(SampleBrowserTest, JsonEscapeFilepath)
     std::string path2 = "/home/user/\"cool\" beats/hat.wav";
     std::string escaped2 = json_escape(path2);
     EXPECT_EQ(escaped2, "/home/user/\\\"cool\\\" beats/hat.wav");
-}
-
-// Helper: create a minimal valid PCM WAV file at the given path
-// Mono, 44100 Hz, 16-bit, 1 second of silence
-static void create_test_wav(const fs::path& path, int channels = 1, int sampleRate = 44100,
-    int bitsPerSample = 16, int durationSamples = 44100)
-{
-    int bytesPerSample = bitsPerSample / 8;
-    int dataSize = durationSamples * channels * bytesPerSample;
-    int fileSize = 36 + dataSize; // 4 + 24 + 8 + dataSize
-
-    std::ofstream f(path, std::ios::binary);
-
-    // RIFF header
-    f.write("RIFF", 4);
-    f.put(fileSize & 0xFF); f.put((fileSize >> 8) & 0xFF);
-    f.put((fileSize >> 16) & 0xFF); f.put((fileSize >> 24) & 0xFF);
-    f.write("WAVE", 4);
-
-    // fmt chunk
-    f.write("fmt ", 4);
-    uint32_t fmtSize = 16;
-    f.put(fmtSize & 0xFF); f.put((fmtSize >> 8) & 0xFF);
-    f.put((fmtSize >> 16) & 0xFF); f.put((fmtSize >> 24) & 0xFF);
-    uint16_t audioFormat = 1; // PCM
-    f.put(audioFormat & 0xFF); f.put((audioFormat >> 8) & 0xFF);
-    f.put(channels & 0xFF); f.put((channels >> 8) & 0xFF);
-    f.put(sampleRate & 0xFF); f.put((sampleRate >> 8) & 0xFF);
-    f.put((sampleRate >> 16) & 0xFF); f.put((sampleRate >> 24) & 0xFF);
-    uint32_t byteRate = sampleRate * channels * bytesPerSample;
-    f.put(byteRate & 0xFF); f.put((byteRate >> 8) & 0xFF);
-    f.put((byteRate >> 16) & 0xFF); f.put((byteRate >> 24) & 0xFF);
-    uint16_t blockAlign = channels * bytesPerSample;
-    f.put(blockAlign & 0xFF); f.put((blockAlign >> 8) & 0xFF);
-    f.put(bitsPerSample & 0xFF); f.put((bitsPerSample >> 8) & 0xFF);
-
-    // data chunk
-    f.write("data", 4);
-    f.put(dataSize & 0xFF); f.put((dataSize >> 8) & 0xFF);
-    f.put((dataSize >> 16) & 0xFF); f.put((dataSize >> 24) & 0xFF);
-
-    // Write silent samples
-    for (int i = 0; i < durationSamples * channels; i++) {
-        for (int b = 0; b < bytesPerSample; b++)
-            f.put(0);
-    }
-}
-
-TEST(SampleBrowserTest, GetAudioDataMissingPath)
-{
-    CommandHandler handler(nullptr);
-    std::string json = R"({"type":"command","command":"sample/getAudioData","payload":{"path":""},"id":"aud1"})";
-    // Just verify dispatch doesn't crash and extractPayload works
-    std::string payloadStr = extractPayload(json);
-    JsonParser parser(payloadStr);
-    EXPECT_EQ(parser.getString("path"), "");
-}
-
-TEST(SampleBrowserTest, GetAudioDataFileNotFound)
-{
-    CommandHandler handler(nullptr);
-    std::string json = R"({"type":"command","command":"sample/getAudioData","payload":{"path":"/nonexistent/file.wav"},"id":"aud2"})";
-    std::string payloadStr = extractPayload(json);
-    JsonParser parser(payloadStr);
-    EXPECT_EQ(parser.getString("path"), "/nonexistent/file.wav");
-}
-
-TEST(SampleBrowserTest, GetAudioDataExtractsPathFromPayload)
-{
-    std::string json = R"({"type":"command","command":"sample/getAudioData","payload":{"path":"/tmp/test.wav"},"id":"aud3"})";
-    std::string payloadStr = extractPayload(json);
-    JsonParser  parser(payloadStr);
-    EXPECT_EQ(parser.getString("path"), "/tmp/test.wav");
-}
-
-TEST(SampleBrowserTest, GetAudioDataNonWavFile)
-{
-    // Create a non-WAV temp file
-    fs::path testDir = fs::temp_directory_path() / "_sample_audiodata_test";
-    fs::create_directories(testDir);
-    fs::path testFile = testDir / "notaudio.txt";
-    {
-        std::ofstream f(testFile);
-        f << "this is not a wav file";
-    }
-
-    CommandHandler handler(nullptr);
-    std::string json = R"({"type":"command","command":"sample/getAudioData","payload":{"path":")" + testFile.string() + R"("},"id":"aud4"})";
-    // Handler should fail gracefully — not crash
-
-    fs::remove_all(testDir);
-}
-
-TEST(SampleBrowserTest, GetAudioDataValidWav)
-{
-    fs::path testDir = fs::temp_directory_path() / "_sample_audiodata_test2";
-    fs::create_directories(testDir);
-    fs::path testFile = testDir / "silence.wav";
-    create_test_wav(testFile, 1, 44100, 16, 441); // 0.01 seconds of silence
-
-    // Verify file exists and has correct size
-    EXPECT_TRUE(fs::exists(testFile));
-    EXPECT_GT(fs::file_size(testFile), 44u); // header + data
-
-    // Verify the data chunk is present by parsing manually
-    std::ifstream f(testFile, std::ios::binary);
-    f.seekg(0, std::ios::end);
-    std::streamsize actualSize = f.tellg();
-    f.seekg(0, std::ios::beg);
-    std::vector<uint8_t> contents(actualSize);
-    f.read(reinterpret_cast<char*>(contents.data()), actualSize);
-    EXPECT_EQ(memcmp(contents.data(), "RIFF", 4), 0);
-    EXPECT_EQ(memcmp(contents.data() + 8, "WAVE", 4), 0);
-
-    // Verify base64 encoding works on PCM data
-    // Read PCM data from the WAV
-    size_t dataOffset = 44; // Typical offset for PCM WAV
-    size_t pcmSize = actualSize - dataOffset;
-    std::string b64 = base64_encode(contents.data() + dataOffset, pcmSize);
-    EXPECT_FALSE(b64.empty());
-    // Base64 length: 4 * ceil(n/3)
-    size_t expectedB64Len = ((pcmSize + 2) / 3) * 4;
-    EXPECT_EQ(b64.size(), expectedB64Len);
-
-    fs::remove_all(testDir);
 }
 
 // ============================================================
@@ -1398,11 +1960,11 @@ TEST(Phase1MVPTest, FullTrackRoundTrip)
     ASSERT_EQ(responses.size(), 1u);
     std::string& tracksResp = responses[0];
 
-    // Verify track response structure (names are server-generated since
-    // GetSetMediaTrackInfo_String crashes from Chromium WS context)
-    EXPECT_NE(tracksResp.find("\"Track 1\""), std::string::npos);
-    EXPECT_NE(tracksResp.find("\"Track 2\""), std::string::npos);
-    EXPECT_NE(tracksResp.find("\"Track 3\""), std::string::npos);
+    // Verify track response structure — track names come from GetSetMediaTrackInfo_String
+    // (Issue #40 fix), matching the mock track names defined above
+    EXPECT_NE(tracksResp.find("\"Kick\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"Snare\""), std::string::npos);
+    EXPECT_NE(tracksResp.find("\"Hat\""), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":0"), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":1"), std::string::npos);
     EXPECT_NE(tracksResp.find("\"index\":2"), std::string::npos);
@@ -2761,6 +3323,121 @@ TEST(SequencerTest, ToggleStepPreservesOtherSteps)
 }
 
 // ============================================================
+// Convert sequencer to clip tests (Issue #92)
+// ============================================================
+
+TEST(SequencerConvertTest, ConvertToClipEmptyPatternReturnsError)
+{
+    // Returns error when no steps are active
+    MockState state;
+    MockTrack t;
+    t.idx = 0;
+    state.tracks = { t };
+
+    ResetMidiMockState();
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/convertToClip","id":"cc1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"emptyPattern\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("No active steps to convert"), std::string::npos);
+}
+
+TEST(SequencerConvertTest, ConvertToClipWithActiveStepsSucceeds)
+{
+    // Successfully converts active steps to a MIDI clip
+    MockState state;
+    MockTrack t;
+    t.idx = 0;
+    state.tracks = { t };
+
+    ResetMidiMockState();
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set up some active steps: (0,0) and (3,5) with velocity 110
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":0,"row":0,"active":"true","velocity":110},"id":"ss1"})");
+    responses.clear();
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":3,"row":5,"active":"true","velocity":85},"id":"ss2"})");
+    responses.clear();
+
+    // Now convert to clip
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/convertToClip","id":"cc2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"trackIdx\":0"), std::string::npos);
+
+    // Verify that MIDI notes were actually inserted
+    EXPECT_EQ(g_mockNoteInsertCount, 2);
+}
+
+TEST(SequencerConvertTest, ConvertToCliptWithPartialPattern)
+{
+    // Only convert active steps within the configured length
+    MockState state;
+    MockTrack t;
+    t.idx = 0;
+    state.tracks = { t };
+
+    ResetMidiMockState();
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set length to 4 (only first 4 columns)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setLength","payload":{"length":4},"id":"sl1"})");
+    responses.clear();
+
+    // Set steps at columns within and beyond the 4-step length
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":2,"row":0,"active":"true"},"id":"ss1"})");
+    responses.clear();
+
+    // This step at column 6 would be beyond the 4-step length —
+    // the handler should clamp to min(seqLength, columns)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":6,"row":0,"active":"true"},"id":"ss2"})");
+    responses.clear();
+
+    // Convert to clip (should only convert steps within length 4)
+    ResetMidiMockState();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/convertToClip","id":"cc3"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Should succeed with the 1 step within length
+    EXPECT_EQ(g_mockNoteInsertCount, 1);
+}
+
+TEST(SequencerConvertTest, ConvertToClipNoTracksReturnsError)
+{
+    // Returns error if there are no tracks in the project
+    ResetMidiMockState();
+    std::vector<std::string> responses;
+    // Create a handler with empty state (no tracks)
+    MockState emptyState;
+    auto handler = MakeMockHandler(&emptyState, &responses);
+
+    // Need to set up some active steps first
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/setStep","payload":{"column":0,"row":0,"active":"true"},"id":"ss1"})");
+    responses.clear();
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sequencer/convertToClip","id":"cc4"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("No tracks in project"), std::string::npos);
+}
+
+// ============================================================
 // FX param slider jump fixes (Issue #73)
 // ============================================================
 
@@ -3244,22 +3921,17 @@ TEST(FxChainTest, GetInfoReturnsChainDetails)
     fs::path chainPath = testDir / "test_chain.RfxChain";
 
     // Create an FX chain file with multiple FX
+    // REAPER's native .RfxChain format uses <VST (not <ITEM) for plugins
     std::string fxChainContent =
         "<FXCHAIN\n"
         "  SHOW 0\n"
         "  LASTSEL 0\n"
         "  DOCKED 0\n"
-        "  <ITEM\n"
-        "    NAME \"ReaEQ\"\n"
-        "    VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0 0\n"
+        "  <VST \"VST: ReaEQ (Cockos)\" reaeq.vst.so 0\n"
         "  >\n"
-        "  <ITEM\n"
-        "    NAME \"ReaComp\"\n"
-        "    VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
+        "  <VST \"VST: ReaComp (Cockos)\" reacomp.vst.so 0\n"
         "  >\n"
-        "  <ITEM\n"
-        "    NAME \"ReaDelay\"\n"
-        "    VST \"VST3: ReaDelay (Cockos)\" ReaDelay 0\n"
+        "  <VST \"VST: ReaDelay (Cockos)\" readelay.vst.so 0\n"
         "  >\n"
         ">";
 
@@ -3402,139 +4074,509 @@ TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
     fs::remove_all(testDir);
 }
 
-
 // ============================================================
-// Sample sendToSlot handler tests (Issue #74)
-// ============================================================
+// Playtime MIDI output tests (Issue #80)
+//
+// Playtime 2 C API has no clip-triggering functions. Matrix commands
+// must work via MIDI notes sent to the Playtime 2 virtual MIDI input.
+// 
 
-TEST(SampleBrowserTest, SendToSlotMissingPathReturnsError)
-{
-    // Missing 'path' parameter should return error
-    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"column":0,"row":0},"id":"slot1"})";
-    std::string payloadStr = extractPayload(json);
-    JsonParser  parser(payloadStr);
-
-    EXPECT_EQ(parser.getString("path"), "");
-    EXPECT_EQ(parser.getString("column"), "0");
-    EXPECT_EQ(parser.getString("row"), "0");
-}
-
-TEST(SampleBrowserTest, SendToSlotMissingColumnReturnsError)
-{
-    // Missing 'column' parameter should return error
-    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":"/tmp/test.wav","row":0},"id":"slot2"})";
-    std::string payloadStr = extractPayload(json);
-    JsonParser  parser(payloadStr);
-
-    EXPECT_EQ(parser.getString("path"), "/tmp/test.wav");
-    EXPECT_EQ(parser.getString("column"), "");
-    EXPECT_EQ(parser.getString("row"), "0");
-}
-
-TEST(SampleBrowserTest, SendToSlotMissingRowReturnsError)
-{
-    // Missing 'row' parameter should return error
-    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":"/tmp/test.wav","column":0},"id":"slot3"})";
-    std::string payloadStr = extractPayload(json);
-    JsonParser  parser(payloadStr);
-
-    EXPECT_EQ(parser.getString("path"), "/tmp/test.wav");
-    EXPECT_EQ(parser.getString("column"), "0");
-    EXPECT_EQ(parser.getString("row"), "");
-}
-
-TEST(SampleBrowserTest, SendToSlotExtractsAllParams)
-{
-    // All three params should be extractable from the payload
-    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":"/tmp/beat.wav","column":2,"row":3},"id":"slot4"})";
-    std::string payloadStr = extractPayload(json);
-    JsonParser  parser(payloadStr);
-
-    EXPECT_EQ(parser.getString("path"), "/tmp/beat.wav");
-    EXPECT_EQ(parser.getString("column"), "2");
-    EXPECT_EQ(parser.getString("row"), "3");
-}
-
-TEST(SampleBrowserTest, SendToSlotOutOfRangeColumnReturnsError)
-{
-    // Column >= 8 (Playtime grid is 8 columns) should be out of range
-    CommandHandler handler(nullptr);
-    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":"/tmp/test.wav","column":99,"row":0},"id":"slot5"})";
-
-    // No WebSocket connected, so no response sent — but we verify the route is wired
-    // by checking that extractPayload can get the params
-    std::string payloadStr = extractPayload(json);
-    JsonParser  parser(payloadStr);
-    EXPECT_EQ(parser.getString("column"), "99");
-}
-
-TEST(SampleBrowserTest, SendToSlotOutOfRangeRowReturnsError)
-{
-    // Row >= 8 (Playtime grid is 8 rows) should be out of range
-    CommandHandler handler(nullptr);
-    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":"/tmp/test.wav","column":0,"row":99},"id":"slot6"})";
-    std::string payloadStr = extractPayload(json);
-    JsonParser  parser(payloadStr);
-    EXPECT_EQ(parser.getString("row"), "99");
-}
-
-TEST(SampleBrowserTest, SendToSlotNegativeColumnReturnsError)
-{
-    // Negative column should be out of range
-    CommandHandler handler(nullptr);
-    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":"/tmp/test.wav","column":-1,"row":0},"id":"slot7"})";
-    std::string payloadStr = extractPayload(json);
-    JsonParser  parser(payloadStr);
-    EXPECT_EQ(parser.getString("column"), "-1");
-}
-
-TEST(SampleBrowserTest, SendToSlotRouteIsWired)
-{
-    // Verify the dispatch table routes sample/sendToSlot to HandleSampleSendToSlot
-    // by checking that the message gets parsed without crash
-    CommandHandler handler(nullptr);
-    
-    // Create a temp file for testing
-    fs::path testDir = fs::temp_directory_path() / "_sendtoslot_test";
-    fs::create_directories(testDir);
-    std::string testFilePath = (testDir / "test_audio.wav").string();
-    
-    // Create a minimal WAV header
-    {
-        std::ofstream wav(testFilePath, std::ios::binary);
-        char header[44] = {
-            'R', 'I', 'F', 'F',
-            36, 0, 0, 0,     // file size - 8 (36 bytes for rest)
-            'W', 'A', 'V', 'E',
-            'f', 'm', 't', ' ',
-            16, 0, 0, 0,     // chunk size
-            1, 0,             // PCM format
-            1, 0,             // mono
-            0x44, 0xAC, 0, 0, // 44100 Hz
-            0x44, 0xAC, 0, 0, // byte rate
-            2, 0,             // block align
-            16, 0,            // bits per sample
-            'd', 'a', 't', 'a',
-            0, 0, 0, 0        // data size = 0
-        };
-        wav.write(header, 44);
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
     }
+    EXPECT_EQ(depth, 0);
+}
 
-    // Build the JSON command with the test file path
-    std::string escapedPath = testFilePath;
-    // Escape backslashes in path for JSON (on Windows)
-    size_t pos = 0;
-    while ((pos = escapedPath.find('\\', pos)) != std::string::npos) {
-        escapedPath.replace(pos, 1, "\\\\");
-        pos += 2;
+TEST(PlaytimeCommandTest, LaunchRecognizedAsValidCommand)
+{
+    // Verify playtime/launch is registered in the command map
+    // and doesn't result in "Unknown command"
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Send an unknown command to compare
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/unknownCommand","id":"unk"})");
+
+    ASSERT_GE(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("Unknown command"), std::string::npos)
+        << "Unknown commands should get 'Unknown command' error";
+
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/launch","id":"pl2"})");
+
+    ASSERT_GE(responses.size(), 1u);
+    EXPECT_EQ(responses[0].find("Unknown command"), std::string::npos)
+        << "playtime/launch should be a recognized command";
+}
+
+TEST(PlaytimeCommandTest, LaunchReturnsProperPayloadStructure)
+{
+    // Verify the basic structure of playtime/launch response payload
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"playtime/launch","id":"pl3"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have type, id, success, payload keys
+    EXPECT_NE(resp.find("\"type\":\"response\""), std::string::npos);
+    EXPECT_NE(resp.find("\"id\":\"pl3\""), std::string::npos);
+    EXPECT_NE(resp.find("\"payload\":{"), std::string::npos);
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
     }
-    
-    std::string cmd = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":")" + escapedPath + R"(","column":0,"row":0},"id":"slot8"})";
-    
-    // This should not crash — even though the handler checks for InsertMedia API
-    // which is null, the dispatch table should route correctly
-    handler.HandleMessage(1, cmd);
+    EXPECT_EQ(depth, 0);
+}
 
-    // Cleanup
+// 
+
+    // Verify balanced JSON
+    int depth = 0;
+    for (char c : resp) {
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnAlreadyRecordingStopsAndSetsStopped)
+{
+    // Test that calling recordSlot on a slot that's already recording
+    // stops recording and sets state to "stopped"
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Stop recording (call recordSlot again on the same slot)
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec2"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Should now be stopped (clip was created/saved)
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":0"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":0"), std::string::npos);
+    EXPECT_EQ(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnStoppedSlotRestartsRecording)
+{
+    // Test that calling recordSlot on a stopped clip restarts recording
+    // (re-records the clip)
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Stop recording → stopped
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+
+    // Record again → should go back to recording
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":5,"row":1},"id":"r3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOnPlayingSlotReportsError)
+{
+    // Test that calling recordSlot on a currently playing slot returns error
+    // (can't record on a playing clip)
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // First trigger a slot to play
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":1,"row":2},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+
+    // Try to record on the playing slot — should error
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":1,"row":2},"id":"rec_bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotMissingParamsReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{},"id":"rec_bad"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Missing 'column' or 'row' parameter"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotOutOfRangeReturnsError)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":99,"row":0},"id":"bad"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Column or row out of range"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotBroadcastsEvent)
+{
+    // Test that recording a slot broadcasts slotStateChanged events
+
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Start recording
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":3,"row":4},"id":"rec_bc1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_EQ(captured.size(), 1u);
+
+    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"state\":\"recording\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"column\":3"), std::string::npos);
+    EXPECT_NE(captured[0].find("\"row\":4"), std::string::npos);
+}
+
+TEST(MatrixRecordSlotTest, RecordSlotSendsMidiNoteWhenAvailable)
+{
+    // Test that recordSlot sends a MIDI note when MIDI output is available
+    // The recording MIDI note should use channel 1 to distinguish from
+    // trigger notes (channel 0)
+    struct MidiMsg { int status; int d1; int d2; };
+    std::vector<MidiMsg> messages;
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->GetMidi().setSendFunc([&](int s, int d1, int d2) {
+        messages.push_back({s, d1, d2});
+    });
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Record slot (0,0)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":0,"row":0},"id":"rec_midi1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    // Should have sent MIDI (NoteOn + NoteOff)
+    ASSERT_GE(messages.size(), 1u);
+    // Status for channel 1 (recording uses channel 1 to distinguish from trigger)
+    EXPECT_EQ(messages[0].status & 0x0F, 1) << "Recording MIDI should use channel 1";
+    EXPECT_EQ(messages[0].d1, 36) << "Note 36 for slot (0,0)";
+}
+
+// 
+        if (c == '{') depth++;
+        if (c == '}') depth--;
+    }
+    EXPECT_EQ(depth, 0);
+}
+
+TEST(PlaytimePollTest, PollStateReturnsPlaytimeUnavailableInTests)
+{
+    // When Playtime API is not loaded, pollState should reflect that
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/pollState","id":"poll2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    // playtimeAvailable should be false in tests
+    EXPECT_NE(responses[0].find("\"playtimeAvailable\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"instanceId\":-1"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"hasMatrix\":false"), std::string::npos);
+}
+
+TEST(PlaytimePollTest, PollStateIsRecognizedCommand)
+{
+    // Verify matrix/pollState is registered in the command map
+    std::vector<std::string> responses;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/pollState","id":"poll3"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_EQ(responses[0].find("Unknown command"), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, SyncEnqueuedEventsOnStateChange)
+{
+    // Verify that when slot state changes, events are sent via broadcast
+    // This tests the BroadcastMatrixEvent mechanism for recording transitions
+    std::vector<std::string> captured;
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+
+    std::vector<std::string> responses;
+
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger a slot which should broadcast an event
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"sync1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    ASSERT_GE(captured.size(), 1u);
+
+    // Verify the broadcast event has the right structure
+    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, GetAllReflectsRecordingStateChanges)
+{
+    // Verify that matrix/getAll returns the updated state after
+    // recording operations change slot states
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Record a slot
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":3,"row":5},"id":"rec1"})");
+
+    // Now getAll should show the recording state
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getAll","id":"ga1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Should have the recording slot at column=3,row=5
+    EXPECT_NE(resp.find("\"column\":3,\"row\":5,\"state\":\"recording\""), std::string::npos);
+}
+
+TEST(PlaytimeStateTest, RecordingThenTriggerSlotWorksCorrectly)
+{
+    // Test full lifecycle: record a slot, stop recording, then trigger to play
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Step 1: Record slot
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":4},"id":"r1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+
+    // Step 2: Stop recording
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":4},"id":"r2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
+
+    // Step 3: Trigger to play
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":4},"id":"t1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+}
+
+// 
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + testDir.string() + R"("},"id":"sr1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    // Should find 4 RfxChain files across subdirectories
+    EXPECT_NE(resp.find("vca_comp"), std::string::npos);
+    EXPECT_NE(resp.find("hall"), std::string::npos);
+    EXPECT_NE(resp.find("room"), std::string::npos);
+    EXPECT_NE(resp.find("deep_nested"), std::string::npos);
+    // Should NOT include .txt files
+    EXPECT_EQ(resp.find("ignore.txt"), std::string::npos);
+
+
     fs::remove_all(testDir);
 }
+
+TEST(FxChainTest, SearchRecursiveFiltersByQuery)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_search_query_test";
+    fs::create_directories(testDir);
+    { std::ofstream(testDir / "reverb_plate.RfxChain").close(); }
+    { std::ofstream(testDir / "reverb_hall.RfxChain").close(); }
+    { std::ofstream(testDir / "compressor.RfxChain").close(); }
+
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"reverb","rootPath":")" + testDir.string() + R"("},"id":"sr2"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("reverb_plate"), std::string::npos);
+    EXPECT_NE(resp.find("reverb_hall"), std::string::npos);
+    // compressor should not match "reverb"
+    EXPECT_EQ(resp.find("compressor"), std::string::npos);
+
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SearchRecursiveCaseInsensitive)
+{
+    fs::path testDir = fs::temp_directory_path() / "_fxchain_search_case_test";
+    fs::create_directories(testDir);
+    { std::ofstream(testDir / "MY_CHAIN.RfxChain").close(); }
+    { std::ofstream(testDir / "other.RfxChain").close(); }
+
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Query lowercase, file uppercase
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"my_chain","rootPath":")" + testDir.string() + R"("},"id":"sr3"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("MY_CHAIN"), std::string::npos);
+    EXPECT_EQ(resp.find("other"), std::string::npos);
+
+
+    fs::remove_all(testDir);
+}
+
+TEST(FxChainTest, SearchRecursiveInvalidPathReturnsEmpty)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":"/nonexistent_path_xyz_123_search"},"id":"sr4"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    // Should have empty results, not an error
+    EXPECT_NE(resp.find("\"results\":[]"), std::string::npos);
+}
+
+TEST(FxChainTest, SearchRecursiveMissingRootPathReturnsError)
+
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":""},"id":"sr5"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("Missing 'rootPath'"), std::string::npos);
+}
+
+
+
