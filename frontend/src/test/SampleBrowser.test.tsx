@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { SampleBrowser } from '../components/SampleBrowser';
 import type { Track, DirEntry } from '../hooks/useReaper';
 
@@ -344,6 +344,498 @@ describe('SampleBrowser', () => {
     // Preview panel should open with loading state
     await waitFor(() => {
       expect(screen.getByText(/Loading audio/i)).toBeDefined();
+    });
+  });
+
+  // ── Long-press / Context Menu tests (Issue #28) ─────────────────
+  // Uses vi.useFakeTimers in combination with real timers for async rendering.
+  // The pattern: render with real timers, waitFor render, then switch to fake timers
+  // for the long-press timer interaction.
+
+  describe('long-press context menu', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+      localStorage.clear();
+    });
+
+    it('shows context menu on long-press of file', async () => {
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      // Find the FileRow div (the one with pointer handlers)
+      const fileRow = screen.getByText('kick.wav').closest('[class*="touch-none"]');
+      expect(fileRow).not.toBeNull();
+
+      // Switch to fake timers for the long-press interaction
+      vi.useFakeTimers();
+
+      // Trigger pointer down (start long-press timer)
+      fireEvent.pointerDown(fileRow!, { clientX: 100, clientY: 200 });
+
+      // Advance timers past 500ms threshold (wrapped in act for React state flush)
+      act(() => { vi.advanceTimersByTime(600); });
+
+      // Context menu should appear with menu items
+      expect(screen.getByText('Send to Track')).toBeDefined();
+      expect(screen.getByText('Start Drag to Slot')).toBeDefined();
+      expect(screen.getByText('File Info')).toBeDefined();
+
+      vi.useRealTimers();
+    });
+
+    it('shows context menu on non-audio files too', async () => {
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('notes.txt')).toBeDefined();
+      });
+
+      // Find the FileRow
+      const notesRow = screen.getByText('notes.txt').closest('[class*="touch-none"]');
+      expect(notesRow).not.toBeNull();
+
+      vi.useFakeTimers();
+
+      // Long-press on notes.txt
+      fireEvent.pointerDown(notesRow!, { clientX: 50, clientY: 100 });
+      act(() => { vi.advanceTimersByTime(600); });
+
+      // Non-audio files should show File Info and Start Drag
+      expect(screen.getByText('Start Drag to Slot')).toBeDefined();
+      expect(screen.getByText('File Info')).toBeDefined();
+
+      vi.useRealTimers();
+    });
+
+    it('cancels context menu on pointer up before threshold', async () => {
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      const fileRow = screen.getByText('kick.wav').closest('[class*="touch-none"]');
+      expect(fileRow).not.toBeNull();
+
+      vi.useFakeTimers();
+
+      // Start long-press
+      fireEvent.pointerDown(fileRow!, { clientX: 100, clientY: 200 });
+
+      // Release before threshold (500ms)
+      act(() => { vi.advanceTimersByTime(400); });
+      act(() => { fireEvent.pointerUp(fileRow!); });
+
+      // Advance past the threshold
+      act(() => { vi.advanceTimersByTime(200); });
+
+      // Context menu should NOT appear
+      expect(screen.queryByText('Send to Track')).toBeNull();
+
+      vi.useRealTimers();
+    });
+
+    it('cancels context menu on pointer move', async () => {
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      const fileRow = screen.getByText('kick.wav').closest('[class*="touch-none"]');
+      expect(fileRow).not.toBeNull();
+
+      vi.useFakeTimers();
+
+      // Start long-press
+      fireEvent.pointerDown(fileRow!, { clientX: 100, clientY: 200 });
+
+      // Move before threshold
+      act(() => { vi.advanceTimersByTime(400); });
+      act(() => { fireEvent.pointerMove(fileRow!); });
+
+      // Advance past the threshold
+      act(() => { vi.advanceTimersByTime(200); });
+
+      // Context menu should NOT appear
+      expect(screen.queryByText('Send to Track')).toBeNull();
+
+      vi.useRealTimers();
+    });
+
+    it('dismisses context menu on outside click', async () => {
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      // Trigger context menu
+      const fileRow = screen.getByText('kick.wav').closest('[class*="touch-none"]');
+      expect(fileRow).not.toBeNull();
+
+      vi.useFakeTimers();
+
+      fireEvent.pointerDown(fileRow!, { clientX: 100, clientY: 200 });
+      act(() => { vi.advanceTimersByTime(600); });
+
+      expect(screen.getByText('Send to Track')).toBeDefined();
+
+      // Click outside
+      act(() => { fireEvent.mouseDown(document.body); });
+
+      expect(screen.queryByText('Send to Track')).toBeNull();
+
+      vi.useRealTimers();
+    });
+
+    it('sends sample from context menu Send to Track option', async () => {
+      mockSendSampleToTrack.mockResolvedValue(true);
+
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('snare.wav')).toBeDefined();
+      });
+
+      const snareRow = screen.getByText('snare.wav').closest('[class*="touch-none"]');
+      expect(snareRow).not.toBeNull();
+
+      vi.useFakeTimers();
+
+      // Long-press snare.wav
+      fireEvent.pointerDown(snareRow!, { clientX: 100, clientY: 200 });
+      act(() => { vi.advanceTimersByTime(600); });
+
+      expect(screen.getByText('Send to Track')).toBeDefined();
+
+      vi.useRealTimers();
+
+      // Click Send to Track in context menu
+      fireEvent.click(screen.getByText('Send to Track'));
+
+      await waitFor(() => {
+        expect(mockSendSampleToTrack).toHaveBeenCalledWith(
+          expect.stringContaining('snare.wav'),
+          0
+        );
+      });
+    });
+
+    it('shows File Info modal from context menu', async () => {
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      const fileRow = screen.getByText('kick.wav').closest('[class*="touch-none"]');
+      expect(fileRow).not.toBeNull();
+
+      vi.useFakeTimers();
+
+      // Long-press kick.wav
+      fireEvent.pointerDown(fileRow!, { clientX: 100, clientY: 200 });
+      act(() => { vi.advanceTimersByTime(600); });
+
+      expect(screen.getByText('File Info')).toBeDefined();
+
+      vi.useRealTimers();
+
+      // Click File Info
+      act(() => { fireEvent.click(screen.getByText('File Info')); });
+
+      // File Info modal should appear
+      await waitFor(() => {
+        expect(screen.getByText('Type')).toBeDefined();
+        expect(screen.getByText('Size')).toBeDefined();
+      });
+
+      // Should show file details
+      expect(screen.getByText('Audio')).toBeDefined();
+    });
+
+    it('closes File Info modal on Done click', async () => {
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      const fileRow = screen.getByText('kick.wav').closest('[class*="touch-none"]');
+      expect(fileRow).not.toBeNull();
+
+      vi.useFakeTimers();
+
+      // Open context menu
+      fireEvent.pointerDown(fileRow!, { clientX: 100, clientY: 200 });
+      act(() => { vi.advanceTimersByTime(600); });
+
+      expect(screen.getByText('File Info')).toBeDefined();
+
+      vi.useRealTimers();
+
+      // Open file info
+      act(() => { fireEvent.click(screen.getByText('File Info')); });
+
+      await waitFor(() => {
+        expect(screen.getByText('Done')).toBeDefined();
+      });
+
+      // Click Done
+      act(() => { fireEvent.click(screen.getByText('Done')); });
+
+      await waitFor(() => {
+        expect(screen.queryByText('Type')).toBeNull();
+      });
+    });
+  });
+
+  // ── Configurable root path tests (Issue #28) ───────────────────
+
+  describe('configurable root path', () => {
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it('uses default path /tmp when no localStorage value', () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      expect(screen.getByText(/\/tmp/)).toBeDefined();
+    });
+
+    it('persists root path to localStorage', async () => {
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries() });
+
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      // Navigate into Drums folder
+      await waitFor(() => {
+        expect(screen.getByText('Drums')).toBeDefined();
+      });
+
+      fireEvent.click(screen.getByText('Drums'));
+
+      await waitFor(() => {
+        expect(mockGetDirectory).toHaveBeenCalledWith('/tmp/Drums');
+      });
+
+      // Check localStorage was updated
+      expect(localStorage.getItem('sampleBrowserRootPath')).toBe('/tmp/Drums');
+
+      // Now unmount and remount to verify localStorage persistence
+      const { unmount } = render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+      unmount();
+
+      // A fresh render should load from localStorage
+      mockGetDirectory.mockClear();
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries() });
+
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      // Should load the persisted path
+      await waitFor(() => {
+        expect(mockGetDirectory).toHaveBeenCalledWith('/tmp/Drums');
+      });
+    });
+
+    it('allows editing root path via click on path breadcrumb', async () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      // Click the edit icon/button on the path
+      const editButton = screen.getByText('✏️');
+      fireEvent.click(editButton);
+
+      // Should show input field
+      const pathInput = screen.getByPlaceholderText('Enter path...');
+      expect(pathInput).toBeDefined();
+
+      // Change path
+      fireEvent.change(pathInput, { target: { value: '/home/samples' } });
+
+      // Click Go
+      fireEvent.click(screen.getByText('Go'));
+
+      await waitFor(() => {
+        expect(mockGetDirectory).toHaveBeenCalledWith('/home/samples');
+      });
+
+      // Path should be updated
+      expect(screen.getByText(/\/home\/samples/)).toBeDefined();
+
+      // localStorage should be updated
+      expect(localStorage.getItem('sampleBrowserRootPath')).toBe('/home/samples');
+    });
+
+    it('cancels path editing on Escape', async () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      // Click edit
+      fireEvent.click(screen.getByText('✏️'));
+
+      const pathInput = screen.getByPlaceholderText('Enter path...');
+      expect(pathInput).toBeDefined();
+
+      // Type and press Escape
+      fireEvent.change(pathInput, { target: { value: '/should/not/save' } });
+      fireEvent.keyDown(pathInput, { key: 'Escape' });
+
+      // Should revert to original path
+      expect(screen.getByText(/\/tmp/)).toBeDefined();
+      expect(localStorage.getItem('sampleBrowserRootPath')).toBe('/tmp');
+    });
+
+    it('does not save empty path', async () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      // Click edit
+      fireEvent.click(screen.getByText('✏️'));
+
+      const pathInput = screen.getByPlaceholderText('Enter path...');
+      fireEvent.change(pathInput, { target: { value: '   ' } });
+      fireEvent.click(screen.getByText('Go'));
+
+      // Should NOT call getDirectory with empty path
+      expect(mockGetDirectory).toHaveBeenCalledTimes(1); // only initial mount
+      expect(localStorage.getItem('sampleBrowserRootPath')).toBe('/tmp');
     });
   });
 });
