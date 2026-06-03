@@ -1,3 +1,0 @@
-[spidercrab] Frontend path set: /tmp/reaper-headless-shot-yaKnYT/UserPlugins/frontend
-[spidercrab] addListenPort returned: 0
-[spidercrab] HTTP server started on port 5173
