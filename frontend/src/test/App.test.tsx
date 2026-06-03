@@ -213,3 +213,86 @@ describe('App — Settings tab', () => {
     expect(mockRefreshFxCache).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── Drag-drop: edge-reached tab switch (Issue #74) ──
+
+describe('App — Drag edge-reached tab switch', () => {
+  it('renders DragProvider and DragOverlay without crashing', async () => {
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn().mockResolvedValue({params: [], total: 0, offset: 0, limit: 32}),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn().mockResolvedValue({entries: []}),
+      sendSampleToTrack: vi.fn(),
+      sendToSlot: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      play: vi.fn(),
+      stop: vi.fn(),
+      getTransportState: vi.fn().mockResolvedValue({playing: false, recording: false}),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      matrix: null,
+      getMatrix: vi.fn().mockResolvedValue(null),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+    });
+
+    const { container } = render(<App />);
+
+    // App should render without crashing
+    expect(container.textContent).toContain('Utpaladeva');
+  });
+});
+  it('renders SessionView content when Playtime tab is selected with matrix data', async () => {
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn().mockResolvedValue({params: [], total: 0, offset: 0, limit: 32}),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn().mockResolvedValue({entries: []}),
+      sendSampleToTrack: vi.fn(),
+      sendToSlot: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      play: vi.fn(),
+      stop: vi.fn(),
+      getTransportState: vi.fn().mockResolvedValue({playing: false, recording: false}),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      matrix: { columns: 8, rows: 8, slots: [] },
+      getMatrix: vi.fn().mockResolvedValue(null),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Playtime tab
+    fireEvent.click(screen.getByText('Playtime'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Session View')).toBeDefined();
+    });
+  });

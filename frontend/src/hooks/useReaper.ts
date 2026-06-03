@@ -259,6 +259,12 @@ export function useReaper(opts: UseReaperOptions = {}) {
     return resp.success;
   }, []);
 
+  const sendToSlot = useCallback(async (path: string, column: number, row: number): Promise<boolean> => {
+    if (!clientRef.current) return false;
+    const resp = await clientRef.current.send('sample/sendToSlot', { path, column, row });
+    return resp.success;
+  }, []);
+
   // ── FX Chain commands (Issue #7) ──
 
   const fxChainGetDirectory = useCallback(async (path: string): Promise<{chains: FxChainEntry[]; dirs: string[]}> => {
@@ -536,6 +542,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     getTransportState,
     getDirectory,
     sendSampleToTrack,
+    sendToSlot,
     sendCommand,
     refreshFxCache,
     onEvent,

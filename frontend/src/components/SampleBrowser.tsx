@@ -3,6 +3,7 @@ import type { Track, DirEntry } from '../hooks/useReaper';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
+import { useDragContext } from '../hooks/useDragContext';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ interface SampleBrowserProps {
   sendSampleToTrack: (path: string, trackIdx: number) => Promise<boolean>;
   sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>;
   onBack: () => void;
+  sendToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -50,6 +52,8 @@ export function SampleBrowser({
     x: number;
     y: number;
   } | null>(null);
+
+  const { startDrag } = useDragContext();
 
   // File info modal state (Issue #28)
   const [fileInfo, setFileInfo] = useState<FileInfo | null>(null);
@@ -230,8 +234,7 @@ export function SampleBrowser({
       label: 'Start Drag to Slot',
       icon: '↗️',
       action: () => {
-        // Future: trigger drag-to-Playtime behavior (Issue #74)
-        console.log('Drag started:', fullPath);
+        startDrag({ path: fullPath, name: entry.name });
       },
     });
 

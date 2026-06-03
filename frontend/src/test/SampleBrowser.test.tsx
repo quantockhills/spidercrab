@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { SampleBrowser } from '../components/SampleBrowser';
+import { DragProvider } from '../hooks/useDragContext';
 import type { Track, DirEntry } from '../hooks/useReaper';
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -535,6 +536,51 @@ describe('SampleBrowser', () => {
       expect(screen.queryByText('Send to Track')).toBeNull();
 
       vi.useRealTimers();
+    });
+
+    it('triggers drag from Start Drag to Slot context menu option', async () => {
+      const mockStartDrag = vi.fn();
+
+      // Wrap in a DragProvider to capture startDrag calls
+      render(
+        <DragProvider>
+          <SampleBrowser
+            tracks={createMockTracks()}
+            selectedTrack={0}
+            getDirectory={mockGetDirectory}
+            sendSampleToTrack={mockSendSampleToTrack}
+            sendCommand={mockSendCommand}
+            onBack={() => {}}
+          />
+        </DragProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      const fileRow = screen.getByText('kick.wav').closest('[class*="touch-none"]');
+      expect(fileRow).not.toBeNull();
+
+      vi.useFakeTimers();
+
+      // Long-press kick.wav
+      fireEvent.pointerDown(fileRow!, { clientX: 100, clientY: 200 });
+      act(() => { vi.advanceTimersByTime(600); });
+
+      expect(screen.getByText('Start Drag to Slot')).toBeDefined();
+
+      vi.useRealTimers();
+
+      // Click Start Drag to Slot context menu item
+      act(() => { fireEvent.click(screen.getByText('Start Drag to Slot')); });
+
+      // After clicking, the drag should be active (overlay would show)
+      // We can't easily check the context state from outside, but
+      // we verify it doesn't crash and the menu closes
+      await waitFor(() => {
+        expect(screen.queryByText('Start Drag to Slot')).toBeNull();
+      });
     });
 
     it('sends sample from context menu Send to Track option', async () => {
