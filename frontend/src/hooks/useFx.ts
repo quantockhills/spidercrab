@@ -25,6 +25,17 @@ export interface FxParam {
   formatted?: string;
 }
 
+export interface FxPresetInfo {
+  presetIndex: number;
+  presetName: string | null;
+  numPresets: number;
+}
+
+export interface FxPresetNames {
+  presetNames: string[];
+  currentIndex: number;
+}
+
 // ── Hook ─────────────────────────────────────────────────────
 
 export function useFx() {
@@ -93,6 +104,24 @@ export function useFx() {
     }
   }, [send]);
 
+  const getFxPreset = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxPresetInfo | null> => {
+    const resp = await send('fx/getPreset', { trackIdx, fxIdx });
+    if (!resp.success) return null;
+    return resp.payload as unknown as FxPresetInfo;
+  }, [send]);
+
+  const setFxPreset = useCallback(async (trackIdx: number, fxIdx: number, presetIdx: number): Promise<FxPresetInfo | null> => {
+    const resp = await send('fx/setPreset', { trackIdx, fxIdx, presetIdx });
+    if (!resp.success) return null;
+    return resp.payload as unknown as FxPresetInfo;
+  }, [send]);
+
+  const getAllFxPresetNames = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxPresetNames | null> => {
+    const resp = await send('fx/getAllPresetNames', { trackIdx, fxIdx });
+    if (!resp.success) return null;
+    return resp.payload as unknown as FxPresetNames;
+  }, [send]);
+
   return {
     enumerateFx,
     getTrackFx,
@@ -102,5 +131,8 @@ export function useFx() {
     deleteFx,
     refreshFxCache,
     isRefreshingFx,
+    getFxPreset,
+    setFxPreset,
+    getAllFxPresetNames,
   };
 }
