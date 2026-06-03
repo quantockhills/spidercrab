@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { MatrixData, ClipSlot } from '../hooks/useReaper';
+import { useDragContext } from '../hooks/useDragContext';
 
 interface SessionViewProps {
   matrix: MatrixData | null;
@@ -11,6 +12,7 @@ interface SessionViewProps {
   onStop?: () => Promise<boolean>;
   onRecord?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
+  sendToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
 }
 
 /** Map slot state to display color hex (for the cell accent) */
@@ -33,12 +35,72 @@ export function SessionView({
   onStop,
   onRecord,
   onGetTransportState,
+  sendToSlot,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [dragTargetSlot, setDragTargetSlot] = useState<{col: number; row: number} | null>(null);
   const initializedRef = useRef(false);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Drag context for drop zone detection
+  const { payload, position, endDrag } = useDragContext();
+
+  // Track which slot is under the drag position
+  useEffect(() => {
+    if (!payload || !position || !gridRef.current) {
+      setDragTargetSlot(null);
+      return;
+    }
+
+    // Temporarily hide the drag overlay to get element behind it
+    const el = document.elementFromPoint(position.x, position.y);
+    if (!el) {
+      setDragTargetSlot(null);
+      return;
+    }
+
+    // Walk up to find the slot button
+    let target = el as HTMLElement | null;
+    while (target && target !== gridRef.current) {
+      const col = target.getAttribute('data-col');
+      const row = target.getAttribute('data-row');
+      if (col !== null && row !== null) {
+        setDragTargetSlot({ col: parseInt(col), row: parseInt(row) });
+        return;
+      }
+      target = target.parentElement;
+    }
+    setDragTargetSlot(null);
+  }, [payload, position]);
+
+  // Handle drop when drag ends over a slot
+  useEffect(() => {
+    if (!payload || !dragTargetSlot || !sendToSlot) return;
+
+    // We need to detect when the drag ends (pointer up)
+    // This is handled by the useDragContext endDrag call from the overlay
+    // For now, we handle it on touchend/pointerup on the window
+    const handlePointerUp = () => {
+      if (payload && dragTargetSlot) {
+        sendToSlot(payload.path, dragTargetSlot.col, dragTargetSlot.row)
+          .then((ok) => {
+            if (ok) {
+              getMatrix(); // Refresh the matrix after slot update
+            }
+          })
+          .catch(console.error);
+        endDrag();
+      }
+    };
+
+    window.addEventListener('pointerup', handlePointerUp, { once: true });
+    return () => {
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [payload, dragTargetSlot, sendToSlot, endDrag, getMatrix]);
 
   // Load matrix on mount if not provided
   useEffect(() => {
@@ -94,8 +156,10 @@ export function SessionView({
   }, [onRecord]);
 
   const handleSlotTap = useCallback(async (col: number, row: number) => {
+    // Don't trigger slot if we're in drag mode (it's a drop, not a tap)
+    if (payload) return;
     await triggerSlot(col, row);
-  }, [triggerSlot]);
+  }, [triggerSlot, payload]);
 
   const handleSceneLaunch = useCallback(async (row: number) => {
     setActiveScene(row);
@@ -224,6 +288,10 @@ export function SessionView({
                     ${state === 'playing' ? 'ring-1 ring-[var(--accent-green)]' : ''}
                     ${state === 'recording' ? 'ring-1 ring-[var(--accent-red)] animate-pulse' : ''}
                     ${state === 'stopped' ? 'opacity-80' : ''}
+                    ${dragTargetSlot && dragTargetSlot.col === col && dragTargetSlot.row === row
+                      ? 'ring-2 ring-[var(--accent-orange)] bg-[var(--accent-orange)]/10'
+                      : ''
+                    }
                   `}
                   data-col={col}
                   data-row={row}

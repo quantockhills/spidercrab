@@ -8,6 +8,8 @@ import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
+import { DragProvider } from './hooks/useDragContext';
+import { DragOverlay } from './components/DragOverlay';
 import ErrorBoundary from './components/ErrorBoundary';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
@@ -40,6 +42,7 @@ function App() {
     deleteFx,
     getDirectory,
     sendSampleToTrack,
+    sendToSlot,
     sendCommand,
     isRefreshingFx,
     refreshFxCache,
@@ -184,6 +187,7 @@ function App() {
   }, []);
 
   return (
+    <DragProvider onEdgeReached={() => setActiveTab('clips')}>
     <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col text-[var(--text-primary)]">
       {/* ── Status Bar ── */}
       <header className="sticky top-0 z-10 bg-[var(--bg-secondary)] border-b border-[var(--border)] px-4 py-2.5 safe-area-top">
@@ -222,6 +226,7 @@ function App() {
             getDirectory={getDirectory}
             sendSampleToTrack={sendSampleToTrack}
             sendCommand={sendCommand}
+            sendToSlot={sendToSlot}
             onBack={() => setActiveTab('tracks')}
           />
         )}
@@ -263,6 +268,7 @@ function App() {
                   onStop={stop}
                   onRecord={record}
                   onGetTransportState={getTransportState}
+                  sendToSlot={sendToSlot}
                 />
               ) : (
                 <SequencerView
@@ -458,6 +464,8 @@ function App() {
       {/* Bottom safe area for iPhone notch/home indicator */}
       <div className="h-[env(safe-area-inset-bottom)]" />
     </div>
+    <DragOverlay />
+    </DragProvider>
   );
 }
 

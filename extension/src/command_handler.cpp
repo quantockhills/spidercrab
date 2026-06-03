@@ -302,6 +302,8 @@ void CommandHandler::HandleMessage(int clientId, const std::string& message)
             HandleSampleGetDirectory(clientId, id, message);
         } else if (command == "sample/sendToTrack") {
             HandleSampleSendToTrack(clientId, id, message);
+        } else if (command == "sample/sendToSlot") {
+            HandleSampleSendToSlot(clientId, id, message);
         } else if (command == "matrix/getAll") {
             HandleMatrixGetAll(clientId, id, message);
         } else if (command == "matrix/getSlot") {
@@ -1255,6 +1257,100 @@ void CommandHandler::HandleSampleSendToTrack(
         SendResponse(clientId, id, false,
             "{\"error\":\"InsertMedia returned " + std::to_string(insertResult) + "\"}");
     }
+}
+
+// ============================================================
+// Sample send to Playtime clip slot (Issue #74)
+// ============================================================
+
+void CommandHandler::HandleSampleSendToSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string filePath   = parser.getString("path");
+    std::string colStr     = parser.getString("column");
+    std::string rowStr     = parser.getString("row");
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+        return;
+    }
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    // Validate column/row against Playtime grid
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Verify file exists
+    if (!fs::exists(filePath)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"File not found: " + json_escape(filePath) + "\"}");
+        return;
+    }
+
+    if (!m_api.InsertMedia || !m_api.CountTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Required API functions not loaded\"}");
+        return;
+    }
+
+    // Map Playtime column to track index
+    int currentTrackCount = m_api.CountTracks(nullptr);
+    int targetTrackIdx = col;
+
+    // Auto-create tracks if column exceeds track count
+    int tracksToCreate = (targetTrackIdx + 1) - currentTrackCount;
+    for (int t = 0; t < tracksToCreate; t++) {
+        if (m_api.Main_OnCommand) {
+            m_api.Main_OnCommand(40001, 0); // Insert track at end
+        }
+    }
+
+    // Insert media on the target track (mode=512 for absolute track index)
+    int insertFlags = 512 | (targetTrackIdx << 16);
+    int insertResult = m_api.InsertMedia(filePath.c_str(), insertFlags);
+
+    if (insertResult <= 0) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"InsertMedia returned " + std::to_string(insertResult) + "\"}");
+        return;
+    }
+
+    // Extract filename from path for the slot name
+    std::string fileName = filePath;
+    size_t slashPos = fileName.find_last_of("/\\");
+    if (slashPos != std::string::npos) {
+        fileName = fileName.substr(slashPos + 1);
+    }
+
+    // Update PlaytimeState slot metadata
+    SlotState updated;
+    updated.column   = col;
+    updated.row      = row;
+    updated.state    = "stopped";
+    updated.clipType = "audio";
+    updated.name     = fileName;
+    updated.color    = "";
+    m_playtimeState.setSlot(col, row, updated);
+
+    // Broadcast slot state change event
+    updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
 }
 
 // ============================================================
