@@ -21,6 +21,7 @@ export interface Track {
 export interface FxInfo {
   index: number;
   name: string;
+  chainPath?: string | null;
 }
 
 export interface EnumeratedFx {
@@ -323,6 +324,24 @@ export function useReaper(opts: UseReaperOptions = {}) {
     }
   }, []);
 
+  // ── FX Chain cycle commands (Issue #95) ──
+
+  const fxChainCycle = useCallback(async (trackIdx: number, direction: 'next' | 'prev', chainPath?: string): Promise<{success: boolean; fx?: FxInfo[]}> => {
+    if (!clientRef.current) return {success: false};
+    try {
+      const payload: Record<string, unknown> = { trackIdx, direction };
+      if (chainPath) payload.chainPath = chainPath;
+      const resp = await clientRef.current.send('fxchain/cycle', payload, 30000);
+      if (!resp.success) return {success: false};
+      return {
+        success: true,
+        fx: (resp.payload as any)?.fx as FxInfo[] ?? [],
+      };
+    } catch {
+      return {success: false};
+    }
+  }, []);
+
   // ── FX Preset commands (Issue #87) ──
 
   const getFxPreset = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxPresetInfo | null> => {
@@ -618,6 +637,7 @@ export function useReaper(opts: UseReaperOptions = {}) {
     fxChainLoad,
     fxChainGetInfo,
     fxChainSearchRecursive,
+    fxChainCycle,
     getFxPreset,
     setFxPreset,
     getAllFxPresetNames,

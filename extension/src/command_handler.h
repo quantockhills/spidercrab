@@ -8,6 +8,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <vector>
 
 // Forward declare REAPER types — must match reaper_plugin.h which uses 'class',
 // not 'struct'. MSVC ABI mangles them differently causing linker errors.
@@ -161,6 +162,19 @@ private:
     // REAPER's OnFxParamChanged talkback (Issue #73)
     struct { int trackIdx; int fxIdx; int paramIdx; } m_lastSetParam = {-1, -1, -1};
 
+    // Chain-source tracking: maps trackIdx -> list of chain groups
+    // Each chain group records the .RfxChain file path and the FX index range
+    struct ChainSource {
+        std::string filePath;
+        int fxStartIdx;
+        int fxEndIdx; // exclusive
+    };
+    std::map<int, std::vector<ChainSource>> m_trackChainSources;
+
+    // Helper to shift chain-source indices when FX are added/removed/reordered
+    static void ShiftChainSourceIndices(
+        std::vector<ChainSource>& sources, int beforeIndex, int delta);
+
     // Run the actual EnumInstalledFX loop (no response, just populate cache)
     // Returns the JSON string of the FX list
     std::string RunFXEnumeration();
@@ -195,6 +209,12 @@ private:
     void HandleFxChainLoad(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainGetInfo(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainSearchRecursive(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainCycle(int clientId, const std::string& id, const std::string& params);
+
+    // Internal: load a chain file onto a track, replacing only chain-group FX
+    // Returns true on success, false on failure.
+    // If mode is "direction" (next/prev), computes target direction from current chain path.
+    bool doLoadChain(int trackIdx, const std::string& filePath, const std::string& direction);
 
     // Command handlers — FX
     void HandleEnumerateFX(int clientId, const std::string& id, const std::string& params);
