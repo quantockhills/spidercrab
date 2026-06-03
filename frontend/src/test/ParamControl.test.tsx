@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { ParamControl } from '../components/ParamControl';
-import type { FxParam } from '../hooks/useReaper';
+import type { FxParam, FxPresetInfo } from '../hooks/useReaper';
 
 // ── Mock data ────────────────────────────────────────────────
 
@@ -415,6 +415,176 @@ describe('ParamControl', () => {
       if (valueDisplay) {
         expect(valueDisplay.textContent).toContain(String(committedValue));
       }
+    });
+  });
+});
+
+// ============================================================
+// FX Preset tests (Issue #87)
+// ============================================================
+
+describe('ParamControl presets', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const mockPresetInfo: FxPresetInfo = {
+    presetIndex: 1,
+    presetName: 'Classic EQ',
+    numPresets: 4,
+  };
+
+  it('shows loading state for presets initially', async () => {
+    const getFxPreset = vi.fn().mockReturnValue(new Promise<FxPresetInfo>(() => {}));
+    renderParamControl({ getFxPreset });
+
+    await waitFor(() => {
+      expect(screen.getByText('Presets:')).toBeDefined();
+    });
+  });
+
+  it('shows preset name and navigation buttons when presets exist', async () => {
+    const getFxPreset = vi.fn().mockResolvedValue(mockPresetInfo);
+    renderParamControl({ getFxPreset });
+
+    await waitFor(() => {
+      expect(screen.getByText('Classic EQ')).toBeDefined();
+    });
+
+    // Previous and Next buttons should be present
+    expect(screen.getByLabelText('Previous preset')).toBeDefined();
+    expect(screen.getByLabelText('Next preset')).toBeDefined();
+
+    // Search button should be present
+    expect(screen.getByLabelText('Search presets')).toBeDefined();
+  });
+
+  it('shows "No presets" when FX has no presets', async () => {
+    const noPresetInfo: FxPresetInfo = {
+      presetIndex: -1,
+      presetName: null,
+      numPresets: 0,
+    };
+    const getFxPreset = vi.fn().mockResolvedValue(noPresetInfo);
+    renderParamControl({ getFxPreset });
+
+    await waitFor(() => {
+      expect(screen.getByText(/No presets/)).toBeDefined();
+    });
+  });
+
+  it('calls setFxPreset with next index when Next is clicked', async () => {
+    const getFxPreset = vi.fn().mockResolvedValue(mockPresetInfo);
+    const setFxPreset = vi.fn().mockResolvedValue({
+      ...mockPresetInfo,
+      presetIndex: 2,
+      presetName: 'Bright EQ',
+    });
+    renderParamControl({ getFxPreset, setFxPreset });
+
+    await waitFor(() => {
+      expect(screen.getByText('Classic EQ')).toBeDefined();
+    });
+
+    // Click Next
+    const nextBtn = screen.getByLabelText('Next preset');
+    fireEvent.click(nextBtn);
+
+    await waitFor(() => {
+      expect(setFxPreset).toHaveBeenCalledWith(0, 0, 2);
+    });
+  });
+
+  it('calls setFxPreset with prev index when Previous is clicked', async () => {
+    const getFxPreset = vi.fn().mockResolvedValue(mockPresetInfo);
+    const setFxPreset = vi.fn().mockResolvedValue({
+      ...mockPresetInfo,
+      presetIndex: 0,
+      presetName: 'Default',
+    });
+    renderParamControl({ getFxPreset, setFxPreset });
+
+    await waitFor(() => {
+      expect(screen.getByText('Classic EQ')).toBeDefined();
+    });
+
+    // Click Previous
+    const prevBtn = screen.getByLabelText('Previous preset');
+    fireEvent.click(prevBtn);
+
+    await waitFor(() => {
+      expect(setFxPreset).toHaveBeenCalledWith(0, 0, 0);
+    });
+  });
+
+  it('wraps around when going next past last preset', async () => {
+    const lastPreset: FxPresetInfo = {
+      presetIndex: 3,
+      presetName: 'Dark',
+      numPresets: 4,
+    };
+    const getFxPreset = vi.fn().mockResolvedValue(lastPreset);
+    const setFxPreset = vi.fn().mockResolvedValue({
+      ...lastPreset,
+      presetIndex: 0,
+      presetName: 'Default',
+    });
+    renderParamControl({ getFxPreset, setFxPreset });
+
+    await waitFor(() => {
+      expect(screen.getByText('Dark')).toBeDefined();
+    });
+
+    // Click Next from last preset -> should wrap to 0
+    const nextBtn = screen.getByLabelText('Next preset');
+    fireEvent.click(nextBtn);
+
+    await waitFor(() => {
+      expect(setFxPreset).toHaveBeenCalledWith(0, 0, 0);
+    });
+  });
+
+  it('wraps around when going previous before first preset', async () => {
+    const firstPreset: FxPresetInfo = {
+      presetIndex: 0,
+      presetName: 'Default',
+      numPresets: 4,
+    };
+    const getFxPreset = vi.fn().mockResolvedValue(firstPreset);
+    const setFxPreset = vi.fn().mockResolvedValue({
+      ...firstPreset,
+      presetIndex: 3,
+      presetName: 'Dark',
+    });
+    renderParamControl({ getFxPreset, setFxPreset });
+
+    await waitFor(() => {
+      expect(screen.getByText('Default')).toBeDefined();
+    });
+
+    // Click Previous from first preset -> should wrap to last (3)
+    const prevBtn = screen.getByLabelText('Previous preset');
+    fireEvent.click(prevBtn);
+
+    await waitFor(() => {
+      expect(setFxPreset).toHaveBeenCalledWith(0, 0, 3);
+    });
+  });
+
+  it('does not render preset bar when preset props are omitted', () => {
+    renderParamControl({}); // No getFxPreset or setFxPreset
+
+    // Preset label should not be present
+    expect(screen.queryByText('Presets:')).toBeNull();
+    expect(screen.queryByText('Preset:')).toBeNull();
+  });
+
+  it('calls getFxPreset with correct params on mount', async () => {
+    const getFxPreset = vi.fn().mockResolvedValue(mockPresetInfo);
+    renderParamControl({ getFxPreset, trackIdx: 2, fxIdx: 3 });
+
+    await waitFor(() => {
+      expect(getFxPreset).toHaveBeenCalledWith(2, 3);
     });
   });
 });

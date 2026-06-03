@@ -38,6 +38,7 @@ function AppInner() {
     setFxParam,
     addFx,
     deleteFx,
+    reorderFx,
     getDirectory,
     sendSampleToTrack,
     isRefreshingFx,
@@ -52,6 +53,11 @@ function AppInner() {
     fxChainSave,
     fxChainLoad,
     fxChainGetInfo,
+    fxChainSearchRecursive,
+    fxChainCycle,
+    getFxPreset,
+    setFxPreset,
+    getAllFxPresetNames,
     matrix,
     getMatrix,
     triggerSlot,
@@ -66,6 +72,7 @@ function AppInner() {
     seqSetBaseNote,
     launchPlaytime,
     checkPlaytimeAvailable,
+    convertToClip,
   } = useReaper();
 
   const { preference, isDark, setTheme } = useTheme();
@@ -151,12 +158,14 @@ function AppInner() {
   }, [toggleTrackArm]);
 
   const handleVolumeChange = useCallback(async (index: number, volume: number) => {
-    await setTrackVolume(index, volume);
-  }, [setTrackVolume]);
+    const ok = await setTrackVolume(index, volume);
+    if (ok) updateTrack(index, { volume });
+  }, [setTrackVolume, updateTrack]);
 
   const handlePanChange = useCallback(async (index: number, pan: number) => {
-    await setTrackPan(index, pan);
-  }, [setTrackPan]);
+    const ok = await setTrackPan(index, pan);
+    if (ok) updateTrack(index, { pan });
+  }, [setTrackPan, updateTrack]);
 
   // ── FX / Param navigation ──
   const handleSelectFx = useCallback(
@@ -172,6 +181,16 @@ function AppInner() {
       setActiveTab('fx');
     },
     [tracks],
+  );
+
+  // ── FX button from TrackOverview (Issue #86) ──
+  const handleOpenFx = useCallback(
+    (trackIdx: number) => {
+      setSelectedTrack(trackIdx);
+      selectTrack(trackIdx);
+      setActiveTab('fx');
+    },
+    [selectTrack],
   );
 
   const handleBackFromParam = useCallback(() => {
@@ -284,6 +303,8 @@ function AppInner() {
                   clearAll={seqClearAll}
                   setLength={seqSetLength}
                   setBaseNote={seqSetBaseNote}
+                  convertToClip={convertToClip}
+                  onSwitchToSession={() => setSessionMode('session')}
                 />
               )}
             </div>
@@ -302,6 +323,9 @@ function AppInner() {
             deleteFx={deleteFx}
             onEvent={onEvent}
             onBack={handleBackFromParam}
+            getFxPreset={getFxPreset}
+            setFxPreset={setFxPreset}
+            getAllFxPresetNames={getAllFxPresetNames}
           />
         ) : fxChainView ? (
           <FxChainBrowser
@@ -311,6 +335,7 @@ function AppInner() {
             fxChainSave={fxChainSave}
             fxChainLoad={fxChainLoad}
             fxChainGetInfo={fxChainGetInfo}
+            fxChainSearchRecursive={fxChainSearchRecursive}
             onBack={handleBackFromFxChains}
             initialPath={fxChainPath || undefined}
           />
@@ -345,6 +370,14 @@ function AppInner() {
             onGetTransportState={getTransportState}
             getTrackFx={getTrackFx}
             onSelectFx={handleSelectFx}
+            onOpenFx={handleOpenFx}
+            onReorderFx={reorderFx}
+            getFxParams={getFxParams}
+            setFxParam={setFxParam}
+            getFxPreset={getFxPreset}
+            setFxPreset={setFxPreset}
+            getAllFxPresetNames={getAllFxPresetNames}
+            fxChainCycle={fxChainCycle}
           />
         )}
 

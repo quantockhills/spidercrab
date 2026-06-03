@@ -226,6 +226,8 @@ This is non-negotiable — tests are the gate, not code review.
    - Read the issue body + any linked issues
    - Read the relevant API/SDK docs (`docs/reaper-sdk/sdk/reaper_plugin_functions.h`, etc.)
    - Read the relevant source code (understand the current implementation before changing it)
+   - **Search online** (`web_search`) to find docs, examples, patterns, known issues, or
+     alternative approaches related to the work. Don't rely solely on what's in the repo.
    - **Ask: do I need to debug before writing code?** If the issue involves a crash,
      wrong behaviour, or unexpected output — don't guess. Build a minimal reproduction,
      trace the code path, add logging, verify your theory. Debug first, code second.

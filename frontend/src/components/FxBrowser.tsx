@@ -163,19 +163,10 @@ export function FxBrowser({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-            aria-label="Back"
-          >
-            ← Back
-          </button>
-          <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-            FX Browser
-          </h2>
-        </div>
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)]">
+        <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+          FX Browser
+        </h2>
         {onOpenFxChains && (
           <button
             onClick={onOpenFxChains}
@@ -185,14 +176,21 @@ export function FxBrowser({
           </button>
         )}
         {selectedTrackName && (
-          <span className="text-xs text-[var(--text-secondary)]">
+          <span className="text-xs text-[var(--text-secondary)] ml-auto">
             Target: <span className="text-[var(--text-primary)]">{selectedTrackName}</span>
           </span>
         )}
       </div>
 
-      {/* Search + Filter row */}
+      {/* Search + Filter row (with Back button) */}
       <div className="px-4 py-2.5 flex items-center gap-2 border-b border-[var(--border)]">
+        <button
+          onClick={onBack}
+          className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0"
+          aria-label="Back"
+        >
+          ← Back
+        </button>
         <div className="relative flex-1">
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)]">
             🔍

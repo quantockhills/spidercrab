@@ -34,8 +34,11 @@ function createDefaultProps(overrides: Record<string, unknown> = {}) {
     onBack: vi.fn(),
     initialPath: TEST_PATH,
     ...overrides,
+
   };
 }
+
+const testPath = '/tmp/test_chains';
 
 // ── Tests ─────────────────────────────────────────────────────
 
@@ -48,6 +51,7 @@ describe('FxChainBrowser', () => {
     const mockGetDir = vi.fn().mockImplementation(() => new Promise(() => {}));
     const props = createDefaultProps({ fxChainGetDirectory: mockGetDir });
     render(<FxChainBrowser {...props} />);
+
     expect(screen.getByText('Loading…')).toBeDefined();
   });
 
@@ -58,6 +62,7 @@ describe('FxChainBrowser', () => {
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
     });
     render(<FxChainBrowser {...props} />);
+
 
     await waitFor(() => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
@@ -74,6 +79,7 @@ describe('FxChainBrowser', () => {
     });
     render(<FxChainBrowser {...props} />);
 
+
     await waitFor(() => {
       expect(screen.getByText('Kick')).toBeDefined();
     });
@@ -86,6 +92,7 @@ describe('FxChainBrowser', () => {
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
     });
     render(<FxChainBrowser {...props} />);
+
     expect(screen.getByText(/Select a track first/i)).toBeDefined();
   });
 
@@ -99,6 +106,7 @@ describe('FxChainBrowser', () => {
 
     await waitFor(() => {
       expect(mockGetDir).toHaveBeenCalledWith(TEST_PATH);
+
     });
   });
 
@@ -111,6 +119,7 @@ describe('FxChainBrowser', () => {
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
     });
     render(<FxChainBrowser {...props} />);
+
 
     await screen.findByText('my_comp.RfxChain');
     await screen.findAllByText('Load');
@@ -133,9 +142,11 @@ describe('FxChainBrowser', () => {
     });
     render(<FxChainBrowser {...props} />);
 
+
     await waitFor(() => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
     });
+
 
     const appendButtons = screen.getAllByTitle('Append');
     fireEvent.click(appendButtons[0]);
@@ -153,6 +164,7 @@ describe('FxChainBrowser', () => {
       fxChainGetInfo: mockGetInfo,
     });
     render(<FxChainBrowser {...props} />);
+
 
     await waitFor(() => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
@@ -179,6 +191,7 @@ describe('FxChainBrowser', () => {
     });
     render(<FxChainBrowser {...props} />);
 
+
     await waitFor(() => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
     });
@@ -201,6 +214,7 @@ describe('FxChainBrowser', () => {
     });
     render(<FxChainBrowser {...props} />);
 
+
     await waitFor(() => {
       const loadButtons = screen.getAllByText('Load');
       loadButtons.forEach((btn) => {
@@ -216,6 +230,7 @@ describe('FxChainBrowser', () => {
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
     });
     render(<FxChainBrowser {...props} />);
+
 
     const saveTab = screen.getByText('Save Chain');
     fireEvent.click(saveTab);
@@ -235,6 +250,7 @@ describe('FxChainBrowser', () => {
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
     });
     render(<FxChainBrowser {...props} />);
+
 
     fireEvent.click(screen.getByText('Save Chain'));
 
@@ -261,6 +277,7 @@ describe('FxChainBrowser', () => {
     });
     render(<FxChainBrowser {...props} />);
 
+
     await waitFor(() => {
       expect(screen.getByText('Permission denied')).toBeDefined();
       expect(screen.getByText('Retry')).toBeDefined();
@@ -277,7 +294,26 @@ describe('FxChainBrowser', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/No FX chains found/i)).toBeDefined();
+
     });
+  });
+
+  it('shows folder prompt when no path is configured', () => {
+    // No initialPath — should show the folder prompt
+    render(
+      <FxChainBrowser
+        tracks={[]}
+        selectedTrack={null}
+        fxChainGetDirectory={mockGetDirectory}
+        fxChainSave={mockSave}
+        fxChainLoad={mockLoad}
+        fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
+        onBack={() => {}}
+      />
+    );
+
+    expect(screen.getByText('Set the FX Chains folder path in Settings')).toBeDefined();
   });
 
   it('filters chains by search query', async () => {
@@ -288,6 +324,7 @@ describe('FxChainBrowser', () => {
       fxChainSearchRecursive: vi.fn().mockResolvedValue({ query: '', results: [] }),
     });
     render(<FxChainBrowser {...props} />);
+
 
     await waitFor(() => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
@@ -310,6 +347,7 @@ describe('FxChainBrowser', () => {
       fxChainSearchRecursive: vi.fn().mockResolvedValue({ query: '', results: [] }),
     });
     render(<FxChainBrowser {...props} />);
+
 
     await waitFor(() => {
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
@@ -424,6 +462,7 @@ describe('FxChainBrowser', () => {
     await waitFor(() => {
       expect(screen.queryByText('secret.RfxChain')).toBeNull();
       expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+
     });
   });
 
@@ -437,8 +476,109 @@ describe('FxChainBrowser', () => {
     });
     render(<FxChainBrowser {...props} />);
 
+
     const backButton = screen.getByText('← Back');
     fireEvent.click(backButton);
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls fxChainSearchRecursive when search text changes', async () => {
+    mockSearchRecursive.mockResolvedValue([
+      { filePath: '/tmp/test_chains/sub/hidden_comp.RfxChain', name: 'hidden_comp.RfxChain', size: 256 },
+    ]);
+
+    render(
+      <FxChainBrowser
+        tracks={createMockTracks()}
+        selectedTrack={0}
+        fxChainGetDirectory={mockGetDirectory}
+        fxChainSave={mockSave}
+        fxChainLoad={mockLoad}
+        fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
+        onBack={() => {}}
+        initialPath={testPath}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'hidden' } });
+
+    // Wait for 300ms debounce to fire
+    await waitFor(() => {
+      expect(mockSearchRecursive).toHaveBeenCalledWith('hidden', testPath);
+    }, { timeout: 5000 });
+  });
+
+  it('shows backend results merged with local results', async () => {
+    mockSearchRecursive.mockResolvedValue([
+      { filePath: '/tmp/test_chains/sub/extra.RfxChain', name: 'extra.RfxChain', size: 128 },
+    ]);
+
+    render(
+      <FxChainBrowser
+        tracks={createMockTracks()}
+        selectedTrack={0}
+        fxChainGetDirectory={mockGetDirectory}
+        fxChainSave={mockSave}
+        fxChainLoad={mockLoad}
+        fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
+        onBack={() => {}}
+        initialPath={testPath}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    // Search for 'RfxChain' which matches all local + backend results
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'RfxChain' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('extra.RfxChain')).toBeDefined();
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    }, { timeout: 5000 });
+  });
+
+  it('shows searching indicator while backend search is in flight', async () => {
+    // Use a slow-resolving promise so the search indicator stays visible
+    let resolvePromise: (v: unknown) => void = () => {};
+    mockSearchRecursive.mockImplementation(() => new Promise(resolve => { resolvePromise = resolve; }));
+
+    render(
+      <FxChainBrowser
+        tracks={createMockTracks()}
+        selectedTrack={0}
+        fxChainGetDirectory={mockGetDirectory}
+        fxChainSave={mockSave}
+        fxChainLoad={mockLoad}
+        fxChainGetInfo={mockGetInfo}
+        fxChainSearchRecursive={mockSearchRecursive}
+        onBack={() => {}}
+        initialPath={testPath}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'hidden' } });
+
+    // Wait for debounce to fire and searching indicator to appear
+    await waitFor(() => {
+      expect(screen.getByText('Searching all folders…')).toBeDefined();
+    }, { timeout: 5000 });
+
+    // Resolve the promise to clean up
+    resolvePromise([]);
   });
 });

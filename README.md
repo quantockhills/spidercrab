@@ -44,7 +44,7 @@ Touch-friendly REAPER remote control for iPad — FX browser, real-time param co
 ## 🚀 Quick Install
 
 ### Windows
-1. Download `spidercrab.dll` from the [latest release](https://github.com/quantockhills/spidercrab/releases/tag/v0.1.1-alpha)
+1. Download `spidercrab.dll` from the [latest release](https://github.com/quantockhills/spidercrab/releases/tag/v0.2.2-alpha)
 2. Drop into `C:\Users\you\AppData\Roaming\REAPER\UserPlugins\`
 3. Download `frontend/` folder alongside it
 4. Launch REAPER
@@ -55,46 +55,36 @@ Same flow — `spidercrab.so` into `UserPlugins/`, `frontend/` alongside.
 
 > The extension serves both WebSocket (API) and HTTP (frontend). No Node.js, no separate server.
 
-## ✨ Current State (v0.1.0-alpha)
+## ✨ Current State (v0.2.2-alpha)
 
 ### ✅ Phase 1 MVP — Complete
 | Feature | Detail |
 |---|---|
 | **WebSocket server** | Auto-registers as REAPER control surface on port 9224 |
 | **HTTP server** | Serves frontend built-in on port 5173 |
-| **Track management** | List tracks, Mute/Solo/Arm with real-time push |
-| **Track state reads** | Reads actual Reaper state (mute/solo/arm/selected via B_MUTE, I_SOLO, I_RECARM) |
+| **Track management** | List tracks, Mute/Solo/Arm/Volume with real-time push |
+| **Track state reads** | Reads actual Reaper state (mute, solo, arm, selected, volume via B_MUTE, I_SOLO, I_RECARM, D_VOL) |
 | **FX browser** | Browse 250+ plugins, search, filter by format (VST3, VST2, JSFX, CLAP) |
 | **FX grid** | Cards under each track — tap to open param view |
-| **Param control** | Touch sliders for all FX params with real-time streaming |
+| **Param control** | Touch sliders for all FX params with real-time streaming, pagination for VSTs with 1000+ params |
 | **Real-time events** | FX param changes stream via CSURF_EXT_SETFXPARAM (no polling) |
 | **Mute/solo/arm push** | SetSurfaceMute/Solo/RecArm callbacks → instant UI update |
 | **Transport** | Play/Stop from iPad, live state read |
-| **Design system** | Everforest pastel palette, Inter font, square corners, touch targets ≥44px |
-| **Windows build** | `TARGET=windows bash build.sh` → 416KB .dll, exports ReaperPluginEntry |
-| **Tests** | 134 C++ tests (Google Test) + 65 frontend tests (Vitest) |
-| **Release** | [v0.1.0-alpha](https://github.com/quantockhills/spidercrab/releases) |
+| **Design system** | Everforest pastel palette + dark mode, Inter font, square corners, touch targets ≥44px |
+| **Windows build** | `TARGET=windows bash build.sh` → .dll with debug symbols option |
+| **FX chain browser** | Browse, save, and load `.RfxChain` files with lazy folder tree, replace & append modes |
+| **FX preset browser** | Browse/search presets on any FX from param view |
+| **Error Boundary** | React Error Boundary in App shell with icon and tests |
+| **Tests** | 215 C++ tests (Google Test) + 183 frontend tests (Vitest) + Playwright E2E tests |
+| **Release** | [v0.2.2-alpha](https://github.com/quantockhills/spidercrab/releases) |
 
-### 🚧 Phase 2 — Clip Launcher (in progress)
+### 🚧 In Progress
 | Goal | Detail |
 |---|---|
-| **Clip launcher app** | Ableton Push-style 8×8 pad grid for Playtime 2 |
-| **MIDI sequencer** | Grid-based step sequencer (chromatic, scale, drum modes) |
-| **Playtime 2 integration** | Trigger clips via ReaLearn MIDI bridge or direct gRPC |
-| **Push research** | Researching Push grid layout, color feedback, browser workflow |
-| **Volume faders + pan** | Track volume and pan controls for Push-style mixing |
-| **FX chain browser** | Browse instrument presets and FX chains |
-
-### 📋 Remaining Phase 2 Issues
-- Track volume faders and pan control
-- Loading states for long operations
-- Dark mode CSS
-- React Error Boundary
-- Domain-specific hooks for useReaper
-- Command handler registry (replace if-else chain)
-- Real track names from Reaper
-- FX chain save/load
-- Remove FX from tracks
+| **Clip launcher** | Ableton Push-style 8×8 pad grid for Playtime 2 (merged branch) |
+| **Playtime 2 integration** | Trigger clips via ReaLearn MIDI bridge |
+| **Drag-to-reorder FX** | Reorder FX chain by dragging cards in the grid |
+| **MIDI CC recording** | Capture live modulation alongside MIDI notes |
 
 ## 🛠️ Development
 
@@ -162,12 +152,12 @@ spidercrab/
 ├── frontend/               # React PWA
 │   ├── src/
 │   │   ├── lib/wsClient.ts       # WebSocket client
-│   │   ├── hooks/useReaper.ts    # React hook
-│   │   └── components/           # UI components
+│   │   ├── hooks/                # React hooks (useReaper, usePlaytime, etc.)
+│   │   └── components/           # UI components (FxBrowser, FxChainBrowser, SessionView, etc.)
+│   ├── e2e/                      # Playwright E2E tests
 │   └── package.json
 ├── docs/                   # SDK + design docs
 ├── gui_testing/            # E2E screenshots
-├── migrate_issues.py       # Gitea → GitHub issue migrator
 └── README.md
 ```
 
