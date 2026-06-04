@@ -532,6 +532,10 @@ export function FxBrowser({
                       tags={getTagsForIdent(fx.ident)}
                       onEditTags={() => handleStartEditTags(fx.ident, 'fx')}
                       isEditingTags={editingTagIdent === fx.ident && editingTagTarget === 'fx'}
+                      tagEditValue={tagEditInput}
+                      onTagChange={setTagEditInput}
+                      onTagSave={handleSaveTags}
+                      onTagCancel={handleCancelEditTags}
                     />
                   ))}
                 </div>
@@ -586,6 +590,10 @@ export function FxBrowser({
                         tags={getTagsForChain(chain.filePath)}
                         onEditTags={() => handleStartEditTags(chain.filePath, 'chain')}
                         isEditingTags={editingTagIdent === chain.filePath && editingTagTarget === 'chain'}
+                        tagEditValue={tagEditInput}
+                        onTagChange={setTagEditInput}
+                        onTagSave={handleSaveTags}
+                        onTagCancel={handleCancelEditTags}
                       />
                     ))
                   )}
@@ -680,9 +688,13 @@ interface FxRowProps {
   tags: string[];
   onEditTags: () => void;
   isEditingTags: boolean;
+  tagEditValue?: string;
+  onTagChange?: (val: string) => void;
+  onTagSave?: () => void;
+  onTagCancel?: () => void;
 }
 
-function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, onEditTags, isEditingTags }: FxRowProps) {
+function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, onEditTags, isEditingTags, tagEditValue, onTagChange, onTagSave, onTagCancel }: FxRowProps) {
   const displayName = cleanFxName(fx.name);
 
   if (isEditingTags) {
@@ -696,10 +708,10 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, on
         </div>
         <TagEditor
           currentTags={tags}
-          value={tags.join(', ')}
-          onChange={() => {}}
-          onSave={() => {}}
-          onCancel={() => {}}
+          value={tagEditValue ?? tags.join(', ')}
+          onChange={onTagChange ?? (() => {})}
+          onSave={onTagSave ?? (() => {})}
+          onCancel={onTagCancel ?? (() => {})}
         />
       </div>
     );
@@ -790,9 +802,13 @@ interface ChainRowProps {
   tags: string[];
   onEditTags: () => void;
   isEditingTags: boolean;
+  tagEditValue?: string;
+  onTagChange?: (val: string) => void;
+  onTagSave?: () => void;
+  onTagCancel?: () => void;
 }
 
-function ChainRow({ chain, selectedTrack, isLoading, onLoad, tags, onEditTags, isEditingTags }: ChainRowProps) {
+function ChainRow({ chain, selectedTrack, isLoading, onLoad, tags, onEditTags, isEditingTags, tagEditValue, onTagChange, onTagSave, onTagCancel }: ChainRowProps) {
   const displayName = chain.name.replace(/\.RfxChain$/i, '').replace(/^.*[/\\]/, '');
 
   if (isEditingTags) {
@@ -803,10 +819,10 @@ function ChainRow({ chain, selectedTrack, isLoading, onLoad, tags, onEditTags, i
         </div>
         <TagEditor
           currentTags={tags}
-          value={tags.join(', ')}
-          onChange={() => {}}
-          onSave={() => {}}
-          onCancel={() => {}}
+          value={tagEditValue ?? tags.join(', ')}
+          onChange={onTagChange ?? (() => {})}
+          onSave={onTagSave ?? (() => {})}
+          onCancel={onTagCancel ?? (() => {})}
         />
       </div>
     );
