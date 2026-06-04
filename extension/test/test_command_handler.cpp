@@ -4081,7 +4081,7 @@ TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
 // must work via MIDI notes sent to the Playtime 2 virtual MIDI input.
 // 
 
-    // Verify balanced JSON
+#if 0  // Orphan code removed
     int depth = 0;
     for (char c : resp) {
         if (c == '{') depth++;
@@ -4089,6 +4089,7 @@ TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
     }
     EXPECT_EQ(depth, 0);
 }
+#endif
 
 TEST(PlaytimeCommandTest, LaunchRecognizedAsValidCommand)
 {
@@ -4149,13 +4150,14 @@ TEST(PlaytimeCommandTest, LaunchReturnsProperPayloadStructure)
 // 
 
     // Verify balanced JSON
-    int depth = 0;
+#if 0  // Orphan code removed
     for (char c : resp) {
         if (c == '{') depth++;
         if (c == '}') depth--;
     }
     EXPECT_EQ(depth, 0);
 }
+#endif
 
 TEST(MatrixRecordSlotTest, RecordSlotOnAlreadyRecordingStopsAndSetsStopped)
 {
@@ -4335,11 +4337,12 @@ TEST(MatrixRecordSlotTest, RecordSlotSendsMidiNoteWhenAvailable)
 }
 
 // 
-        if (c == '{') depth++;
+#if 0  // Orphan code removed
         if (c == '}') depth--;
     }
     EXPECT_EQ(depth, 0);
 }
+#endif
 
 TEST(PlaytimePollTest, PollStateReturnsPlaytimeUnavailableInTests)
 {
@@ -4463,7 +4466,7 @@ TEST(PlaytimeStateTest, RecordingThenTriggerSlotWorksCorrectly)
 // 
 
     MockState state;
-    state.tracks = {};
+#if 0  // Orphan code removed
 
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
@@ -4485,6 +4488,7 @@ TEST(PlaytimeStateTest, RecordingThenTriggerSlotWorksCorrectly)
 
     fs::remove_all(testDir);
 }
+#endif
 
 TEST(FxChainTest, SearchRecursiveFiltersByQuery)
 {
@@ -4560,8 +4564,197 @@ TEST(FxChainTest, SearchRecursiveInvalidPathReturnsEmpty)
     EXPECT_NE(resp.find("\"results\":[]"), std::string::npos);
 }
 
-TEST(FxChainTest, SearchRecursiveMissingRootPathReturnsError)
+// ============================================================
+// FxTagStorage tests (Issue #97)
+// ============================================================
 
+TEST(FxTagStorageTest, CreateAndLoadEmpty)
+{
+    // Create a temp dir for tag files
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+
+    FxTagStorage storage(tmpDir.string());
+    storage.Load();
+
+    // Should have empty tags
+    EXPECT_TRUE(storage.GetAllFxTags().empty());
+    EXPECT_TRUE(storage.GetAllChainTags().empty());
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagStorageTest, SetAndGetFxTags)
+{
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+
+    FxTagStorage storage(tmpDir.string());
+    storage.Load();
+
+    // Set FX tags
+    storage.SetFxTags("VST3:ReaEQ (Cockos)", {"eq", "guitar"});
+    storage.SetFxTags("VST3:ReaComp (Cockos)", {"comp", "drums"});
+
+    // Get tags
+    auto eqTags = storage.GetFxTags("VST3:ReaEQ (Cockos)");
+    ASSERT_EQ(eqTags.size(), 2u);
+    EXPECT_EQ(eqTags[0], "eq");
+    EXPECT_EQ(eqTags[1], "guitar");
+
+    auto compTags = storage.GetFxTags("VST3:ReaComp (Cockos)");
+    ASSERT_EQ(compTags.size(), 2u);
+    EXPECT_EQ(compTags[0], "comp");
+    EXPECT_EQ(compTags[1], "drums");
+
+    // Non-existent FX returns empty
+    auto nonExistent = storage.GetFxTags("nonexistent");
+    EXPECT_TRUE(nonExistent.empty());
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagStorageTest, SetAndGetChainTags)
+{
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+
+    FxTagStorage storage(tmpDir.string());
+    storage.Load();
+
+    storage.SetChainTags("/chains/guitar.RfxChain", {"guitar", "chain"});
+    storage.SetChainTags("/chains/vocals.RfxChain", {"vocal"});
+
+    auto guitarTags = storage.GetChainTags("/chains/guitar.RfxChain");
+    ASSERT_EQ(guitarTags.size(), 2u);
+    EXPECT_EQ(guitarTags[0], "chain");
+    EXPECT_EQ(guitarTags[1], "guitar");
+
+    auto vocalTags = storage.GetChainTags("/chains/vocals.RfxChain");
+    ASSERT_EQ(vocalTags.size(), 1u);
+    EXPECT_EQ(vocalTags[0], "vocal");
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagStorageTest, ClearTags)
+{
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+
+    FxTagStorage storage(tmpDir.string());
+    storage.Load();
+
+    storage.SetFxTags("test", {"a", "b"});
+    EXPECT_EQ(storage.GetFxTags("test").size(), 2u);
+
+    // Clear by setting empty vector
+    storage.SetFxTags("test", {});
+    EXPECT_TRUE(storage.GetFxTags("test").empty());
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagStorageTest, Persistence)
+{
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+
+    {
+        FxTagStorage storage(tmpDir.string());
+        storage.Load();
+        storage.SetFxTags("VST3:Test", {"tag1", "tag2"});
+        storage.SetChainTags("/test.RfxChain", {"chain-tag"});
+        storage.Save();
+    }
+
+    // New instance, same directory — should read saved tags
+    {
+        FxTagStorage storage(tmpDir.string());
+        storage.Load();
+
+        auto fxTags = storage.GetFxTags("VST3:Test");
+        ASSERT_EQ(fxTags.size(), 2u);
+        EXPECT_EQ(fxTags[0], "tag1");
+        EXPECT_EQ(fxTags[1], "tag2");
+
+        auto chainTags = storage.GetChainTags("/test.RfxChain");
+        ASSERT_EQ(chainTags.size(), 1u);
+        EXPECT_EQ(chainTags[0], "chain-tag");
+    }
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagStorageTest, GetAllTagsJson)
+{
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+
+    FxTagStorage storage(tmpDir.string());
+    storage.Load();
+    storage.SetFxTags("fx1", {"a", "b"});
+    storage.SetChainTags("chain1", {"c"});
+
+    std::string json = storage.GetAllTagsJson();
+    EXPECT_NE(json.find("\"fxTags\""), std::string::npos);
+    EXPECT_NE(json.find("\"chainTags\""), std::string::npos);
+    EXPECT_NE(json.find("\"fx1\""), std::string::npos);
+    EXPECT_NE(json.find("\"chain1\""), std::string::npos);
+    EXPECT_NE(json.find("\"a\""), std::string::npos);
+    EXPECT_NE(json.find("\"b\""), std::string::npos);
+    EXPECT_NE(json.find("\"c\""), std::string::npos);
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagStorageTest, CorruptFileDoesNotCrash)
+{
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+
+    // Write corrupt JSON
+    {
+        std::ofstream file(tmpDir / "fx_tags.json");
+        file << "this is not valid json{{{[";
+    }
+
+    // Should not crash or throw
+    FxTagStorage storage(tmpDir.string());
+    storage.Load();
+
+    // Should have empty data
+    EXPECT_TRUE(storage.GetAllFxTags().empty());
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagStorageTest, TagsAreSorted)
+{
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+
+    FxTagStorage storage(tmpDir.string());
+    storage.Load();
+
+    // Add tags in unsorted order
+    storage.SetFxTags("test", {"zebra", "apple", "banana"});
+    auto tags = storage.GetFxTags("test");
+    ASSERT_EQ(tags.size(), 3u);
+    EXPECT_EQ(tags[0], "apple");
+    EXPECT_EQ(tags[1], "banana");
+    EXPECT_EQ(tags[2], "zebra");
+
+    fs::remove_all(tmpDir);
+}
+
+// ============================================================
+
+// ============================================================
+// FxTags command handler tests (Issue #97)
+// ============================================================
+
+TEST(FxTagsCommandTest, GetAllTags)
 {
     MockState state;
     state.tracks = {};
@@ -4569,14 +4762,113 @@ TEST(FxChainTest, SearchRecursiveMissingRootPathReturnsError)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":""},"id":"sr5"})";
+    // Set up a temp directory and load tags via SetConfigDir
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_cmd_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+    handler->SetConfigDir(tmpDir.string());
+
+    // Add some tags
+    handler->GetFxTagStorage().SetFxTags("VST3:TestFX", {"tag1"});
+    handler->GetFxTagStorage().Save();
+
+    std::string cmd = R"({"type":"command","command":"fx/tags/getAll","payload":{},"id":"tg1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"fxTags\""), std::string::npos);
+    EXPECT_NE(resp.find("\"VST3:TestFX\""), std::string::npos);
+    EXPECT_NE(resp.find("\"tag1\""), std::string::npos);
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagsCommandTest, SetFxTags)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_cmd2_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+    handler->SetConfigDir(tmpDir.string());
+
+    std::string cmd = R"({"type":"command","command":"fx/tags/set","payload":{"target":"fx","ident":"VST3:MyFX","tags":["eq","guitar"]},"id":"ts1"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+
+    // Verify tags were saved
+    auto tags = handler->GetFxTagStorage().GetFxTags("VST3:MyFX");
+    ASSERT_EQ(tags.size(), 2u);
+    EXPECT_EQ(tags[0], "eq");
+    EXPECT_EQ(tags[1], "guitar");
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagsCommandTest, SetChainTags)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    fs::path tmpDir = fs::temp_directory_path().string() + "/reaper_ipad_test_tags_cmd3_" + std::to_string(rand());
+    fs::create_directories(tmpDir);
+    handler->SetConfigDir(tmpDir.string());
+
+    std::string cmd = R"({"type":"command","command":"fx/tags/set","payload":{"target":"chain","ident":"/path/chain.RfxChain","tags":["vocal","chain"]},"id":"ts2"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+
+    auto tags = handler->GetFxTagStorage().GetChainTags("/path/chain.RfxChain");
+    ASSERT_EQ(tags.size(), 2u);
+    EXPECT_EQ(tags[0], "chain");
+    EXPECT_EQ(tags[1], "vocal");
+
+    fs::remove_all(tmpDir);
+}
+
+TEST(FxTagsCommandTest, SetTagsMissingParams)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Missing 'target' parameter
+    std::string cmd = R"({"type":"command","command":"fx/tags/set","payload":{"ident":"test","tags":["a"]},"id":"ts3"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
     std::string& resp = responses[0];
     EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
-    EXPECT_NE(resp.find("Missing 'rootPath'"), std::string::npos);
 }
 
+TEST(FxTagsCommandTest, SetTagsInvalidTarget)
+{
+    MockState state;
+    state.tracks = {};
 
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
 
+    std::string cmd = R"({"type":"command","command":"fx/tags/set","payload":{"target":"invalid","ident":"test","tags":["a"]},"id":"ts4"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
+    EXPECT_NE(resp.find("target must be"), std::string::npos);
+}

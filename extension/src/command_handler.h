@@ -4,6 +4,7 @@
 #include "playtime_state.h"
 #include "playtime_midi.h"
 #include "sequencer_state.h"
+#include "fx_tags.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -102,6 +103,7 @@ public:
     ~CommandHandler();
 
     void SetApi(const ReaperAPI& api) { m_api = api; }
+    void SetConfigDir(const std::string& dir);
     void SetResponseCallback(ResponseCallback cb) { m_responseCb = cb; }
     void SetBroadcastCallback(BroadcastCallback cb) { m_broadcastCb = cb; }
 
@@ -113,6 +115,9 @@ public:
 
     // Access the MIDI output helper (for setting up send function at startup)
     PlaytimeMidi& GetMidi() { return m_playtimeMidi; }
+
+    // Access the FX tag storage (for testing)
+    FxTagStorage& GetFxTagStorage() { return m_fxTagStorage; }
 
     // Access the playtime state (for tests)
     PlaytimeState& GetPlaytimeState() { return m_playtimeState; }
@@ -166,6 +171,9 @@ private:
     // Track the last param we set ourselves, so we can suppress
     // REAPER's OnFxParamChanged talkback (Issue #73)
     struct { int trackIdx; int fxIdx; int paramIdx; } m_lastSetParam = {-1, -1, -1};
+
+    // FX/chain tag storage (Issue #97)
+    FxTagStorage m_fxTagStorage;
 
     // Chain-source tracking: maps trackIdx -> list of chain groups
     // Each chain group records the .RfxChain file path and the FX index range
@@ -237,6 +245,10 @@ private:
     void HandleGetFxPreset(int clientId, const std::string& id, const std::string& params);
     void HandleSetFxPreset(int clientId, const std::string& id, const std::string& params);
     void HandleGetAllFxPresetNames(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — FX/chain tags (Issue #97)
+    void HandleFxTagsGetAll(int clientId, const std::string& id, const std::string& params);
+    void HandleFxTagsSet(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — MIDI recording (Issue #90)
     void HandleMidiEvent(int clientId, const std::string& id, const std::string& params);

@@ -71,6 +71,8 @@ function AppInner() {
     seqClearAll,
     seqSetLength,
     seqSetBaseNote,
+    getFxTags,
+    setFxTags,
     launchPlaytime,
     checkPlaytimeAvailable,
     convertToClip,
@@ -354,6 +356,8 @@ function AppInner() {
             fxChainSearchRecursive={fxChainSearchRecursive}
             fxChainLoad={fxChainLoad}
             fxChainPath={fxChainPath}
+            getFxTags={getFxTags}
+            setFxTags={setFxTags}
           />
         ))}
 

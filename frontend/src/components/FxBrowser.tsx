@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { EnumeratedFx, Track } from '../hooks/useReaper';
+import type { FxTagData, TagTarget } from '../hooks/useFx';
 
 // ── Chain search types ───────────────────────────────────────
 
@@ -24,6 +25,9 @@ interface FxBrowserProps {
   fxChainSearchRecursive?: (query: string, rootPath: string) => Promise<{ query: string; results: FxChainSearchResult[] }>;
   fxChainLoad?: (trackIdx: number, filePath: string, mode?: 'replace' | 'append') => Promise<boolean>;
   fxChainPath?: string;
+  // Tag support (Issue #97)
+  getFxTags?: () => Promise<FxTagData | null>;
+  setFxTags?: (target: TagTarget, ident: string, tags: string[]) => Promise<boolean>;
 }
 
 interface FxInfo {
@@ -37,9 +41,33 @@ type FormatFilter = 'All' | 'VST' | 'VST3' | 'CLAP' | 'JSFX' | 'AU' | 'DX';
 
 const FORMAT_FILTERS: FormatFilter[] = ['All', 'VST3', 'VST', 'CLAP', 'JSFX', 'AU', 'DX'];
 
+// ── Tag color palette (deterministic) ─────────────────────────
+
+const TAG_COLORS: { bg: string; text: string }[] = [
+  { bg: 'bg-blue-500/20',   text: 'text-blue-400' },
+  { bg: 'bg-green-500/20',  text: 'text-green-400' },
+  { bg: 'bg-purple-500/20', text: 'text-purple-400' },
+  { bg: 'bg-pink-500/20',   text: 'text-pink-400' },
+  { bg: 'bg-yellow-500/20', text: 'text-yellow-400' },
+  { bg: 'bg-red-500/20',    text: 'text-red-400' },
+  { bg: 'bg-indigo-500/20', text: 'text-indigo-400' },
+  { bg: 'bg-teal-500/20',   text: 'text-teal-400' },
+  { bg: 'bg-orange-500/20', text: 'text-orange-400' },
+  { bg: 'bg-cyan-500/20',   text: 'text-cyan-400' },
+];
+
+function getTagColor(tag: string): { bg: string; text: string } {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = ((hash << 5) - hash) + tag.charCodeAt(i);
+    hash |= 0;
+  }
+  const idx = Math.abs(hash) % TAG_COLORS.length;
+  return TAG_COLORS[idx];
+}
+
 // Helper: clean FX name for display (strip format prefix like "VST3: ")
 function cleanFxName(name: string): string {
-  // Remove common REAPER prefixes like "VST3: ", "VST: ", "VSTi: ", "CLAP: "
   return name.replace(/^(VST3?i?:\s*|CLAPi?:\s*|AUi?:\s*|DX:\s*|JS:\s*)/, '');
 }
 
@@ -57,6 +85,8 @@ export function FxBrowser({
   fxChainSearchRecursive,
   fxChainLoad,
   fxChainPath,
+  getFxTags,
+  setFxTags,
 }: FxBrowserProps) {
   const [allFx, setAllFx] = useState<EnumeratedFx[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +100,13 @@ export function FxBrowser({
   const [chainResults, setChainResults] = useState<FxChainSearchResult[] | null>(null);
   const [chainLoadingFile, setChainLoadingFile] = useState<string | null>(null);
   const chainSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Tag state (Issue #97)
+  const [tagData, setTagData] = useState<FxTagData | null>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [editingTagIdent, setEditingTagIdent] = useState<string | null>(null);
+  const [editingTagTarget, setEditingTagTarget] = useState<TagTarget | null>(null);
+  const [tagEditInput, setTagEditInput] = useState('');
 
   // Load FX on mount
   useEffect(() => {
@@ -90,18 +127,32 @@ export function FxBrowser({
     return () => { cancelled = true; };
   }, [enumerateFx]);
 
+  // Load tags on mount (Issue #97)
+  useEffect(() => {
+    if (!getFxTags) return;
+    let cancelled = false;
+    getFxTags()
+      .then((data) => {
+        if (!cancelled && data) {
+          setTagData(data);
+        }
+      })
+      .catch(() => {
+        // Tags are optional — silently fail
+      });
+    return () => { cancelled = true; };
+  }, [getFxTags]);
+
   // Debounced chain search (Issue #96)
   useEffect(() => {
     if (!search.trim() || !fxChainSearchRecursive || !fxChainPath) {
       return;
     }
 
-    // Clear previous timer
     if (chainSearchTimerRef.current) {
       clearTimeout(chainSearchTimerRef.current);
     }
 
-    // Use a ref to track searching state to avoid synchronous setState
     const timerId = setTimeout(async () => {
       try {
         const result = await fxChainSearchRecursive(search, fxChainPath);
@@ -120,7 +171,32 @@ export function FxBrowser({
     };
   }, [search, fxChainPath, fxChainSearchRecursive]);
 
-  // Filtered + grouped FX list
+  // Get tags for a given FX ident
+  const getTagsForIdent = useCallback((ident: string): string[] => {
+    if (!tagData) return [];
+    return tagData.fxTags[ident] || [];
+  }, [tagData]);
+
+  // Get tags for a chain file path
+  const getTagsForChain = useCallback((filePath: string): string[] => {
+    if (!tagData) return [];
+    return tagData.chainTags[filePath] || [];
+  }, [tagData]);
+
+  // Get all unique tags across all FX and chains
+  const allUniqueTags = useMemo(() => {
+    if (!tagData) return [] as string[];
+    const tagSet = new Set<string>();
+    for (const tags of Object.values(tagData.fxTags)) {
+      for (const t of tags) tagSet.add(t);
+    }
+    for (const tags of Object.values(tagData.chainTags)) {
+      for (const t of tags) tagSet.add(t);
+    }
+    return Array.from(tagSet).sort();
+  }, [tagData]);
+
+  // Filtered + grouped FX list (also filters by tags)
   const groupedFx = useMemo(() => {
     const lowerSearch = search.toLowerCase().trim();
 
@@ -135,6 +211,14 @@ export function FxBrowser({
           fx.ident.toLowerCase().includes(lowerSearch),
       );
     }
+    // Tag filter: only show FX matching ANY selected tag (OR logic)
+    if (selectedTags.size > 0 && tagData) {
+      filtered = filtered.filter((fx) => {
+        const tags = tagData.fxTags[fx.ident];
+        if (!tags || tags.length === 0) return false;
+        return tags.some((t) => selectedTags.has(t));
+      });
+    }
 
     // Group by format
     const groups = new Map<string, EnumeratedFx[]>();
@@ -144,7 +228,6 @@ export function FxBrowser({
       groups.set(fx.format, group);
     }
 
-    // Sort groups: VST3 first, then by name
     const formatOrder = ['VST3', 'VST2', 'CLAP', 'JSFX', 'AU', 'DX', 'VST'];
     const sorted = Array.from(groups.entries()).sort(([a], [b]) => {
       const ai = formatOrder.indexOf(a);
@@ -153,19 +236,27 @@ export function FxBrowser({
     });
 
     return sorted;
-  }, [allFx, search, formatFilter]);
+  }, [allFx, search, formatFilter, selectedTags, tagData]);
+
+  // Filter chain results by tags
+  const filteredChainResults = useMemo(() => {
+    if (!chainResults) return chainResults;
+    if (selectedTags.size === 0 || !tagData) return chainResults;
+    return chainResults.filter((chain) => {
+      const tags = tagData.chainTags[chain.filePath];
+      if (!tags || tags.length === 0) return false;
+      return tags.some((t) => selectedTags.has(t));
+    });
+  }, [chainResults, selectedTags, tagData]);
 
   const handleAddFx = useCallback(
     async (fx: EnumeratedFx) => {
       if (selectedTrack === null) return;
       setAddingName(fx.name);
       try {
-        // Use the full FX name from enumeration (includes format prefix like "VST3: ReaEQ")
-        // TrackFX_AddByName requires the full name, not the cleaned display name
         const addedIndex = await addFx(selectedTrack, fx.name);
         if (addedIndex >= 0) {
           setAddedFx((prev) => new Set(prev).add(fx.name));
-          // Brief flash of success
           setTimeout(() => {
             setAddedFx((prev) => {
               const next = new Set(prev);
@@ -185,9 +276,6 @@ export function FxBrowser({
 
   const handleSelectFx = useCallback(
     async (trackIdx: number, _fxIdx: number, fxName: string) => {
-      // Look up the track-local FX index — fxIdx from the enumerated list is the
-      // GLOBAL plugin index, but Reaper's TrackFX_* APIs expect the 0-based index
-      // of the FX on the specific track (e.g. 0 = first FX on track).
       try {
         const trackFx = await getTrackFx(trackIdx);
         const match = (trackFx as FxInfo[]).find(
@@ -196,7 +284,6 @@ export function FxBrowser({
         if (match !== undefined) {
           onSelectFx(trackIdx, match.index, fxName);
         } else {
-          // Fallback: use the fxIdx as-is (will likely show no params)
           onSelectFx(trackIdx, 0, fxName);
         }
       } catch {
@@ -221,9 +308,69 @@ export function FxBrowser({
     [selectedTrack, fxChainLoad],
   );
 
+  // Tag editing handlers (Issue #97)
+  const handleStartEditTags = useCallback((ident: string, target: TagTarget) => {
+    let currentTags: string[] = [];
+    if (target === 'fx' && tagData) {
+      currentTags = tagData.fxTags[ident] || [];
+    } else if (target === 'chain' && tagData) {
+      currentTags = tagData.chainTags[ident] || [];
+    }
+    setEditingTagIdent(ident);
+    setEditingTagTarget(target);
+    setTagEditInput(currentTags.join(', '));
+  }, [tagData]);
+
+  const handleSaveTags = useCallback(async () => {
+    if (!editingTagIdent || !editingTagTarget || !setFxTags) {
+      setEditingTagIdent(null);
+      setEditingTagTarget(null);
+      return;
+    }
+    const newTags = tagEditInput
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+
+    const ok = await setFxTags(editingTagTarget, editingTagIdent, newTags);
+    if (ok) {
+      // Refresh tag data
+      if (getFxTags) {
+        const data = await getFxTags();
+        if (data) setTagData(data);
+      }
+    }
+    setEditingTagIdent(null);
+    setEditingTagTarget(null);
+  }, [editingTagIdent, editingTagTarget, tagEditInput, setFxTags, getFxTags]);
+
+  const handleCancelEditTags = useCallback(() => {
+    setEditingTagIdent(null);
+    setEditingTagTarget(null);
+  }, []);
+
+  // Tag filter toggle
+  const handleToggleTagFilter = useCallback((tag: string) => {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) {
+        next.delete(tag);
+      } else {
+        next.add(tag);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleClearTagFilter = useCallback(() => {
+    setSelectedTags(new Set());
+  }, []);
+
   const selectedTrackName = selectedTrack !== null
     ? tracks.find((t) => t.index === selectedTrack)?.name
     : null;
+
+  const hasTags = allUniqueTags.length > 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -283,6 +430,39 @@ export function FxBrowser({
         </select>
       </div>
 
+      {/* Tag filter bar (Issue #97) */}
+      {hasTags && (
+        <div className="px-4 py-2 border-b border-[var(--border)] flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={handleClearTagFilter}
+            className={`text-xs px-2 py-1 rounded-full transition-colors ${
+              selectedTags.size === 0
+                ? 'bg-[var(--accent-orange)]/30 text-[var(--accent-orange)] font-semibold'
+                : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            All
+          </button>
+          {allUniqueTags.map((tag) => {
+            const color = getTagColor(tag);
+            const isSelected = selectedTags.has(tag);
+            return (
+              <button
+                key={tag}
+                onClick={() => handleToggleTagFilter(tag)}
+                className={`text-xs px-2 py-1 rounded-full transition-all ${
+                  isSelected
+                    ? `${color.bg} ${color.text} ring-1 ring-current`
+                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {tag}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* No track selected warning */}
       {selectedTrack === null && (
         <div className="px-4 py-3 bg-[var(--accent-yellow)]/15 border-b border-[var(--accent-yellow)]/30">
@@ -330,7 +510,6 @@ export function FxBrowser({
             {/* FX groups */}
             {groupedFx.length > 0 && groupedFx.map(([format, fxList]) => (
               <div key={format}>
-                {/* Format section header */}
                 <div className="px-2 py-1.5 flex items-center gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-blue)]">
                     {format}
@@ -340,7 +519,6 @@ export function FxBrowser({
                   </span>
                 </div>
 
-                {/* FX items */}
                 <div className="space-y-1">
                   {fxList.map((fx) => (
                     <FxRow
@@ -351,6 +529,9 @@ export function FxBrowser({
                       isAdded={addedFx.has(fx.name)}
                       onAdd={handleAddFx}
                       onSelect={handleSelectFx}
+                      tags={getTagsForIdent(fx.ident)}
+                      onEditTags={() => handleStartEditTags(fx.ident, 'fx')}
+                      isEditingTags={editingTagIdent === fx.ident && editingTagTarget === 'fx'}
                     />
                   ))}
                 </div>
@@ -361,41 +542,50 @@ export function FxBrowser({
             {groupedFx.length === 0 && (
               <div className="py-8 text-center">
                 <div className="text-4xl mb-2">🔍</div>
-                <p className="text-sm text-[var(--text-secondary)]">No FX matching &quot;{search}&quot;</p>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {selectedTags.size > 0
+                    ? 'No FX matching selected tags'
+                    : `No FX matching "${search}"`
+                  }
+                </p>
               </div>
             )}
 
             {/* Chain search results (Issue #96) */}
             {(search.trim() && fxChainSearchRecursive && fxChainPath) && (
               <div>
-                {/* Chain section header */}
                 <div className="px-2 py-1.5 flex items-center gap-2">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-green)]">
                     🔗 Chains
                   </span>
                   <span className="text-[10px] text-[var(--text-secondary)]">
-                    {chainResults !== null ? `(${chainResults.length})` : ''}
+                    {filteredChainResults !== null ? `(${filteredChainResults.length})` : ''}
                   </span>
                 </div>
 
-                {/* Chain items */}
                 <div className="space-y-1">
-                  {chainResults === null ? (
+                  {filteredChainResults === null ? (
                     <div className="px-3 py-3 text-xs text-[var(--text-secondary)] italic">
                       Searching all folders…
                     </div>
-                  ) : chainResults.length === 0 ? (
+                  ) : filteredChainResults.length === 0 ? (
                     <div className="px-3 py-3 text-xs text-[var(--text-secondary)] italic">
-                      No matching chains
+                      {selectedTags.size > 0
+                        ? 'No matching chains with selected tags'
+                        : 'No matching chains'
+                      }
                     </div>
                   ) : (
-                    chainResults.map((chain) => (
+                    filteredChainResults.map((chain) => (
                       <ChainRow
                         key={chain.filePath}
                         chain={chain}
                         selectedTrack={selectedTrack}
                         isLoading={chainLoadingFile === chain.filePath}
                         onLoad={handleLoadChain}
+                        tags={getTagsForChain(chain.filePath)}
+                        onEditTags={() => handleStartEditTags(chain.filePath, 'chain')}
+                        isEditingTags={editingTagIdent === chain.filePath && editingTagTarget === 'chain'}
                       />
                     ))
                   )}
@@ -417,6 +607,67 @@ export function FxBrowser({
   );
 }
 
+// ── Tag editor inline ─────────────────────────────────────────
+
+interface TagEditorProps {
+  currentTags: string[];
+  onSave: () => void;
+  onCancel: () => void;
+  value: string;
+  onChange: (val: string) => void;
+}
+
+function TagEditor({ currentTags, onSave, onCancel, value, onChange }: TagEditorProps) {
+  return (
+    <div className="flex items-center gap-1 px-2 py-1" onClick={(e) => e.stopPropagation()}>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="tag1, tag2, tag3"
+        className="flex-1 text-xs px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-primary)]
+          outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') onSave();
+          if (e.key === 'Escape') onCancel();
+        }}
+      />
+      <button
+        onClick={onSave}
+        className="text-xs px-2 py-1 bg-[var(--accent-green)]/20 text-[var(--accent-green)] hover:bg-[var(--accent-green)]/30 transition-colors"
+      >
+        ✓
+      </button>
+      <button
+        onClick={onCancel}
+        className="text-xs px-2 py-1 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// ── Tag badges ────────────────────────────────────────────────
+
+interface TagBadgeProps {
+  tag: string;
+  onClick?: () => void;
+}
+
+function TagBadge({ tag, onClick }: TagBadgeProps) {
+  const color = getTagColor(tag);
+  return (
+    <span
+      onClick={onClick}
+      className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full ${color.bg} ${color.text} cursor-default`}
+    >
+      {tag}
+    </span>
+  );
+}
+
 // ── FX Row ────────────────────────────────────────────────────
 
 interface FxRowProps {
@@ -426,10 +677,33 @@ interface FxRowProps {
   isAdded: boolean;
   onAdd: (fx: EnumeratedFx) => void;
   onSelect: (trackIdx: number, fxIdx: number, fxName: string) => void;
+  tags: string[];
+  onEditTags: () => void;
+  isEditingTags: boolean;
 }
 
-function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowProps) {
+function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, onEditTags, isEditingTags }: FxRowProps) {
   const displayName = cleanFxName(fx.name);
+
+  if (isEditingTags) {
+    return (
+      <div className="px-3 py-2 bg-[var(--bg-secondary)]">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-medium truncate">{displayName}</span>
+          <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 ${getFormatBadgeStyle(fx.format)}`}>
+            {fx.format}
+          </span>
+        </div>
+        <TagEditor
+          currentTags={tags}
+          value={tags.join(', ')}
+          onChange={() => {}}
+          onSave={() => {}}
+          onCancel={() => {}}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -451,6 +725,14 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
         {fx.ident && (
           <div className="text-[10px] text-[var(--text-secondary)] truncate">{fx.ident}</div>
         )}
+        {/* Tag badges */}
+        {tags.length > 0 && (
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            {tags.map((tag) => (
+              <TagBadge key={tag} tag={tag} />
+            ))}
+          </div>
+        )}
       </button>
 
       {/* Format badge */}
@@ -459,6 +741,18 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
       >
         {fx.format}
       </span>
+
+      {/* Tags edit button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onEditTags();
+        }}
+        className="flex-shrink-0 text-[11px] px-2 py-1 text-[var(--text-secondary)] hover:text-[var(--accent-orange)] transition-colors"
+        title="Edit tags"
+      >
+        ✏️
+      </button>
 
       {/* Add to Track button */}
       <button
@@ -486,18 +780,37 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
   );
 }
 
-// ── Chain Row (Issue #96) ────────────────────────────────────
+// ── Chain Row (Issue #96) ── with tags (Issue #97) ──────────
 
 interface ChainRowProps {
   chain: FxChainSearchResult;
   selectedTrack: number | null;
   isLoading: boolean;
   onLoad: (filePath: string) => void;
+  tags: string[];
+  onEditTags: () => void;
+  isEditingTags: boolean;
 }
 
-function ChainRow({ chain, selectedTrack, isLoading, onLoad }: ChainRowProps) {
-  // Clean name: remove directory prefix and .RfxChain extension for display
+function ChainRow({ chain, selectedTrack, isLoading, onLoad, tags, onEditTags, isEditingTags }: ChainRowProps) {
   const displayName = chain.name.replace(/\.RfxChain$/i, '').replace(/^.*[/\\]/, '');
+
+  if (isEditingTags) {
+    return (
+      <div className="px-3 py-2 bg-[var(--bg-secondary)]">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm font-medium truncate"><span className="text-[var(--accent-green)]">🔗 Chain:</span> {displayName}</span>
+        </div>
+        <TagEditor
+          currentTags={tags}
+          value={tags.join(', ')}
+          onChange={() => {}}
+          onSave={() => {}}
+          onCancel={() => {}}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -505,7 +818,6 @@ function ChainRow({ chain, selectedTrack, isLoading, onLoad }: ChainRowProps) {
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
         active:brightness-95 transition-all duration-100 select-none"
     >
-      {/* Chain name - tap to load */}
       <button
         onClick={() => {
           if (selectedTrack !== null) {
@@ -523,6 +835,26 @@ function ChainRow({ chain, selectedTrack, isLoading, onLoad }: ChainRowProps) {
             {chain.filePath}
           </div>
         )}
+        {/* Tag badges */}
+        {tags.length > 0 && (
+          <div className="flex items-center gap-1 mt-1 flex-wrap">
+            {tags.map((tag) => (
+              <TagBadge key={tag} tag={tag} />
+            ))}
+          </div>
+        )}
+      </button>
+
+      {/* Tags edit button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onEditTags();
+        }}
+        className="flex-shrink-0 text-[11px] px-2 py-1 text-[var(--text-secondary)] hover:text-[var(--accent-orange)] transition-colors"
+        title="Edit tags"
+      >
+        ✏️
       </button>
 
       {/* Size badge */}
@@ -532,7 +864,6 @@ function ChainRow({ chain, selectedTrack, isLoading, onLoad }: ChainRowProps) {
         </span>
       )}
 
-      {/* Load button */}
       <button
         onClick={() => {
           if (selectedTrack !== null) {

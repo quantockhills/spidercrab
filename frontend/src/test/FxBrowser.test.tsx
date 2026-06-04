@@ -427,6 +427,174 @@ describe('FxBrowser', () => {
     expect(fxChainSearchRecursive).not.toHaveBeenCalled();
   });
 
+  // ── Tag tests (Issue #97) ──
+
+  it('loads tags on mount when getFxTags is provided', async () => {
+    const getFxTags = vi.fn().mockResolvedValue({
+      fxTags: { 'VST3:ReaEQ': ['eq', 'guitar'], 'VST3:ReaComp': ['comp', 'drums'] },
+      chainTags: { '/chains/guitar.RfxChain': ['guitar'] },
+    });
+    const setFxTags = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ getFxTags, setFxTags });
+
+    await waitFor(() => {
+      expect(getFxTags).toHaveBeenCalled();
+    });
+  });
+
+  it('shows tag badges on FX rows', async () => {
+    const getFxTags = vi.fn().mockResolvedValue({
+      fxTags: { 'VST3:ReaEQ': ['eq', 'guitar'] },
+      chainTags: {},
+    });
+    const setFxTags = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ getFxTags, setFxTags });
+
+    await waitFor(() => {
+      // Tag badges should appear as spans with tag text
+      // Use getAllByText since the tag also appears in the filter bar
+      const eqBadges = screen.getAllByText('eq');
+      expect(eqBadges.length).toBeGreaterThanOrEqual(1);
+      // Find the span badge (not the filter button)
+      const spanBadges = eqBadges.filter(el => el.tagName === 'SPAN');
+      expect(spanBadges.length).toBe(1);
+      const guitarBadges = screen.getAllByText('guitar');
+      expect(guitarBadges.length).toBeGreaterThanOrEqual(1);
+      const guitarSpans = guitarBadges.filter(el => el.tagName === 'SPAN');
+      expect(guitarSpans.length).toBe(1);
+    });
+  });
+
+  it('shows tag filter bar when tags exist', async () => {
+    const getFxTags = vi.fn().mockResolvedValue({
+      fxTags: { 'VST3:ReaEQ': ['eq'] },
+      chainTags: {},
+    });
+    const setFxTags = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ getFxTags, setFxTags });
+
+    await waitFor(() => {
+      // The tag filter bar should show 'All' button (note: 'All' also appears
+      // as the format filter dropdown option, so use getAllByText)
+      const allElements = screen.getAllByText('All');
+      expect(allElements.length).toBeGreaterThanOrEqual(1);
+      // Find the button element specifically
+      const allButtons = allElements.filter(el => el.tagName === 'BUTTON');
+      expect(allButtons.length).toBe(1);
+      // 'eq' appears both as filter button and badge — check it exists
+      const eqElements = screen.getAllByText('eq');
+      expect(eqElements.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('filters FX list when tag is selected', async () => {
+    const getFxTags = vi.fn().mockResolvedValue({
+      fxTags: {
+        'VST3:ReaEQ': ['eq'],
+        'VST3:ReaComp': ['comp'],
+        'VST2:ValhallaRoom': ['reverb'],
+      },
+      chainTags: {},
+    });
+    const setFxTags = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ getFxTags, setFxTags });
+
+    await waitFor(() => {
+      const eqElements = screen.getAllByText('eq');
+      expect(eqElements.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Click the 'eq' tag filter button (use the button element, not the span badge)
+    const eqElements = screen.getAllByText('eq');
+    const eqFilter = eqElements.find(el => el.tagName === 'BUTTON');
+    expect(eqFilter).toBeDefined();
+    if (eqFilter) fireEvent.click(eqFilter);
+
+    // ReaEQ should be visible (it has 'eq' tag)
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // ReaComp should be hidden (no 'eq' tag)
+    await waitFor(() => {
+      expect(screen.queryByText('ReaComp')).toBeNull();
+    });
+  });
+
+  it('shows All button as active when no tags selected', async () => {
+    const getFxTags = vi.fn().mockResolvedValue({
+      fxTags: { 'VST3:ReaEQ': ['eq'] },
+      chainTags: {},
+    });
+    const setFxTags = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ getFxTags, setFxTags });
+
+    await waitFor(() => {
+      const allButton = screen.getByText('All');
+      expect(allButton).toBeDefined();
+    });
+  });
+
+  it('clears tag filter when All button is clicked', async () => {
+    const getFxTags = vi.fn().mockResolvedValue({
+      fxTags: {
+        'VST3:ReaEQ': ['eq'],
+        'VST2:ValhallaRoom': ['reverb'],
+      },
+      chainTags: {},
+    });
+    const setFxTags = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ getFxTags, setFxTags });
+
+    await waitFor(() => {
+      const eqElements = screen.getAllByText('eq');
+      expect(eqElements.length).toBeGreaterThanOrEqual(1);
+    });
+
+    // First select a tag filter
+    const eqElements = screen.getAllByText('eq');
+    const eqFilter = eqElements.find(el => el.tagName === 'BUTTON');
+    expect(eqFilter).toBeDefined();
+    if (eqFilter) fireEvent.click(eqFilter);
+    await waitFor(() => {
+      // ValhallaRoom should be hidden
+      expect(screen.queryByText('ValhallaRoom')).toBeNull();
+    });
+
+    // Click 'All' button (find the tag filter 'All' button, not the dropdown option)
+    const allElements = screen.getAllByText('All');
+    const allButton = allElements.find(el => el.tagName === 'BUTTON');
+    expect(allButton).toBeDefined();
+    if (allButton) fireEvent.click(allButton);
+    await waitFor(() => {
+      // Both should be visible
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+      expect(screen.getByText('ValhallaRoom')).toBeDefined();
+    });
+  });
+
+  it('shows edit tags button on FX rows', async () => {
+    const getFxTags = vi.fn().mockResolvedValue({
+      fxTags: { 'VST3:ReaEQ': ['eq'] },
+      chainTags: {},
+    });
+    const setFxTags = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ getFxTags, setFxTags });
+
+    await waitFor(() => {
+      // Edit tags buttons should be present
+      const editButtons = screen.getAllByTitle('Edit tags');
+      expect(editButtons.length).toBeGreaterThan(0);
+    });
+  });
+
   it('disables chain load button when no track is selected', async () => {
     const fxChainSearchRecursive = vi.fn().mockResolvedValue({
       query: 'comp',

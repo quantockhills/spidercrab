@@ -214,6 +214,114 @@ describe('useFx', () => {
     expect(await promise).toBe(true);
   });
 
+  // ── Tag tests (Issue #97) ──
+
+  it('getFxTags sends fx/tags/getAll command', async () => {
+    const { result } = renderHook(() => useFx(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.getFxTags();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('fx/tags/getAll');
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: {
+          fxTags: { 'VST3:ReaEQ': ['eq', 'guitar'] },
+          chainTags: { '/chains/test.RfxChain': ['test'] },
+        },
+      }));
+    });
+
+    const data = await promise;
+    expect(data).not.toBeNull();
+    expect(data!.fxTags['VST3:ReaEQ']).toEqual(['eq', 'guitar']);
+    expect(data!.chainTags['/chains/test.RfxChain']).toEqual(['test']);
+  });
+
+  it('getFxTags returns null on failure', async () => {
+    const { result } = renderHook(() => useFx(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.getFxTags();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: false,
+        payload: { error: 'Not available' },
+      }));
+    });
+
+    const data = await promise;
+    expect(data).toBeNull();
+  });
+
+  it('setFxTags sends fx/tags/set command with correct params', async () => {
+    const { result } = renderHook(() => useFx(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.setFxTags('fx', 'VST3:ReaEQ', ['eq', 'guitar']);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('fx/tags/set');
+    expect(sentMsg.target).toBe('fx');
+    expect(sentMsg.ident).toBe('VST3:ReaEQ');
+    expect(sentMsg.tags).toEqual(['eq', 'guitar']);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { saved: true },
+      }));
+    });
+
+    const ok = await promise;
+    expect(ok).toBe(true);
+  });
+
+  it('setFxTags returns false on failure', async () => {
+    const { result } = renderHook(() => useFx(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.setFxTags('chain', '/path/chain.RfxChain', ['tag']);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: false,
+        payload: { error: 'Failed' },
+      }));
+    });
+
+    const ok = await promise;
+    expect(ok).toBe(false);
+  });
+
   it('sets isRefreshingFx while refreshFxCache is in flight', async () => {
     const { result } = renderHook(() => useFx(), { wrapper: Wrapper });
 

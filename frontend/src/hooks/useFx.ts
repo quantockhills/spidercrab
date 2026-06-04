@@ -36,6 +36,15 @@ export interface FxPresetNames {
   currentIndex: number;
 }
 
+// ── Tag types (Issue #97) ────────────────────────────────────
+
+export interface FxTagData {
+  fxTags: Record<string, string[]>;
+  chainTags: Record<string, string[]>;
+}
+
+export type TagTarget = 'fx' | 'chain';
+
 // ── Hook ─────────────────────────────────────────────────────
 
 export function useFx() {
@@ -122,6 +131,29 @@ export function useFx() {
     return resp.payload as unknown as FxPresetNames;
   }, [send]);
 
+  // ── Tag functions (Issue #97) ──
+
+  const getFxTags = useCallback(async (): Promise<FxTagData | null> => {
+    try {
+      const resp = await send('fx/tags/getAll', {});
+      return resp.payload as unknown as FxTagData;
+    } catch {
+      return null;
+    }
+  }, [send]);
+
+  const setFxTags = useCallback(
+    async (target: TagTarget, ident: string, tags: string[]): Promise<boolean> => {
+      try {
+        await send('fx/tags/set', { target, ident, tags });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [send],
+  );
+
   return {
     enumerateFx,
     getTrackFx,
@@ -134,5 +166,7 @@ export function useFx() {
     getFxPreset,
     setFxPreset,
     getAllFxPresetNames,
+    getFxTags,
+    setFxTags,
   };
 }
