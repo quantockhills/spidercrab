@@ -1,0 +1,6 @@
+Phase 1 MVP complete (27/27 issues closed). Nothing to do.
+=== Phase 1 MVP NOT complete ===
+Milestone: 29 closed, 2 open (#99, #98) out of 31 total
+Next: Issue #99 (track record mode toggle) — stage set to builder
+Stale uncommitted changes from #96/#97 need cleanup before building
+Timestamp: 2026-06-04 20:19 UTC
