@@ -304,6 +304,7 @@ struct MockTrack {
     int         soloed = 0;
     int         armed  = 0;
     int         selected = 0;
+    int         recMode = 0; // I_RECMODE: 0=input, 7=MIDI overdub, 8=MIDI replace
     struct MockFX {
         int                    idx;
         std::string            name;
@@ -618,6 +619,10 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
     if (name == "I_SELECTED") {
         if (setNewValue) t.selected = *(int*)setNewValue;
         return &t.selected;
+    }
+    if (name == "I_RECMODE") {
+        if (setNewValue) t.recMode = *(int*)setNewValue;
+        return &t.recMode;
     }
     return nullptr;
 }
@@ -2225,6 +2230,7 @@ TEST(Phase1MVPTest, ResponseJsonIsAlwaysValid)
         {R"({"type":"command","command":"track/setMute","payload":{"trackIdx":0,"muted":"true"},"id":"v4"})", "track/setMute"},
         {R"({"type":"command","command":"track/setSolo","payload":{"trackIdx":0,"soloed":"true"},"id":"v5"})", "track/setSolo"},
         {R"({"type":"command","command":"track/setArm","payload":{"trackIdx":0,"armed":"true"},"id":"v6"})", "track/setArm"},
+        {R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":7},"id":"v6a"})", "track/setRecordMode"},
         {R"({"type":"command","command":"sample/getDirectory","payload":{"path":"/tmp"},"id":"v7"})", "sample/getDirectory"},
         {R"({"type":"command","command":"transport/play","id":"v8"})", "transport/play"},
         {R"({"type":"command","command":"transport/stop","id":"v9"})", "transport/stop"},
@@ -2281,6 +2287,176 @@ TEST(Phase1MVPTest, SampleBrowserDirectoryAndSendToTrack)
 
     // Cleanup
     system("rm -rf /tmp/_mvp_test");
+}
+
+// ============================================================
+// Record mode tests (Issue #99)
+// ============================================================
+
+TEST(RecordModeTest, HandleGetTracksIncludesRecordMode)
+{
+    // Verify that track/getAll returns the recMode field for each track
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.recMode = 0; // input (audio)
+
+    MockTrack t1;
+    t1.name = "Synth";
+    t1.recMode = 7; // MIDI overdub
+
+    state.tracks = { t0, t1 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"rm1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // Verify recMode values appear in the response
+    EXPECT_NE(resp.find("\"index\":0"), std::string::npos);
+    EXPECT_NE(resp.find("\"index\":1"), std::string::npos);
+    EXPECT_NE(resp.find("\"recMode\":0"), std::string::npos)
+        << "Track 0 should have recMode 0 (audio input)";
+    EXPECT_NE(resp.find("\"recMode\":7"), std::string::npos)
+        << "Track 1 should have recMode 7 (MIDI overdub)";
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+}
+
+TEST(RecordModeTest, HandleGetTracksRecordModeDefault)
+{
+    // Default recMode should be 0 when not explicitly set
+    MockState state;
+    MockTrack t0;
+    t0.name = "Default";
+    // recMode not set — should default to 0
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"rm2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"recMode\":0"), std::string::npos);
+}
+
+TEST(RecordModeTest, HandleSetRecordMode)
+{
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.recMode = 0;
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set recMode to 7 (MIDI overdub)
+    std::string cmd = R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":7},"id":"setrm1"})";
+    handler->HandleMessage(1, cmd);
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_NE(resp.find("\"recMode\":7"), std::string::npos)
+        << "Response should include the new recMode value";
+
+    // Verify mock state was updated
+    ASSERT_EQ(g_mock->tracks.size(), 1u);
+    EXPECT_EQ(g_mock->tracks[0].recMode, 7);
+}
+
+TEST(RecordModeTest, HandleSetRecordModeDefaultTrack)
+{
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.recMode = 7;
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Set recMode without explicit trackIdx — should work on track 0
+    // (The issue says "for selected tracks", but the basic command takes trackIdx)
+    std::string cmd = R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":0},"id":"setrm2"})";
+    handler->HandleMessage(1, cmd);
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"recMode\":0"), std::string::npos);
+
+    // Verify mock state was updated from 7 to 0
+    ASSERT_EQ(g_mock->tracks.size(), 1u);
+    EXPECT_EQ(g_mock->tracks[0].recMode, 0);
+}
+
+TEST(RecordModeTest, HandleSetRecordModeInvalidTrack)
+{
+    MockState state;
+    state.tracks = {}; // No tracks
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1, R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":7},"id":"badrm"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(RecordModeTest, HandleSetRecordModeInvalidRecMode)
+{
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.recMode = 0;
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // recMode -1 is invalid
+    handler->HandleMessage(1, R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":-1},"id":"brm1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+
+    // recMode 9 is invalid (max is 8)
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":9},"id":"brm2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+}
+
+TEST(RecordModeTest, SetRecordModeThenGetTracksShowsNewValue)
+{
+    // Round-trip: verify that setting recMode is reflected in track/getAll
+    MockState state;
+    MockTrack t0;
+    t0.name = "Kick";
+    t0.recMode = 0;
+    state.tracks = { t0 };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // First get — verify initial recMode
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"getrm1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"recMode\":0"), std::string::npos);
+
+    // Set recMode to 8 (MIDI replace)
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":8},"id":"setrm3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"recMode\":8"), std::string::npos);
+
+    // Get tracks again — should see updated recMode
+    responses.clear();
+    handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"getrm2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"recMode\":8"), std::string::npos);
 }
 
 // ============================================================

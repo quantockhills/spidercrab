@@ -196,6 +196,9 @@ private:
     void SendResponse(
         int clientId, const std::string& id, bool success, const std::string& payload);
 
+    // Command handlers — record mode (Issue #99)
+    void HandleSetRecordMode(int clientId, const std::string& id, const std::string& params);
+
     // Command handlers — transport
     void HandleGetTransport(int clientId, const std::string& id, const std::string& params);
     void HandlePlay(int clientId, const std::string& id, const std::string& params);

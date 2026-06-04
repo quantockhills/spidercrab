@@ -11,6 +11,7 @@ export interface Track {
   muted: boolean;
   soloed: boolean;
   armed: boolean;
+  recMode: number;
   volume: number;
   pan: number;
 }
@@ -72,6 +73,11 @@ export function useTrackState() {
     return resp.success;
   }, [send]);
 
+  const setTrackRecordMode = useCallback(async (trackIdx: number, recMode: number): Promise<boolean> => {
+    const resp = await send('track/setRecordMode', { trackIdx, recMode });
+    return resp.success;
+  }, [send]);
+
   const toggleTrackMute = useCallback(async (trackIdx: number): Promise<boolean> => {
     const track = tracks.find(t => t.index === trackIdx);
     if (!track) return false;
@@ -119,6 +125,7 @@ export function useTrackState() {
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,
+    setTrackRecordMode,
     selectTrack,
     updateTrack,
   };

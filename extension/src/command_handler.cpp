@@ -259,6 +259,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     // Populate command dispatch map
     m_commandMap["track/getAll"]           = &CommandHandler::HandleGetTracks;
     m_commandMap["track/add"]              = &CommandHandler::HandleAddTrack;
+    m_commandMap["track/setRecordMode"]    = &CommandHandler::HandleSetRecordMode;
     m_commandMap["track/getFx"]            = &CommandHandler::HandleGetTrackFX;
     m_commandMap["track/setMute"]          = &CommandHandler::HandleSetTrackMute;
     m_commandMap["track/setSolo"]          = &CommandHandler::HandleSetTrackSolo;
@@ -400,6 +401,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         bool muted = false, soloed = false, armed = false;
         double volume = 0.75; // sane default if API unavailable
         double pan = 0.0;  // sane default if API unavailable
+        int recMode = 0; // I_RECMODE: 0=input (audio), 7=MIDI overdub, 8=MIDI replace
         if (m_api.GetSetMediaTrackInfo) {
             bool* mp = (bool*)m_api.GetSetMediaTrackInfo(track, "B_MUTE", nullptr);
             if (mp) muted = *mp;
@@ -411,6 +413,8 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (vp) volume = *vp;
             double* pp = (double*)m_api.GetSetMediaTrackInfo(track, "D_PAN", nullptr);
             if (pp) pan = *pp;
+            int* rmp = (int*)m_api.GetSetMediaTrackInfo(track, "I_RECMODE", nullptr);
+            if (rmp) recMode = *rmp;
         }
 
         // Read real track name via GetSetMediaTrackInfo_String (Issue #40)
@@ -436,6 +440,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
         tracksJson += json_string("soloed") + ":" + std::string(soloed ? "true" : "false") + ",";
         tracksJson += json_string("armed") + ":" + std::string(armed ? "true" : "false") + ",";
+        tracksJson += json_string("recMode") + ":" + std::to_string(recMode) + ",";
         tracksJson += json_string("volume") + ":" + std::to_string(volume) + ",";
         tracksJson += json_string("pan") + ":" + std::to_string(pan);
         tracksJson += "}";
@@ -1184,6 +1189,54 @@ void CommandHandler::HandleSetTrackSelected(
     m_api.GetSetMediaTrackInfo(track, "I_SELECTED", &selected);
     SendResponse(clientId, id, true,
         "{\"selected\":" + std::string(selected ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleSetRecordMode(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetSetMediaTrackInfo || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string recModeStr  = parser.getString("recMode");
+
+    if (trackIdxStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' parameter\"}");
+        return;
+    }
+    if (recModeStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'recMode' parameter\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+    int recMode  = atoi(recModeStr.c_str());
+
+    // Validate recMode: REAPER I_RECMODE range is 0-8
+    // 0=input (audio), 1=stereo out, 2=none, 3=stereo out w/latency,
+    // 4=MIDI output, 5=mono out, 6=mono out w/latency,
+    // 7=MIDI overdub, 8=MIDI replace
+    if (recMode < 0 || recMode > 8) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"recMode must be 0-8\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    m_api.GetSetMediaTrackInfo(track, "I_RECMODE", &recMode);
+    SendResponse(clientId, id, true,
+        "{\"recMode\":" + std::to_string(recMode) + "}");
 }
 
 void CommandHandler::HandlePlay(int clientId, const std::string& id, const std::string& params)
