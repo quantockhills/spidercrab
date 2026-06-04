@@ -98,6 +98,11 @@ export function useFx() {
     return ((resp.payload as PayloadMap).fxIdx as number) ?? -1;
   }, [send]);
 
+  const reorderFx = useCallback(async (trackIdx: number, fromIndex: number, toIndex: number): Promise<boolean> => {
+    const resp = await send('fx/reorder', { trackIdx, fromIndex, toIndex });
+    return resp.success;
+  }, [send]);
+
   const deleteFx = useCallback(async (trackIdx: number, fxIdx: number): Promise<boolean> => {
     const resp = await send('fx/delete', { trackIdx, fxIdx });
     return resp.success;
@@ -160,6 +165,7 @@ export function useFx() {
     getFxParams,
     setFxParam,
     addFx,
+    reorderFx,
     deleteFx,
     refreshFxCache,
     isRefreshingFx,
