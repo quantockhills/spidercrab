@@ -239,4 +239,62 @@ describe('useTrackState', () => {
       expect(result.current.tracks[0]?.muted).toBe(true);
     });
   });
+
+  it('setTrackRecordMode sends correct command', async () => {
+    const { result } = renderHook(() => useTrackState(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.setTrackRecordMode(0, 7);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
+    expect(sentMsg.command).toBe('track/setRecordMode');
+    expect(sentMsg.trackIdx).toBe(0);
+    expect(sentMsg.recMode).toBe(7);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: {},
+      }));
+    });
+
+    expect(await promise).toBe(true);
+  });
+
+  it('recMode is included in track response from refreshTracks', async () => {
+    const { result } = renderHook(() => useTrackState(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.refreshTracks();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
+    expect(sentMsg.command).toBe('track/getAll');
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: {
+          tracks: [
+            { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, recMode: 0, volume: 0.8, pan: 0 },
+            { index: 1, name: 'Synth', trackNumber: 2, selected: false, muted: false, soloed: false, armed: true, recMode: 7, volume: 0.6, pan: -0.3 },
+          ],
+        },
+      }));
+    });
+
+    const tracks = await promise;
+    expect(tracks).toHaveLength(2);
+    expect(tracks[0].recMode).toBe(0);
+    expect(tracks[1].recMode).toBe(7);
+  });
 });

@@ -12,6 +12,7 @@ interface TrackOverviewProps {
   onToggleMute: (index: number) => void;
   onToggleSolo: (index: number) => void;
   onToggleArm: (index: number) => void;
+  onToggleRecordMode?: (trackIdx: number) => void;
   onVolumeChange?: (trackIdx: number, volume: number) => void;
   onPanChange?: (trackIdx: number, pan: number) => void;
   onAddTrack?: () => Promise<boolean>;
@@ -143,6 +144,7 @@ export function TrackOverview({
   onToggleMute,
   onToggleSolo,
   onToggleArm,
+  onToggleRecordMode,
   onVolumeChange,
   onPanChange,
   onRefresh,
@@ -379,6 +381,7 @@ export function TrackOverview({
                 onToggleMute={() => onToggleMute(track.index)}
                 onToggleSolo={() => onToggleSolo(track.index)}
                 onToggleArm={() => onToggleArm(track.index)}
+                onToggleRecordMode={onToggleRecordMode ? () => onToggleRecordMode(track.index) : undefined}
                 onVolumeChange={onVolumeChange ? (v) => onVolumeChange(track.index, v) : undefined}
                 onPanChange={onPanChange ? (v) => onPanChange(track.index, v) : undefined}
                 onOpenFx={onOpenFx ? () => onOpenFx(track.index) : undefined}
@@ -1149,6 +1152,7 @@ interface TrackRowProps {
   onToggleMute: () => void;
   onToggleSolo: () => void;
   onToggleArm: () => void;
+  onToggleRecordMode?: () => void;
   onVolumeChange?: (volume: number) => void;
   onPanChange?: (pan: number) => void;
   onOpenFx?: () => void;
@@ -1161,6 +1165,7 @@ function TrackRow({
   onToggleMute,
   onToggleSolo,
   onToggleArm,
+  onToggleRecordMode,
   onVolumeChange,
   onPanChange,
   onOpenFx,
@@ -1245,6 +1250,26 @@ function TrackRow({
         >
           R
         </button>
+
+        {/* Record mode toggle (Issue #99): Audio (0) / MIDI (7-8) */}
+        {onToggleRecordMode && (
+          <button
+            data-testid="toggle-record-mode"
+            onClick={(e) => { e.stopPropagation(); onToggleRecordMode(); }}
+            className={`
+              w-11 h-11 text-xs font-semibold transition-colors active:brightness-95
+              ${track.recMode >= 7
+                ? 'bg-[var(--accent-blue)]/25 text-[var(--accent-blue)] ring-1 ring-[var(--accent-blue)]/40'
+                : track.recMode > 0
+                  ? 'bg-[var(--accent-yellow)]/25 text-[var(--accent-yellow)] ring-1 ring-[var(--accent-yellow)]/40'
+                  : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+              }
+            `}
+            title={track.recMode >= 7 ? 'MIDI record mode' : track.recMode > 0 ? `Record mode ${track.recMode}` : 'Audio record mode'}
+          >
+            {track.recMode >= 7 ? 'M' : track.recMode > 0 ? `M${track.recMode}` : 'A'}
+          </button>
+        )}
 
         {/* FX open button (Issue #86) */}
         {onOpenFx && (
