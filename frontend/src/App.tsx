@@ -84,6 +84,50 @@ function AppInner() {
   const [sessionMode, setSessionMode] = useState<'session' | 'sequencer'>('session');
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
 
+  // Sample directory paths (Issue #101)
+  const [samplePaths, setSamplePaths] = useState<string[]>(
+    () => {
+      const stored = localStorage.getItem('sampleBrowserPaths');
+      if (stored) {
+        try { return JSON.parse(stored) as string[]; }
+        catch { return []; }
+      }
+      return [];
+    }
+  );
+  const [editingSamplePath, setEditingSamplePath] = useState(false);
+  const [newSamplePath, setNewSamplePath] = useState('');
+
+  // Migration from old single-path format (Issue #101)
+  useEffect(() => {
+    const oldPath = localStorage.getItem('sampleBrowserRootPath');
+    const newPaths = localStorage.getItem('sampleBrowserPaths');
+    if (oldPath && !newPaths) {
+      const migrated = [oldPath];
+      localStorage.setItem('sampleBrowserPaths', JSON.stringify(migrated));
+      setSamplePaths(migrated);
+      localStorage.removeItem('sampleBrowserRootPath');
+    }
+  }, []);
+
+  // Persist samplePaths to localStorage (Issue #101)
+  useEffect(() => {
+    localStorage.setItem('sampleBrowserPaths', JSON.stringify(samplePaths));
+  }, [samplePaths]);
+
+  const handleAddSamplePath = useCallback(() => {
+    const trimmed = newSamplePath.trim().replace(/\/+$/, '');
+    if (trimmed && !samplePaths.includes(trimmed)) {
+      setSamplePaths((prev) => [...prev, trimmed]);
+    }
+    setNewSamplePath('');
+    setEditingSamplePath(false);
+  }, [newSamplePath, samplePaths]);
+
+  const handleRemoveSamplePath = useCallback((path: string) => {
+    setSamplePaths((prev) => prev.filter((p) => p !== path));
+  }, []);
+
   // FX chain browser state (Issue #7)
   const [fxChainView, setFxChainView] = useState(false);
   const [fxChainPath, setFxChainPath] = useState<string>(
@@ -253,6 +297,7 @@ function AppInner() {
             sendSampleToTrack={sendSampleToTrack}
             sendCommand={sendCommand}
             onBack={() => setActiveTab('tracks')}
+            samplePaths={samplePaths}
           />
         )}
 
@@ -479,6 +524,67 @@ function AppInner() {
               >
                 Browse FX Chains
               </button>
+            </div>
+
+            {/* Sample Directories (Issue #101) */}
+            <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider">Sample Directories</h3>
+              {samplePaths.length === 0 ? (
+                <p className="text-xs text-[var(--text-secondary)]">
+                  No sample directories configured. Add one to browse samples in the Media tab.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  {samplePaths.map((path) => (
+                    <div key={path} className="flex items-center gap-2 px-2 py-2 bg-[var(--bg-secondary)]">
+                      <span className="text-sm font-mono truncate flex-1 text-[var(--text-primary)]">
+                        📁 {path}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveSamplePath(path)}
+                        className="text-xs px-2 py-1 text-[var(--accent-red)] hover:bg-[var(--bg-tertiary)] active:brightness-95 min-h-[36px]"
+                        aria-label={`Remove ${path}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {editingSamplePath ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newSamplePath}
+                    onChange={(e) => setNewSamplePath(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddSamplePath();
+                      if (e.key === 'Escape') {
+                        setNewSamplePath('');
+                        setEditingSamplePath(false);
+                      }
+                    }}
+                    placeholder="/path/to/samples"
+                    className="flex-1 px-3 py-2 bg-[var(--bg-secondary)] text-sm font-mono
+                      text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
+                      outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleAddSamplePath}
+                    className="px-3 py-2 text-xs bg-[var(--accent-dim)] text-[var(--accent-orange)] min-h-[36px] active:brightness-95"
+                  >
+                    Add
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditingSamplePath(true)}
+                  className="w-full py-2.5 bg-[var(--bg-secondary)] text-sm text-[var(--accent-orange)] active:brightness-95 transition-colors"
+                >
+                  + Add Directory
+                </button>
+              )}
             </div>
           </div>
         )}

@@ -22,6 +22,7 @@ interface SampleBrowserProps {
   sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>;
   onBack: () => void;
   sendToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
+  samplePaths?: string[];
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -33,10 +34,16 @@ export function SampleBrowser({
   sendSampleToTrack,
   sendCommand,
   onBack,
+  samplePaths,
 }: SampleBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>(
-    () => localStorage.getItem('sampleBrowserRootPath') || '/tmp'
+    () => {
+      // If samplePaths is provided (even empty), start with empty (show root selector)
+      if (samplePaths !== undefined) return '';
+      return localStorage.getItem('sampleBrowserRootPath') || '/tmp';
+    }
   );
+  const [currentRoot, setCurrentRoot] = useState<string | null>(null);
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,14 +84,24 @@ export function SampleBrowser({
     }
   }, [getDirectory]);
 
-  // Save root path to localStorage when it changes
+  // Save root path to localStorage when it changes (only for legacy single-path mode)
   useEffect(() => {
-    localStorage.setItem('sampleBrowserRootPath', currentPath);
+    if (currentPath) {
+      localStorage.setItem('sampleBrowserRootPath', currentPath);
+    }
   }, [currentPath]);
 
   // Load directory on mount / path change
   useEffect(() => {
+    if (!currentPath) {
+      // Root selector mode — don't load any directory
+      setLoading(false);
+      setEntries([]);
+      setError(null);
+      return;
+    }
     let cancelled = false;
+    setLoading(true);
     getDirectory(currentPath)
       .then((result) => {
         if (!cancelled) {
@@ -103,6 +120,11 @@ export function SampleBrowser({
     return () => { cancelled = true; };
   }, [currentPath, getDirectory]);
 
+  const handleSelectRoot = useCallback((root: string) => {
+    setCurrentRoot(root);
+    setCurrentPath(root);
+  }, []);
+
   const handleRootPathSubmit = useCallback(() => {
     const trimmed = rootPathInput.trim();
     if (trimmed) {
@@ -114,16 +136,22 @@ export function SampleBrowser({
 
   const handleNavigate = useCallback((entry: DirEntry) => {
     if (entry.type === 'dir') {
-      setLoading(true);
       if (entry.name === '..') {
         // Go up one level
         const parent = currentPath.substring(0, currentPath.lastIndexOf('/'));
+        // If we're at the root of our current root directory, return to root selector
+        if (currentRoot && parent === currentRoot) {
+          // Root level — go back to root selector
+          setCurrentRoot(null);
+          setCurrentPath('');
+          return;
+        }
         setCurrentPath(parent || '/');
       } else {
         setCurrentPath(currentPath + '/' + entry.name);
       }
     }
-  }, [currentPath]);
+  }, [currentPath, currentRoot]);
 
   const handleSendToTrack = useCallback(async (entry: DirEntry) => {
     if (selectedTrack === null || entry.type !== 'file') return;
@@ -287,8 +315,19 @@ export function SampleBrowser({
 
       {/* Path breadcrumb + Search */}
       <div className="px-4 py-2.5 border-b border-[var(--border)] space-y-2">
-        {/* Current path — clickable to edit (Issue #28) */}
+        {/* Current path / Root indicator (Issue #101) */}
         <div className="flex items-center gap-2">
+          {currentRoot && (
+            <button
+              onClick={() => {
+                setCurrentRoot(null);
+                setCurrentPath('');
+              }}
+              className="text-[11px] text-[var(--accent-orange)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0 px-2 py-1"
+            >
+              ← Roots
+            </button>
+          )}
           {editingRoot ? (
             <div className="flex items-center gap-2 flex-1">
               <input
@@ -312,7 +351,7 @@ export function SampleBrowser({
                 Go
               </button>
             </div>
-          ) : (
+          ) : currentPath ? (
             <button
               onClick={() => {
                 setRootPathInput(currentPath);
@@ -323,9 +362,11 @@ export function SampleBrowser({
               <span className="text-[11px] text-[var(--text-secondary)] font-mono truncate flex-1">
                 📁 {currentPath || '/'}
               </span>
-              <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0 ml-1">✏️</span>
+              {!currentRoot && (
+                <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0 ml-1">✏️</span>
+              )}
             </button>
-          )}
+          ) : null}
         </div>
 
         {/* Search */}
@@ -354,9 +395,38 @@ export function SampleBrowser({
         </div>
       )}
 
-      {/* Content */}
+      {/* Content — Root selector or directory listing */}
       <div className="flex-1 overflow-y-auto">
-        {loading ? (
+        {!currentPath && samplePaths !== undefined ? (
+          samplePaths.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
+              <div className="text-5xl mb-2">📁</div>
+              <p className="text-sm">No sample directories configured</p>
+              <p className="text-xs">Go to Settings to add one.</p>
+            </div>
+          ) : (
+            <div className="p-4 space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-3">
+                Sample Directories
+              </h3>
+              {samplePaths.map((root) => (
+                <button
+                  key={root}
+                  onClick={() => handleSelectRoot(root)}
+                  className="w-full flex items-center gap-3 px-3 py-3
+                    bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
+                    active:brightness-95 transition-colors duration-100 text-left"
+                >
+                  <span className="text-lg flex-shrink-0">📁</span>
+                  <span className="text-sm font-mono truncate flex-1">{root}</span>
+                  <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0">
+                    tap to browse →
+                  </span>
+                </button>
+              ))}
+            </div>
+          )
+        ) : loading ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3">
             <div className="text-4xl animate-pulse">📂</div>
             <p className="text-sm">Loading...</p>
@@ -372,7 +442,7 @@ export function SampleBrowser({
               Retry
             </button>
           </div>
-        ) : entries.length === 0 ? (
+        ) : entries.length === 0 && filteredEntries.length === 0 && !search ? (
           <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
             <div className="text-5xl mb-2">📁</div>
             <p className="text-sm">Empty directory</p>
@@ -403,7 +473,7 @@ export function SampleBrowser({
                 isSent={sentFiles.has(entry.name)}
                 canSend={selectedTrack !== null}
                 formattedSize={formatSize(entry.size)}
-                isSelected={selectedFile === currentPath + '/' + entry.name}
+                isSelected={selectedFile !== null && currentPath + '/' + entry.name === selectedFile}
                 onSend={() => handleSendToTrack(entry)}
                 onSelect={() => handleFileClick(entry)}
                 onLongPress={(x, y) => handleLongPress(entry, x, y)}
@@ -508,9 +578,10 @@ export function SampleBrowser({
       )}
 
       {/* Footer stats */}
-      {!loading && entries.length > 0 && (
+      {!loading && currentPath && entries.length > 0 && (
         <div className="px-4 py-2 border-t border-[var(--border)] flex justify-between text-[10px] text-[var(--text-secondary)]">
           <span>{dirs.length} dirs · {files.length} files{search ? ` (filtered)` : ''}</span>
+          {currentRoot && <span className="font-mono">📁 {currentRoot}</span>}
           {selectedTrackName && <span>→ {selectedTrackName}</span>}
         </div>
       )}
