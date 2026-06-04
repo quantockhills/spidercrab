@@ -37,6 +37,8 @@ Download the latest release for your OS from the [releases page](https://github.
 - **Windows** → `spidercrab.dll` into `REAPER/UserPlugins/`
 - **Linux** → `spidercrab.so` into `REAPER/UserPlugins/`
 
+Then copy the **`frontend/`** folder into the same directory (next to the .dll/.so).
+
 ### 2. Launch REAPER
 The extension starts automatically — you'll see `WebSocket server started on port 9224` in the console.
 
