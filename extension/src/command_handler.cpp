@@ -3061,10 +3061,16 @@ void CommandHandler::HandleFxChainSearchRecursive(
             if (lowerExt != ".rfxchain") continue;
 
             // If query is non-empty, filter by case-insensitive substring match
+            // Search both the filename AND the full path (so directory names count too)
             if (!lowerQuery.empty()) {
                 std::string lowerName;
                 for (char c : name) lowerName += tolower((unsigned char)c);
-                if (lowerName.find(lowerQuery) == std::string::npos) continue;
+                // Also check the full path relative to rootPath
+                std::string relPath = entry.path().lexically_relative(rootPath).string();
+                std::string lowerRelPath;
+                for (char c : relPath) lowerRelPath += tolower((unsigned char)c);
+                if (lowerName.find(lowerQuery) == std::string::npos &&
+                    lowerRelPath.find(lowerQuery) == std::string::npos) continue;
             }
 
             if (!first) results += ",";
