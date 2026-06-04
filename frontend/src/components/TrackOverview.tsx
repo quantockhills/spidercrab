@@ -177,12 +177,10 @@ export function TrackOverview({
   const [chainCycler, setChainCycler] = useState<{trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null>(null);
 
   // Drag-and-drop state for FX reordering
-  // Note: Refs are used for data that must be available synchronously across
-  // dragStart → dragOver → drop events (React state updates are batched and
-  // not available until the next render cycle).
-  const [dragActiveTrack, setDragActiveTrack] = useState<number | null>(null); // which track has an active drag (for visual rendering)
-  const [dragSourceFxIdx, setDragSourceFxIdx] = useState<number | null>(null); // which FX is being dragged (for visual rendering)
-  const [dropVisualIdx, setDropVisualIdx] = useState<number | null>(null); // visual-only: show insertion indicator
+  const [dragActiveTrack, setDragActiveTrack] = useState<number | null>(null);
+  const [dragSourceFxIdx, setDragSourceFxIdx] = useState<number | null>(null);
+  const [dropVisualIdx, setDropVisualIdx] = useState<number | null>(null);
+  const [fxRefreshVersion, setFxRefreshVersion] = useState(0);
   const dragDataRef = useRef<{trackIdx: number; fxIdx: number} | null>(null);
   const dropTargetRef = useRef<{dropIndex: number} | null>(null);
 
@@ -195,6 +193,14 @@ export function TrackOverview({
       setIsPlaying(state.playing);
     }
   }, [onRecord, onGetTransportState]);
+
+  // Wrapper for FX reorder that refreshes the FX list after reorder
+  const handleReorderFx = useCallback(async (trackIdx: number, fromIndex: number, toIndex: number): Promise<boolean> => {
+    if (!onReorderFx) return false;
+    const ok = await onReorderFx(trackIdx, fromIndex, toIndex);
+    if (ok) setFxRefreshVersion(v => v + 1);
+    return ok;
+  }, [onReorderFx]);
 
   // Fetch FX for all tracks on mount / when track list changes
   useEffect(() => {
@@ -226,7 +232,7 @@ export function TrackOverview({
       if (!cancelled) setFxLoading(false);
     });
     return () => { cancelled = true; };
-  }, [tracks, getTrackFx]);
+  }, [tracks, getTrackFx, fxRefreshVersion]);
 
   const handlePlay = useCallback(async () => {
     if (!onPlay) return;
@@ -402,7 +408,7 @@ export function TrackOverview({
                   setDropVisualIdx={setDropVisualIdx}
                   setExpandedFx={setExpandedFx}
                   setChainCycler={setChainCycler}
-                  onReorderFx={onReorderFx}
+                  onReorderFx={handleReorderFx}
                   fxChainCycle={fxChainCycle}
                 />
               )}
