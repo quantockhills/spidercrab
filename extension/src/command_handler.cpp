@@ -306,8 +306,16 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["midi/event"]              = &CommandHandler::HandleMidiEvent;
     m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
     m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
+    m_commandMap["fx/tags/getAll"]           = &CommandHandler::HandleFxTagsGetAll;
+    m_commandMap["fx/tags/set"]              = &CommandHandler::HandleFxTagsSet;
 }
 CommandHandler::~CommandHandler() { }
+
+void CommandHandler::SetConfigDir(const std::string& dir)
+{
+    m_fxTagStorage = FxTagStorage(dir);
+    m_fxTagStorage.Load();
+}
 
 void CommandHandler::HandleMessage(int clientId, const std::string& message)
 {
@@ -3654,6 +3662,104 @@ void CommandHandler::HandlePlaytimeIsAvailable(
     }
     payload += "}";
     SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// FX/chain tag command handlers (Issue #97)
+// ============================================================
+
+void CommandHandler::HandleFxTagsGetAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    std::string tagsJson = m_fxTagStorage.GetAllTagsJson();
+    SendResponse(clientId, id, true, tagsJson);
+}
+
+void CommandHandler::HandleFxTagsSet(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string target = parser.getString("target"); // "fx" or "chain"
+    std::string ident  = parser.getString("ident");  // FX ident or chain file path
+
+    if (target.empty() || ident.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'target' or 'ident' parameter\"}");
+        return;
+    }
+
+    if (target != "fx" && target != "chain") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"target must be 'fx' or 'chain'\"}");
+        return;
+    }
+
+    // Parse tags array from payload
+    // The payload looks like: {"target":"fx","ident":"ident","tags":["a","b"]}
+    // Extract the tags array using a secondary parse
+    // Simplest: re-extract the full payload and look for "tags" array
+    std::vector<std::string> tags;
+    {
+        // Find the tags key in the raw payload
+        size_t tagsPos = payloadStr.find("\"tags\"");
+        if (tagsPos != std::string::npos) {
+            // Find the '[' character after "tags":
+            size_t colonPos = payloadStr.find(':', tagsPos);
+            if (colonPos != std::string::npos) {
+                size_t arrStart = payloadStr.find('[', colonPos);
+                if (arrStart != std::string::npos) {
+                    size_t arrEnd = payloadStr.find(']', arrStart);
+                    if (arrEnd != std::string::npos) {
+                        std::string arrContent = payloadStr.substr(arrStart + 1, arrEnd - arrStart - 1);
+                        // Parse comma-separated quoted strings
+                        size_t p = 0;
+                        while (p < arrContent.size()) {
+                            // Skip whitespace
+                            while (p < arrContent.size() && (arrContent[p] == ' ' || arrContent[p] == '\t')) p++;
+                            if (p >= arrContent.size()) break;
+                            if (arrContent[p] == ',') { p++; continue; }
+                            // Expect quoted string
+                            if (arrContent[p] == '"') {
+                                p++; // skip opening quote
+                                std::string tag;
+                                while (p < arrContent.size() && arrContent[p] != '"') {
+                                    if (arrContent[p] == '\\' && p + 1 < arrContent.size()) {
+                                        p++;
+                                        tag += arrContent[p++];
+                                    } else {
+                                        tag += arrContent[p++];
+                                    }
+                                }
+                                if (p < arrContent.size()) p++; // skip closing quote
+                                tags.push_back(tag);
+                            } else {
+                                p++; // skip unexpected char
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (target == "fx") {
+        m_fxTagStorage.SetFxTags(ident, tags);
+    } else {
+        m_fxTagStorage.SetChainTags(ident, tags);
+    }
+
+    // Persist to disk
+    try {
+        m_fxTagStorage.Save();
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to save tags: " + json_escape(e.what()) + "\"}");
+        return;
+    }
+
+    SendResponse(clientId, id, true, "{\"saved\":true}");
 }
 
 // ============================================================

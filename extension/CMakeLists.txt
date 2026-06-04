@@ -32,6 +32,7 @@ set(EXTENSION_SOURCES
     src/main.cpp
     src/websocket_server.cpp
     src/command_handler.cpp
+    src/fx_tags.cpp
     src/sha1_utils.cpp
     ${WDL_SOURCES}
 )
@@ -39,6 +40,7 @@ set(EXTENSION_SOURCES
 # ---- Test source files (no main.cpp — that's the Reaper entry point) ----
 set(TEST_SOURCES
     src/websocket_server.cpp
+    src/fx_tags.cpp
     src/sha1_utils.cpp
     ${WDL_SOURCES}
     test/test_main.cpp
