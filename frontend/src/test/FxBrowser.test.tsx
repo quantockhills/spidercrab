@@ -240,7 +240,7 @@ describe('FxBrowser', () => {
     fireEvent.change(searchInput, { target: { value: 'zzzzz' } });
 
     await waitFor(() => {
-      expect(screen.getByText(/No results matching/)).toBeDefined();
+      expect(screen.getByText(/No FX matching/)).toBeDefined();
     });
   });
 
@@ -302,5 +302,153 @@ describe('FxBrowser', () => {
       }
     }
     expect(headerFound).toBe(true);
+  });
+
+  // ── Unified search: FX + FX Chains (Issue #96) ──
+
+  it('calls fxChainSearchRecursive when search has text and prop is provided', async () => {
+    const fxChainSearchRecursive = vi.fn().mockResolvedValue({
+      query: 'comp',
+      results: [{ filePath: '/chains/MyComp.RfxChain', name: 'MyComp.RfxChain', size: 1024 }],
+    });
+    const fxChainLoad = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ fxChainSearchRecursive, fxChainLoad, fxChainPath: '/chains' });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search FX...')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search FX...');
+    fireEvent.change(searchInput, { target: { value: 'comp' } });
+
+    // Wait for debounce (300ms) + async call
+    await waitFor(() => {
+      expect(fxChainSearchRecursive).toHaveBeenCalledWith('comp', '/chains');
+    }, { timeout: 1000 });
+  });
+
+  it('shows chain results with 🔗 Chain: prefix', async () => {
+    const fxChainSearchRecursive = vi.fn().mockResolvedValue({
+      query: 'comp',
+      results: [{ filePath: '/chains/MyComp.RfxChain', name: 'MyComp.RfxChain', size: 1024 }],
+    });
+    const fxChainLoad = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ fxChainSearchRecursive, fxChainLoad, fxChainPath: '/chains' });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search FX...')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search FX...');
+    fireEvent.change(searchInput, { target: { value: 'comp' } });
+
+    // Wait for chain result to appear
+    await waitFor(() => {
+      expect(screen.getByText(/🔗 Chain:/)).toBeDefined();
+    });
+
+    // The chain name should be visible (cleaned name, no .RfxChain extension)
+    expect(screen.getByText('MyComp')).toBeDefined();
+  });
+
+  it('calls fxChainLoad when chain result is clicked', async () => {
+    const fxChainSearchRecursive = vi.fn().mockResolvedValue({
+      query: 'comp',
+      results: [{ filePath: '/chains/MyComp.RfxChain', name: 'MyComp.RfxChain', size: 1024 }],
+    });
+    const fxChainLoad = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ fxChainSearchRecursive, fxChainLoad, fxChainPath: '/chains' });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search FX...')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search FX...');
+    fireEvent.change(searchInput, { target: { value: 'comp' } });
+
+    // Wait for chain result to appear
+    await waitFor(() => {
+      expect(screen.getByText(/🔗 Chain:/)).toBeDefined();
+    });
+
+    // Click on the chain result (the button containing "MyComp")
+    const chainButton = screen.getByText('MyComp').closest('button');
+    if (chainButton) fireEvent.click(chainButton);
+
+    await waitFor(() => {
+      expect(fxChainLoad).toHaveBeenCalledWith(0, '/chains/MyComp.RfxChain', 'replace');
+    });
+  });
+
+  it('shows empty state when chain search returns no results', async () => {
+    const fxChainSearchRecursive = vi.fn().mockResolvedValue({
+      query: 'zzzzz',
+      results: [],
+    });
+    const fxChainLoad = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ fxChainSearchRecursive, fxChainLoad, fxChainPath: '/chains' });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search FX...')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search FX...');
+    fireEvent.change(searchInput, { target: { value: 'zzzzz' } });
+
+    // Wait - should show "No FX matching" since there are no FX results
+    await waitFor(() => {
+      expect(screen.getByText(/No FX matching/)).toBeDefined();
+    });
+    // Wait for chain search debounce to complete and show "No matching chains"
+    await waitFor(() => {
+      expect(screen.getByText('No matching chains')).toBeDefined();
+    }, { timeout: 2000 });
+  });
+
+  it('does not call fxChainSearchRecursive when search is empty', async () => {
+    const fxChainSearchRecursive = vi.fn().mockResolvedValue({
+      query: '',
+      results: [],
+    });
+    const fxChainLoad = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ fxChainSearchRecursive, fxChainLoad, fxChainPath: '/chains' });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search FX...')).toBeDefined();
+    });
+
+    // Wait a bit to ensure no call was made
+    await new Promise((r) => setTimeout(r, 500));
+    expect(fxChainSearchRecursive).not.toHaveBeenCalled();
+  });
+
+  it('disables chain load button when no track is selected', async () => {
+    const fxChainSearchRecursive = vi.fn().mockResolvedValue({
+      query: 'comp',
+      results: [{ filePath: '/chains/MyComp.RfxChain', name: 'MyComp.RfxChain', size: 1024 }],
+    });
+    const fxChainLoad = vi.fn().mockResolvedValue(true);
+
+    renderFxBrowser({ selectedTrack: null, fxChainSearchRecursive, fxChainLoad, fxChainPath: '/chains' });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search FX...')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search FX...');
+    fireEvent.change(searchInput, { target: { value: 'comp' } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/🔗 Chain:/)).toBeDefined();
+    });
+
+    // The load button should be disabled
+    const loadButton = screen.getByText('Load');
+    expect(loadButton.closest('button')).toBeDisabled();
   });
 });
