@@ -712,6 +712,178 @@ describe('SampleBrowser', () => {
     });
   });
 
+  // ── Root selector tests (Issue #101) ────────────────────────────
+
+  describe('root selector with samplePaths', () => {
+    beforeEach(() => {
+      localStorage.clear();
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries() });
+    });
+
+    it('shows root selector when samplePaths is provided and no root selected', () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths', '/samples/loops']}
+        />
+      );
+
+      // Should show the root selector heading
+      expect(screen.getByText('Sample Directories')).toBeDefined();
+
+      // Should show each configured root
+      expect(screen.getByText('/samples/drums')).toBeDefined();
+      expect(screen.getByText('/samples/synths')).toBeDefined();
+      expect(screen.getByText('/samples/loops')).toBeDefined();
+
+      // Should NOT load any directory yet
+      expect(mockGetDirectory).not.toHaveBeenCalled();
+    });
+
+    it('tapping a root navigates into it', async () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths']}
+        />
+      );
+
+      // Root selector visible
+      expect(screen.getByText('/samples/drums')).toBeDefined();
+
+      // Click the drums root
+      fireEvent.click(screen.getByText('/samples/drums'));
+
+      // Should navigate into that directory
+      await waitFor(() => {
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums');
+      });
+
+      // Should show directory contents
+      await waitFor(() => {
+        expect(screen.getByText('Drums')).toBeDefined();
+      });
+    });
+
+    it('shows empty state when samplePaths is empty array', () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={[]}
+        />
+      );
+
+      expect(screen.getByText(/No sample directories configured/i)).toBeDefined();
+    });
+
+    it('shows which root is currently being browsed', async () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths']}
+        />
+      );
+
+      // Click drums root
+      fireEvent.click(screen.getByText('/samples/drums'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Drums')).toBeDefined();
+      });
+
+      // Should show "← Roots" back button when browsing a root
+      expect(screen.getByText('← Roots')).toBeDefined();
+    });
+
+    it('".." at root level returns to root selector', async () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths']}
+        />
+      );
+
+      // Click drums root
+      fireEvent.click(screen.getByText('/samples/drums'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Drums')).toBeDefined();
+      });
+
+      // Navigate into a subdirectory
+      const drumDir = screen.getByText('Drums');
+      fireEvent.click(drumDir);
+
+      await waitFor(() => {
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums/Drums');
+      });
+
+      // Go up with ..
+      // After loading Drums subdir, the entries include '..'
+      const entries = [
+        { name: '..', type: 'dir' as const, size: 0 },
+        { name: 'kick.wav', type: 'file' as const, size: 100 },
+      ];
+      mockGetDirectory.mockResolvedValue({ entries });
+
+      // Click Drums to go back (..) and then navigate up
+      // Actually, we need to go up from Drums to return to root selector
+      // The '..' entry should be visible
+      await waitFor(() => {
+        expect(screen.getByText('..')).toBeDefined();
+      });
+
+      // Go up — should return to root selector
+      fireEvent.click(screen.getByText('..'));
+
+      await waitFor(() => {
+        expect(screen.getByText('/samples/drums')).toBeDefined();
+        expect(screen.getByText('/samples/synths')).toBeDefined();
+      });
+    });
+
+    it('falls back to old behavior when samplePaths prop is not provided', () => {
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+        />
+      );
+
+      // Should show the old path from localStorage (default /tmp)
+      expect(screen.getByText(/\/tmp/)).toBeDefined();
+    });
+  });
+
   // ── Configurable root path tests (Issue #28) ───────────────────
 
   describe('configurable root path', () => {

@@ -212,6 +212,286 @@ describe('App — Settings tab', () => {
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('shows Sample Directories section with empty state', async () => {
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      play: vi.fn(),
+      stop: vi.fn(),
+      record: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Sample Directories')).toBeDefined();
+    });
+
+    // Should show empty state message
+    expect(screen.getByText(/No sample directories configured/i)).toBeDefined();
+
+    // Should show Add Directory button
+    expect(screen.getByText('+ Add Directory')).toBeDefined();
+  });
+
+  it('can add a sample directory path', async () => {
+    localStorage.clear();
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      play: vi.fn(),
+      stop: vi.fn(),
+      record: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('+ Add Directory')).toBeDefined();
+    });
+
+    // Click Add Directory to reveal input
+    fireEvent.click(screen.getByText('+ Add Directory'));
+
+    const input = screen.getByPlaceholderText('/path/to/samples');
+    expect(input).toBeDefined();
+
+    // Type a path
+    fireEvent.change(input, { target: { value: '/home/user/samples' } });
+    fireEvent.click(screen.getByText('Add'));
+
+    // Should now show the path in the list
+    await waitFor(() => {
+      expect(screen.getByText(/\/home\/user\/samples/)).toBeDefined();
+    });
+
+    // Should persist to localStorage
+    const stored = localStorage.getItem('sampleBrowserPaths');
+    expect(stored).toBeDefined();
+    if (stored) {
+      const paths = JSON.parse(stored);
+      expect(paths).toContain('/home/user/samples');
+    }
+
+    localStorage.clear();
+  });
+
+  it('can remove a sample directory path', async () => {
+    localStorage.clear();
+    // Seed localStorage with a path
+    localStorage.setItem('sampleBrowserPaths', JSON.stringify(['/home/user/samples']));
+
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      play: vi.fn(),
+      stop: vi.fn(),
+      record: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Sample Directories')).toBeDefined();
+    });
+
+    // Should show the seeded path
+    expect(screen.getByText(/\/home\/user\/samples/)).toBeDefined();
+
+    // Click the remove button
+    const removeButton = screen.getByLabelText(/Remove/);
+    fireEvent.click(removeButton);
+
+    // Should no longer show the path
+    await waitFor(() => {
+      expect(screen.queryByText(/\/home\/user\/samples/)).toBeNull();
+    });
+
+    // localStorage should be updated
+    const stored = localStorage.getItem('sampleBrowserPaths');
+    expect(stored).toBe('[]');
+
+    localStorage.clear();
+  });
+
+  it('migrates old single-path format to new array format', async () => {
+    localStorage.clear();
+    // Simulate old format
+    localStorage.setItem('sampleBrowserRootPath', '/legacy/path');
+
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      play: vi.fn(),
+      stop: vi.fn(),
+      record: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Sample Directories')).toBeDefined();
+    });
+
+    // Should show the migrated path
+    await waitFor(() => {
+      expect(screen.getByText(/\/legacy\/path/)).toBeDefined();
+    });
+
+    // Old key should be removed
+    expect(localStorage.getItem('sampleBrowserRootPath')).toBeNull();
+
+    // New key should exist
+    const stored = localStorage.getItem('sampleBrowserPaths');
+    expect(stored).toBeDefined();
+    if (stored) {
+      const paths = JSON.parse(stored);
+      expect(paths).toContain('/legacy/path');
+    }
+
+    localStorage.clear();
+  });
+
   it('calls refreshFxCache when Refresh Plugin List is clicked', async () => {
     const mockRefreshFxCache = vi.fn();
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
