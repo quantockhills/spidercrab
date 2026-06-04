@@ -468,7 +468,9 @@ static bool InitializeCoreServices()
     api.TrackFX_Delete              = TrackFX_Delete;
     api.TrackFX_CopyToTrack         = TrackFX_CopyToTrack;
     api.TrackFX_GetPresetIndex      = TrackFX_GetPresetIndex;
+    api.TrackFX_GetPreset          = TrackFX_GetPreset;
     api.TrackFX_SetPreset           = TrackFX_SetPreset;
+    api.TrackFX_SetPresetByIndex   = TrackFX_SetPresetByIndex;
     api.EnumInstalledFX             = EnumInstalledFX;
     api.GetTrackStateChunk          = GetTrackStateChunk;
     api.SetTrackStateChunk          = SetTrackStateChunk;
