@@ -1,5 +1,13 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { EnumeratedFx, Track } from '../hooks/useReaper';
+
+// ── Chain search types ───────────────────────────────────────
+
+interface FxChainSearchResult {
+  filePath: string;
+  name: string;
+  size: number;
+}
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -12,6 +20,10 @@ interface FxBrowserProps {
   onSelectFx: (trackIdx: number, fxIdx: number, fxName: string) => void;
   onBack: () => void;
   onOpenFxChains?: () => void;
+  // Unified FX + FX chain search (Issue #96)
+  fxChainSearchRecursive?: (query: string, rootPath: string) => Promise<{ query: string; results: FxChainSearchResult[] }>;
+  fxChainLoad?: (trackIdx: number, filePath: string, mode?: 'replace' | 'append') => Promise<boolean>;
+  fxChainPath?: string;
 }
 
 interface FxInfo {
@@ -42,6 +54,9 @@ export function FxBrowser({
   onSelectFx,
   onBack,
   onOpenFxChains,
+  fxChainSearchRecursive,
+  fxChainLoad,
+  fxChainPath,
 }: FxBrowserProps) {
   const [allFx, setAllFx] = useState<EnumeratedFx[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +65,11 @@ export function FxBrowser({
   const [formatFilter, setFormatFilter] = useState<FormatFilter>('All');
   const [addingName, setAddingName] = useState<string | null>(null);
   const [addedFx, setAddedFx] = useState<Set<string>>(new Set());
+
+  // Chain search state (Issue #96)
+  const [chainResults, setChainResults] = useState<FxChainSearchResult[] | null>(null);
+  const [chainLoadingFile, setChainLoadingFile] = useState<string | null>(null);
+  const chainSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load FX on mount
   useEffect(() => {
@@ -69,6 +89,36 @@ export function FxBrowser({
       });
     return () => { cancelled = true; };
   }, [enumerateFx]);
+
+  // Debounced chain search (Issue #96)
+  useEffect(() => {
+    if (!search.trim() || !fxChainSearchRecursive || !fxChainPath) {
+      return;
+    }
+
+    // Clear previous timer
+    if (chainSearchTimerRef.current) {
+      clearTimeout(chainSearchTimerRef.current);
+    }
+
+    // Use a ref to track searching state to avoid synchronous setState
+    const timerId = setTimeout(async () => {
+      try {
+        const result = await fxChainSearchRecursive(search, fxChainPath);
+        setChainResults(result.results);
+      } catch {
+        setChainResults([]);
+      }
+    }, 300);
+    chainSearchTimerRef.current = timerId;
+
+    return () => {
+      if (chainSearchTimerRef.current) {
+        clearTimeout(chainSearchTimerRef.current);
+        chainSearchTimerRef.current = null;
+      }
+    };
+  }, [search, fxChainPath, fxChainSearchRecursive]);
 
   // Filtered + grouped FX list
   const groupedFx = useMemo(() => {
@@ -154,6 +204,21 @@ export function FxBrowser({
       }
     },
     [onSelectFx, getTrackFx],
+  );
+
+  const handleLoadChain = useCallback(
+    async (filePath: string) => {
+      if (selectedTrack === null || !fxChainLoad) return;
+      setChainLoadingFile(filePath);
+      try {
+        await fxChainLoad(selectedTrack, filePath, 'replace');
+      } catch (err) {
+        console.error('Failed to load FX chain:', err);
+      } finally {
+        setChainLoadingFile(null);
+      }
+    },
+    [selectedTrack, fxChainLoad],
   );
 
   const selectedTrackName = selectedTrack !== null
@@ -260,14 +325,10 @@ export function FxBrowser({
               Install some VST/VST3/CLAP/JSFX plugins in Reaper
             </p>
           </div>
-        ) : groupedFx.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
-            <div className="text-4xl">🔍</div>
-            <p className="text-sm">No results matching &quot;{search}&quot;</p>
-          </div>
         ) : (
           <div className="px-3 py-2 space-y-4">
-            {groupedFx.map(([format, fxList]) => (
+            {/* FX groups */}
+            {groupedFx.length > 0 && groupedFx.map(([format, fxList]) => (
               <div key={format}>
                 {/* Format section header */}
                 <div className="px-2 py-1.5 flex items-center gap-2">
@@ -295,6 +356,52 @@ export function FxBrowser({
                 </div>
               </div>
             ))}
+
+            {/* No FX results message */}
+            {groupedFx.length === 0 && (
+              <div className="py-8 text-center">
+                <div className="text-4xl mb-2">🔍</div>
+                <p className="text-sm text-[var(--text-secondary)]">No FX matching &quot;{search}&quot;</p>
+              </div>
+            )}
+
+            {/* Chain search results (Issue #96) */}
+            {(search.trim() && fxChainSearchRecursive && fxChainPath) && (
+              <div>
+                {/* Chain section header */}
+                <div className="px-2 py-1.5 flex items-center gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-green)]">
+                    🔗 Chains
+                  </span>
+                  <span className="text-[10px] text-[var(--text-secondary)]">
+                    {chainResults !== null ? `(${chainResults.length})` : ''}
+                  </span>
+                </div>
+
+                {/* Chain items */}
+                <div className="space-y-1">
+                  {chainResults === null ? (
+                    <div className="px-3 py-3 text-xs text-[var(--text-secondary)] italic">
+                      Searching all folders…
+                    </div>
+                  ) : chainResults.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-[var(--text-secondary)] italic">
+                      No matching chains
+                    </div>
+                  ) : (
+                    chainResults.map((chain) => (
+                      <ChainRow
+                        key={chain.filePath}
+                        chain={chain}
+                        selectedTrack={selectedTrack}
+                        isLoading={chainLoadingFile === chain.filePath}
+                        onLoad={handleLoadChain}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -374,6 +481,77 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect }: FxRowP
         `}
       >
         {isAdded ? '✓ Added' : isAdding ? '...' : 'Add'}
+      </button>
+    </div>
+  );
+}
+
+// ── Chain Row (Issue #96) ────────────────────────────────────
+
+interface ChainRowProps {
+  chain: FxChainSearchResult;
+  selectedTrack: number | null;
+  isLoading: boolean;
+  onLoad: (filePath: string) => void;
+}
+
+function ChainRow({ chain, selectedTrack, isLoading, onLoad }: ChainRowProps) {
+  // Clean name: remove directory prefix and .RfxChain extension for display
+  const displayName = chain.name.replace(/\.RfxChain$/i, '').replace(/^.*[/\\]/, '');
+
+  return (
+    <div
+      className="flex items-center gap-2.5 px-3 py-2
+        bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
+        active:brightness-95 transition-all duration-100 select-none"
+    >
+      {/* Chain name - tap to load */}
+      <button
+        onClick={() => {
+          if (selectedTrack !== null) {
+            onLoad(chain.filePath);
+          }
+        }}
+        disabled={selectedTrack === null}
+        className="flex-1 min-w-0 text-left"
+      >
+        <div className="text-sm font-medium truncate">
+          <span className="text-[var(--accent-green)]">🔗 Chain:</span> {displayName}
+        </div>
+        {chain.size > 0 && (
+          <div className="text-[10px] text-[var(--text-secondary)] truncate">
+            {chain.filePath}
+          </div>
+        )}
+      </button>
+
+      {/* Size badge */}
+      {chain.size > 0 && (
+        <span className="flex-shrink-0 text-[10px] text-[var(--text-secondary)] px-2 py-0.5 bg-[var(--bg-tertiary)]">
+          {chain.size < 1024 ? `${chain.size}B` : `${(chain.size / 1024).toFixed(0)}KB`}
+        </span>
+      )}
+
+      {/* Load button */}
+      <button
+        onClick={() => {
+          if (selectedTrack !== null) {
+            onLoad(chain.filePath);
+          }
+        }}
+        disabled={selectedTrack === null || isLoading}
+        className={`
+          flex-shrink-0 px-3 py-1.5 text-xs font-medium
+          transition-all active:brightness-95 min-h-[44px]
+          ${selectedTrack === null
+            ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/50 cursor-not-allowed'
+            : isLoading
+              ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+              : 'bg-[var(--accent-dim)] text-[var(--accent-green)]'
+          }
+        `}
+      >
+        {isLoading ? '...' : 'Load'}
       </button>
     </div>
   );

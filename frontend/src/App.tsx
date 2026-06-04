@@ -351,6 +351,9 @@ function AppInner() {
             onSelectFx={handleSelectFx}
             onBack={handleBackFromFxBrowser}
             onOpenFxChains={handleOpenFxChains}
+            fxChainSearchRecursive={fxChainSearchRecursive}
+            fxChainLoad={fxChainLoad}
+            fxChainPath={fxChainPath}
           />
         ))}
 
