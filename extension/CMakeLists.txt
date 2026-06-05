@@ -48,6 +48,7 @@ set(TEST_SOURCES
     test/test_frontend_server.cpp
     test/test_sha1_utils.cpp
     test/test_websocket.cpp
+    test/test_osc.cpp
 )
 
 # ============================================================

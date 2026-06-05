@@ -127,7 +127,12 @@ static int                   g_httpPort   = 5173;
 static bool                  g_playtimeWasAvailable = false; // Track Playtime availability across Run() polls
 
 // MIDI feedback listener for Playtime 2 clip launcher (Issue #91)
+// DEPRECATED: Replaced by OSC receiver (Issue #98)
+// Kept for backward compatibility during migration.
 static midi_Input*           g_midiInput  = nullptr;
+
+// OSC feedback receiver on default port (Issue #98)
+static const int             g_oscPort    = 9000;
 
 // Helper: find the frontend dist directory relative to this extension's location
 static bool FindFrontendDist(std::string& outPath)
@@ -253,8 +258,8 @@ public:
             }
         }
 
-        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91)
-        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91)
+        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91 / DEPRECATED)
+        // Kept for backward compatibility during migration to OSC.
         if (g_midiInput) {
             // Swap buffers to get latest MIDI events
             g_midiInput->SwapBufsPrecise(0, 0.0);
@@ -285,7 +290,12 @@ public:
             }
         }
 
-
+        // Poll OSC feedback from ReaLearn (Issue #98)
+        // Non-blocking: returns immediately when no data.
+        // Event-driven: zero CPU when no state changes.
+        if (g_cmdHandler) {
+            g_cmdHandler->PollOscReceiver();
+        }
 
     }
 
@@ -508,6 +518,32 @@ static bool InitializeCoreServices()
         }
     } else {
         fprintf(stderr, "[reaper-ipad] MIDI output not available (CreateMIDIOutput not resolved)\n");
+    }
+
+    // Initialize OSC sender for ReaLearn integration (Issue #98)
+    g_cmdHandler->GetOscSender().setRemotePort(g_oscPort);
+    g_cmdHandler->GetOscSender().setRemoteAddress("127.0.0.1");
+
+    // Initialize OSC receiver for ReaLearn feedback (Issue #98)
+    // Registers callback to update Playtime slot state when OSC feedback arrives.
+    g_cmdHandler->GetOscReceiver().setSlotStateCallback(
+        [](int col, int row, const std::string& state) {
+            if (g_cmdHandler) {
+                g_cmdHandler->GetPlaytimeState().setSlotState(col, row, state);
+                SlotState s = g_cmdHandler->GetPlaytimeState().getSlot(col, row);
+                g_cmdHandler->BroadcastMatrixEvent("matrix/slotStateChanged", s.toJson());
+            }
+        });
+
+    // Try to bind OSC receiver. If port 9000 is taken, falls back to next available.
+    if (!g_cmdHandler->GetOscReceiver().bind(g_oscPort)) {
+        fprintf(stderr, "[reaper-ipad] WARNING: OSC receiver bind failed on port %d\n"
+                        "           ReaLearn feedback will not work.\n"
+                        "           Check if another service is using this port.\n",
+            g_oscPort);
+    } else {
+        fprintf(stderr, "[reaper-ipad] OSC receiver listening on port %d\n",
+            g_cmdHandler->GetOscReceiver().port());
     }
 
     // Set up WebSocket message handler

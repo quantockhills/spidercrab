@@ -3,6 +3,8 @@
 #include "playtime_api.h"
 #include "playtime_state.h"
 #include "playtime_midi.h"
+#include "osc_sender.h"
+#include "osc_receiver.h"
 #include "sequencer_state.h"
 #include "fx_tags.h"
 #include <functional>
@@ -116,6 +118,13 @@ public:
     // Access the MIDI output helper (for setting up send function at startup)
     PlaytimeMidi& GetMidi() { return m_playtimeMidi; }
 
+    // Access the OSC sender and receiver
+    OscSender& GetOscSender() { return m_oscSender; }
+    OscReceiver& GetOscReceiver() { return m_oscReceiver; }
+
+    // Poll the OSC receiver for incoming feedback
+    void PollOscReceiver() { m_oscReceiver.poll(); }
+
     // Access the FX tag storage (for testing)
     FxTagStorage& GetFxTagStorage() { return m_fxTagStorage; }
 
@@ -164,6 +173,8 @@ private:
     // Playtime 2 clip launcher state (Issues #61)
     PlaytimeState m_playtimeState;
     PlaytimeMidi  m_playtimeMidi;
+    OscSender     m_oscSender;
+    OscReceiver   m_oscReceiver;
 
     // Step sequencer state (Issue #63)
     SequencerState m_sequencerState;
