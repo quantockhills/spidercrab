@@ -29,6 +29,15 @@ test:
 	@echo "=== Running C++ tests ==="
 	cd extension/build && ./reaper-ipad-test
 
+# ---- Windows Cross-Compilation ----
+
+build-windows:
+	TARGET=windows bash extension/build.sh
+
+# Verify Windows DLL structure (requires xwin + clang-cl)
+test-windows: build-windows
+	bash extension/test/test_windows_cross_compile.sh
+
 deploy:
 	cd extension && bash deploy.sh
 

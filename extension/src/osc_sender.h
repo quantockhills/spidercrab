@@ -30,6 +30,9 @@
 #define _WINSOCKAPI_
 #include <winsock2.h>
 #include <ws2tcpip.h>
+// ssize_t is not defined on Windows; sendto returns int
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
 #else
 #include <sys/types.h>
 #include <sys/socket.h>
