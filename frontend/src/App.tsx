@@ -29,6 +29,7 @@ function AppInner() {
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,
+    toggleTrackRecordMode,
     selectTrack,
     setTrackVolume,
     setTrackPan,
@@ -87,28 +88,25 @@ function AppInner() {
   // Sample directory paths (Issue #101)
   const [samplePaths, setSamplePaths] = useState<string[]>(
     () => {
+      // Check new format first
       const stored = localStorage.getItem('sampleBrowserPaths');
       if (stored) {
         try { return JSON.parse(stored) as string[]; }
         catch { return []; }
+      }
+      // Migration from old single-path format (Issue #101)
+      const oldPath = localStorage.getItem('sampleBrowserRootPath');
+      if (oldPath) {
+        const migrated = [oldPath];
+        localStorage.setItem('sampleBrowserPaths', JSON.stringify(migrated));
+        localStorage.removeItem('sampleBrowserRootPath');
+        return migrated;
       }
       return [];
     }
   );
   const [editingSamplePath, setEditingSamplePath] = useState(false);
   const [newSamplePath, setNewSamplePath] = useState('');
-
-  // Migration from old single-path format (Issue #101)
-  useEffect(() => {
-    const oldPath = localStorage.getItem('sampleBrowserRootPath');
-    const newPaths = localStorage.getItem('sampleBrowserPaths');
-    if (oldPath && !newPaths) {
-      const migrated = [oldPath];
-      localStorage.setItem('sampleBrowserPaths', JSON.stringify(migrated));
-      setSamplePaths(migrated);
-      localStorage.removeItem('sampleBrowserRootPath');
-    }
-  }, []);
 
   // Persist samplePaths to localStorage (Issue #101)
   useEffect(() => {
@@ -203,6 +201,10 @@ function AppInner() {
   const handleToggleArm = useCallback(async (index: number) => {
     await toggleTrackArm(index);
   }, [toggleTrackArm]);
+
+  const handleToggleRecordMode = useCallback(async (index: number) => {
+    await toggleTrackRecordMode(index);
+  }, [toggleTrackRecordMode]);
 
   const handleVolumeChange = useCallback(async (index: number, volume: number) => {
     const ok = await setTrackVolume(index, volume);
@@ -414,6 +416,7 @@ function AppInner() {
             onToggleMute={handleToggleMute}
             onToggleSolo={handleToggleSolo}
             onToggleArm={handleToggleArm}
+            onToggleRecordMode={handleToggleRecordMode}
             onVolumeChange={handleVolumeChange}
             onPanChange={handlePanChange}
             onAddTrack={addTrack}

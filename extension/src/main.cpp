@@ -127,12 +127,7 @@ static int                   g_httpPort   = 5173;
 static bool                  g_playtimeWasAvailable = false; // Track Playtime availability across Run() polls
 
 // MIDI feedback listener for Playtime 2 clip launcher (Issue #91)
-// DEPRECATED: Replaced by OSC receiver (Issue #98)
-// Kept for backward compatibility during migration.
 static midi_Input*           g_midiInput  = nullptr;
-
-// OSC feedback receiver on default port (Issue #98)
-static const int             g_oscPort    = 9000;
 
 // Helper: find the frontend dist directory relative to this extension's location
 static bool FindFrontendDist(std::string& outPath)
@@ -258,8 +253,8 @@ public:
             }
         }
 
-        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91 / DEPRECATED)
-        // Kept for backward compatibility during migration to OSC.
+        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91)
+        // Poll MIDI feedback from Playtime 2 via ReaLearn (Issue #91)
         if (g_midiInput) {
             // Swap buffers to get latest MIDI events
             g_midiInput->SwapBufsPrecise(0, 0.0);
@@ -521,7 +516,7 @@ static bool InitializeCoreServices()
     }
 
     // Initialize OSC sender for ReaLearn integration (Issue #98)
-    g_cmdHandler->GetOscSender().setRemotePort(g_oscPort);
+    g_cmdHandler->GetOscSender().setRemotePort(9000);
     g_cmdHandler->GetOscSender().setRemoteAddress("127.0.0.1");
 
     // Initialize OSC receiver for ReaLearn feedback (Issue #98)
@@ -536,11 +531,10 @@ static bool InitializeCoreServices()
         });
 
     // Try to bind OSC receiver. If port 9000 is taken, falls back to next available.
-    if (!g_cmdHandler->GetOscReceiver().bind(g_oscPort)) {
-        fprintf(stderr, "[reaper-ipad] WARNING: OSC receiver bind failed on port %d\n"
+    if (!g_cmdHandler->GetOscReceiver().bind(9000)) {
+        fprintf(stderr, "[reaper-ipad] WARNING: OSC receiver bind failed on port 9000\n"
                         "           ReaLearn feedback will not work.\n"
-                        "           Check if another service is using this port.\n",
-            g_oscPort);
+                        "           Check if another service is using this port.\n");
     } else {
         fprintf(stderr, "[reaper-ipad] OSC receiver listening on port %d\n",
             g_cmdHandler->GetOscReceiver().port());

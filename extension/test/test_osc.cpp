@@ -131,6 +131,28 @@ TEST(OscSenderTest, StringPadding)
     EXPECT_EQ(OscSender::paddedStringLength(12), 16); // 12+1=13, pad to 16
 }
 
+// Test: buildMessage with empty type tags and no args (address-only message)
+TEST(OscSenderTest, AddressOnlyMessage)
+{
+    OscSender sender;
+    sender.setRemotePort(9000);
+
+    // Use the address-only overload: buildMessage(const std::string&)
+    // "/playtime/slot/0/5/trigger" = 26 chars, padded to 28
+    // Type tag: "," = 1 char + 3 pad = 4 bytes
+    // Total = 28 + 4 = 32 bytes
+    std::vector<uint8_t> buf = sender.buildMessage("/playtime/slot/0/5/trigger");
+
+    EXPECT_EQ(buf.size(), 32);
+    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/slot/0/5/trigger", 26));
+
+    // Type tag at byte 28
+    EXPECT_EQ(buf[28], ',');
+    EXPECT_EQ(buf[29], '\0');
+    EXPECT_EQ(buf[30], '\0');
+    EXPECT_EQ(buf[31], '\0');
+}
+
 // ============================================================
 // OscReceiver tests — OSC packet parsing
 // ============================================================
@@ -316,6 +338,8 @@ TEST(OscIntegrationTest, SendAndReceiveLocal)
     });
 
     // Send a /playtime/slot/state OSC message (the address the receiver dispatches)
+    // Note: slot state feedback messages use the multi-arg format with
+    // full col/row/stateId/flags/stateName arguments (sent by ReaLearn)
     auto packet = sender.buildMessage("/playtime/slot/state", "iiis",
         {2, 4, 1, 0}, {"playing"});
     bool sent = sender.sendPacket(packet);
@@ -348,7 +372,7 @@ TEST(OscIntegrationTest, SendDoesNotCrash)
 }
 
 // ============================================================
-// OscSender::buildTriggerSlotMessage tests
+// OscSender::buildTriggerSlotMessage tests (per-slot addresses)
 // ============================================================
 
 TEST(OscSenderTest, TriggerSlotMessageFormat)
@@ -359,22 +383,29 @@ TEST(OscSenderTest, TriggerSlotMessageFormat)
     auto buf = sender.buildTriggerSlotMessage(3, 7);
 
     ASSERT_FALSE(buf.empty());
-    // Address should be "/playtime/slot/trigger" (22 chars, padded to 24)
-    const char* expectedAddr = "/playtime/slot/trigger";
-    EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 22));
-    // Type tag should be at byte 24 (22 + 1 NUL + 1 pad = 24)
-    size_t addrPadded = 24;
-    EXPECT_EQ(buf[addrPadded], ',');
-    EXPECT_EQ(buf[addrPadded + 1], 'i');
-    EXPECT_EQ(buf[addrPadded + 2], 'i');
-    EXPECT_EQ(buf[addrPadded + 3], '\0');
-    // Int args: col=3, row=7 (big-endian at offset 28 and 32)
-    int col = (buf[addrPadded + 4] << 24) | (buf[addrPadded + 5] << 16) |
-              (buf[addrPadded + 6] << 8) | buf[addrPadded + 7];
-    int row = (buf[addrPadded + 8] << 24) | (buf[addrPadded + 9] << 16) |
-              (buf[addrPadded + 10] << 8) | buf[addrPadded + 11];
-    EXPECT_EQ(col, 3);
-    EXPECT_EQ(row, 7);
+    // Address should be "/playtime/slot/3/7/trigger" (27 chars, padded to 28)
+    const char* expectedAddr = "/playtime/slot/3/7/trigger";
+    EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 27));
+    // Message should have type tag "," (comma only, no args) at byte 28
+    EXPECT_EQ(buf[28], ',');
+    EXPECT_EQ(buf[29], '\0');
+    EXPECT_EQ(buf[30], '\0');
+    EXPECT_EQ(buf[31], '\0');
+    // Total = 28 (addr) + 4 (type tag) = 32
+    EXPECT_EQ(buf.size(), 32);
+}
+
+TEST(OscSenderTest, TriggerSlotMessageLargeNumbers)
+{
+    OscSender sender;
+    sender.setRemotePort(9000);
+
+    auto buf = sender.buildTriggerSlotMessage(10, 25);
+
+    ASSERT_FALSE(buf.empty());
+    // "/playtime/slot/10/25/trigger" = 29 chars, padded to 32
+    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/slot/10/25/trigger", 29));
+    EXPECT_EQ(buf.size(), 36); // 32 addr + 4 type tag
 }
 
 TEST(OscSenderTest, RecordSlotMessageFormat)
@@ -385,13 +416,16 @@ TEST(OscSenderTest, RecordSlotMessageFormat)
     auto buf = sender.buildRecordSlotMessage(1, 5);
 
     ASSERT_FALSE(buf.empty());
-    // "/playtime/slot/record" = 21 chars, padded to 24
-    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/slot/record", 21));
-    EXPECT_EQ(buf[21], '\0'); // NUL terminator at position 21
-    // Type tag at byte 24 (21+1 NUL+2 pad = 24)
-    EXPECT_EQ(buf[24], ',');
-    EXPECT_EQ(buf[25], 'i');
-    EXPECT_EQ(buf[26], 'i');
+    // Address should be "/playtime/slot/1/5/record" (26 chars, padded to 28)
+    const char* expectedAddr = "/playtime/slot/1/5/record";
+    EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 26));
+    // Message should have no type tag and no args — just address + ","
+    EXPECT_EQ(buf[28], ',');
+    EXPECT_EQ(buf[29], '\0');
+    EXPECT_EQ(buf[30], '\0');
+    EXPECT_EQ(buf[31], '\0');
+    // Total = 28 (addr) + 4 (type tag) = 32
+    EXPECT_EQ(buf.size(), 32);
 }
 
 TEST(OscSenderTest, TriggerSceneMessageFormat)
@@ -402,18 +436,30 @@ TEST(OscSenderTest, TriggerSceneMessageFormat)
     auto buf = sender.buildTriggerSceneMessage(4);
 
     ASSERT_FALSE(buf.empty());
-    // "/playtime/scene/trigger" = 23 chars, padded to 24
-    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/scene/trigger", 23));
-    // Type tag should be at byte 24
-    size_t addrPadded = 24;
-    EXPECT_EQ(buf[addrPadded], ',');
-    EXPECT_EQ(buf[addrPadded + 1], 'i');
-    EXPECT_EQ(buf[addrPadded + 2], '\0');
-    EXPECT_EQ(buf[addrPadded + 3], '\0');
-    // Int arg: row=4 (big-endian at byte 28)
-    int row = (buf[addrPadded + 4] << 24) | (buf[addrPadded + 5] << 16) |
-              (buf[addrPadded + 6] << 8) | buf[addrPadded + 7];
-    EXPECT_EQ(row, 4);
+    // Address should be "/playtime/scene/4/trigger" (26 chars, padded to 28)
+    const char* expectedAddr = "/playtime/scene/4/trigger";
+    EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 26));
+    // Type tag at byte 28
+    EXPECT_EQ(buf[28], ',');
+    EXPECT_EQ(buf[29], '\0');
+    EXPECT_EQ(buf[30], '\0');
+    EXPECT_EQ(buf[31], '\0');
+    // Total = 28 (addr) + 4 (type tag) = 32
+    EXPECT_EQ(buf.size(), 32);
+}
+
+TEST(OscSenderTest, SceneTriggerSingleDigit)
+{
+    OscSender sender;
+    sender.setRemotePort(9000);
+
+    auto buf = sender.buildTriggerSceneMessage(0);
+
+    ASSERT_FALSE(buf.empty());
+    // "/playtime/scene/0/trigger" = 25 chars, padded to 28
+    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/scene/0/trigger", 25));
+    EXPECT_EQ(buf[28], ',');
+    EXPECT_EQ(buf.size(), 32);
 }
 
 // ============================================================

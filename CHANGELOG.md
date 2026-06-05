@@ -2,6 +2,11 @@
 ## Phase 1 MVP — 2026-05-30
 
 ### Features
+- **Track record mode toggle** — toggle armed tracks between audio/MIDI recording mode (Issue #99):
+  - New `track/setRecordMode` command sets both I_RECMODE and I_RECINPUT
+  - `track/getAll` now includes `recMode` and `recInput` fields
+  - Frontend toggle button ('A'/'M') appears only on armed tracks
+  - 7 C++ unit tests + 4 frontend tests + Playwright screenshot verification
 - **Real-time remote control** — all state changes push via CSURF_EXT callbacks (no polling):
   - Mute/solo/arm updates
   - FX param changes (real-time slider updates)
@@ -23,6 +28,11 @@
 - ASan+UBSan debug builds for memory safety
 - Headless Reaper testing with Xvfb
 - Gitea-based issue tracking with autonomous CI pipeline
+- **macOS (dylib) build target** — `TARGET=macos bash extension/build.sh` produces `reaper_spidercrab.dylib`
+  - Native macOS via Xcode CLT (`xcrun clang++`)
+  - Cross-compile via osxcross on Linux
+  - Ad-hoc codesigning for SIP compatibility
+  - Cocoa + Carbon frameworks linked for SWELL
 
 ### Known Issues (Phase 2)
 - Track names show "Track N" (no real names yet)
