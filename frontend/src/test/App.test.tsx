@@ -548,6 +548,202 @@ describe('App — Settings tab', () => {
 
     expect(mockRefreshFxCache).toHaveBeenCalledTimes(1);
   });
+
+  it('shows Refresh Chain Cache button when fxChainPath is set', async () => {
+    localStorage.setItem('fxChainPath', '/tmp/chains');
+
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      fxChainSearchCached: vi.fn().mockResolvedValue({ results: [], total: 0, offset: 0, limit: 16 }),
+      fxChainRefreshCache: vi.fn().mockResolvedValue({ refreshed: true, count: 5 }),
+      fxChainGetDirectory: vi.fn().mockResolvedValue({ chains: [], dirs: [] }),
+      fxChainSave: vi.fn().mockResolvedValue(true),
+      fxChainLoad: vi.fn().mockResolvedValue(true),
+      fxChainGetInfo: vi.fn().mockResolvedValue(null),
+      fxChainSearchRecursive: undefined,
+      play: vi.fn(),
+      stop: vi.fn(),
+      record: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Refresh Chain Cache')).toBeDefined();
+    });
+
+    const btn = screen.getByText('Refresh Chain Cache') as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+
+    localStorage.removeItem('fxChainPath');
+  });
+
+  it('disables Refresh Chain Cache button when fxChainPath is empty', async () => {
+    localStorage.removeItem('fxChainPath');
+
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      fxChainSearchCached: vi.fn().mockResolvedValue({ results: [], total: 0, offset: 0, limit: 16 }),
+      fxChainRefreshCache: vi.fn().mockResolvedValue({ refreshed: true, count: 5 }),
+      fxChainGetDirectory: vi.fn().mockResolvedValue({ chains: [], dirs: [] }),
+      fxChainSave: vi.fn().mockResolvedValue(true),
+      fxChainLoad: vi.fn().mockResolvedValue(true),
+      fxChainGetInfo: vi.fn().mockResolvedValue(null),
+      fxChainSearchRecursive: undefined,
+      play: vi.fn(),
+      stop: vi.fn(),
+      record: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Refresh Chain Cache')).toBeDefined();
+    });
+
+    const btn = screen.getByText('Refresh Chain Cache') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it('calls fxChainRefreshCache when Refresh Chain Cache is clicked', async () => {
+    localStorage.setItem('fxChainPath', '/tmp/chains');
+
+    const mockRefreshChains = vi.fn().mockResolvedValue({ refreshed: true, count: 5 });
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: [],
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn(),
+      getTrackFx: vi.fn(),
+      getFxParams: vi.fn(),
+      setFxParam: vi.fn(),
+      addFx: vi.fn(),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn(),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      fxChainSearchCached: vi.fn().mockResolvedValue({ results: [], total: 0, offset: 0, limit: 16 }),
+      fxChainRefreshCache: mockRefreshChains,
+      fxChainGetDirectory: vi.fn().mockResolvedValue({ chains: [], dirs: [] }),
+      fxChainSave: vi.fn().mockResolvedValue(true),
+      fxChainLoad: vi.fn().mockResolvedValue(true),
+      fxChainGetInfo: vi.fn().mockResolvedValue(null),
+      fxChainSearchRecursive: undefined,
+      play: vi.fn(),
+      stop: vi.fn(),
+      record: vi.fn(),
+      getTransportState: vi.fn(),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Navigate to Settings tab
+    fireEvent.click(screen.getByText('Settings'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Refresh Chain Cache')).toBeDefined();
+    });
+
+    // Click the button
+    fireEvent.click(screen.getByText('Refresh Chain Cache'));
+
+    expect(mockRefreshChains).toHaveBeenCalledWith('/tmp/chains');
+
+    localStorage.removeItem('fxChainPath');
+  });
 });
 
 // ── Drag-drop: edge-reached tab switch (Issue #74) ──

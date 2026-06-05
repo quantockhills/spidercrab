@@ -92,6 +92,97 @@ describe('useFxChains', () => {
     expect(await promise).toBe(true);
   });
 
+  it('fxChainSearchCached sends fxchain/searchCached command with offset/limit', async () => {
+    const { result } = renderHook(() => useFxChains(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.fxChainSearchCached('comp', '/tmp/chains', 0, 16);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('fxchain/searchCached');
+    expect(sentMsg.query).toBe('comp');
+    expect(sentMsg.rootPath).toBe('/tmp/chains');
+    expect(sentMsg.offset).toBe(0);
+    expect(sentMsg.limit).toBe(16);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: {
+          results: [{ filePath: '/tmp/chains/comp.RfxChain', name: 'comp.RfxChain', size: 512 }],
+          total: 1,
+          offset: 0,
+          limit: 16,
+        },
+      }));
+    });
+
+    const data = await promise;
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0].name).toBe('comp.RfxChain');
+    expect(data.total).toBe(1);
+    expect(data.offset).toBe(0);
+    expect(data.limit).toBe(16);
+  });
+
+  it('fxChainSearchCached uses default offset 0 and limit 16', async () => {
+    const { result } = renderHook(() => useFxChains(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.fxChainSearchCached('reverb', '/tmp');
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.offset).toBe(0);
+    expect(sentMsg.limit).toBe(16);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { results: [], total: 0, offset: 0, limit: 16 },
+      }));
+    });
+
+    const data = await promise;
+    expect(data.total).toBe(0);
+  });
+
+  it('fxChainRefreshCache sends fxchain/refreshCache command', async () => {
+    const { result } = renderHook(() => useFxChains(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.fxChainRefreshCache('/tmp/chains');
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('fxchain/refreshCache');
+    expect(sentMsg.rootPath).toBe('/tmp/chains');
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { refreshed: true, count: 5 },
+      }));
+    });
+
+    const data = await promise;
+    expect(data.refreshed).toBe(true);
+    expect(data.count).toBe(5);
+  });
+
   it('fxChainGetInfo returns null on failure', async () => {
     const { result } = renderHook(() => useFxChains(), { wrapper: Wrapper });
 
