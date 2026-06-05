@@ -594,4 +594,125 @@ describe('FxChainBrowser', () => {
     // Resolve the promise to clean up
     resolvePromise([]);
   });
+
+  it('shows Next button when cached search has more results than page size', async () => {
+    const mockSearchCached = vi.fn().mockResolvedValue({
+      results: Array.from({ length: 16 }, (_, i) => ({
+        filePath: `/deep/chain_${i}.RfxChain`,
+        name: `chain_${i}.RfxChain`,
+        size: 256,
+      })),
+      total: 42,
+      offset: 0,
+      limit: 16,
+    });
+
+    const props = createDefaultProps({
+      tracks: createMockTracks(),
+      selectedTrack: 0,
+      fxChainSearchCached: mockSearchCached,
+      fxChainGetInfo: vi.fn().mockResolvedValue(null),
+    });
+    render(<FxChainBrowser {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'chain' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('Next (26 more)')).toBeDefined();
+    }, { timeout: 2000 });
+  });
+
+  it('loads next page of cached results when Next is clicked', async () => {
+    const page1Results = Array.from({ length: 16 }, (_, i) => ({
+      filePath: `/deep/page1_${i}.RfxChain`,
+      name: `page1_${i}.RfxChain`,
+      size: 100,
+    }));
+
+    const page2Results = Array.from({ length: 16 }, (_, i) => ({
+      filePath: `/deep/page2_${i}.RfxChain`,
+      name: `page2_${i}.RfxChain`,
+      size: 200,
+    }));
+
+    const mockSearchCached = vi.fn()
+      .mockResolvedValueOnce({
+        results: page1Results,
+        total: 32,
+        offset: 0,
+        limit: 16,
+      })
+      .mockResolvedValueOnce({
+        results: page2Results,
+        total: 32,
+        offset: 16,
+        limit: 16,
+      });
+
+    const props = createDefaultProps({
+      tracks: createMockTracks(),
+      selectedTrack: 0,
+      fxChainSearchCached: mockSearchCached,
+      fxChainGetInfo: vi.fn().mockResolvedValue(null),
+    });
+    render(<FxChainBrowser {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'RfxChain' } });
+
+    // Wait for first page to load
+    await waitFor(() => {
+      expect(screen.getByText('Next (16 more)')).toBeDefined();
+    }, { timeout: 2000 });
+
+    // Click Next
+    fireEvent.click(screen.getByText('Next (16 more)'));
+
+    // Should load second page and show merged results
+    await waitFor(() => {
+      expect(screen.getByText('page2_0.RfxChain')).toBeDefined();
+    });
+
+    // Next button should disappear since all 32 results loaded
+    expect(screen.queryByText(/Next/)).toBeNull();
+  });
+
+  it('uses cached search when fxChainSearchCached is provided', async () => {
+    const mockSearchCached = vi.fn().mockResolvedValue({
+      results: [{ filePath: '/deep/found.RfxChain', name: 'found.RfxChain', size: 512 }],
+      total: 1,
+      offset: 0,
+      limit: 16,
+    });
+
+    const props = createDefaultProps({
+      tracks: [],
+      selectedTrack: null,
+      fxChainSearchCached: mockSearchCached,
+      fxChainGetInfo: vi.fn().mockResolvedValue(null),
+    });
+    render(<FxChainBrowser {...props} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('my_comp.RfxChain')).toBeDefined();
+    });
+
+    const searchInput = screen.getByPlaceholderText('Search all FX chains…');
+    fireEvent.change(searchInput, { target: { value: 'found' } });
+
+    await waitFor(() => {
+      expect(screen.getByText('found.RfxChain')).toBeDefined();
+    }, { timeout: 2000 });
+
+    expect(mockSearchCached).toHaveBeenCalledWith('found', expect.any(String), 0, 16);
+  });
 });
