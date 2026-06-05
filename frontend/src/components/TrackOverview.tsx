@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Track, FxInfo, FxParam, FxPresetInfo } from '../hooks/useReaper';
+import type { Track, FxInfo, FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
 import type { EnumeratedFx } from '../hooks/useFx';
 import { volumeToDb } from '../utils/volume';
 import type { WsResponse } from '../lib/wsClient';
@@ -36,6 +36,7 @@ interface TrackOverviewProps {
   setFxParam?: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<WsResponse>;
   getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
   setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
+  getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
 }
 
 
@@ -164,6 +165,8 @@ export function TrackOverview({
   setFxParam,
   getFxPreset,
   setFxPreset,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  getAllFxPresetNames,
   fxChainCycle,
   enumerateFx,
   addFx,
@@ -432,7 +435,6 @@ export function TrackOverview({
                   setExpandedFx={setExpandedFx}
                   setChainCycler={setChainCycler}
                   onReorderFx={handleReorderFx}
-                  fxChainCycle={fxChainCycle}
                   onOpenInlineSearch={enumerateFx && addFx ? handleOpenInlineSearch : undefined}
                 />
               )}
