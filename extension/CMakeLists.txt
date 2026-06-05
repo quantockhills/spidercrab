@@ -33,6 +33,7 @@ set(EXTENSION_SOURCES
     src/websocket_server.cpp
     src/command_handler.cpp
     src/fx_tags.cpp
+    src/fxchain_cache.cpp
     src/sha1_utils.cpp
     ${WDL_SOURCES}
 )
@@ -41,6 +42,7 @@ set(EXTENSION_SOURCES
 set(TEST_SOURCES
     src/websocket_server.cpp
     src/fx_tags.cpp
+    src/fxchain_cache.cpp
     src/sha1_utils.cpp
     ${WDL_SOURCES}
     test/test_main.cpp

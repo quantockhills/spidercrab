@@ -45,6 +45,7 @@ function AppInner() {
     sendCommand,
     isRefreshingFx,
     refreshFxCache,
+    fxChainRefreshCache,
     play,
     stop,
     record,
@@ -131,6 +132,8 @@ function AppInner() {
   const [fxChainPath, setFxChainPath] = useState<string>(
     () => localStorage.getItem('fxChainPath') || ''
   );
+
+  const [isRefreshingChains, setIsRefreshingChains] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('fxChainPath', fxChainPath);
@@ -387,6 +390,8 @@ function AppInner() {
             fxChainLoad={fxChainLoad}
             fxChainGetInfo={fxChainGetInfo}
             fxChainSearchRecursive={fxChainSearchRecursive}
+            fxChainSearchCached={fxChainSearchCached}
+            fxChainRefreshCache={fxChainRefreshCache}
             onBack={handleBackFromFxChains}
             initialPath={fxChainPath || undefined}
           />
@@ -478,6 +483,35 @@ function AppInner() {
                 {isRefreshingFx && (
                   <p className="text-[11px] text-[var(--text-secondary)] text-center">
                     Scanning installed plugins...
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={async () => {
+                    if (!fxChainPath) return;
+                    setIsRefreshingChains(true);
+                    try {
+                      await fxChainRefreshCache(fxChainPath);
+                    } finally {
+                      setIsRefreshingChains(false);
+                    }
+                  }}
+                  disabled={isRefreshingChains || !fxChainPath}
+                  className={`w-full py-2.5 text-sm active:brightness-95 transition-colors flex items-center justify-center gap-2 ${
+                    isRefreshingChains || !fxChainPath
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] cursor-not-allowed'
+                      : 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+                  }`}
+                >
+                  {isRefreshingChains && (
+                    <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {isRefreshingChains ? 'Refreshing...' : 'Refresh Chain Cache'}
+                </button>
+                {!fxChainPath && (
+                  <p className="text-[11px] text-[var(--text-secondary)] text-center">
+                    Set FX chain path in Settings to enable cache
                   </p>
                 )}
               </div>

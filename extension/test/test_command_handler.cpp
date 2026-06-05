@@ -7,6 +7,7 @@
 // and the static helper functions (json_escape, json_string).
 // In a test-only build, this is fine — the .cpp has no global state dependencies.
 #include "../src/command_handler.cpp"
+#include "../src/fxchain_cache.h"
 
 // ============================================================
 // JsonParser tests
@@ -5069,4 +5070,229 @@ TEST(FxTagsCommandTest, SetTagsInvalidTarget)
     std::string& resp = responses[0];
     EXPECT_NE(resp.find("\"success\":false"), std::string::npos);
     EXPECT_NE(resp.find("target must be"), std::string::npos);
+}
+
+// ============================================================
+// FxChainCache tests
+// ============================================================
+
+TEST(FxChainCacheTest, EmptyBuild)
+{
+    FxChainCache cache;
+    EXPECT_FALSE(cache.IsIndexed());
+    EXPECT_EQ(cache.Count(), 0);
+
+    // Build with empty path -> 0 entries
+    int n = cache.BuildIndex("");
+    EXPECT_EQ(n, 0);
+    EXPECT_TRUE(cache.IsIndexed());
+
+    // Build with non-existent path -> 0 entries, graceful
+    n = cache.BuildIndex("/nonexistent/path/12345");
+    EXPECT_EQ(n, 0);
+    EXPECT_TRUE(cache.IsIndexed());
+}
+
+TEST(FxChainCacheTest, BuildIndexFromRealDir)
+{
+    // Create a temp dir with some .RfxChain files
+    const char* tmpdir = "/tmp/spidercrab_fxchain_test";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+
+    // Create a few .RfxChain files
+    {
+        std::ofstream f(std::string(tmpdir) + "/test1.RfxChain");
+        f << "dummy content";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/test2.rfxchain");
+        f << "dummy content";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/notachain.txt");
+        f << "should be ignored";
+    }
+    // Subdirectory with chain
+    fs::create_directories(std::string(tmpdir) + "/sub", ec);
+    {
+        std::ofstream f(std::string(tmpdir) + "/sub/deep.RfxChain");
+        f << "deep content";
+    }
+
+    FxChainCache cache;
+    int n = cache.BuildIndex(tmpdir);
+    EXPECT_EQ(n, 3) << "Should find 3 .RfxChain files (case-insensitive extension)";
+    EXPECT_TRUE(cache.IsIndexed());
+    EXPECT_EQ(cache.Count(), 3);
+    EXPECT_EQ(cache.RootPath(), tmpdir);
+
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(FxChainCacheTest, SearchAll)
+{
+    const char* tmpdir = "/tmp/spidercrab_fxchain_search";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+
+    std::vector<std::string> files = {
+        "Kick.RfxChain",
+        "Snare.RfxChain",
+        "Hat.RfxChain",
+        "Bass.RfxChain",
+    };
+    for (const auto& f : files) {
+        std::ofstream out(std::string(tmpdir) + "/" + f);
+        out << "content";
+    }
+
+    FxChainCache cache;
+    cache.BuildIndex(tmpdir);
+
+    // Empty query returns all
+    auto result = cache.Search("", 0, 0);
+    EXPECT_EQ(result.total, 4);
+    EXPECT_EQ((int)result.results.size(), 4);
+
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(FxChainCacheTest, SearchWithQuery)
+{
+    const char* tmpdir = "/tmp/spidercrab_fxchain_search2";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+
+    std::vector<std::string> files = {
+        "Kick.RfxChain",
+        "Snare.RfxChain",
+        "Hat.RfxChain",
+        "Bass.RfxChain",
+    };
+    for (const auto& f : files) {
+        std::ofstream out(std::string(tmpdir) + "/" + f);
+        out << "content";
+    }
+
+    FxChainCache cache;
+    cache.BuildIndex(tmpdir);
+
+    // Query matches case-insensitively
+    auto result = cache.Search("kick", 0, 0);
+    EXPECT_EQ(result.total, 1);
+    ASSERT_EQ((int)result.results.size(), 1);
+    EXPECT_NE(result.results[0].name.find("Kick"), std::string::npos);
+
+    result = cache.Search("KICK", 0, 0);
+    EXPECT_EQ(result.total, 1);
+
+    // No match
+    result = cache.Search("xyzzy", 0, 0);
+    EXPECT_EQ(result.total, 0);
+    EXPECT_EQ((int)result.results.size(), 0);
+
+    // Partial matches: 'na' matches "Snare", not Bass/Hat/Kick (.RfxChain extension also contains 'a' in "chain"!)
+    result = cache.Search("na", 0, 0);
+    EXPECT_EQ(result.total, 1); // S[na]re
+    ASSERT_EQ((int)result.results.size(), 1);
+    EXPECT_NE(result.results[0].name.find("Snare"), std::string::npos);
+
+    // 's' matches Bass and Snare (but not Kick/Hat)
+    result = cache.Search("s", 0, 0);
+    EXPECT_EQ(result.total, 2); // Ba[s]s, [S]nare
+
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(FxChainCacheTest, Pagination)
+{
+    const char* tmpdir = "/tmp/spidercrab_fxchain_pages";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+
+    // Create 10 chain files
+    for (int i = 0; i < 10; i++) {
+        std::string name = "Chain" + std::to_string(i) + ".RfxChain";
+        std::ofstream out(std::string(tmpdir) + "/" + name);
+        out << "content";
+    }
+
+    FxChainCache cache;
+    cache.BuildIndex(tmpdir);
+
+    // Page 1: offset=0, limit=4 -> items 0-3
+    auto result = cache.Search("", 0, 4);
+    EXPECT_EQ(result.total, 10);
+    ASSERT_EQ((int)result.results.size(), 4);
+    EXPECT_EQ(result.results[0].name, "Chain0.RfxChain");
+    EXPECT_EQ(result.results[3].name, "Chain3.RfxChain");
+
+    // Page 2: offset=4, limit=4 -> items 4-7
+    result = cache.Search("", 4, 4);
+    EXPECT_EQ(result.total, 10);
+    ASSERT_EQ((int)result.results.size(), 4);
+    EXPECT_EQ(result.results[0].name, "Chain4.RfxChain");
+    EXPECT_EQ(result.results[3].name, "Chain7.RfxChain");
+
+    // Page 3: offset=8, limit=4 -> items 8-9 (last page, fewer items)
+    result = cache.Search("", 8, 4);
+    EXPECT_EQ(result.total, 10);
+    ASSERT_EQ((int)result.results.size(), 2);
+    EXPECT_EQ(result.results[0].name, "Chain8.RfxChain");
+    EXPECT_EQ(result.results[1].name, "Chain9.RfxChain");
+
+    // Offset beyond total
+    result = cache.Search("", 20, 4);
+    EXPECT_EQ(result.total, 10);
+    EXPECT_EQ((int)result.results.size(), 0);
+
+    // Negative offset treated as 0
+    result = cache.Search("", -1, 4);
+    EXPECT_EQ(result.total, 10);
+    ASSERT_EQ((int)result.results.size(), 4);
+
+    // Zero limit returns all
+    result = cache.Search("", 0, 0);
+    EXPECT_EQ(result.total, 10);
+    EXPECT_EQ((int)result.results.size(), 10);
+
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(FxChainCacheTest, ClearAndReindex)
+{
+    const char* tmpdir = "/tmp/spidercrab_fxchain_clear";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+
+    {
+        std::ofstream f(std::string(tmpdir) + "/test.RfxChain");
+        f << "content";
+    }
+
+    FxChainCache cache;
+    cache.BuildIndex(tmpdir);
+    EXPECT_EQ(cache.Count(), 1);
+
+    cache.Clear();
+    EXPECT_FALSE(cache.IsIndexed());
+    EXPECT_EQ(cache.Count(), 0);
+    EXPECT_TRUE(cache.RootPath().empty());
+
+    // Re-index after clear
+    cache.BuildIndex(tmpdir);
+    EXPECT_TRUE(cache.IsIndexed());
+    EXPECT_EQ(cache.Count(), 1);
+
+    fs::remove_all(tmpdir, ec);
 }
