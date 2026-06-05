@@ -293,4 +293,16 @@ private:
 
     // Command handlers — sequencer convert to clip (Issue #92)
     void HandleSequencerConvertToClip(int clientId, const std::string& id, const std::string& params);
+
+public:
+    // Access the OSC sender and receiver (Issue #98)
+    OscSender& GetOscSender() { return m_oscSender; }
+    OscReceiver& GetOscReceiver() { return m_oscReceiver; }
+
+    // Poll the OSC receiver for incoming feedback (Issue #98)
+    void PollOscReceiver() { m_oscReceiver.poll(); }
+
+private:
+    OscSender     m_oscSender;
+    OscReceiver   m_oscReceiver;
 };

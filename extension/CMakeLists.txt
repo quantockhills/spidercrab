@@ -55,16 +55,32 @@ set(TEST_SOURCES
 # 1. Extension shared library (for Reaper)
 # ============================================================
 add_library(reaper-spidercrab SHARED ${EXTENSION_SOURCES})
-set_target_properties(reaper-spidercrab PROPERTIES
-    OUTPUT_NAME reaper_spidercrab
-    PREFIX ""
-    SUFFIX ".so"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
-)
-
-if(UNIX)
+if(APPLE)
+    set_target_properties(reaper-spidercrab PROPERTIES
+        OUTPUT_NAME reaper_spidercrab
+        PREFIX ""
+        SUFFIX ".dylib"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
+    )
+    target_link_libraries(reaper-spidercrab PRIVATE pthread)
+    target_link_libraries(reaper-spidercrab PRIVATE "-framework Cocoa" "-framework Carbon")
+    target_compile_definitions(reaper-spidercrab PRIVATE PTHREAD=1)
+elseif(UNIX)
+    set_target_properties(reaper-spidercrab PROPERTIES
+        OUTPUT_NAME reaper_spidercrab
+        PREFIX ""
+        SUFFIX ".so"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
+    )
     target_link_libraries(reaper-spidercrab PRIVATE pthread dl)
     target_compile_definitions(reaper-spidercrab PRIVATE PTHREAD=1)
+else()
+    set_target_properties(reaper-spidercrab PROPERTIES
+        OUTPUT_NAME reaper_spidercrab
+        PREFIX ""
+        SUFFIX ".so"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
+    )
 endif()
 
 # ============================================================

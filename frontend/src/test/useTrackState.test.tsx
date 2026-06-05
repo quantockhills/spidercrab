@@ -297,4 +297,61 @@ describe('useTrackState', () => {
     expect(tracks[0].recMode).toBe(0);
     expect(tracks[1].recMode).toBe(7);
   });
+
+  it('toggleTrackRecordMode toggles from audio to MIDI', async () => {
+    const { result, rerender } = renderHook(() => useTrackState(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    // Inject tracks via refreshTracks
+    let p = result.current.refreshTracks();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+    let m = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response', id: m.id, success: true,
+        payload: { tracks: [{ index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: true, recMode: 0, volume: 0.8, pan: 0 }] },
+      }));
+    });
+    await p;
+    rerender();
+    await vi.waitFor(() => {
+      expect(result.current.tracks).toHaveLength(1);
+    });
+
+    // Toggle record mode (audio -> MIDI)
+    p = result.current.toggleTrackRecordMode(0);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(1));
+    m = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
+    expect(m.command).toBe('track/setRecordMode');
+    expect(m.recMode).toBe(7);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({ type: 'response', id: m.id, success: true, payload: {} }));
+    });
+
+    // Should trigger refresh
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(2));
+    m = JSON.parse(ws.sentMessages[ws.sentMessages.length - 1]);
+    expect(m.command).toBe('track/getAll');
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response', id: m.id, success: true,
+        payload: { tracks: [{ index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: true, recMode: 7, volume: 0.8, pan: 0 }] },
+      }));
+    });
+
+    await p;
+    await vi.waitFor(() => {
+      expect(result.current.tracks[0]?.recMode).toBe(7);
+    });
+  });
+
+  it('toggleTrackRecordMode returns false for unknown track', async () => {
+    const { result } = renderHook(() => useTrackState(), { wrapper: Wrapper });
+    const ok = await result.current.toggleTrackRecordMode(999);
+    expect(ok).toBe(false);
+  });
 });

@@ -15,9 +15,9 @@
 //   - Strings: NUL-padded to 4-byte boundary
 //
 // Address convention (matching ReaLearn OSC preset):
-//   /playtime/slot/trigger  ii  (col, row)
-//   /playtime/slot/record   ii  (col, row)
-//   /playtime/scene/trigger i   (row)
+//   /playtime/slot/<col>/<row>/trigger   (no args — col/row in address)
+//   /playtime/slot/<col>/<row>/record    (no args — col/row in address)
+//   /playtime/scene/<row>/trigger        (no args — row in address)
 // ============================================================
 
 #include <cstdio>
@@ -30,6 +30,9 @@
 #define _WINSOCKAPI_
 #include <winsock2.h>
 #include <ws2tcpip.h>
+// ssize_t is not defined on Windows; sendto returns int
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
 #else
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -100,6 +103,27 @@ public:
         // Add 1 for NUL terminator, then round up to next 4-byte boundary
         size_t withNul = rawLen + 1;
         return ((withNul + 3) / 4) * 4;
+    }
+
+    // Build an address-only OSC message (no arguments)
+    std::vector<uint8_t> buildMessage(
+        const std::string& address) const
+    {
+        std::vector<uint8_t> buf;
+
+        // 1. Address pattern (NUL-padded to 4-byte boundary)
+        size_t addrLen = paddedStringLength(address.size());
+        buf.reserve(addrLen + 4);
+        buf.insert(buf.end(), address.begin(), address.end());
+        buf.resize(buf.size() + addrLen - address.size(), 0);
+
+        // 2. Empty type tag string (just comma, NUL-padded to 4-byte boundary)
+        buf.push_back(',');
+        buf.push_back('\0');
+        buf.push_back('\0');
+        buf.push_back('\0');
+
+        return buf;
     }
 
     // Build an OSC message from address, type tags, and integer arguments
@@ -174,22 +198,27 @@ public:
 
     // --- Convenience builders ---
 
-    // Build a "trigger slot" message: /playtime/slot/trigger ii col row
+    // Build a "trigger slot" message: /playtime/slot/<col>/<row>/trigger
     std::vector<uint8_t> buildTriggerSlotMessage(int col, int row) const
     {
-        return buildMessage("/playtime/slot/trigger", "ii", {col, row});
+        std::string addr = "/playtime/slot/" + std::to_string(col) + "/"
+            + std::to_string(row) + "/trigger";
+        return buildMessage(addr);
     }
 
-    // Build a "record slot" message: /playtime/slot/record ii col row
+    // Build a "record slot" message: /playtime/slot/<col>/<row>/record
     std::vector<uint8_t> buildRecordSlotMessage(int col, int row) const
     {
-        return buildMessage("/playtime/slot/record", "ii", {col, row});
+        std::string addr = "/playtime/slot/" + std::to_string(col) + "/"
+            + std::to_string(row) + "/record";
+        return buildMessage(addr);
     }
 
-    // Build a "trigger scene" message: /playtime/scene/trigger i row
+    // Build a "trigger scene" message: /playtime/scene/<row>/trigger
     std::vector<uint8_t> buildTriggerSceneMessage(int row) const
     {
-        return buildMessage("/playtime/scene/trigger", "i", {row});
+        std::string addr = "/playtime/scene/" + std::to_string(row) + "/trigger";
+        return buildMessage(addr);
     }
 
     // --- Send methods ---
@@ -236,19 +265,19 @@ public:
         return static_cast<size_t>(sent) == packet.size();
     }
 
-    // Trigger a slot: sends /playtime/slot/trigger ii col row
+    // Trigger a slot: sends /playtime/slot/<col>/<row>/trigger
     bool sendTriggerSlot(int col, int row)
     {
         return sendPacket(buildTriggerSlotMessage(col, row));
     }
 
-    // Record in a slot: sends /playtime/slot/record ii col row
+    // Record in a slot: sends /playtime/slot/<col>/<row>/record
     bool sendRecordSlot(int col, int row)
     {
         return sendPacket(buildRecordSlotMessage(col, row));
     }
 
-    // Trigger a scene: sends /playtime/scene/trigger i row
+    // Trigger a scene: sends /playtime/scene/<row>/trigger
     bool sendTriggerScene(int row)
     {
         return sendPacket(buildTriggerSceneMessage(row));
