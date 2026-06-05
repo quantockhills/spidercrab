@@ -285,7 +285,12 @@ public:
             }
         }
 
-
+        // Poll OSC feedback from ReaLearn (Issue #98)
+        // Non-blocking: returns immediately when no data.
+        // Event-driven: zero CPU when no state changes.
+        if (g_cmdHandler) {
+            g_cmdHandler->PollOscReceiver();
+        }
 
     }
 
@@ -508,6 +513,31 @@ static bool InitializeCoreServices()
         }
     } else {
         fprintf(stderr, "[reaper-ipad] MIDI output not available (CreateMIDIOutput not resolved)\n");
+    }
+
+    // Initialize OSC sender for ReaLearn integration (Issue #98)
+    g_cmdHandler->GetOscSender().setRemotePort(9000);
+    g_cmdHandler->GetOscSender().setRemoteAddress("127.0.0.1");
+
+    // Initialize OSC receiver for ReaLearn feedback (Issue #98)
+    // Registers callback to update Playtime slot state when OSC feedback arrives.
+    g_cmdHandler->GetOscReceiver().setSlotStateCallback(
+        [](int col, int row, const std::string& state) {
+            if (g_cmdHandler) {
+                g_cmdHandler->GetPlaytimeState().setSlotState(col, row, state);
+                SlotState s = g_cmdHandler->GetPlaytimeState().getSlot(col, row);
+                g_cmdHandler->BroadcastMatrixEvent("matrix/slotStateChanged", s.toJson());
+            }
+        });
+
+    // Try to bind OSC receiver. If port 9000 is taken, falls back to next available.
+    if (!g_cmdHandler->GetOscReceiver().bind(9000)) {
+        fprintf(stderr, "[reaper-ipad] WARNING: OSC receiver bind failed on port 9000\n"
+                        "           ReaLearn feedback will not work.\n"
+                        "           Check if another service is using this port.\n");
+    } else {
+        fprintf(stderr, "[reaper-ipad] OSC receiver listening on port %d\n",
+            g_cmdHandler->GetOscReceiver().port());
     }
 
     // Set up WebSocket message handler
