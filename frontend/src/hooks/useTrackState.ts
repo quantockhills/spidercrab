@@ -102,6 +102,18 @@ export function useTrackState() {
     return ok;
   }, [tracks, setTrackArm, refreshTracks]);
 
+  const toggleTrackRecordMode = useCallback(async (trackIdx: number): Promise<boolean> => {
+    // Find current recMode from local state to determine new mode
+    // Toggle between audio (0) and MIDI (7) modes
+    const currentTracks = tracks;
+    const track = currentTracks.find(t => t.index === trackIdx);
+    if (!track) return false;
+    const newMode = track.recMode >= 7 ? 0 : 7;
+    const ok = await setTrackRecordMode(trackIdx, newMode);
+    if (ok) await refreshTracks();
+    return ok;
+  }, [tracks, setTrackRecordMode, refreshTracks]);
+
   const selectTrack = useCallback(async (trackIdx: number): Promise<boolean> => {
     return await setTrackSelected(trackIdx, true);
   }, [setTrackSelected]);
@@ -125,6 +137,7 @@ export function useTrackState() {
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,
+    toggleTrackRecordMode,
     setTrackRecordMode,
     selectTrack,
     updateTrack,

@@ -1257,8 +1257,8 @@ function TrackRow({
           R
         </button>
 
-        {/* Record mode toggle (Issue #99): Audio (0) / MIDI (7-8) */}
-        {onToggleRecordMode && (
+        {/* Record mode toggle (Issue #99): Audio (0) / MIDI (7-8) — only on armed tracks */}
+        {onToggleRecordMode && track.armed && (
           <button
             data-testid="toggle-record-mode"
             onClick={(e) => { e.stopPropagation(); onToggleRecordMode(); }}
