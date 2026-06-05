@@ -137,14 +137,14 @@ TEST(OscSenderTest, AddressOnlyMessage)
     OscSender sender;
     sender.setRemotePort(9000);
 
-    std::vector<uint8_t> buf = sender.buildMessage("/playtime/slot/0/5/trigger", "");
-
-    // Address: "/playtime/slot/0/5/trigger" = 28 chars, padded to 28
+    // Use the address-only overload: buildMessage(const std::string&)
+    // "/playtime/slot/0/5/trigger" = 26 chars, padded to 28
     // Type tag: "," = 1 char + 3 pad = 4 bytes
-    // No args
     // Total = 28 + 4 = 32 bytes
+    std::vector<uint8_t> buf = sender.buildMessage("/playtime/slot/0/5/trigger");
+
     EXPECT_EQ(buf.size(), 32);
-    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/slot/0/5/trigger", 28));
+    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/slot/0/5/trigger", 26));
 
     // Type tag at byte 28
     EXPECT_EQ(buf[28], ',');
