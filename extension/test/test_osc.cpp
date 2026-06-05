@@ -295,7 +295,7 @@ TEST(OscIntegrationTest, SendAndReceiveLocal)
     OscSender sender;
     OscReceiver receiver;
 
-    int recvPort = 18000;
+    int recvPort = 18001;
     sender.setRemotePort(recvPort);
 
     // Set up receiver on recvPort
@@ -315,18 +315,25 @@ TEST(OscIntegrationTest, SendAndReceiveLocal)
         recvState = state;
     });
 
-    // Send a trigger slot message
-    sender.sendTriggerSlot(2, 4);
+    // Send a /playtime/slot/state OSC message (the address the receiver dispatches)
+    auto packet = sender.buildMessage("/playtime/slot/state", "iiis",
+        {2, 4, 1, 0}, {"playing"});
+    bool sent = sender.sendPacket(packet);
+    EXPECT_TRUE(sent) << "Should send packet successfully";
 
-    // Give it time to arrive
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    // Poll receiver in a loop with timeout — the packet should arrive
+    // on localhost almost immediately via UDP loopback
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
+    while (!callbackFired && std::chrono::steady_clock::now() < deadline) {
+        receiver.poll();
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
 
-    // Poll the receiver
-    receiver.poll();
-
-    // Not expected to actually work cross-thread without a network loop,
-    // but the poll should not crash
-    SUCCEED() << "Send and poll completed without crash";
+    // Verify the callback fired with correct values
+    EXPECT_TRUE(callbackFired) << "Callback should have been triggered by received OSC packet";
+    EXPECT_EQ(recvCol, 2);
+    EXPECT_EQ(recvRow, 4);
+    EXPECT_EQ(recvState, "playing");
 }
 
 // Simple test: verify sender doesn't crash when called
