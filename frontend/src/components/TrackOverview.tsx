@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Track, FxInfo, FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
+import type { Track, FxInfo, FxParam, FxPresetInfo } from '../hooks/useReaper';
 import type { EnumeratedFx } from '../hooks/useFx';
 import { volumeToDb } from '../utils/volume';
 import type { WsResponse } from '../lib/wsClient';
@@ -36,7 +36,6 @@ interface TrackOverviewProps {
   setFxParam?: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<WsResponse>;
   getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
   setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
-  getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
 }
 
 
@@ -165,7 +164,6 @@ export function TrackOverview({
   setFxParam,
   getFxPreset,
   setFxPreset,
-  getAllFxPresetNames,
   fxChainCycle,
   enumerateFx,
   addFx,
@@ -440,13 +438,24 @@ export function TrackOverview({
               )}
               {/* Inline FX search (Issue #102) */}
               {inlineSearchTrackIdx === track.index && enumerateFx && addFx && (
-                <InlineFxSearch
-                  trackIdx={track.index}
-                  enumerateFx={enumerateFx}
-                  addFx={addFx}
-                  onClose={handleCloseInlineSearch}
-                  onFxAdded={handleInlineFxAdded}
-                />
+                <>
+                  {/* Backdrop for tap-outside-to-close */}
+                  <div
+                    data-testid="inline-fx-search-backdrop"
+                    className="fixed inset-0 z-10"
+                    onClick={handleCloseInlineSearch}
+                  />
+                  {/* Search panel (stop propagation to prevent backdrop close) */}
+                  <div className="relative z-20" onClick={(e) => e.stopPropagation()}>
+                    <InlineFxSearch
+                      trackIdx={track.index}
+                      enumerateFx={enumerateFx}
+                      addFx={addFx}
+                      onClose={handleCloseInlineSearch}
+                      onFxAdded={handleInlineFxAdded}
+                    />
+                  </div>
+                </>
               )}
               {/* Inline FX drawer (Issue #94) */}
               {expandedFx?.trackIdx === track.index && getFxParams && setFxParam && (
@@ -458,7 +467,6 @@ export function TrackOverview({
                   setFxParam={setFxParam}
                   getFxPreset={getFxPreset}
                   setFxPreset={setFxPreset}
-                  getAllFxPresetNames={getAllFxPresetNames}
                   onClose={() => setExpandedFx(null)}
                 />
               )}
@@ -507,7 +515,6 @@ interface FxGridProps {
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   setChainCycler: (v: {trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
-  fxChainCycle?: (trackIdx: number, direction: 'next' | 'prev', chainPath?: string) => Promise<{success: boolean; fx?: FxInfo[]}>;
   onOpenInlineSearch?: (trackIdx: number) => void;
 }
 
@@ -533,7 +540,6 @@ function FxGrid({
   setExpandedFx,
   setChainCycler,
   onReorderFx,
-  fxChainCycle,
   onOpenInlineSearch,
 }: FxGridProps) {
   // Group FX by chainPath
@@ -563,7 +569,7 @@ function FxGrid({
 
   // Long-press timer refs
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressProgressRef = useRef<HTMLDivElement | null>(null);
+  const addFxLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const startLongPress = useCallback((chainPath: string, chainName: string, fxCount: number) => {
     longPressTimerRef.current = setTimeout(() => {
@@ -728,11 +734,34 @@ function FxGrid({
           +
         </div>
       )}
-      {/* Add FX button — persistent (Issue #102) */}
+      {/* Add FX button — long-press to open inline search (Issue #102) */}
       {onOpenInlineSearch && (
         <button
           data-testid="inline-add-fx"
-          onClick={() => onOpenInlineSearch(trackIdx)}
+          onPointerDown={() => {
+            addFxLongPressTimerRef.current = setTimeout(() => {
+              onOpenInlineSearch(trackIdx);
+              addFxLongPressTimerRef.current = null;
+            }, 500);
+          }}
+          onPointerUp={() => {
+            if (addFxLongPressTimerRef.current) {
+              clearTimeout(addFxLongPressTimerRef.current);
+              addFxLongPressTimerRef.current = null;
+            }
+          }}
+          onPointerLeave={() => {
+            if (addFxLongPressTimerRef.current) {
+              clearTimeout(addFxLongPressTimerRef.current);
+              addFxLongPressTimerRef.current = null;
+            }
+          }}
+          onPointerCancel={() => {
+            if (addFxLongPressTimerRef.current) {
+              clearTimeout(addFxLongPressTimerRef.current);
+              addFxLongPressTimerRef.current = null;
+            }
+          }}
           className="
             w-24 h-18 flex flex-col items-center justify-center
             bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
@@ -741,6 +770,7 @@ function FxGrid({
             active:brightness-95 transition-all duration-100
             cursor-pointer
           "
+          title="Hold to search and add FX"
         >
           <span className="text-base leading-none mb-0.5">+</span>
           <span>Add FX</span>
@@ -886,7 +916,6 @@ interface InlineFxDrawerProps {
   setFxParam: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<WsResponse>;
   getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
   setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
-  getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
   onClose: () => void;
 }
 
@@ -898,7 +927,6 @@ function InlineFxDrawer({
   setFxParam,
   getFxPreset,
   setFxPreset,
-  getAllFxPresetNames,
   onClose,
 }: InlineFxDrawerProps) {
   const [params, setParams] = useState<FxParam[]>([]);
@@ -929,7 +957,6 @@ function InlineFxDrawer({
   // Load params on mount
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     getFxParams(trackIdx, fxIdx, 0, PAGE_SIZE).then((result) => {
       if (!cancelled) {
         setParams(result.params);
@@ -946,11 +973,10 @@ function InlineFxDrawer({
   // Load preset info
   useEffect(() => {
     if (!getFxPreset) {
-      setPresetLoading(false);
-      return;
+      const t = setTimeout(() => setPresetLoading(false), 0);
+      return () => clearTimeout(t);
     }
     let cancelled = false;
-    setPresetLoading(true);
     getFxPreset(trackIdx, fxIdx).then((info) => {
       if (!cancelled) {
         setPresetInfo(info);
@@ -1233,7 +1259,6 @@ function InlineFxSearch({
   // Load all FX on mount
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     enumerateFx().then((fx) => {
       if (!cancelled) {
         setAllFx(fx);
