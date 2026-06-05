@@ -17,20 +17,24 @@ if [ "$TARGET" = "windows" ]; then
         echo "ERROR: xwin not found. Install via xwin --accept-license splat --output ~/.xwin"
         exit 1
     fi
+    export VCToolsInstallDir="$XWIN"
     CXX="$BREW_PREFIX/bin/clang-cl"
     if [ "$BUILD_TYPE" = "debug" ]; then
         echo "=== DEBUG BUILD ==="
-        CXXFLAGS="--target=x86_64-pc-windows-msvc /std:c++17 /Od /EHsc -DDEBUG=1 -g"
+        CXXFLAGS="--target=x86_64-pc-windows-msvc /std:c++17 /Od /EHsc -DDEBUG=1 -g -fuse-ld=lld"
         SUFFIX="-debug.dll"
     else
-        CXXFLAGS="--target=x86_64-pc-windows-msvc /std:c++17 /O2 /DNDEBUG /EHsc"
+        CXXFLAGS="--target=x86_64-pc-windows-msvc /std:c++17 /O2 /DNDEBUG /EHsc -fuse-ld=lld"
         SUFFIX=".dll"
     fi
     CXXFLAGS="$CXXFLAGS /D_WIN32 /DWIN32_LEAN_AND_MEAN /DWDL_NO_JPEG /W0"
     CXXFLAGS="$CXXFLAGS /I$XWIN/crt/include /I$XWIN/sdk/include/ucrt"
     CXXFLAGS="$CXXFLAGS /I$XWIN/sdk/include/shared /I$XWIN/sdk/include/um"
     # Force winsock2.h before windows.h for SOCKET type
-    CXXFLAGS="$CXXFLAGS -FI/tmp/force_winsock.h"
+    FORCE_WS_H="$(mktemp /tmp/force_winsock_XXXXXX.h)"
+    echo '#include <winsock2.h>
+#include <ws2tcpip.h>' > "$FORCE_WS_H"
+    CXXFLAGS="$CXXFLAGS -FI$FORCE_WS_H"
     SYSROOT_FLAGS=""
 else
     CXX="$BREW_PREFIX/bin/g++"
@@ -83,10 +87,6 @@ echo "CXX: $CXX"
 echo "Output: $OUT"
 echo ""
 
-# Pre-create forced winsock include
-echo '#include <winsock2.h>
-#include <ws2tcpip.h>' > /tmp/force_winsock.h
-
 if [ "$TARGET" = "windows" ]; then
     # Windows: compile each source with clang-cl, link with lld-link
     rm -rf "$SCRIPT_DIR/build/obj"
@@ -106,6 +106,8 @@ if [ "$TARGET" = "windows" ]; then
         /libpath:"$XWIN/sdk/lib/ucrt/x86_64" \
         libcmt.lib kernel32.lib user32.lib ws2_32.lib 2>&1
     rm -rf "$SCRIPT_DIR/build/obj"
+    # Clean up forced winsock include
+    rm -f "$FORCE_WS_H" 2>/dev/null || true
 else
     $CXX $CXXFLAGS $SYSROOT_FLAGS $INCLUDES \
         -o "$OUT" \
