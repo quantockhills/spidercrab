@@ -1056,4 +1056,300 @@ describe('SampleBrowser', () => {
       expect(localStorage.getItem('sampleBrowserRootPath')).toBe('/tmp');
     });
   });
+
+  // ── Cross-root search tests (Issue #101, Acceptance Criterion #4) ────────
+
+  describe('cross-root search', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      localStorage.clear();
+    });
+
+    it('searches across all configured roots when at root selector level', async () => {
+      // Each root has different files
+      mockGetDirectory.mockImplementation(async (path: string) => {
+        if (path === '/samples/drums') {
+          return {
+            entries: [
+              { name: '..', type: 'dir', size: 0 },
+              { name: 'kick.wav', type: 'file', size: 102400 },
+              { name: 'snare.wav', type: 'file', size: 204800 },
+              { name: 'hihat.wav', type: 'file', size: 51200 },
+            ],
+          };
+        }
+        if (path === '/samples/synths') {
+          return {
+            entries: [
+              { name: '..', type: 'dir', size: 0 },
+              { name: 'lead.mp3', type: 'file', size: 5120000 },
+              { name: 'bass.wav', type: 'file', size: 2048000 },
+              { name: 'pad.wav', type: 'file', size: 1024000 },
+            ],
+          };
+        }
+        if (path === '/samples/loops') {
+          return {
+            entries: [
+              { name: '..', type: 'dir', size: 0 },
+              { name: 'beat.wav', type: 'file', size: 409600 },
+              { name: 'kick.wav', type: 'file', size: 102400 },
+              { name: 'melody.mp3', type: 'file', size: 2048000 },
+            ],
+          };
+        }
+        return { entries: [] };
+      });
+
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths', '/samples/loops']}
+        />
+      );
+
+      // Should show root selector initially
+      expect(screen.getByText('Sample Directories')).toBeDefined();
+
+      // Type a search query that should match files across multiple roots
+      const searchInput = screen.getByPlaceholderText('Filter files...');
+      fireEvent.change(searchInput, { target: { value: 'kick' } });
+
+      // Should fetch ALL roots
+      await waitFor(() => {
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums');
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/synths');
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/loops');
+      });
+
+      // Should show matching files from ALL roots
+      // Both kick.wav files should be visible (from /samples/drums and /samples/loops)
+      await waitFor(() => {
+        const kickElements = screen.getAllByText('kick.wav');
+        expect(kickElements.length).toBe(2);
+      });
+
+      // Non-matching files should NOT be visible
+      expect(screen.queryByText('snare.wav')).toBeNull();
+      expect(screen.queryByText('bass.wav')).toBeNull();
+      expect(screen.queryByText('beat.wav')).toBeNull();
+    });
+
+    it('shows results grouped by root path', async () => {
+      mockGetDirectory.mockImplementation(async (path: string) => {
+        if (path === '/samples/drums') {
+          return {
+            entries: [
+              { name: '..', type: 'dir', size: 0 },
+              { name: 'kick.wav', type: 'file', size: 102400 },
+              { name: 'snare.wav', type: 'file', size: 204800 },
+            ],
+          };
+        }
+        if (path === '/samples/synths') {
+          return {
+            entries: [
+              { name: '..', type: 'dir', size: 0 },
+              { name: 'lead.mp3', type: 'file', size: 5120000 },
+              { name: 'pad.wav', type: 'file', size: 1024000 },
+            ],
+          };
+        }
+        return { entries: [] };
+      });
+
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths']}
+        />
+      );
+
+      // Type search for 'wav' — should match files from both roots
+      const searchInput = screen.getByPlaceholderText('Filter files...');
+      fireEvent.change(searchInput, { target: { value: 'wav' } });
+
+      await waitFor(() => {
+        // Should show root indicators for matching results
+        expect(screen.getByText(/\/samples\/drums/)).toBeDefined();
+        expect(screen.getByText(/\/samples\/synths/)).toBeDefined();
+
+        // Matching files from both roots
+        expect(screen.getByText('kick.wav')).toBeDefined();
+        expect(screen.getByText('snare.wav')).toBeDefined();
+        expect(screen.getByText('pad.wav')).toBeDefined();
+
+        // Non-matching file should not be visible
+        expect(screen.queryByText('lead.mp3')).toBeNull();
+      });
+    });
+
+    it('shows no results message when cross-root search matches nothing', async () => {
+      mockGetDirectory.mockResolvedValue({
+        entries: [
+          { name: '..', type: 'dir', size: 0 },
+          { name: 'kick.wav', type: 'file', size: 102400 },
+          { name: 'snare.wav', type: 'file', size: 204800 },
+        ],
+      });
+
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths']}
+        />
+      );
+
+      // Type search that matches nothing
+      const searchInput = screen.getByPlaceholderText('Filter files...');
+      fireEvent.change(searchInput, { target: { value: 'zzzzz_not_found' } });
+
+      await waitFor(() => {
+        expect(screen.getByText(/no results matching/i)).toBeDefined();
+      });
+    });
+
+    it('clears cross-root results when search is cleared', async () => {
+      mockGetDirectory.mockImplementation(async (path: string) => {
+        if (path === '/samples/drums') {
+          return {
+            entries: [
+              { name: '..', type: 'dir', size: 0 },
+              { name: 'kick.wav', type: 'file', size: 102400 },
+            ],
+          };
+        }
+        return { entries: [] };
+      });
+
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths']}
+        />
+      );
+
+      // First search for something
+      const searchInput = screen.getByPlaceholderText('Filter files...');
+      fireEvent.change(searchInput, { target: { value: 'kick' } });
+
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      // Clear the search
+      fireEvent.change(searchInput, { target: { value: '' } });
+
+      // Should return to root selector view
+      await waitFor(() => {
+        expect(screen.getByText('Sample Directories')).toBeDefined();
+      });
+    });
+
+    it('handles partial failure gracefully (one root fails, others work)', async () => {
+      mockGetDirectory.mockImplementation(async (path: string) => {
+        if (path === '/samples/broken') {
+          throw new Error('Permission denied');
+        }
+        if (path === '/samples/drums') {
+          return {
+            entries: [
+              { name: '..', type: 'dir', size: 0 },
+              { name: 'kick.wav', type: 'file', size: 102400 },
+            ],
+          };
+        }
+        return { entries: [] };
+      });
+
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/broken']}
+        />
+      );
+
+      // Type a search
+      const searchInput = screen.getByPlaceholderText('Filter files...');
+      fireEvent.change(searchInput, { target: { value: 'kick' } });
+
+      // Should still show results from the working root
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+        // Should show that one root failed
+        expect(screen.getByText(/Permission denied/)).toBeDefined();
+      });
+    });
+
+    it('still shows single-root search when browsing a specific root', async () => {
+      mockGetDirectory.mockResolvedValue({
+        entries: [
+          { name: '..', type: 'dir', size: 0 },
+          { name: 'kick.wav', type: 'file', size: 102400 },
+          { name: 'snare.wav', type: 'file', size: 204800 },
+        ],
+      });
+
+      render(
+        <SampleBrowser
+          tracks={[]}
+          selectedTrack={null}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples/drums', '/samples/synths']}
+        />
+      );
+
+      // Navigate into a specific root
+      fireEvent.click(screen.getByText('/samples/drums'));
+
+      await waitFor(() => {
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums');
+      });
+
+      // Clear mocks to reset call tracking
+      mockGetDirectory.mockClear();
+
+      // Search within the browsed root
+      const searchInput = screen.getByPlaceholderText('Filter files...');
+      fireEvent.change(searchInput, { target: { value: 'snare' } });
+
+      await waitFor(() => {
+        // Should find the matching file
+        expect(screen.getByText('snare.wav')).toBeDefined();
+        // Non-matching file should be filtered
+        expect(screen.queryByText('kick.wav')).toBeNull();
+      });
+
+      // Should NOT have called getDirectory again (it's client-side filtering)
+      expect(mockGetDirectory).not.toHaveBeenCalled();
+    });
+  });
 });

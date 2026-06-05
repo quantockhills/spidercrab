@@ -69,6 +69,14 @@ export function SampleBrowser({
   const [editingRoot, setEditingRoot] = useState(false);
   const [rootPathInput, setRootPathInput] = useState(currentPath);
 
+  // Cross-root search state (Issue #101, Acceptance Criterion #4)
+  const [crossRootResults, setCrossRootResults] = useState<{
+    root: string;
+    entries: DirEntry[];
+    error?: string;
+  }[] | null>(null);
+  const [crossRootLoading, setCrossRootLoading] = useState(false);
+
   const audioPreview = useAudioPreview(selectedFile, sendCommand);
 
   const loadDirectory = useCallback(async (path: string) => {
@@ -90,6 +98,42 @@ export function SampleBrowser({
       localStorage.setItem('sampleBrowserRootPath', currentPath);
     }
   }, [currentPath]);
+
+  // Cross-root search effect: when at root selector with a search query,
+  // fetch directories from ALL configured roots and merge results client-side (Issue #101)
+  useEffect(() => {
+    if (!currentPath && samplePaths && samplePaths.length > 0 && search.trim()) {
+      let cancelled = false;
+      setCrossRootLoading(true);
+      setCrossRootResults(null);
+
+      const results = samplePaths.map(async (root) => {
+        try {
+          const result = await getDirectory(root);
+          return { root, entries: result.entries || [], error: undefined };
+        } catch (err) {
+          return {
+            root,
+            entries: [],
+            error: err instanceof Error ? err.message : 'Failed to load directory',
+          };
+        }
+      });
+
+      Promise.all(results).then((all) => {
+        if (!cancelled) {
+          setCrossRootResults(all);
+          setCrossRootLoading(false);
+        }
+      });
+
+      return () => { cancelled = true; };
+    } else {
+      // Not in cross-root search mode — clear results
+      setCrossRootResults(null);
+      setCrossRootLoading(false);
+    }
+  }, [currentPath, search, samplePaths, getDirectory]);
 
   // Load directory on mount / path change
   useEffect(() => {
@@ -123,6 +167,7 @@ export function SampleBrowser({
   const handleSelectRoot = useCallback((root: string) => {
     setCurrentRoot(root);
     setCurrentPath(root);
+    setCrossRootResults(null);
   }, []);
 
   const handleRootPathSubmit = useCallback(() => {
@@ -153,9 +198,9 @@ export function SampleBrowser({
     }
   }, [currentPath, currentRoot]);
 
-  const handleSendToTrack = useCallback(async (entry: DirEntry) => {
+  const handleSendToTrack = useCallback(async (entry: DirEntry, basePath?: string) => {
     if (selectedTrack === null || entry.type !== 'file') return;
-    const fullPath = currentPath + '/' + entry.name;
+    const fullPath = (basePath || currentPath) + '/' + entry.name;
     setSending(entry.name);
     try {
       const ok = await sendSampleToTrack(fullPath, selectedTrack);
@@ -208,9 +253,9 @@ export function SampleBrowser({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleFileClick = useCallback((entry: DirEntry) => {
+  const handleFileClick = useCallback((entry: DirEntry, basePath?: string) => {
     if (entry.type !== 'file') return;
-    const fullPath = currentPath + '/' + entry.name;
+    const fullPath = (basePath || currentPath) + '/' + entry.name;
     if (selectedFile === fullPath) {
       // Click same file again — close preview
       audioPreview.stop();
@@ -222,11 +267,11 @@ export function SampleBrowser({
   }, [currentPath, selectedFile, audioPreview]);
 
   // Long-press handler for context menu (Issue #28)
-  const handleLongPress = useCallback((entry: DirEntry, x: number, y: number) => {
+  const handleLongPress = useCallback((entry: DirEntry, basePath: string, x: number, y: number) => {
     if (entry.type !== 'file') return;
-    const fullPath = currentPath + '/' + entry.name;
+    const fullPath = basePath + '/' + entry.name;
     setContextMenu({ entry, fullPath, x, y });
-  }, [currentPath]);
+  }, []);
 
   const handleCloseContextMenu = useCallback(() => {
     setContextMenu(null);
@@ -395,9 +440,30 @@ export function SampleBrowser({
         </div>
       )}
 
-      {/* Content — Root selector or directory listing */}
+      {/* Content — Root selector, cross-root search results, or directory listing */}
       <div className="flex-1 overflow-y-auto">
-        {!currentPath && samplePaths !== undefined ? (
+        {/* Cross-root search mode (Issue #101, Acceptance Criterion #4) */}
+        {crossRootLoading ? (
+          <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3">
+            <div className="text-4xl animate-pulse">🔍</div>
+            <p className="text-sm">Searching all directories...</p>
+          </div>
+        ) : crossRootResults !== null ? (
+          <CrossRootSearchResults
+            results={crossRootResults}
+            searchQuery={search}
+            selectedTrack={selectedTrack}
+            selectedTrackName={selectedTrackName}
+            isAudioFile={isAudioFile}
+            formatSize={formatSize}
+            sending={sending}
+            sentFiles={sentFiles}
+            selectedFile={selectedFile}
+            onSendToTrack={(entry, basePath) => handleSendToTrack(entry, basePath)}
+            onFileClick={(entry, basePath) => handleFileClick(entry, basePath)}
+            onLongPress={(entry, basePath, x, y) => handleLongPress(entry, basePath, x, y)}
+          />
+        ) : !currentPath && samplePaths !== undefined ? (
           samplePaths.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
               <div className="text-5xl mb-2">📁</div>
@@ -476,7 +542,7 @@ export function SampleBrowser({
                 isSelected={selectedFile !== null && currentPath + '/' + entry.name === selectedFile}
                 onSend={() => handleSendToTrack(entry)}
                 onSelect={() => handleFileClick(entry)}
-                onLongPress={(x, y) => handleLongPress(entry, x, y)}
+                onLongPress={(x, y) => handleLongPress(entry, currentPath, x, y)}
               />
             ))}
           </div>
@@ -584,6 +650,248 @@ export function SampleBrowser({
           {currentRoot && <span className="font-mono">📁 {currentRoot}</span>}
           {selectedTrackName && <span>→ {selectedTrackName}</span>}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Cross-Root Search Results (Issue #101, Acceptance Criterion #4) ──────
+
+interface CrossRootResult {
+  root: string;
+  entries: DirEntry[];
+  error?: string;
+}
+
+interface CrossRootSearchResultsProps {
+  results: CrossRootResult[];
+  searchQuery: string;
+  selectedTrack: number | null;
+  selectedTrackName: string | null;
+  isAudioFile: (name: string) => boolean;
+  formatSize: (bytes: number) => string;
+  sending: string | null;
+  sentFiles: Set<string>;
+  selectedFile: string | null;
+  onSendToTrack: (entry: DirEntry, basePath: string) => void;
+  onFileClick: (entry: DirEntry, basePath: string) => void;
+  onLongPress: (entry: DirEntry, basePath: string, x: number, y: number) => void;
+}
+
+function CrossRootSearchResults({
+  results,
+  searchQuery,
+  selectedTrack,
+  selectedTrackName,
+  isAudioFile,
+  formatSize,
+  sending,
+  sentFiles,
+  selectedFile,
+  onSendToTrack,
+  onFileClick,
+  onLongPress,
+}: CrossRootSearchResultsProps) {
+  const lowerQuery = searchQuery.toLowerCase();
+
+  // Filter entries per root by search query, skipping '..' entries
+  const filteredResults = useMemo(() => {
+    return results
+      .map((r) => ({
+        root: r.root,
+        error: r.error,
+        entries: r.entries.filter(
+          (e) => e.name !== '..' && e.name.toLowerCase().includes(lowerQuery)
+        ),
+      }))
+      .filter((r) => r.entries.length > 0 || r.error);
+  }, [results, lowerQuery]);
+
+  if (filteredResults.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
+        <div className="text-4xl">🔍</div>
+        <p className="text-sm">No results matching &quot;{searchQuery}&quot;</p>
+      </div>
+    );
+  }
+
+  let totalFiles = 0;
+  filteredResults.forEach((r) => { totalFiles += r.entries.length; });
+
+  return (
+    <div className="px-3 py-2 space-y-4">
+      <div className="text-[10px] text-[var(--text-secondary)] px-1">
+        Searching &quot;{searchQuery}&quot; across {results.length} directories — {totalFiles} result{totalFiles !== 1 ? 's' : ''}
+      </div>
+      {filteredResults.map((group) => (
+        <div key={group.root} className="space-y-1">
+          {/* Root header */}
+          {group.error ? (
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <span className="text-[11px] font-mono text-[var(--accent-red)] truncate flex-1">
+                ⚠ {group.root}: {group.error}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 px-2 py-1.5 bg-[var(--bg-tertiary)]/50">
+              <span className="text-[11px] font-mono text-[var(--accent-orange)] truncate flex-1">
+                📁 {group.root}
+              </span>
+              <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0">
+                {group.entries.filter((e) => e.type === 'dir').length} dirs ·{' '}
+                {group.entries.filter((e) => e.type === 'file').length} files
+              </span>
+            </div>
+          )}
+          {/* Entries within this root */}
+          {group.entries.map((entry) => (
+            <CrossRootEntryRow
+              key={group.root + '/' + entry.name}
+              entry={entry}
+              basePath={group.root}
+              isAudio={isAudioFile(entry.name)}
+              isSending={sending === entry.name}
+              isSent={sentFiles.has(entry.name)}
+              canSend={selectedTrack !== null}
+              formattedSize={formatSize(entry.size)}
+              isSelected={selectedFile !== null && group.root + '/' + entry.name === selectedFile}
+              onSend={() => onSendToTrack(entry, group.root)}
+              onSelect={() => onFileClick(entry, group.root)}
+              onLongPress={(x, y) => onLongPress(entry, group.root, x, y)}
+            />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Cross-Root Entry Row ───────────────────────────────────────
+
+interface CrossRootEntryRowProps {
+  entry: DirEntry;
+  basePath: string;
+  isAudio: boolean;
+  isSending: boolean;
+  isSent: boolean;
+  canSend: boolean;
+  formattedSize: string;
+  isSelected: boolean;
+  onSend: () => void;
+  onSelect: () => void;
+  onLongPress: (x: number, y: number) => void;
+}
+
+function CrossRootEntryRow({ entry, basePath, isAudio, isSending, isSent, canSend, formattedSize, isSelected, onSend, onSelect, onLongPress }: CrossRootEntryRowProps) {
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    longPressTriggered.current = false;
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      onLongPress(e.clientX, e.clientY);
+    }, 500);
+  }, [onLongPress]);
+
+  const handlePointerUp = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handlePointerMove = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (longPressTriggered.current) {
+      longPressTriggered.current = false;
+      return;
+    }
+    if (isAudio) {
+      onSelect();
+    }
+  }, [isAudio, onSelect]);
+
+  const icon = entry.type === 'dir' ? '📁' : isAudio ? '🎵' : '📄';
+
+  if (entry.type === 'dir') {
+    return (
+      <button
+        className="w-full flex items-center gap-2.5 px-3 py-2
+          bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60
+          active:brightness-95 transition-colors duration-100 text-left"
+      >
+        <span className="text-base flex-shrink-0">📁</span>
+        <span className="text-sm font-medium truncate flex-1">{entry.name}</span>
+        <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0">folder</span>
+      </button>
+    );
+  }
+
+  return (
+    <div
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerUp}
+      onClick={handleClick}
+      className={`flex items-center gap-2.5 px-3 py-2
+        active:brightness-95 transition-colors duration-100 select-none touch-none
+        ${isSelected
+          ? 'bg-[var(--accent-orange)]/15 ring-1 ring-[var(--accent-orange)]/30'
+          : 'bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60'
+        }`}
+    >
+      {/* Play button (audio files only) */}
+      {isAudio && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSelect(); }}
+          className="flex-shrink-0 w-8 h-8 flex items-center justify-center
+            text-sm bg-[var(--bg-tertiary)] hover:bg-[var(--accent-orange)]/20
+            active:brightness-90 transition-colors"
+          aria-label={isSelected ? 'Close preview' : 'Preview'}
+        >
+          {isSelected ? '⏹' : '▶'}
+        </button>
+      )}
+
+      {/* Icon + name */}
+      <span className="text-base flex-shrink-0">{icon}</span>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium truncate">{entry.name}</div>
+        {formattedSize && (
+          <div className="text-[10px] text-[var(--text-secondary)]">{formattedSize}</div>
+        )}
+      </div>
+
+      {/* Send to track button (audio files only) */}
+      {isAudio && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSend(); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          disabled={!canSend || isSending}
+          className={`
+            flex-shrink-0 px-3 py-1.5 text-xs font-medium
+            transition-all active:brightness-95 min-h-[44px]
+            ${!canSend
+              ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/50 cursor-not-allowed'
+              : isSent
+                ? 'bg-[var(--accent-green)]/20 text-[var(--accent-green)] ring-1 ring-[var(--accent-green)]/40'
+                : isSending
+                  ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                  : 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+            }
+          `}
+        >
+          {isSent ? '✓ Sent' : isSending ? '...' : '🎯 Send'}
+        </button>
       )}
     </div>
   );
