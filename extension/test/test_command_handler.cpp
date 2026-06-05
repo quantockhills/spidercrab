@@ -5296,3 +5296,142 @@ TEST(FxChainCacheTest, ClearAndReindex)
 
     fs::remove_all(tmpdir, ec);
 }
+
+TEST(FxChainCacheTest, SetConfigDirBuildsCache)
+{
+    // Verify that calling SetConfigDir with a chain directory path
+    // automatically builds the FX chain cache (auto-cache on startup).
+    const char* tmpdir = "/tmp/spidercrab_fxchain_config";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+
+    // Create some .RfxChain files
+    {
+        std::ofstream f(std::string(tmpdir) + "/Kick.RfxChain");
+        f << "content";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/Snare.RfxChain");
+        f << "content";
+    }
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Before calling SetConfigDir, cache should not be indexed
+    EXPECT_FALSE(handler->GetFxChainCache().IsIndexed());
+    EXPECT_EQ(handler->GetFxChainCache().Count(), 0);
+
+    // Call SetConfigDir — should auto-build the cache
+    handler->SetConfigDir(tmpdir);
+
+    // After SetConfigDir, cache should be indexed with the chain files
+    EXPECT_TRUE(handler->GetFxChainCache().IsIndexed());
+    EXPECT_EQ(handler->GetFxChainCache().Count(), 2);
+    EXPECT_EQ(handler->GetFxChainCache().RootPath(), tmpdir);
+
+    // Verify search works against the cached index
+    auto result = handler->GetFxChainCache().Search("Kick", 0, 0);
+    EXPECT_EQ(result.total, 1);
+    ASSERT_EQ((int)result.results.size(), 1);
+    EXPECT_NE(result.results[0].name.find("Kick"), std::string::npos);
+
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(FxChainCacheTest, SearchRecursiveUsesCacheWhenAvailable)
+{
+    // Verify that the deprecated fxchain/searchRecursive command uses
+    // the in-memory cache when it is available (zero filesystem IO).
+    const char* tmpdir = "/tmp/spidercrab_fxchain_sr_cache";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+
+    {
+        std::ofstream f(std::string(tmpdir) + "/Bass.RfxChain");
+        f << "content";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/Guitar.RfxChain");
+        f << "content";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/Vocals.RfxChain");
+        f << "content";
+    }
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Pre-build the cache
+    handler->PreCacheFxChains(tmpdir);
+    EXPECT_TRUE(handler->GetFxChainCache().IsIndexed());
+    EXPECT_EQ(handler->GetFxChainCache().Count(), 3);
+
+    // Now call searchRecursive — should use cache, not filesystem
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + std::string(tmpdir) + R"("},"id":"sr_cache"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    // Should find all 3 chains
+    EXPECT_NE(resp.find("Bass"), std::string::npos);
+    EXPECT_NE(resp.find("Guitar"), std::string::npos);
+    EXPECT_NE(resp.find("Vocals"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    // Test filtering — searchRecursive with cached query
+    responses.clear();
+    std::string filterCmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"guitar","rootPath":")" + std::string(tmpdir) + R"("},"id":"sr_filter"})";
+    handler->HandleMessage(1, filterCmd);
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("Guitar"), std::string::npos);
+    EXPECT_EQ(responses[0].find("Bass"), std::string::npos)
+        << "Bass should NOT match query 'guitar'";
+
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(FxChainCacheTest, SearchRecursiveFallsBackToFsWhenNoCache)
+{
+    // Verify that searchRecursive falls back to filesystem when the
+    // cache is not available for the requested rootPath.
+    const char* tmpdir = "/tmp/spidercrab_fxchain_sr_fallback";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+
+    {
+        std::ofstream f(std::string(tmpdir) + "/Fallback.RfxChain");
+        f << "content";
+    }
+
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Do NOT pre-build the cache — searchRecursive should fall back to FS
+    EXPECT_FALSE(handler->GetFxChainCache().IsIndexed());
+
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + std::string(tmpdir) + R"("},"id":"sr_fs"})";
+    handler->HandleMessage(1, cmd);
+
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+    EXPECT_NE(resp.find("Fallback"), std::string::npos);
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+
+    fs::remove_all(tmpdir, ec);
+}
