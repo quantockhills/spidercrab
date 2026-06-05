@@ -318,6 +318,7 @@ void CommandHandler::SetConfigDir(const std::string& dir)
 {
     m_fxTagStorage = FxTagStorage(dir);
     m_fxTagStorage.Load();
+    PreCacheFxChains(dir);
 }
 
 void CommandHandler::HandleMessage(int clientId, const std::string& message)
@@ -3200,7 +3201,35 @@ void CommandHandler::HandleFxChainSearchRecursive(
         return;
     }
 
-    // Build lowercase query for case-insensitive matching
+    // --- Use cached search when available (zero IO) ---
+    // If the cache is indexed for this rootPath, query it instead of walking the
+    // filesystem. This is the preferred path — fxchain/searchCached should be
+    // used by new clients, but we keep searchRecursive working via cache for
+    // backward compatibility.
+    if (m_fxChainCache.IsIndexed() && m_fxChainCache.RootPath() == rootPath) {
+        auto result = m_fxChainCache.Search(query, 0, 0);
+        std::string results = "[";
+        for (size_t i = 0; i < result.results.size(); i++) {
+            if (i > 0) results += ",";
+            results += "{";
+            results += json_string("filePath") + ":" + json_string(result.results[i].filePath) + ",";
+            results += json_string("name") + ":" + json_string(result.results[i].name) + ",";
+            results += json_string("size") + ":" + std::to_string(result.results[i].size);
+            results += "}";
+        }
+        results += "]";
+
+        std::string payload = "{";
+        payload += json_string("results") + ":" + results;
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+        return;
+    }
+
+    // --- Fallback: legacy recursive directory scan ---
+    // Only reached when cache is unavailable (e.g., first call before startup
+    // cache is built, or rootPath changed).
+    // @deprecated in favor of fxchain/searchCached.
     std::string lowerQuery;
     for (char c : query) lowerQuery += tolower((unsigned char)c);
 
@@ -3220,12 +3249,9 @@ void CommandHandler::HandleFxChainSearchRecursive(
             for (char c : ext) lowerExt += tolower((unsigned char)c);
             if (lowerExt != ".rfxchain") continue;
 
-            // If query is non-empty, filter by case-insensitive substring match
-            // Search both the filename AND the full path (so directory names count too)
             if (!lowerQuery.empty()) {
                 std::string lowerName;
                 for (char c : name) lowerName += tolower((unsigned char)c);
-                // Also check the full path relative to rootPath
                 std::string relPath = entry.path().lexically_relative(rootPath).string();
                 std::string lowerRelPath;
                 for (char c : relPath) lowerRelPath += tolower((unsigned char)c);
@@ -3246,7 +3272,6 @@ void CommandHandler::HandleFxChainSearchRecursive(
             results += "}";
         }
     } catch (const fs::filesystem_error&) {
-        // Non-existent rootPath returns empty results, not error (graceful)
         results = "[";
         first = true;
     }
