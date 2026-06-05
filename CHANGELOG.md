@@ -1,4 +1,24 @@
 
+## Media Browser enhancements — 2026-06-05
+
+### Features
+- **Sample directory management** — manage multiple sample directories via Settings (Issue #101):
+  - Settings tab shows a list of configured sample directories
+  - Add directories via text input (+ Add Directory button)
+  - Remove directories via ✕ button
+  - All changes persist to localStorage
+  - Old single-path setting auto-migrates to multi-path format
+- **Multi-root Media Browser** — browse any configured root directory (Issue #101):
+  - Root selector at the top level shows all configured directories
+  - Tap a root to browse its contents
+  - "← Roots" button returns to root selector
+  - ".." at root level also returns to root selector
+- **Cross-root search** — search across ALL configured directories simultaneously (Issue #101):
+  - Type a search query at the root selector level
+  - Results are fetched from all roots and displayed grouped by root
+  - Individual root failure is handled gracefully (shows error for that root, results for others)
+  - Clearing search returns to the root selector view
+
 ## Phase 1 MVP — 2026-05-30
 
 ### Features
