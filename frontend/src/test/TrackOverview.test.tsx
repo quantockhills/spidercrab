@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { TrackOverview } from '../components/TrackOverview';
 import { volumeToDb } from '../utils/volume';
-import type { Track, FxInfo } from '../hooks/useReaper';
+import type { Track, FxInfo, EnumeratedFx } from '../hooks/useReaper';
 
 // ── Mock data ────────────────────────────────────────────────
 
@@ -1242,5 +1242,295 @@ describe('TrackOverview — Inline FX drawer', () => {
 
     // Should show 'No presets' instead of preset navigation
     expect(screen.getByText(/No presets/i)).toBeDefined();
+  });
+});
+
+// ── Inline FX Search tests (Issue #102) ──────────────────────
+
+describe('TrackOverview — Inline FX Search', () => {
+  const mockEnumerateFx: EnumeratedFx[] = [
+    { index: 0, name: 'VST3: ReaComp', ident: 'reacomp', format: 'VST3' },
+    { index: 1, name: 'VST3: ReaEQ', ident: 'reaeq', format: 'VST3' },
+    { index: 2, name: 'VST3: ReaVerbate', ident: 'reaverbate', format: 'VST3' },
+    { index: 3, name: 'CLAP: Serum', ident: 'serum', format: 'CLAP' },
+    { index: 4, name: 'VST3: ValhallaRoom', ident: 'valhallaroom', format: 'VST3' },
+    { index: 5, name: 'JS: Delay (JSFX)', ident: 'js_delay', format: 'JSFX' },
+    { index: 6, name: 'VST3: Pro-Q 3', ident: 'proq3', format: 'VST3' },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function renderWithInlineSearch(props: Partial<Parameters<typeof TrackOverview>[0]> = {}) {
+    const enumerateFx = vi.fn().mockResolvedValue(mockEnumerateFx);
+    const addFx = vi.fn().mockResolvedValue(0);
+
+    const utils = renderTrackOverview({
+      enumerateFx,
+      addFx,
+      ...props,
+    });
+
+    return { ...utils, enumerateFx, addFx };
+  }
+
+  it('shows "Add FX" button at end of FX grid when enumerateFx and addFx are provided', async () => {
+    renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Should show the Add FX button
+    const addFxButtons = screen.getAllByTestId('inline-add-fx');
+    expect(addFxButtons.length).toBeGreaterThanOrEqual(1);
+    expect(addFxButtons[0].textContent).toContain('Add FX');
+  });
+
+  it('does not show Add FX button when enumerateFx and addFx are not provided', () => {
+    renderTrackOverview();
+    expect(screen.queryByTestId('inline-add-fx')).toBeNull();
+  });
+
+  it('tapping Add FX button opens inline search bar and loads plugins', async () => {
+    const { enumerateFx } = renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Tap Add FX button
+    fireEvent.click(screen.getAllByTestId('inline-add-fx')[0]);
+
+    // Should call enumerateFx
+    await waitFor(() => {
+      expect(enumerateFx).toHaveBeenCalledOnce();
+    });
+
+    // Search input should appear
+    expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+
+    // Results should show (all plugins)
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+      // Use getAllByText since some FX names may appear in both cards and search results
+      expect(screen.getAllByText('Serum').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('ReaVerbate').length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it('filters results as user types in search bar', async () => {
+    renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Open search
+    fireEvent.click(screen.getAllByTestId('inline-add-fx')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+
+    // Type 'comp'
+    const input = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(input, { target: { value: 'comp' } });
+
+    // Wait for debounce (300ms) + filter — the search results should update
+    await waitFor(() => {
+      // Check search result text content directly via test-id
+      const results = screen.queryAllByTestId('inline-fx-result');
+      // Only ReaComp should be in search results (matches 'comp')
+      const matchingNames = results.map(el => el.textContent).filter(Boolean);
+      // Every result should include 'comp' (case-insensitive)
+      const allMatch = matchingNames.every(name =>
+        name!.toLowerCase().includes('comp')
+      );
+      expect(allMatch).toBe(true);
+    });
+
+    // Serum should NOT be in search results (doesn't match 'comp')
+    const serumSearchResults = screen.queryAllByTestId('inline-fx-result').filter(
+      (el) => el.textContent?.includes('Serum')
+    );
+    expect(serumSearchResults.length).toBe(0);
+  });
+
+  it('shows "No plugins found" when search has no matches', async () => {
+    renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Open search
+    fireEvent.click(screen.getAllByTestId('inline-add-fx')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+
+    // Type something that won't match
+    const input = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(input, { target: { value: 'xyznonexistent' } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-empty')).toBeDefined();
+    });
+  });
+
+  it('tapping a search result calls addFx with correct track index and FX name', async () => {
+    const { addFx } = renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Open search
+    fireEvent.click(screen.getAllByTestId('inline-add-fx')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+
+    // Find the search result by test-id and click it
+    const serumResult = screen.getAllByTestId('inline-fx-result').find(
+      (el) => el.textContent?.includes('Serum')
+    );
+    expect(serumResult).toBeDefined();
+    fireEvent.click(serumResult!);
+
+    await waitFor(() => {
+      expect(addFx).toHaveBeenCalledOnce();
+    });
+    expect(addFx).toHaveBeenCalledWith(0, 'CLAP: Serum');
+  });
+
+  it('closes search bar and refreshes FX after adding an FX', async () => {
+    const { addFx } = renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Open search
+    fireEvent.click(screen.getAllByTestId('inline-add-fx')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+
+    // Tap search result (Serum, which is unique in search)
+    const serumResult = screen.getAllByTestId('inline-fx-result').find(
+      (el) => el.textContent?.includes('Serum')
+    );
+    expect(serumResult).toBeDefined();
+    fireEvent.click(serumResult!);
+
+    await waitFor(() => {
+      expect(addFx).toHaveBeenCalledOnce();
+    });
+
+    // Search bar should close
+    await waitFor(() => {
+      expect(screen.queryByTestId('inline-fx-search-input')).toBeNull();
+    });
+  });
+
+  it('closes search bar when close button is tapped (without adding)', async () => {
+    renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Open search
+    fireEvent.click(screen.getAllByTestId('inline-add-fx')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+
+    // Tap close button
+    fireEvent.click(screen.getByTestId('inline-fx-search-close'));
+
+    // Search bar should close
+    await waitFor(() => {
+      expect(screen.queryByTestId('inline-fx-search-input')).toBeNull();
+    });
+  });
+
+  it('shows loading state while enumerateFx is in progress', async () => {
+    // Delayed enumerate
+    const delayedEnumerate = vi.fn().mockImplementation(
+      () => new Promise<EnumeratedFx[]>((resolve) => setTimeout(() => resolve(mockEnumerateFx), 100)),
+    );
+
+    renderWithInlineSearch({ enumerateFx: delayedEnumerate });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Open search
+    fireEvent.click(screen.getAllByTestId('inline-add-fx')[0]);
+
+    // Should show loading
+    expect(screen.getByTestId('inline-fx-search-loading')).toBeDefined();
+
+    // Wait for results — check for search result buttons
+    await waitFor(() => {
+      const results = screen.getAllByTestId('inline-fx-result');
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    // Loading should be gone
+    expect(screen.queryByTestId('inline-fx-search-loading')).toBeNull();
+  });
+
+  it('shows format badge next to each FX name in search results', async () => {
+    renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Open search
+    fireEvent.click(screen.getAllByTestId('inline-add-fx')[0]);
+
+    await waitFor(() => {
+      // Wait for search results to appear
+      const results = screen.getAllByTestId('inline-fx-result');
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    // Should have format badges
+    const formatBadges = screen.getAllByTestId('inline-fx-format-badge');
+    expect(formatBadges.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('only opens one search at a time — opening for track 1 closes track 0 search', async () => {
+    renderWithInlineSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Open search for track 0 (first Add FX button)
+    const addFxButtons = screen.getAllByTestId('inline-add-fx');
+    fireEvent.click(addFxButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+
+    // Open search for track 1 (second Add FX button)
+    fireEvent.click(addFxButtons[1]);
+
+    // Only one search input should be visible at a time
+    const searchInputs = screen.getAllByTestId('inline-fx-search-input');
+    expect(searchInputs).toHaveLength(1);
   });
 });

@@ -435,6 +435,8 @@ function AppInner() {
             setFxPreset={setFxPreset}
             getAllFxPresetNames={getAllFxPresetNames}
             fxChainCycle={fxChainCycle}
+            enumerateFx={enumerateFx}
+            addFx={addFx}
           />
         )}
 

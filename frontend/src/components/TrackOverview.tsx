@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Track, FxInfo, FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
+import type { EnumeratedFx } from '../hooks/useFx';
 import { volumeToDb } from '../utils/volume';
 import type { WsResponse } from '../lib/wsClient';
 import { ParamSlider } from './ParamControl';
@@ -27,6 +28,9 @@ interface TrackOverviewProps {
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
   // Chain cycle support (Issue #95)
   fxChainCycle?: (trackIdx: number, direction: 'next' | 'prev', chainPath?: string) => Promise<{success: boolean; fx?: FxInfo[]}>;
+  // Inline FX search props (Issue #102)
+  enumerateFx?: () => Promise<EnumeratedFx[]>;
+  addFx?: (trackIdx: number, fxName: string) => Promise<number>;
   // Inline FX drawer props (Issue #94)
   getFxParams?: (trackIdx: number, fxIdx: number, offset?: number, limit?: number) => Promise<{params: FxParam[]; total: number; offset: number; limit: number}>;
   setFxParam?: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<WsResponse>;
@@ -163,6 +167,8 @@ export function TrackOverview({
   setFxPreset,
   getAllFxPresetNames,
   fxChainCycle,
+  enumerateFx,
+  addFx,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -175,6 +181,9 @@ export function TrackOverview({
 
   // Chain cycler state (Issue #95)
   const [chainCycler, setChainCycler] = useState<{trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null>(null);
+
+  // Inline FX search state (Issue #102)
+  const [inlineSearchTrackIdx, setInlineSearchTrackIdx] = useState<number | null>(null);
 
   // Drag-and-drop state for FX reordering
   const [dragActiveTrack, setDragActiveTrack] = useState<number | null>(null);
@@ -201,6 +210,22 @@ export function TrackOverview({
     if (ok) setFxRefreshVersion(v => v + 1);
     return ok;
   }, [onReorderFx]);
+
+  // Inline FX search handlers (Issue #102)
+  const handleOpenInlineSearch = useCallback((trackIdx: number) => {
+    // Close any existing drawer when opening search
+    setExpandedFx(null);
+    setInlineSearchTrackIdx(trackIdx);
+  }, []);
+
+  const handleCloseInlineSearch = useCallback(() => {
+    setInlineSearchTrackIdx(null);
+  }, []);
+
+  const handleInlineFxAdded = useCallback(() => {
+    setFxRefreshVersion(v => v + 1);
+    setInlineSearchTrackIdx(null);
+  }, []);
 
   // Fetch FX for all tracks on mount / when track list changes
   useEffect(() => {
@@ -410,6 +435,17 @@ export function TrackOverview({
                   setChainCycler={setChainCycler}
                   onReorderFx={handleReorderFx}
                   fxChainCycle={fxChainCycle}
+                  onOpenInlineSearch={enumerateFx && addFx ? handleOpenInlineSearch : undefined}
+                />
+              )}
+              {/* Inline FX search (Issue #102) */}
+              {inlineSearchTrackIdx === track.index && enumerateFx && addFx && (
+                <InlineFxSearch
+                  trackIdx={track.index}
+                  enumerateFx={enumerateFx}
+                  addFx={addFx}
+                  onClose={handleCloseInlineSearch}
+                  onFxAdded={handleInlineFxAdded}
                 />
               )}
               {/* Inline FX drawer (Issue #94) */}
@@ -472,6 +508,7 @@ interface FxGridProps {
   setChainCycler: (v: {trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
   fxChainCycle?: (trackIdx: number, direction: 'next' | 'prev', chainPath?: string) => Promise<{success: boolean; fx?: FxInfo[]}>;
+  onOpenInlineSearch?: (trackIdx: number) => void;
 }
 
 /** Extract filename from a chain file path */
@@ -497,6 +534,7 @@ function FxGrid({
   setChainCycler,
   onReorderFx,
   fxChainCycle,
+  onOpenInlineSearch,
 }: FxGridProps) {
   // Group FX by chainPath
   interface FxGroup {
@@ -689,6 +727,24 @@ function FxGrid({
         >
           +
         </div>
+      )}
+      {/* Add FX button — persistent (Issue #102) */}
+      {onOpenInlineSearch && (
+        <button
+          data-testid="inline-add-fx"
+          onClick={() => onOpenInlineSearch(trackIdx)}
+          className="
+            w-24 h-18 flex flex-col items-center justify-center
+            bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
+            ring-1 ring-dashed ring-[var(--border)]
+            text-[11px] text-[var(--text-secondary)]
+            active:brightness-95 transition-all duration-100
+            cursor-pointer
+          "
+        >
+          <span className="text-base leading-none mb-0.5">+</span>
+          <span>Add FX</span>
+        </button>
       )}
     </div>
   );
@@ -1145,6 +1201,193 @@ function InlineFxDrawer({
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Inline FX Search (Issue #102) ──────────────────────────
+
+interface InlineFxSearchProps {
+  trackIdx: number;
+  enumerateFx: () => Promise<EnumeratedFx[]>;
+  addFx: (trackIdx: number, fxName: string) => Promise<number>;
+  onClose: () => void;
+  onFxAdded: () => void;
+}
+
+function InlineFxSearch({
+  trackIdx,
+  enumerateFx,
+  addFx,
+  onClose,
+  onFxAdded,
+}: InlineFxSearchProps) {
+  const [allFx, setAllFx] = useState<EnumeratedFx[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [adding, setAdding] = useState<string | null>(null);
+  const [filteredFx, setFilteredFx] = useState<EnumeratedFx[]>([]);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load all FX on mount
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    enumerateFx().then((fx) => {
+      if (!cancelled) {
+        setAllFx(fx);
+        setFilteredFx(fx);
+        setLoading(false);
+        // Auto-focus input after render
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setAllFx([]);
+        setFilteredFx([]);
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [enumerateFx]);
+
+  // Debounced search filter
+  useEffect(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+    debounceTimer.current = setTimeout(() => {
+      const query = search.toLowerCase().trim();
+      if (!query) {
+        setFilteredFx(allFx);
+      } else {
+        setFilteredFx(
+          allFx.filter((fx) => {
+            const cleanName = cleanFxName(fx.name).toLowerCase();
+            return cleanName.includes(query) || fx.ident.toLowerCase().includes(query);
+          }),
+        );
+      }
+    }, 300);
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [search, allFx]);
+
+  const handleAdd = useCallback(
+    async (fx: EnumeratedFx) => {
+      if (adding) return; // Prevent double-tap
+      setAdding(fx.name);
+      try {
+        const idx = await addFx(trackIdx, fx.name);
+        if (idx >= 0) {
+          onFxAdded();
+        }
+      } catch {
+        // Error handled silently — search stays open
+      } finally {
+        setAdding(null);
+      }
+    },
+    [trackIdx, addFx, onFxAdded, adding],
+  );
+
+  // Clamp results to first 30 for performance
+  const visibleFx = filteredFx.slice(0, 30);
+
+  return (
+    <div className="mx-3 mb-2 bg-[var(--bg-secondary)] ring-1 ring-[var(--accent-orange)]/30 overflow-hidden">
+      {/* Header with search input */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-tertiary)]/50 border-b border-[var(--border)]">
+        <div className="relative flex-1">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)]">
+            🔍
+          </span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search FX..."
+            data-testid="inline-fx-search-input"
+            className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] text-sm
+              text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
+              outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
+          />
+        </div>
+        <button
+          data-testid="inline-fx-search-close"
+          onClick={onClose}
+          className="text-xs px-2 py-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] active:brightness-95"
+          aria-label="Close FX search"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Loading state */}
+      {loading ? (
+        <div
+          data-testid="inline-fx-search-loading"
+          className="px-3 py-4 text-center text-xs text-[var(--text-secondary)] animate-pulse"
+        >
+          Loading plugins…
+        </div>
+      ) : visibleFx.length === 0 ? (
+        <div
+          data-testid="inline-fx-search-empty"
+          className="px-3 py-4 text-center text-xs text-[var(--text-tertiary)]"
+        >
+          {search.trim() ? 'No plugins match your search' : 'No plugins found'}
+        </div>
+      ) : (
+        <div className="max-h-48 overflow-y-auto">
+          {visibleFx.map((fx) => {
+            const displayName = cleanFxName(fx.name);
+            const isAddingThis = adding === fx.name;
+            return (
+              <button
+                key={fx.ident || fx.name}
+                data-testid="inline-fx-result"
+                onClick={() => handleAdd(fx)}
+                disabled={isAddingThis}
+                className={`
+                  w-full flex items-center gap-2 px-3 py-2 text-left
+                  ${isAddingThis
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                    : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
+                  }
+                  active:brightness-95 transition-colors duration-75
+                  border-b border-[var(--border)] last:border-b-0
+                `}
+              >
+                <span className="flex-1 min-w-0 text-sm font-medium truncate">
+                  {displayName}
+                </span>
+                <span
+                  data-testid="inline-fx-format-badge"
+                  className="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
+                >
+                  {fx.format}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Result count footer */}
+      {!loading && allFx.length > 0 && (
+        <div className="px-3 py-1.5 border-t border-[var(--border)] text-[10px] text-[var(--text-secondary)] flex justify-between">
+          <span>{allFx.length} plugins</span>
+          {search.trim() && (
+            <span>{filteredFx.length} match{filteredFx.length !== 1 ? 'es' : ''}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
