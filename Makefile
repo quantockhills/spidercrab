@@ -29,6 +29,20 @@ test:
 	@echo "=== Running C++ tests ==="
 	cd extension/build && ./reaper-ipad-test
 
+# ---- macOS Build ----
+
+build-macos:
+	TARGET=macos bash extension/build.sh
+
+# Verify macOS dylib structure (requires macOS or osxcross)
+test-macos: build-macos
+	bash extension/test/test_macos_build.sh
+
+# Deploy macOS dylib to REAPER UserPlugins
+deploy-macos:
+	cp extension/build/reaper_spidercrab.dylib ~/Library/Application\ Support/REAPER/UserPlugins/
+	@echo "Deployed reaper_spidercrab.dylib to REAPER UserPlugins"
+
 # ---- Windows Cross-Compilation ----
 
 build-windows:
