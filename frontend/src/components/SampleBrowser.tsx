@@ -45,7 +45,9 @@ export function SampleBrowser({
   );
   const [currentRoot, setCurrentRoot] = useState<string | null>(null);
   const [entries, setEntries] = useState<DirEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !!currentPath // If no path (root selector mode), start not loading
+  );
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sending, setSending] = useState<string | null>(null);
@@ -70,12 +72,16 @@ export function SampleBrowser({
   const [rootPathInput, setRootPathInput] = useState(currentPath);
 
   // Cross-root search state (Issue #101, Acceptance Criterion #4)
+  const crossRootSearchVersion = useRef(0);
   const [crossRootResults, setCrossRootResults] = useState<{
     root: string;
     entries: DirEntry[];
     error?: string;
   }[] | null>(null);
-  const [crossRootLoading, setCrossRootLoading] = useState(false);
+
+  // Derive cross-root search state from active search + no results yet (Issue #101)
+  const isCrossRootSearchActive = !currentPath && samplePaths && samplePaths.length > 0 && search.trim().length > 0;
+  const crossRootLoading = isCrossRootSearchActive && crossRootResults === null;
 
   const audioPreview = useAudioPreview(selectedFile, sendCommand);
 
@@ -103,9 +109,7 @@ export function SampleBrowser({
   // fetch directories from ALL configured roots and merge results client-side (Issue #101)
   useEffect(() => {
     if (!currentPath && samplePaths && samplePaths.length > 0 && search.trim()) {
-      let cancelled = false;
-      setCrossRootLoading(true);
-      setCrossRootResults(null);
+      const version = ++crossRootSearchVersion.current;
 
       const results = samplePaths.map(async (root) => {
         try {
@@ -121,17 +125,10 @@ export function SampleBrowser({
       });
 
       Promise.all(results).then((all) => {
-        if (!cancelled) {
+        if (version === crossRootSearchVersion.current) {
           setCrossRootResults(all);
-          setCrossRootLoading(false);
         }
       });
-
-      return () => { cancelled = true; };
-    } else {
-      // Not in cross-root search mode — clear results
-      setCrossRootResults(null);
-      setCrossRootLoading(false);
     }
   }, [currentPath, search, samplePaths, getDirectory]);
 
@@ -139,13 +136,9 @@ export function SampleBrowser({
   useEffect(() => {
     if (!currentPath) {
       // Root selector mode — don't load any directory
-      setLoading(false);
-      setEntries([]);
-      setError(null);
       return;
     }
     let cancelled = false;
-    setLoading(true);
     getDirectory(currentPath)
       .then((result) => {
         if (!cancelled) {
@@ -168,6 +161,7 @@ export function SampleBrowser({
     setCurrentRoot(root);
     setCurrentPath(root);
     setCrossRootResults(null);
+    setLoading(true);
   }, []);
 
   const handleRootPathSubmit = useCallback(() => {
@@ -189,12 +183,15 @@ export function SampleBrowser({
           // Root level — go back to root selector
           setCurrentRoot(null);
           setCurrentPath('');
+          setEntries([]);
+          setError(null);
           return;
         }
         setCurrentPath(parent || '/');
       } else {
         setCurrentPath(currentPath + '/' + entry.name);
       }
+      setLoading(true);
     }
   }, [currentPath, currentRoot]);
 
@@ -367,6 +364,8 @@ export function SampleBrowser({
               onClick={() => {
                 setCurrentRoot(null);
                 setCurrentPath('');
+                setEntries([]);
+                setError(null);
               }}
               className="text-[11px] text-[var(--accent-orange)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0 px-2 py-1"
             >
@@ -443,26 +442,27 @@ export function SampleBrowser({
       {/* Content — Root selector, cross-root search results, or directory listing */}
       <div className="flex-1 overflow-y-auto">
         {/* Cross-root search mode (Issue #101, Acceptance Criterion #4) */}
-        {crossRootLoading ? (
-          <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3">
-            <div className="text-4xl animate-pulse">🔍</div>
-            <p className="text-sm">Searching all directories...</p>
-          </div>
-        ) : crossRootResults !== null ? (
-          <CrossRootSearchResults
-            results={crossRootResults}
-            searchQuery={search}
-            selectedTrack={selectedTrack}
-            selectedTrackName={selectedTrackName}
-            isAudioFile={isAudioFile}
-            formatSize={formatSize}
-            sending={sending}
-            sentFiles={sentFiles}
-            selectedFile={selectedFile}
-            onSendToTrack={(entry, basePath) => handleSendToTrack(entry, basePath)}
-            onFileClick={(entry, basePath) => handleFileClick(entry, basePath)}
-            onLongPress={(entry, basePath, x, y) => handleLongPress(entry, basePath, x, y)}
-          />
+        {isCrossRootSearchActive ? (
+          crossRootLoading ? (
+            <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3">
+              <div className="text-4xl animate-pulse">🔍</div>
+              <p className="text-sm">Searching all directories...</p>
+            </div>
+          ) : crossRootResults ? (
+            <CrossRootSearchResults
+              results={crossRootResults}
+              searchQuery={search}
+              selectedTrack={selectedTrack}
+              isAudioFile={isAudioFile}
+              formatSize={formatSize}
+              sending={sending}
+              sentFiles={sentFiles}
+              selectedFile={selectedFile}
+              onSendToTrack={(entry, basePath) => handleSendToTrack(entry, basePath)}
+              onFileClick={(entry, basePath) => handleFileClick(entry, basePath)}
+              onLongPress={(entry, basePath, x, y) => handleLongPress(entry, basePath, x, y)}
+            />
+          ) : null
         ) : !currentPath && samplePaths !== undefined ? (
           samplePaths.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
@@ -667,7 +667,6 @@ interface CrossRootSearchResultsProps {
   results: CrossRootResult[];
   searchQuery: string;
   selectedTrack: number | null;
-  selectedTrackName: string | null;
   isAudioFile: (name: string) => boolean;
   formatSize: (bytes: number) => string;
   sending: string | null;
@@ -682,7 +681,6 @@ function CrossRootSearchResults({
   results,
   searchQuery,
   selectedTrack,
-  selectedTrackName,
   isAudioFile,
   formatSize,
   sending,
@@ -749,7 +747,6 @@ function CrossRootSearchResults({
             <CrossRootEntryRow
               key={group.root + '/' + entry.name}
               entry={entry}
-              basePath={group.root}
               isAudio={isAudioFile(entry.name)}
               isSending={sending === entry.name}
               isSent={sentFiles.has(entry.name)}
@@ -771,7 +768,6 @@ function CrossRootSearchResults({
 
 interface CrossRootEntryRowProps {
   entry: DirEntry;
-  basePath: string;
   isAudio: boolean;
   isSending: boolean;
   isSent: boolean;
@@ -783,7 +779,7 @@ interface CrossRootEntryRowProps {
   onLongPress: (x: number, y: number) => void;
 }
 
-function CrossRootEntryRow({ entry, basePath, isAudio, isSending, isSent, canSend, formattedSize, isSelected, onSend, onSelect, onLongPress }: CrossRootEntryRowProps) {
+function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, isSelected, onSend, onSelect, onLongPress }: CrossRootEntryRowProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
 
@@ -809,7 +805,7 @@ function CrossRootEntryRow({ entry, basePath, isAudio, isSending, isSent, canSen
     }
   }, []);
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
+  const handleClick = useCallback(() => {
     if (longPressTriggered.current) {
       longPressTriggered.current = false;
       return;
@@ -963,7 +959,7 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, is
     }
   }, []);
 
-  const handleClick = useCallback((e: React.MouseEvent) => {
+  const handleClick = useCallback(() => {
     if (longPressTriggered.current) {
       // Long-press already handled, don't fire click
       longPressTriggered.current = false;
