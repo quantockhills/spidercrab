@@ -14,17 +14,33 @@ SUFFIX=".so"
 
 echo ""
 echo "=== Deploying to Reaper ==="
-# Must be named reaper_*.so (underscores, not hyphens) and in Plugins/
-mkdir -p "$HOME/reaper-portable/Plugins"
-cp "$SCRIPT_DIR/build/reaper_spidercrab${SUFFIX}" "$HOME/reaper-portable/Plugins/reaper_spidercrab.so"
+# Deploy based on target platform
+TARGET="${TARGET:-linux}"
 
-echo "Deployed to: $HOME/reaper-portable/Plugins/reaper_spidercrab.so"
-ls -lh "$HOME/reaper-portable/Plugins/reaper_spidercrab.so"
+if [ "$TARGET" = "macos" ] || [ "$(uname)" = "Darwin" ]; then
+    # macOS deployment
+    PLUGINS_DIR="$HOME/Library/Application Support/REAPER/UserPlugins"
+    DYLIB_NAME="reaper_spidercrab.dylib"
+    [ "$BUILD_TYPE" = "debug" ] && DYLIB_NAME="reaper_spidercrab-debug.dylib"
 
-# Also deploy to the user config directory (Reaper may load from here instead)
-if [ -d "$HOME/.config/REAPER/UserPlugins" ]; then
-  cp "$SCRIPT_DIR/build/reaper_spidercrab${SUFFIX}" "$HOME/.config/REAPER/UserPlugins/reaper_spidercrab.so"
-  echo "Also deployed to: $HOME/.config/REAPER/UserPlugins/reaper_spidercrab.so"
+    mkdir -p "$PLUGINS_DIR"
+    cp "$SCRIPT_DIR/build/$DYLIB_NAME" "$PLUGINS_DIR/reaper_spidercrab.dylib"
+
+    echo "Deployed to: $PLUGINS_DIR/reaper_spidercrab.dylib"
+    ls -lh "$PLUGINS_DIR/reaper_spidercrab.dylib"
+else
+    # Linux deployment (and portable install)
+    mkdir -p "$HOME/reaper-portable/Plugins"
+    cp "$SCRIPT_DIR/build/reaper_spidercrab${SUFFIX}" "$HOME/reaper-portable/Plugins/reaper_spidercrab.so"
+
+    echo "Deployed to: $HOME/reaper-portable/Plugins/reaper_spidercrab.so"
+    ls -lh "$HOME/reaper-portable/Plugins/reaper_spidercrab.so"
+
+    # Also deploy to the user config directory (Reaper may load from here instead)
+    if [ -d "$HOME/.config/REAPER/UserPlugins" ]; then
+      cp "$SCRIPT_DIR/build/reaper_spidercrab${SUFFIX}" "$HOME/.config/REAPER/UserPlugins/reaper_spidercrab.so"
+      echo "Also deployed to: $HOME/.config/REAPER/UserPlugins/reaper_spidercrab.so"
+    fi
 fi
 
 if [ "$BUILD_TYPE" = "debug" ]; then

@@ -32,6 +32,58 @@ if [ "$TARGET" = "windows" ]; then
     # Force winsock2.h before windows.h for SOCKET type
     CXXFLAGS="$CXXFLAGS -FI/tmp/force_winsock.h"
     SYSROOT_FLAGS=""
+elif [ "$TARGET" = "macos" ]; then
+    echo "=== macOS BUILD (.dylib) ==="
+
+    if [ "$(uname)" = "Darwin" ]; then
+        # Native macOS build using Xcode CLT
+        echo "  Native macOS build (xcrun)"
+        CXX="$(xcrun --sdk macosx --find clang++ 2>/dev/null || echo clang++)"
+        SYSROOT_FLAGS="-isysroot $(xcrun --sdk macosx --show-sdk-path 2>/dev/null)"
+    elif command -v x86_64-apple-darwin21-clang++ &>/dev/null || \
+         command -v x86_64-apple-darwin22-clang++ &>/dev/null || \
+         command -v x86_64-apple-darwin23-clang++ &>/dev/null || \
+         command -v x86_64-apple-darwin24-clang++ &>/dev/null; then
+        # osxcross cross-compilation on Linux
+        for cc in x86_64-apple-darwin21-clang++ x86_64-apple-darwin22-clang++ \
+                  x86_64-apple-darwin23-clang++ x86_64-apple-darwin24-clang++; do
+            if command -v "$cc" &>/dev/null; then
+                CXX="$cc"
+                break
+            fi
+        done
+        OSXCROSS_SDK="${OSXCROSS_SDK:-/opt/osxcross/SDK/MacOSX.sdk}"
+        if [ ! -d "$OSXCROSS_SDK" ]; then
+            echo "ERROR: macOS SDK not found at $OSXCROSS_SDK"
+            echo "Set OSXCROSS_SDK env var to your MacOSX.sdk path"
+            exit 1
+        fi
+        SYSROOT_FLAGS="-isysroot $OSXCROSS_SDK"
+        echo "  osxcross cross-compile ($CXX)"
+    else
+        echo "ERROR: macOS build target requires either:"
+        echo "  1. macOS (Xcode CLT): xcode-select --install"
+        echo "  2. osxcross on Linux: https://github.com/tpoechtrager/osxcross"
+        exit 1
+    fi
+
+    COMMON_FLAGS="-std=c++17 -fvisibility=default -fPIC -DPTHREAD=1"
+    COMMON_FLAGS="$COMMON_FLAGS -Wall -Wextra -Wno-unused-parameter"
+
+    if [ "$BUILD_TYPE" = "debug" ]; then
+        echo "=== DEBUG BUILD ==="
+        CXXFLAGS="$COMMON_FLAGS -O0 -g3 -DDEBUG=1 -fno-omit-frame-pointer"
+        SUFFIX="-debug.dylib"
+    else
+        echo "=== RELEASE BUILD ==="
+        CXXFLAGS="$COMMON_FLAGS -O2 -DNDEBUG -g1"
+        SUFFIX=".dylib"
+    fi
+
+    LINK_FLAGS="-dynamiclib -lpthread"
+    # macOS requires Cocoa/Carbon frameworks for SWELL
+    LINK_FLAGS="$LINK_FLAGS -framework Cocoa -framework Carbon"
+    # dlopen/dlsym are in libSystem on macOS — no -ldl needed
 else
     CXX="$BREW_PREFIX/bin/g++"
     if [ "$BUILD_TYPE" = "debug" ]; then
@@ -108,11 +160,19 @@ if [ "$TARGET" = "windows" ]; then
         libcmt.lib kernel32.lib user32.lib ws2_32.lib 2>&1
     rm -rf "$SCRIPT_DIR/build/obj"
 else
+    # macOS and Linux: single-step compile and link
     $CXX $CXXFLAGS $SYSROOT_FLAGS $INCLUDES \
         -o "$OUT" \
         $SRC \
         $LINK_FLAGS \
         2>&1
+fi
+
+# Ad-hoc codesign for macOS (required by SIP to load unsigned dylibs)
+if [ "$TARGET" = "macos" ] && command -v codesign &>/dev/null; then
+    echo "  Codesigning $OUT..."
+    codesign --force --deep --sign - "$OUT" 2>/dev/null || \
+        echo "  ⚠️  Codesigning failed (non-fatal — may need SIP exception)"
 fi
 
 echo ""
