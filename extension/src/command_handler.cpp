@@ -1473,6 +1473,9 @@ void CommandHandler::HandleMatrixTriggerSlot(
         m_playtimeMidi.triggerSlotViaMidi(col, row);
     }
 
+    // Send OSC message for ReaLearn integration (Issue #98)
+    m_oscSender.sendTriggerSlot(col, row);
+
     // Get updated slot and broadcast event to all clients
     SlotState updated = m_playtimeState.getSlot(col, row);
     std::string event = BuildSlotEvent(updated.toJson());
@@ -1521,6 +1524,9 @@ void CommandHandler::HandleMatrixTriggerScene(
         if (m_playtimeMidi.isAvailable()) {
             m_playtimeMidi.triggerSlotViaMidi(c, row);
         }
+
+        // Send OSC message for each slot (Issue #98)
+        m_oscSender.sendTriggerSlot(c, row);
 
         // Broadcast event for each changed slot
         SlotState updated = m_playtimeState.getSlot(c, row);
@@ -1641,6 +1647,9 @@ void CommandHandler::HandleMatrixRecordSlot(
             m_playtimeMidi.sendMidiNote(1, note, 100);
         }
     }
+
+    // Send OSC message for ReaLearn integration (Issue #98)
+    m_oscSender.sendRecordSlot(col, row);
 
     // Broadcast event to all clients
     SlotState updated = m_playtimeState.getSlot(col, row);
