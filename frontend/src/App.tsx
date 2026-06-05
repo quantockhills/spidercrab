@@ -29,6 +29,7 @@ function AppInner() {
     toggleTrackMute,
     toggleTrackSolo,
     toggleTrackArm,
+    toggleTrackRecordMode,
     selectTrack,
     setTrackVolume,
     setTrackPan,
@@ -203,6 +204,10 @@ function AppInner() {
   const handleToggleArm = useCallback(async (index: number) => {
     await toggleTrackArm(index);
   }, [toggleTrackArm]);
+
+  const handleToggleRecordMode = useCallback(async (index: number) => {
+    await toggleTrackRecordMode(index);
+  }, [toggleTrackRecordMode]);
 
   const handleVolumeChange = useCallback(async (index: number, volume: number) => {
     const ok = await setTrackVolume(index, volume);
@@ -414,6 +419,7 @@ function AppInner() {
             onToggleMute={handleToggleMute}
             onToggleSolo={handleToggleSolo}
             onToggleArm={handleToggleArm}
+            onToggleRecordMode={handleToggleRecordMode}
             onVolumeChange={handleVolumeChange}
             onPanChange={handlePanChange}
             onAddTrack={addTrack}

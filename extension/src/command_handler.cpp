@@ -402,6 +402,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         double volume = 0.75; // sane default if API unavailable
         double pan = 0.0;  // sane default if API unavailable
         int recMode = 0; // I_RECMODE: 0=input (audio), 7=MIDI overdub, 8=MIDI replace
+        int recInput = 0; // I_RECINPUT: record input routing
         if (m_api.GetSetMediaTrackInfo) {
             bool* mp = (bool*)m_api.GetSetMediaTrackInfo(track, "B_MUTE", nullptr);
             if (mp) muted = *mp;
@@ -415,6 +416,8 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (pp) pan = *pp;
             int* rmp = (int*)m_api.GetSetMediaTrackInfo(track, "I_RECMODE", nullptr);
             if (rmp) recMode = *rmp;
+            int* rip = (int*)m_api.GetSetMediaTrackInfo(track, "I_RECINPUT", nullptr);
+            if (rip) recInput = *rip;
         }
 
         // Read real track name via GetSetMediaTrackInfo_String (Issue #40)
@@ -441,6 +444,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         tracksJson += json_string("soloed") + ":" + std::string(soloed ? "true" : "false") + ",";
         tracksJson += json_string("armed") + ":" + std::string(armed ? "true" : "false") + ",";
         tracksJson += json_string("recMode") + ":" + std::to_string(recMode) + ",";
+        tracksJson += json_string("recInput") + ":" + std::to_string(recInput) + ",";
         tracksJson += json_string("volume") + ":" + std::to_string(volume) + ",";
         tracksJson += json_string("pan") + ":" + std::to_string(pan);
         tracksJson += "}";
@@ -1235,8 +1239,19 @@ void CommandHandler::HandleSetRecordMode(
     }
 
     m_api.GetSetMediaTrackInfo(track, "I_RECMODE", &recMode);
+
+    // Also set I_RECINPUT (record input routing) based on the mode
+    // Audio mode (recMode 0-1-3-5-6): set default mono audio input (I_RECINPUT=0)
+    // MIDI mode (recMode 7-8): set all MIDI inputs, all channels (I_RECINPUT=6112)
+    int recInput = 0;
+    if (recMode >= 7) {
+        // MIDI mode: 4096(MIDI flag) | (63<<5)(all inputs) | 0(all channels) = 6112
+        recInput = 6112;
+    }
+    m_api.GetSetMediaTrackInfo(track, "I_RECINPUT", &recInput);
+
     SendResponse(clientId, id, true,
-        "{\"recMode\":" + std::to_string(recMode) + "}");
+        "{\"recMode\":" + std::to_string(recMode) + ",\"recInput\":" + std::to_string(recInput) + "}");
 }
 
 void CommandHandler::HandlePlay(int clientId, const std::string& id, const std::string& params)

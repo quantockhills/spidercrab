@@ -305,6 +305,7 @@ struct MockTrack {
     int         armed  = 0;
     int         selected = 0;
     int         recMode = 0; // I_RECMODE: 0=input, 7=MIDI overdub, 8=MIDI replace
+    int         recInput = 0; // I_RECINPUT: 0=mono audio, 6112=all MIDI all channels
     struct MockFX {
         int                    idx;
         std::string            name;
@@ -623,6 +624,10 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
     if (name == "I_RECMODE") {
         if (setNewValue) t.recMode = *(int*)setNewValue;
         return &t.recMode;
+    }
+    if (name == "I_RECINPUT") {
+        if (setNewValue) t.recInput = *(int*)setNewValue;
+        return &t.recInput;
     }
     return nullptr;
 }
@@ -2314,19 +2319,21 @@ TEST(RecordModeTest, HandleGetTracksIncludesRecordMode)
     ASSERT_EQ(responses.size(), 1u);
     std::string& resp = responses[0];
 
-    // Verify recMode values appear in the response
+    // Verify recMode and recInput values appear in the response
     EXPECT_NE(resp.find("\"index\":0"), std::string::npos);
     EXPECT_NE(resp.find("\"index\":1"), std::string::npos);
     EXPECT_NE(resp.find("\"recMode\":0"), std::string::npos)
         << "Track 0 should have recMode 0 (audio input)";
     EXPECT_NE(resp.find("\"recMode\":7"), std::string::npos)
         << "Track 1 should have recMode 7 (MIDI overdub)";
+    EXPECT_NE(resp.find("\"recInput\":0"), std::string::npos)
+        << "Track recInput should appear in response";
     EXPECT_EQ(resp.find("\"error\""), std::string::npos);
 }
 
 TEST(RecordModeTest, HandleGetTracksRecordModeDefault)
 {
-    // Default recMode should be 0 when not explicitly set
+    // Default recMode and recInput should be 0 when not explicitly set
     MockState state;
     MockTrack t0;
     t0.name = "Default";
@@ -2339,6 +2346,7 @@ TEST(RecordModeTest, HandleGetTracksRecordModeDefault)
     handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"rm2"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"recMode\":0"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"recInput\":0"), std::string::npos);
 }
 
 TEST(RecordModeTest, HandleSetRecordMode)
@@ -2347,6 +2355,7 @@ TEST(RecordModeTest, HandleSetRecordMode)
     MockTrack t0;
     t0.name = "Kick";
     t0.recMode = 0;
+    t0.recInput = 0;
     state.tracks = { t0 };
 
     std::vector<std::string> responses;
@@ -2361,10 +2370,14 @@ TEST(RecordModeTest, HandleSetRecordMode)
     EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
     EXPECT_NE(resp.find("\"recMode\":7"), std::string::npos)
         << "Response should include the new recMode value";
+    EXPECT_NE(resp.find("\"recInput\":6112"), std::string::npos)
+        << "Response should include recInput 6112 for MIDI mode";
 
     // Verify mock state was updated
     ASSERT_EQ(g_mock->tracks.size(), 1u);
     EXPECT_EQ(g_mock->tracks[0].recMode, 7);
+    EXPECT_EQ(g_mock->tracks[0].recInput, 6112)
+        << "I_RECINPUT should be 6112 for MIDI mode (all MIDI inputs, all channels)";
 }
 
 TEST(RecordModeTest, HandleSetRecordModeDefaultTrack)
@@ -2373,22 +2386,26 @@ TEST(RecordModeTest, HandleSetRecordModeDefaultTrack)
     MockTrack t0;
     t0.name = "Kick";
     t0.recMode = 7;
+    t0.recInput = 6112;
     state.tracks = { t0 };
 
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    // Set recMode without explicit trackIdx — should work on track 0
-    // (The issue says "for selected tracks", but the basic command takes trackIdx)
+    // Set recMode to 0 (audio) — should also set recInput to 0
     std::string cmd = R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":0},"id":"setrm2"})";
     handler->HandleMessage(1, cmd);
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
     EXPECT_NE(responses[0].find("\"recMode\":0"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"recInput\":0"), std::string::npos)
+        << "Response should include recInput 0 for audio mode";
 
     // Verify mock state was updated from 7 to 0
     ASSERT_EQ(g_mock->tracks.size(), 1u);
     EXPECT_EQ(g_mock->tracks[0].recMode, 0);
+    EXPECT_EQ(g_mock->tracks[0].recInput, 0)
+        << "I_RECINPUT should be 0 for audio mode";
 }
 
 TEST(RecordModeTest, HandleSetRecordModeInvalidTrack)
@@ -2430,33 +2447,38 @@ TEST(RecordModeTest, HandleSetRecordModeInvalidRecMode)
 
 TEST(RecordModeTest, SetRecordModeThenGetTracksShowsNewValue)
 {
-    // Round-trip: verify that setting recMode is reflected in track/getAll
+    // Round-trip: verify that setting recMode/recInput is reflected in track/getAll
     MockState state;
     MockTrack t0;
     t0.name = "Kick";
     t0.recMode = 0;
+    t0.recInput = 0;
     state.tracks = { t0 };
 
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    // First get — verify initial recMode
+    // First get — verify initial recMode and recInput
     handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"getrm1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"recMode\":0"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"recInput\":0"), std::string::npos);
 
-    // Set recMode to 8 (MIDI replace)
+    // Set recMode to 8 (MIDI replace) — should also set recInput to 6112
     responses.clear();
     handler->HandleMessage(1, R"({"type":"command","command":"track/setRecordMode","payload":{"trackIdx":0,"recMode":8},"id":"setrm3"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
     EXPECT_NE(responses[0].find("\"recMode\":8"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"recInput\":6112"), std::string::npos);
 
-    // Get tracks again — should see updated recMode
+    // Get tracks again — should see updated recMode and recInput
     responses.clear();
     handler->HandleMessage(1, R"({"type":"command","command":"track/getAll","id":"getrm2"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"recMode\":8"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"recInput\":6112"), std::string::npos)
+        << "Track/getAll should reflect the updated recInput";
 }
 
 // ============================================================
