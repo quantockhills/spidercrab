@@ -1,5 +1,6 @@
 #pragma once
 #include "websocket_server.h"
+#include "fxchain_cache.h"
 #include "playtime_api.h"
 #include "playtime_state.h"
 #include "playtime_midi.h"
@@ -136,6 +137,12 @@ public:
     // display conflict). Safe to call before any WebSocket client connects.
     void PreCacheFX();
 
+    // Pre-build FX chain index at startup. Safe to call before WebSocket client connects.
+    void PreCacheFxChains(const std::string& rootPath);
+
+    // Access the FX chain cache (for testing)
+    FxChainCache& GetFxChainCache() { return m_fxChainCache; }
+
     // Real-time event broadcasting (Issue #57)
     // Broadcast a track state change event (mute/solo/arm/volume) to all WS clients
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
@@ -185,6 +192,9 @@ private:
 
     // FX/chain tag storage (Issue #97)
     FxTagStorage m_fxTagStorage;
+
+    // FX chain cache (Issue #103)
+    FxChainCache m_fxChainCache;
 
     // Chain-source tracking: maps trackIdx -> list of chain groups
     // Each chain group records the .RfxChain file path and the FX index range
@@ -294,15 +304,7 @@ private:
     // Command handlers — sequencer convert to clip (Issue #92)
     void HandleSequencerConvertToClip(int clientId, const std::string& id, const std::string& params);
 
-public:
-    // Access the OSC sender and receiver (Issue #98)
-    OscSender& GetOscSender() { return m_oscSender; }
-    OscReceiver& GetOscReceiver() { return m_oscReceiver; }
-
-    // Poll the OSC receiver for incoming feedback (Issue #98)
-    void PollOscReceiver() { m_oscReceiver.poll(); }
-
-private:
-    OscSender     m_oscSender;
-    OscReceiver   m_oscReceiver;
+    // Command handlers — chain search (Issue #103)
+    void HandleFxChainSearchCached(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainRefreshCache(int clientId, const std::string& id, const std::string& params);
 };

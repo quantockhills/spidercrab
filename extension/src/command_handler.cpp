@@ -299,6 +299,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fxchain/getInfo"]         = &CommandHandler::HandleFxChainGetInfo;
     m_commandMap["fxchain/searchRecursive"] = &CommandHandler::HandleFxChainSearchRecursive;
     m_commandMap["fxchain/cycle"]           = &CommandHandler::HandleFxChainCycle;
+    m_commandMap["fxchain/searchCached"]    = &CommandHandler::HandleFxChainSearchCached;
+    m_commandMap["fxchain/refreshCache"]    = &CommandHandler::HandleFxChainRefreshCache;
     m_commandMap["fx/reorder"]              = &CommandHandler::HandleReorderFX;
     m_commandMap["fx/getPreset"]            = &CommandHandler::HandleGetFxPreset;
     m_commandMap["fx/setPreset"]            = &CommandHandler::HandleSetFxPreset;
@@ -1059,6 +1061,87 @@ void CommandHandler::PreCacheFX()
     RunFXEnumeration();
     fprintf(stderr,
         "[reaper-ipad] FX cache populated (%zu entries)\n", m_fxCache.size());
+}
+
+void CommandHandler::PreCacheFxChains(const std::string& rootPath)
+{
+    if (rootPath.empty()) {
+        fprintf(stderr, "[reaper-ipad] No FX chain root path set, skipping cache\n");
+        return;
+    }
+
+    fprintf(stderr, "[reaper-ipad] Pre-caching FX chains from %s...\n", rootPath.c_str());
+    int count = m_fxChainCache.BuildIndex(rootPath);
+    fprintf(stderr, "[reaper-ipad] FX chain cache built with %d entries\n", count);
+}
+
+void CommandHandler::HandleFxChainSearchCached(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string query    = parser.getString("query");
+    std::string rootPath = parser.getString("rootPath");
+    std::string offsetStr = parser.getString("offset");
+    std::string limitStr  = parser.getString("limit");
+
+    int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
+    int limit  = limitStr.empty()  ? 16 : atoi(limitStr.c_str());
+
+    // If rootPath changed from cached path, re-index silently
+    if (!rootPath.empty() && rootPath != m_fxChainCache.RootPath()) {
+        m_fxChainCache.BuildIndex(rootPath);
+    }
+
+    // If cache isn't indexed yet, build it now
+    if (!m_fxChainCache.IsIndexed() && !rootPath.empty()) {
+        m_fxChainCache.BuildIndex(rootPath);
+    }
+
+    auto result = m_fxChainCache.Search(query, offset, limit);
+
+    std::string resultsJson = "[";
+    for (size_t i = 0; i < result.results.size(); i++) {
+        if (i > 0) resultsJson += ",";
+        resultsJson += "{";
+        resultsJson += json_string("filePath") + ":" + json_string(result.results[i].filePath) + ",";
+        resultsJson += json_string("name") + ":" + json_string(result.results[i].name) + ",";
+        resultsJson += json_string("size") + ":" + std::to_string(result.results[i].size);
+        resultsJson += "}";
+    }
+    resultsJson += "]";
+
+    std::string payload = "{";
+    payload += json_string("results") + ":" + resultsJson + ",";
+    payload += json_string("total") + ":" + std::to_string(result.total) + ",";
+    payload += json_string("offset") + ":" + std::to_string(offset) + ",";
+    payload += json_string("limit") + ":" + std::to_string(limit);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleFxChainRefreshCache(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rootPath = parser.getString("rootPath");
+
+    if (rootPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'rootPath' parameter\"}");
+        return;
+    }
+
+    int count = m_fxChainCache.BuildIndex(rootPath);
+
+    std::string payload = "{";
+    payload += json_string("refreshed") + ":true,";
+    payload += json_string("count") + ":" + std::to_string(count);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
 }
 
 void CommandHandler::HandleEnumerateFX(

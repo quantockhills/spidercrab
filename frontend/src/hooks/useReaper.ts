@@ -30,7 +30,7 @@ import { useSequencer } from './useSequencer';
 export type { Track } from './useTrackState';
 export type { FxInfo, EnumeratedFx, FxParam, FxPresetInfo, FxPresetNames } from './useFx';
 export type { DirEntry } from './useSampleBrowser';
-export type { FxChainEntry, FxChainInfo, FxChainSearchResult } from './useFxChains';
+export type { FxChainEntry, FxChainInfo, FxChainSearchResult, FxChainCachedSearchResult } from './useFxChains';
 export type { ClipSlot, MatrixData } from './usePlaytime';
 export type { StepData, SequencerData } from './useSequencer';
 

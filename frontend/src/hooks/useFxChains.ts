@@ -26,6 +26,15 @@ export interface FxChainInfo {
   fileSize: number;
 }
 
+// ── Cached search result ────────────────────────────────────
+
+export interface FxChainCachedSearchResult {
+  results: FxChainSearchResult[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 // ── Hook ─────────────────────────────────────────────────────
 
 export function useFxChains() {
@@ -67,6 +76,7 @@ export function useFxChains() {
     [send],
   );
 
+  /** @deprecated Use fxChainSearchCached instead */
   const fxChainSearchRecursive = useCallback(
     async (query: string, rootPath: string): Promise<{ query: string; results: FxChainSearchResult[] }> => {
       const resp = await send('fxchain/searchRecursive', { query, rootPath }, 60000);
@@ -75,5 +85,23 @@ export function useFxChains() {
     [send],
   );
 
-  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo, fxChainSearchRecursive };
+  /** Search FX chains from in-memory cache (no filesystem IO). Supports pagination. */
+  const fxChainSearchCached = useCallback(
+    async (query: string, rootPath: string, offset: number = 0, limit: number = 16): Promise<FxChainCachedSearchResult> => {
+      const resp = await send('fxchain/searchCached', { query, rootPath, offset, limit });
+      return resp.payload as FxChainCachedSearchResult;
+    },
+    [send],
+  );
+
+  /** Refresh the in-memory FX chain cache */
+  const fxChainRefreshCache = useCallback(
+    async (rootPath: string): Promise<{ refreshed: boolean; count: number }> => {
+      const resp = await send('fxchain/refreshCache', { rootPath });
+      return resp.payload as { refreshed: boolean; count: number };
+    },
+    [send],
+  );
+
+  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo, fxChainSearchRecursive, fxChainSearchCached, fxChainRefreshCache };
 }

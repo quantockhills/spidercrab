@@ -490,6 +490,17 @@ static bool InitializeCoreServices()
     // from a Chromium WebSocket context (X11/SWELL display conflict).
     g_cmdHandler->PreCacheFX();
 
+    // Pre-build FX chain cache at startup (if chain root path is known)
+    {
+        char chainRootBuf[4096] = { 0 };
+        int gotChainRoot = GetProjExtState
+            ? GetProjExtState(nullptr, "REAPER_IPAD", "chainRoot", chainRootBuf, (int)sizeof(chainRootBuf))
+            : 0;
+        if (gotChainRoot > 0 && chainRootBuf[0] != '\0') {
+            g_cmdHandler->PreCacheFxChains(chainRootBuf);
+        }
+    }
+
     // Initialize Playtime 2 API (resolves HB_* function pointers)
     if (g_pluginInfo) {
         initPlaytimeApi(g_pluginInfo->GetFunc);

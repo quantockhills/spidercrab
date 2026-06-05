@@ -31,6 +31,8 @@ function createDefaultProps(overrides: Record<string, unknown> = {}) {
     fxChainLoad: vi.fn().mockResolvedValue(true),
     fxChainGetInfo: vi.fn().mockResolvedValue(null),
     fxChainSearchRecursive: undefined as ((q: string, rp: string) => Promise<Record<string,unknown>>) | undefined,
+    fxChainSearchCached: undefined,
+    fxChainRefreshCache: undefined,
     onBack: vi.fn(),
     initialPath: TEST_PATH,
     ...overrides,

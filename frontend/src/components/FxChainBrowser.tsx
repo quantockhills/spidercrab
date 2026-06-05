@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Track, FxChainEntry, FxChainInfo, FxChainSearchResult } from '../hooks/useReaper';
+import type { Track, FxChainEntry, FxChainInfo, FxChainSearchResult, FxChainCachedSearchResult } from '../hooks/useReaper';
 
 
 interface FxChainSearchResult {
@@ -18,6 +18,8 @@ interface FxChainBrowserProps {
   fxChainLoad: (trackIdx: number, filePath: string, mode?: 'replace' | 'append') => Promise<boolean>;
   fxChainGetInfo: (filePath: string) => Promise<FxChainInfo | null>;
   fxChainSearchRecursive?: (query: string, rootPath: string) => Promise<{ query: string; results: FxChainSearchResult[] }>;
+  fxChainSearchCached?: (query: string, rootPath: string, offset?: number, limit?: number) => Promise<FxChainCachedSearchResult>;
+  fxChainRefreshCache?: (rootPath: string) => Promise<{ refreshed: boolean; count: number }>;
 
   onBack: () => void;
   initialPath?: string;
@@ -42,6 +44,8 @@ export function FxChainBrowser({
   fxChainLoad,
   fxChainGetInfo,
   fxChainSearchRecursive,
+  fxChainSearchCached,
+  fxChainRefreshCache,
   onBack,
   initialPath,
 }: FxChainBrowserProps) {
@@ -59,9 +63,12 @@ export function FxChainBrowser({
 
   const [search, setSearch] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<FxChainSearchResult[] | null>(null);
+  const [remoteSearchTotal, setRemoteSearchTotal] = useState<number>(0);
+  const [remoteSearchOffset, setRemoteSearchOffset] = useState<number>(0);
   const [remoteSearching, setRemoteSearching] = useState(false);
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pageSize = 16;
   const [loadingFile, setLoadingFile] = useState<string | null>(null);
   const [loadedFiles, setLoadedFiles] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -150,11 +157,13 @@ export function FxChainBrowser({
     return result;
   }, [rootPath, rootData, subData]);
 
-  // Debounced backend recursive search (300ms)
-  // Reset remote results when search input changes
+  // Debounced backend search (300ms)
+  // Uses cached search when available, falls back to recursive search
   useEffect(() => {
     if (!search.trim()) {
       setRemoteSearchResults(null);
+      setRemoteSearchTotal(0);
+      setRemoteSearchOffset(0);
       setRemoteSearching(false);
       if (searchTimerRef.current) {
         clearTimeout(searchTimerRef.current);
@@ -163,24 +172,39 @@ export function FxChainBrowser({
       return;
     }
 
-    // Clear previous timer
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
     }
 
-    if (!fxChainSearchRecursive || !rootPath) {
+    if (!rootPath) {
       setRemoteSearching(false);
       setRemoteSearchResults(null);
       return;
     }
 
     setRemoteSearching(true);
+    setRemoteSearchOffset(0);
     searchTimerRef.current = setTimeout(async () => {
       try {
-        const result = await fxChainSearchRecursive(search, rootPath);
-        setRemoteSearchResults(result.results);
+        if (fxChainSearchCached) {
+          // Use cached search (zero IO, supports pagination)
+          const result = await fxChainSearchCached(search, rootPath, 0, pageSize);
+          setRemoteSearchResults(result.results);
+          setRemoteSearchTotal(result.total);
+          setRemoteSearchOffset(result.offset + result.results.length);
+        } else if (fxChainSearchRecursive) {
+          // Fallback to recursive search (deprecated)
+          const result = await fxChainSearchRecursive(search, rootPath);
+          setRemoteSearchResults(result.results);
+          setRemoteSearchTotal(result.results.length);
+          setRemoteSearchOffset(result.results.length);
+        } else {
+          setRemoteSearchResults([]);
+          setRemoteSearchTotal(0);
+        }
       } catch {
         setRemoteSearchResults([]);
+        setRemoteSearchTotal(0);
       } finally {
         setRemoteSearching(false);
       }
@@ -191,7 +215,29 @@ export function FxChainBrowser({
         clearTimeout(searchTimerRef.current);
       }
     };
-  }, [search, rootPath, fxChainSearchRecursive]);
+  }, [search, rootPath, fxChainSearchCached, fxChainSearchRecursive]);
+
+  // Load next page of cached search results
+  const handleNextPage = useCallback(async () => {
+    if (!search.trim() || !rootPath || !fxChainSearchCached || remoteSearchOffset >= remoteSearchTotal) return;
+    try {
+      const result = await fxChainSearchCached(search, rootPath, remoteSearchOffset, pageSize);
+      setRemoteSearchResults(prev => {
+        const merged = [...(prev || [])];
+        const seenPaths = new Set(merged.map(r => r.filePath));
+        for (const r of result.results) {
+          if (!seenPaths.has(r.filePath)) {
+            merged.push(r);
+            seenPaths.add(r.filePath);
+          }
+        }
+        return merged;
+      });
+      setRemoteSearchOffset(result.offset + result.results.length);
+    } catch {
+      // Silently ignore
+    }
+  }, [search, rootPath, fxChainSearchCached, remoteSearchOffset, remoteSearchTotal]);
 
   // Merge local and remote results, deduplicate by filePath
 
@@ -216,6 +262,8 @@ export function FxChainBrowser({
     }
     return merged;
   }, [search, allVisibleChains, remoteSearchResults]);
+
+  const hasMoreResults = remoteSearchTotal > (remoteSearchResults ? remoteSearchResults.length : 0);
 
 
   const selectedTrackName = selectedTrack !== null ? tracks.find(t => t.index === selectedTrack)?.name : null;
@@ -361,9 +409,23 @@ export function FxChainBrowser({
               <div className="px-3 py-2 space-y-1">
                 {searchResults.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-[var(--text-secondary)] text-sm">No results for &ldquo;{search}&rdquo;</div>
-                ) : searchResults.map(c => (
-                  <FileRow key={c.filePath} filePath={c.filePath} name={c.name} size={c.size} />
-                ))}
+                ) : (
+                  <>
+                    {searchResults.map(c => (
+                      <FileRow key={c.filePath} filePath={c.filePath} name={c.name} size={c.size} />
+                    ))}
+                    {hasMoreResults && (
+                      <div className="flex justify-center pt-2 pb-1">
+                        <button
+                          onClick={handleNextPage}
+                          className="px-6 py-2.5 text-xs font-medium bg-[var(--accent-dim)] text-[var(--accent-orange)] active:brightness-95 transition-colors"
+                        >
+                          Next ({remoteSearchTotal - (remoteSearchResults?.length || 0)} more)
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             ) : (
               /* Tree view */
