@@ -21,6 +21,7 @@ struct SlotState {
     std::string color    = "";        // RGB hex string like "#ff6600" (empty = unset)
     std::string name     = "";        // Slot/clip display name
     std::string clipType = "none";    // "audio"|"midi"|"none"
+    bool        reversed = false;     // Whether the clip is playing in reverse (Issue #75)
 
     // Serialize this slot to a JSON object string (no newlines)
     std::string toJson() const
@@ -31,7 +32,8 @@ struct SlotState {
         json += "\"state\":" + toJsonString(state) + ",";
         json += "\"color\":" + toJsonString(color) + ",";
         json += "\"name\":" + toJsonString(name) + ",";
-        json += "\"clipType\":" + toJsonString(clipType);
+        json += "\"clipType\":" + toJsonString(clipType) + ",";
+        json += std::string("\"reversed\":") + (reversed ? "true" : "false");
         json += "}";
         return json;
     }

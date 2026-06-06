@@ -288,6 +288,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["matrix/setSlotState"]     = &CommandHandler::HandleMatrixSetSlotState;
     m_commandMap["matrix/recordSlot"]       = &CommandHandler::HandleMatrixRecordSlot;
     m_commandMap["matrix/pollState"]        = &CommandHandler::HandleMatrixPollState;
+    m_commandMap["matrix/setSlotReverse"]    = &CommandHandler::HandleMatrixSetSlotReverse;
     m_commandMap["sequencer/getAll"]        = &CommandHandler::HandleSequencerGetAll;
     m_commandMap["sequencer/toggleStep"]    = &CommandHandler::HandleSequencerToggleStep;
     m_commandMap["sequencer/setStep"]       = &CommandHandler::HandleSequencerSetStep;
@@ -1853,6 +1854,56 @@ void CommandHandler::HandleMatrixPollState(
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// HandleMatrixSetSlotReverse — Toggle the reversed flag on a clip slot (Issue #75)
+// ============================================================
+
+void CommandHandler::HandleMatrixSetSlotReverse(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+    // The reversed value can be a JSON boolean (true/false) or a string.
+    // Our simple parser returns empty for JSON booleans, so check the raw params.
+    std::string revStr = parser.getString("reversed");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Determine reversed value from param (handles both string "true"/"false"
+    // and raw JSON boolean by checking the raw payload string)
+    bool reversed = (revStr == "true");
+    if (revStr.empty()) {
+        reversed = (payloadStr.find("\"reversed\":true") != std::string::npos);
+    }
+
+    // Update the slot's reversed flag
+    SlotState current = m_playtimeState.getSlot(col, row);
+    current.reversed = reversed;
+    m_playtimeState.setSlot(col, row, current);
+
+    // Broadcast slot state change event
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
 }
 
 // ============================================================

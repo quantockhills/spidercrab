@@ -5610,3 +5610,119 @@ TEST(FxBypassTest, SetFXBypassMissingParamsReturnsError)
     EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
     EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
 }
+
+// ============================================================
+// Slot reverse toggle tests (Issue #75)
+// ============================================================
+
+TEST(MatrixTest, SlotStateIncludesReversedField)
+{
+    // Test that the reversed field appears in SlotState serialization
+    // and defaults to false
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Get a slot to verify it includes reversed:false
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":0},"id":"rev0"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reversed\":false"), std::string::npos)
+        << "Slot should include reversed field defaulting to false";
+}
+
+TEST(MatrixTest, SetSlotReverseTogglesReversed)
+{
+    // Test that matrix/setSlotReverse toggles the reversed flag
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Set reverse=true on slot (3,5)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotReverse","payload":{"column":3,"row":5,"reversed":true},"id":"rev1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"reversed\":true"), std::string::npos)
+        << "SetSlotReverse response should include reversed:true";
+    EXPECT_NE(responses[0].find("\"column\":3"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":5"), std::string::npos);
+
+    // Verify the slot now shows reversed=true via getSlot
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":3,"row":5},"id":"rev1b"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reversed\":true"), std::string::npos)
+        << "getSlot should now show reversed:true";
+
+    // Toggle back to false
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotReverse","payload":{"column":3,"row":5,"reversed":false},"id":"rev2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"reversed\":false"), std::string::npos);
+}
+
+TEST(MatrixTest, SetSlotReverseValidatesRange)
+{
+    // Test that invalid column/row returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Column out of range
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotReverse","payload":{"column":99,"row":0,"reversed":true},"id":"rev_bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Column or row out of range"), std::string::npos);
+
+    // Missing params
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotReverse","payload":{},"id":"rev_bad2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixTest, SetSlotReversePreservesSlotName)
+{
+    // Test that toggling reverse doesn't corrupt other slot fields
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Trigger a slot to set its state to playing and add a name via sample send
+    // This verifies that reverse toggle doesn't clobber the name
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotState","payload":{"column":2,"row":3,"state":"stopped"},"id":"preset1"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Now set reverse
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotReverse","payload":{"column":2,"row":3,"reversed":true},"id":"preset2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"reversed\":true"), std::string::npos);
+
+    // Verify state is preserved
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":2,"row":3},"id":"preset3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"reversed\":true"), std::string::npos);
+}

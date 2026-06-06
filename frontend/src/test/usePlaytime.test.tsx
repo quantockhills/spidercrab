@@ -403,4 +403,88 @@ describe('usePlaytime', () => {
     expect(state.instanceId).toBe(-1);
     expect(state.hasMatrix).toBe(false);
   });
+
+  // ── setSlotReverse tests (Issue #75) ──
+
+  it('setSlotReverse sends matrix/setSlotReverse command', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.setSlotReverse(2, 4, true);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('matrix/setSlotReverse');
+    expect(sentMsg.column).toBe(2);
+    expect(sentMsg.row).toBe(4);
+    expect(sentMsg.reversed).toBe(true);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { column: 2, row: 4, reversed: true, state: 'stopped', color: '#888', name: '', clipType: 'none' },
+      }));
+    });
+
+    const slot = await promise;
+    expect(slot).not.toBeNull();
+    expect(slot!.reversed).toBe(true);
+    expect(slot!.column).toBe(2);
+    expect(slot!.row).toBe(4);
+  });
+
+  it('setSlotReverse toggles reversed flag off', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.setSlotReverse(1, 2, false);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('matrix/setSlotReverse');
+    expect(sentMsg.reversed).toBe(false);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { column: 1, row: 2, reversed: false, state: 'empty', color: '#fff', name: '', clipType: 'none' },
+      }));
+    });
+
+    const slot = await promise;
+    expect(slot).not.toBeNull();
+    expect(slot!.reversed).toBe(false);
+  });
+
+  it('setSlotReverse returns null on failure', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.setSlotReverse(0, 0, true);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: false,
+        error: 'Invalid slot',
+      }));
+    });
+
+    const slot = await promise;
+    expect(slot).toBeNull();
+  });
 });

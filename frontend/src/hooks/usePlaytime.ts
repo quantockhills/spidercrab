@@ -10,6 +10,7 @@ export interface ClipSlot {
   color: string;
   name: string;
   clipType: 'none' | 'audio' | 'midi';
+  reversed?: boolean;
 }
 
 export interface MatrixData {
@@ -109,6 +110,21 @@ export function usePlaytime() {
     [],
   );
 
+  // Issue #75: Toggle reverse on a clip slot
+  const setSlotReverse = useCallback(async (column: number, row: number, reversed: boolean): Promise<ClipSlot | null> => {
+    try {
+      const resp = await send('matrix/setSlotReverse', { column, row, reversed });
+      const slot = (resp.payload as unknown as ClipSlot) ?? null;
+      // Update local matrix state optimistically
+      if (slot) {
+        updateMatrixSlot(column, row, { reversed: slot.reversed });
+      }
+      return slot;
+    } catch {
+      return null;
+    }
+  }, [send, updateMatrixSlot]);
+
   // Issue #43: Audio recording workflow
   const recordSlot = useCallback(async (column: number, row: number): Promise<ClipSlot | null> => {
     try {
@@ -148,6 +164,7 @@ export function usePlaytime() {
     updateMatrixSlot,
     recordSlot,
     pollState,
+    setSlotReverse,
     launchPlaytime,
     checkPlaytimeAvailable,
   };
