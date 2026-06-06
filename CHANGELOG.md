@@ -1,4 +1,36 @@
 
+## v0.2.3-alpha — 2026-06-06
+
+### Features
+- **Inline FX search** — long-press on the FX area of a track card to open an inline search bar (Issue #102):
+  - Long-press (500ms) on Add FX button triggers inline search
+  - Search filters installed plugins by name with 300ms debounce
+  - Tap result to add FX directly to the track
+  - Backdrop/tap-outside-to-close behavior
+  - FX chain cycler removed from FxGrid (dead code)
+- **FX chain index cache** — build in-memory index of all .RfxChain files on startup (Issue #103):
+  - `FxChainCache` class scans once, caches results
+  - `fxchain/searchRecursive` uses cache (zero filesystem IO)
+  - Auto-caches on `SetConfigDir` change
+  - Paginated results (16/page)
+  - Refresh Cache button in Settings
+- **macOS (dylib) build target** — extension compiles as `reaper_spidercrab.dylib` (Issue #100)
+- **Windows cross-compilation** — build Windows DLL from Linux using xwin + clang-cl (Issue #72)
+- **OSC over UDP** — replace MIDI polling with OSC for ReaLearn two-way sync (Issue #98):
+  - OSC sender + receiver implementation
+  - Slot trigger, scene trigger, record slot message formats
+  - Integration tests for send/receive round-trip
+
+### Fixes
+- **Restored 18 C++ tests** — merge regression left MakeMockHandler missing 10 API function pointer assignments (FxReorder, FxPreset, SequencerConvert)
+- **C++ test suite**: 288/288 tests passing
+- **Frontend test suite**: 362/362 tests passing
+- **Fixed I_RECINPUT** — record mode toggle now sets I_RECINPUT alongside I_RECMODE (Issue #99)
+- **ESLint**: Clean
+- **make lint + make check**: Clean
+
+---
+
 ## Media Browser enhancements — 2026-06-05
 
 ### Features
