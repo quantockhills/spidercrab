@@ -279,6 +279,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["transport/record"]       = &CommandHandler::HandleRecord;
     m_commandMap["sample/getDirectory"]    = &CommandHandler::HandleSampleGetDirectory;
     m_commandMap["sample/sendToTrack"]     = &CommandHandler::HandleSampleSendToTrack;
+    m_commandMap["sample/getAudioData"]    = &CommandHandler::HandleSampleGetAudioData;
     m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
     m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
     m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
