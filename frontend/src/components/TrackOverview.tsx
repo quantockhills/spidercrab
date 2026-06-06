@@ -37,6 +37,9 @@ interface TrackOverviewProps {
   getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
   setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
   getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
+  // FX bypass (Issue #104)
+  onToggleBypass?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onDeleteFx?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
 }
 
 
@@ -170,6 +173,8 @@ export function TrackOverview({
   fxChainCycle,
   enumerateFx,
   addFx,
+  onToggleBypass,
+  onDeleteFx,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -436,6 +441,8 @@ export function TrackOverview({
                   setChainCycler={setChainCycler}
                   onReorderFx={handleReorderFx}
                   onOpenInlineSearch={enumerateFx && addFx ? handleOpenInlineSearch : undefined}
+                  onToggleBypass={onToggleBypass}
+                  onDeleteFx={onDeleteFx}
                 />
               )}
               {/* Inline FX search (Issue #102) */}
@@ -518,6 +525,8 @@ interface FxGridProps {
   setChainCycler: (v: {trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
   onOpenInlineSearch?: (trackIdx: number) => void;
+  onToggleBypass?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onDeleteFx?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
 }
 
 /** Extract filename from a chain file path */
@@ -543,6 +552,8 @@ function FxGrid({
   setChainCycler,
   onReorderFx,
   onOpenInlineSearch,
+  onToggleBypass,
+  onDeleteFx,
 }: FxGridProps) {
   // Group FX by chainPath
   interface FxGroup {
@@ -657,6 +668,8 @@ function FxGrid({
                     setDropVisualIdx={setDropVisualIdx}
                     setExpandedFx={setExpandedFx}
                     onReorderFx={onReorderFx}
+                    onToggleBypass={onToggleBypass}
+                    onDeleteFx={onDeleteFx}
                   />
                 ))}
               </div>
@@ -680,6 +693,8 @@ function FxGrid({
               setDropVisualIdx={setDropVisualIdx}
               setExpandedFx={setExpandedFx}
               onReorderFx={onReorderFx}
+              onToggleBypass={onToggleBypass}
+              onDeleteFx={onDeleteFx}
             />
           ));
         }
@@ -798,6 +813,8 @@ interface FxCardProps {
   setDropVisualIdx: (v: number | null) => void;
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
+  onToggleBypass?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onDeleteFx?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
 }
 
 function FxCard({
@@ -814,22 +831,76 @@ function FxCard({
   setDropVisualIdx,
   setExpandedFx,
   onReorderFx,
+  onToggleBypass,
+  onDeleteFx,
 }: FxCardProps) {
   const isDragSource = dragSourceFxIdx === fx.index && dragActiveTrack === trackIdx;
   const isDropTarget = dropVisualIdx === fx.index && dragActiveTrack === trackIdx;
+  const isBypassed = fx.bypassed ?? false;
+
+  // Long-press delete confirmation state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Long-press handler for delete
+  const handlePointerDown = useCallback(() => {
+    longPressTimerRef.current = setTimeout(() => {
+      setShowDeleteConfirm(true);
+      longPressTimerRef.current = null;
+    }, 500);
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Tap on card toggles bypass
+  const handleCardClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (showDeleteConfirm) {
+      // If showing delete confirmation, tap again to confirm
+      if (onDeleteFx) {
+        onDeleteFx(trackIdx, fx.index);
+      }
+      setShowDeleteConfirm(false);
+      return;
+    }
+    if (onToggleBypass) {
+      onToggleBypass(trackIdx, fx.index);
+    }
+  }, [trackIdx, fx.index, showDeleteConfirm, onToggleBypass, onDeleteFx]);
+
+  // Tap on arrow expands params (separate hit target)
+  const handleExpandClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowDeleteConfirm(false);
+    if (expandedFx?.trackIdx === trackIdx && expandedFx?.fxIdx === fx.index) {
+      setExpandedFx(null);
+    } else {
+      setExpandedFx({ trackIdx, fxIdx: fx.index, fxName: fx.name });
+    }
+  }, [trackIdx, fx.index, expandedFx, setExpandedFx]);
 
   return (
-    <button
+    <div
       key={fx.index}
       draggable={true}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (expandedFx?.trackIdx === trackIdx && expandedFx?.fxIdx === fx.index) {
-          setExpandedFx(null);
-        } else {
-          setExpandedFx({ trackIdx, fxIdx: fx.index, fxName: fx.name });
-        }
-      }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', `${trackIdx}:${fx.index}`);
         e.dataTransfer.effectAllowed = 'move';
@@ -837,6 +908,7 @@ function FxCard({
         setDragActiveTrack(trackIdx);
         setDragSourceFxIdx(fx.index);
         setExpandedFx(null);
+        setShowDeleteConfirm(false);
       }}
       onDragOver={(e) => {
         e.preventDefault();
@@ -891,20 +963,48 @@ function FxCard({
         setDropVisualIdx(null);
       }}
       className={`
-        flex flex-col items-center justify-center
+        relative flex flex-col items-center justify-center
         w-24 h-18 px-2 py-2
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
         ring-1 ring-[var(--border)]
-        active:brightness-95 transition-all duration-100
-        cursor-pointer text-center relative
+        transition-all duration-100
+        cursor-pointer text-center
         ${isDragSource ? 'opacity-40' : ''}
         ${isDropTarget && !isDragSource ? 'ring-[var(--accent-orange)] bg-[var(--accent-orange)]/10' : ''}
+        ${isBypassed && !showDeleteConfirm ? 'opacity-40 grayscale' : ''}
       `}
     >
-      <span className="text-xs font-medium truncate w-full leading-tight">
-        {cleanFxName(fx.name)}
-      </span>
-    </button>
+      {/* Card body — tap to toggle bypass */}
+      <div
+        className="flex-1 w-full flex flex-col items-center justify-center"
+        onClick={handleCardClick}
+      >
+        {showDeleteConfirm ? (
+          <div className="flex items-center gap-1">
+            <span className="text-xs font-semibold text-[var(--accent-red)]">Delete?</span>
+            <span className="text-base text-[var(--accent-red)]">✕</span>
+          </div>
+        ) : (
+          <span className="text-xs font-medium truncate w-full leading-tight">
+            {cleanFxName(fx.name)}
+          </span>
+        )}
+      </div>
+
+      {/* Expand arrow (separate hit target) */}
+      {!showDeleteConfirm && (
+        <div
+          className="absolute -top-1 -right-1 w-4 h-4 flex items-center justify-center
+            bg-[var(--bg-tertiary)] ring-1 ring-[var(--border)]
+            text-[9px] text-[var(--text-secondary)] cursor-pointer
+            hover:bg-[var(--bg-secondary)] active:brightness-95 z-10"
+          onClick={handleExpandClick}
+          title="Show parameters"
+        >
+          ▼
+        </div>
+      )}
+    </div>
   );
 }
 

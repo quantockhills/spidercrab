@@ -71,7 +71,7 @@ function setupMockReaper() {
 }
 
 describe('App — FX card navigation to ParamControl', () => {
-  it('opens inline FX drawer when FX card is tapped on TrackOverview (Issue #94)', async () => {
+  it('opens inline FX drawer when expand arrow is clicked on TrackOverview (Issue #94)', async () => {
     setupMockReaper();
     render(<App />);
 
@@ -79,8 +79,10 @@ describe('App — FX card navigation to ParamControl', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Click the ReaEQ card — opens inline drawer on Tracks tab
-    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+    // Click the expand arrow on ReaEQ card — opens inline drawer on Tracks tab
+    const card = screen.getAllByText('ReaEQ')[0].closest('[draggable="true"]');
+    const arrow = card?.querySelector('[title="Show parameters"]');
+    if (arrow) fireEvent.click(arrow);
 
     // The inline drawer shows close button
     await waitFor(() => {
@@ -99,8 +101,10 @@ describe('App — FX card navigation to ParamControl', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Click FX card to open drawer
-    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+    // Click expand arrow to open drawer
+    const card = screen.getAllByText('ReaEQ')[0].closest('[draggable="true"]');
+    const arrow = card?.querySelector('[title="Show parameters"]');
+    if (arrow) fireEvent.click(arrow);
 
     await waitFor(() => {
       expect(screen.getByLabelText('Close drawer')).toBeDefined();

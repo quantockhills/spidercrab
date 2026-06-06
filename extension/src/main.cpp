@@ -25,6 +25,8 @@
 #define REAPERAPI_WANT_TrackFX_GetFormattedParamValue
 #define REAPERAPI_WANT_TrackFX_SetParam
 #define REAPERAPI_WANT_TrackFX_Delete
+#define REAPERAPI_WANT_TrackFX_GetEnabled
+#define REAPERAPI_WANT_TrackFX_SetEnabled
 #define REAPERAPI_WANT_TrackFX_CopyToTrack
 #define REAPERAPI_WANT_TrackFX_GetPresetIndex
 #define REAPERAPI_WANT_TrackFX_GetPreset
@@ -471,6 +473,8 @@ static bool InitializeCoreServices()
     api.TrackFX_GetFormattedParamValue = TrackFX_GetFormattedParamValue;
     api.TrackFX_SetParam            = TrackFX_SetParam;
     api.TrackFX_Delete              = TrackFX_Delete;
+    api.fxGetEnabled                = TrackFX_GetEnabled;
+    api.fxSetEnabled                = TrackFX_SetEnabled;
     api.TrackFX_CopyToTrack         = TrackFX_CopyToTrack;
     api.TrackFX_GetPresetIndex      = TrackFX_GetPresetIndex;
     api.TrackFX_GetPreset          = TrackFX_GetPreset;

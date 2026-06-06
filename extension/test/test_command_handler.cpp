@@ -315,6 +315,7 @@ struct MockTrack {
         std::vector<double>    paramMins;
         std::vector<double>    paramMaxs;
         std::vector<double>    paramMids;
+        bool                   bypassed = false;
     };
     std::vector<MockFX> fx;
 };
@@ -558,6 +559,28 @@ static bool mock_TrackFX_Delete(MediaTrack* track, int fx)
     for (size_t i = 0; i < t.fx.size(); i++)
         t.fx[i].idx = (int)i;
     return true;
+}
+
+static bool mock_TrackFX_GetEnabled(MediaTrack* track, int fx)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return true; // default: enabled
+    auto& t = g_mock->tracks[idx];
+    if (fx < 0 || fx >= (int)t.fx.size())
+        return true;
+    return !t.fx[fx].bypassed;
+}
+
+static void mock_TrackFX_SetEnabled(MediaTrack* track, int fx, bool enabled)
+{
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(track)) - 1;
+    if (!g_mock || idx < 0 || idx >= (int)g_mock->tracks.size())
+        return;
+    auto& t = g_mock->tracks[idx];
+    if (fx < 0 || fx >= (int)t.fx.size())
+        return;
+    t.fx[fx].bypassed = !enabled;
 }
 
 static void mock_TrackFX_CopyToTrack(
@@ -805,6 +828,8 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.TrackFX_SetParam     = mock_TrackFX_SetParam;
     api.TrackFX_AddByName    = mock_TrackFX_AddByName;
     api.TrackFX_Delete            = mock_TrackFX_Delete;
+    api.fxGetEnabled              = mock_TrackFX_GetEnabled;
+    api.fxSetEnabled              = mock_TrackFX_SetEnabled;
     api.TrackFX_CopyToTrack      = mock_TrackFX_CopyToTrack;
     api.TrackFX_GetPresetIndex    = mock_TrackFX_GetPresetIndex;
     api.TrackFX_GetPreset         = mock_TrackFX_GetPreset;
@@ -5444,4 +5469,144 @@ TEST(FxChainCacheTest, SearchRecursiveFallsBackToFsWhenNoCache)
     EXPECT_EQ(resp.find("\"error\""), std::string::npos);
 
     fs::remove_all(tmpdir, ec);
+}
+
+// ============================================================
+// FX bypass tests (Issue #104)
+// ============================================================
+
+TEST(FxBypassTest, GetTrackFxIncludesBypassedField)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}, false});
+    t.fx.push_back({1, "ReaComp", {}, {}, {}, {}, {}, true});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"bf1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    std::string& resp = responses[0];
+
+    // ReaEQ should be not bypassed
+    EXPECT_NE(resp.find("ReaEQ"), std::string::npos);
+    EXPECT_NE(resp.find("\"bypassed\":false"), std::string::npos);
+
+    // ReaComp should be bypassed
+    EXPECT_NE(resp.find("ReaComp"), std::string::npos);
+    EXPECT_NE(resp.find("\"bypassed\":true"), std::string::npos);
+
+    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
+    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
+}
+
+TEST(FxBypassTest, SetFXBypassTogglesState)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}, false});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Bypass the FX
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setBypass","payload":{"trackIdx":0,"fxIdx":0,"bypassed":true},"id":"bs1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"bypassed\":true"), std::string::npos);
+
+    // Verify mock state was updated
+    ASSERT_EQ(g_mock->tracks[0].fx.size(), 1u);
+    EXPECT_TRUE(g_mock->tracks[0].fx[0].bypassed);
+}
+
+TEST(FxBypassTest, SetFXBypassUnbypasses)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaComp", {}, {}, {}, {}, {}, true});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Un-bypass the FX
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setBypass","payload":{"trackIdx":0,"fxIdx":0,"bypassed":false},"id":"bs2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"bypassed\":false"), std::string::npos);
+
+    // Verify mock state was updated
+    ASSERT_EQ(g_mock->tracks[0].fx.size(), 1u);
+    EXPECT_FALSE(g_mock->tracks[0].fx[0].bypassed);
+}
+
+TEST(FxBypassTest, SetFXBypassInvalidTrackReturnsError)
+{
+    MockState state;
+    state.tracks = {};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setBypass","payload":{"trackIdx":0,"fxIdx":0,"bypassed":true},"id":"bs_bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(FxBypassTest, BypassStatePersistsAcrossGetTrackFx)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}, false});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Initial state: not bypassed
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"bp1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"bypassed\":false"), std::string::npos);
+
+    // Bypass the FX
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setBypass","payload":{"trackIdx":0,"fxIdx":0,"bypassed":true},"id":"bp2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"bypassed\":true"), std::string::npos);
+
+    // Get FX again — bypass state should persist
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"track/getFx","payload":{"trackIdx":0},"id":"bp3"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"bypassed\":true"), std::string::npos);
+}
+
+TEST(FxBypassTest, SetFXBypassMissingParamsReturnsError)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}, false});
+    state.tracks = {t};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // Missing trackIdx
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/setBypass","payload":{"fxIdx":0,"bypassed":true},"id":"bs_mp1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
 }
