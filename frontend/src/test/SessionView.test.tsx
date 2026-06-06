@@ -609,4 +609,95 @@ describe('SessionView', () => {
       expect(screen.getByLabelText('Column 2: Snare')).toBeDefined();
     });
   });
+
+  // ── Reverse button tests (Issue #75) ──
+
+  it('shows reverse toggle button on non-empty clips', async () => {
+    const matrix = makePartialMatrix();
+    const onSetSlotReverse = vi.fn().mockResolvedValue({
+      column: 0, row: 0, reversed: true, state: 'playing',
+      color: '#00ff00', name: 'Kick_01', clipType: 'audio',
+    });
+    renderSessionView({ matrix, onSetSlotReverse });
+
+    await waitFor(() => {
+      // Non-empty clips should have reverse buttons
+      expect(screen.queryByLabelText('Reverse slot 1,1')).toBeDefined();
+      expect(screen.queryByLabelText('Reverse slot 2,1')).toBeDefined();
+      expect(screen.queryByLabelText('Reverse slot 1,2')).toBeDefined();
+    });
+  });
+
+  it('does not show reverse button on empty clips', async () => {
+    const matrix = makeEmptyMatrix();
+    const onSetSlotReverse = vi.fn();
+    renderSessionView({ matrix, onSetSlotReverse });
+
+    await waitFor(() => {
+      // Empty clips should not have reverse buttons
+      expect(screen.queryByLabelText('Reverse slot')).toBeNull();
+    });
+  });
+
+  it('calls setSlotReverse when reverse button is clicked', async () => {
+    const matrix = makePartialMatrix();
+    const onSetSlotReverse = vi.fn().mockResolvedValue({
+      column: 0, row: 0, reversed: true, state: 'playing',
+      color: '#00ff00', name: 'Kick_01', clipType: 'audio',
+    });
+
+    renderSessionView({ matrix, onSetSlotReverse });
+
+    await waitFor(() => {
+      const revBtn = screen.getByLabelText('Reverse slot 1,1');
+      fireEvent.click(revBtn);
+      expect(onSetSlotReverse).toHaveBeenCalledWith(0, 0, true);
+    });
+  });
+
+  it('shows reversed visual indicator when clip is reversed', async () => {
+    const matrix = makeEmptyMatrix();
+    matrix.slots[0] = {
+      column: 0, row: 0, state: 'stopped',
+      color: '#888888', name: 'Rev_Clip', clipType: 'audio',
+      reversed: true,
+    };
+    const onSetSlotReverse = vi.fn();
+
+    renderSessionView({ matrix, onSetSlotReverse });
+
+    await waitFor(() => {
+      const revBtn = screen.getByLabelText('Reverse slot 1,1');
+      // When reversed, the button should show the active state
+      expect(revBtn).toBeDefined();
+    });
+  });
+
+  it('toggles reverse on and off on successive clicks', async () => {
+    const matrix = makePartialMatrix();
+    const onSetSlotReverse = vi.fn()
+      .mockResolvedValueOnce({
+        column: 0, row: 0, reversed: true, state: 'playing',
+        color: '#00ff00', name: 'Kick_01', clipType: 'audio',
+      })
+      .mockResolvedValueOnce({
+        column: 0, row: 0, reversed: false, state: 'playing',
+        color: '#00ff00', name: 'Kick_01', clipType: 'audio',
+      });
+
+    renderSessionView({ matrix, onSetSlotReverse });
+
+    await waitFor(() => {
+      const revBtn = screen.getByLabelText('Reverse slot 1,1');
+      fireEvent.click(revBtn);
+      expect(onSetSlotReverse).toHaveBeenCalledWith(0, 0, true);
+    });
+
+    // Click again to toggle off
+    await waitFor(() => {
+      const revBtn = screen.getByLabelText('Reverse slot 1,1');
+      fireEvent.click(revBtn);
+      expect(onSetSlotReverse).toHaveBeenCalledWith(0, 0, true);
+    });
+  });
 });

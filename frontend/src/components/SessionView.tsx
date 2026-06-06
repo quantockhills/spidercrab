@@ -18,6 +18,8 @@ interface SessionViewProps {
   onCheckPlaytimeAvailable?: () => Promise<{available: boolean}>;
   /** Record into a clip slot (Issue #43) */
   onRecordSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
+  /** Toggle reverse on a clip slot (Issue #75) */
+  onSetSlotReverse?: (column: number, row: number, reversed: boolean) => Promise<ClipSlot | null>;
 }
 
 /** Map slot state to display color hex (for the cell accent) */
@@ -44,6 +46,7 @@ export function SessionView({
   onLaunchPlaytime,
   onCheckPlaytimeAvailable,
   onRecordSlot,
+  onSetSlotReverse,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
@@ -144,6 +147,13 @@ export function SessionView({
     // slots in the scene row update their visual state.
     getMatrix();
   }, [triggerScene, getMatrix]);
+
+  const handleReverseToggle = useCallback(async (col: number, row: number, currentReversed: boolean) => {
+    if (!onSetSlotReverse) return;
+    await onSetSlotReverse(col, row, !currentReversed);
+    // Refresh matrix after reverse toggle
+    getMatrix();
+  }, [onSetSlotReverse, getMatrix]);
 
   const handleLaunchPlaytime = useCallback(async () => {
     if (!onLaunchPlaytime) return;
@@ -410,12 +420,43 @@ export function SessionView({
                     </span>
                   )}
 
+                  {/* Reverse toggle button — shown on non-empty clips (Issue #75) */}
+                  {state !== 'empty' && onSetSlotReverse && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReverseToggle(col, row, slot?.reversed ?? false);
+                      }}
+                      className={`
+                        absolute top-0.5 right-0.5
+                        w-4 h-4 flex items-center justify-center
+                        rounded text-[9px] font-bold leading-none
+                        transition-all active:scale-90
+                        ${slot?.reversed
+                          ? 'bg-[var(--accent-orange)] text-black'
+                          : 'bg-black/20 text-[var(--text-secondary)] hover:bg-black/40'
+                        }
+                      `}
+                      title={slot?.reversed ? 'Forward' : 'Reverse'}
+                      aria-label={`Reverse slot ${col + 1},${row + 1}`}
+                    >
+                      {slot?.reversed ? '◄' : '↻'}
+                    </button>
+                  )}
+
                   {/* State indicator icon */}
                   {state === 'playing' && (
                     <span className="absolute bottom-0.5 right-0.5 text-[8px] opacity-70">▶</span>
                   )}
                   {state === 'recording' && (
                     <span className="absolute bottom-0.5 right-0.5 text-[8px] text-[var(--accent-red)] opacity-80">●</span>
+                  )}
+
+                  {/* Reversed visual indicator — reversed badge when clip is reversed */}
+                  {slot?.reversed && state !== 'empty' && (
+                    <span className="absolute top-0.5 left-0.5 text-[7px] font-bold text-[var(--accent-orange)] opacity-90">
+                      R
+                    </span>
                   )}
                 </button>
               );
