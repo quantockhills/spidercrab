@@ -34,6 +34,8 @@ function renderTrackOverview(props: Partial<Parameters<typeof TrackOverview>[0]>
   const onToggleSolo = vi.fn();
   const onToggleArm = vi.fn();
   const onRefresh = vi.fn();
+  const onToggleBypass = vi.fn().mockResolvedValue(true);
+  const onDeleteFx = vi.fn().mockResolvedValue(true);
 
   // Default mocks for inline drawer props (Issue #94)
   const getFxParams = vi.fn().mockResolvedValue({ params: [], total: 0, offset: 0, limit: 8 });
@@ -52,11 +54,26 @@ function renderTrackOverview(props: Partial<Parameters<typeof TrackOverview>[0]>
       onSelectFx={onSelectFx}
       getFxParams={getFxParams}
       setFxParam={setFxParam}
+      onToggleBypass={onToggleBypass}
+      onDeleteFx={onDeleteFx}
       {...props}
     />,
   );
 
-  return { ...utils, getTrackFx, onSelectFx, onSelectTrack, onToggleMute, onToggleSolo, onToggleArm, onRefresh };
+  return { ...utils, getTrackFx, onSelectFx, onSelectTrack, onToggleMute, onToggleSolo, onToggleArm, onRefresh, onToggleBypass, onDeleteFx };
+}
+
+// Helper: click the expand arrow (▼) on an FX card to open the inline drawer
+function clickExpandArrow(fxName: string) {
+  // The expand arrow has title="Show parameters" and is positioned inside the FxCard div
+  // Use getAllByText and take the first to handle multiple matches (e.g. when drawer is open)
+  const elements = screen.getAllByText(fxName);
+  if (elements.length === 0) throw new Error(`FX name "${fxName}" not found`);
+  const card = elements[0].closest('[draggable="true"]');
+  if (!card) throw new Error(`FX card for "${fxName}" not found`);
+  const arrow = card.querySelector('[title="Show parameters"]');
+  if (!arrow) throw new Error(`Expand arrow for "${fxName}" not found`);
+  fireEvent.click(arrow);
 }
 
 // ── Tests ────────────────────────────────────────────────────
@@ -185,7 +202,7 @@ describe('TrackOverview — FX grid cards', () => {
     });
 
     // FX cards should have draggable attribute
-    const reaeqCard = screen.getByText('ReaEQ').closest('button');
+    const reaeqCard = screen.getByText('ReaEQ').closest('[draggable="true"]');
     expect(reaeqCard).not.toBeNull();
     expect(reaeqCard!.getAttribute('draggable')).toBe('true');
   });
@@ -198,7 +215,7 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    const reaeqCard = screen.getByText('ReaEQ').closest('[draggable="true"]')!;
 
     // Simulate drag start
     fireEvent.dragStart(reaeqCard, {
@@ -223,8 +240,8 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.getByText('ReaComp')).toBeDefined();
     });
 
-    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
-    const reacompCard = screen.getByText('ReaComp').closest('button')!;
+    const reaeqCard = screen.getByText('ReaEQ').closest('[draggable="true"]')!;
+    const reacompCard = screen.getByText('ReaComp').closest('[draggable="true"]')!;
 
     // Start dragging ReaEQ
     const dataTransfer = {
@@ -270,7 +287,7 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    const reaeqCard = screen.getByText('ReaEQ').closest('[draggable="true"]')!;
 
     const dataTransfer = {
       setData: vi.fn(),
@@ -307,7 +324,7 @@ describe('TrackOverview — FX grid cards', () => {
     });
 
     // Start dragging an FX card first (end drop zone only appears during drag)
-    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    const reaeqCard = screen.getByText('ReaEQ').closest('[draggable="true"]')!;
     fireEvent.dragStart(reaeqCard, {
       dataTransfer: {
         setData: vi.fn(),
@@ -331,7 +348,7 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    const reaeqCard = screen.getByText('ReaEQ').closest('[draggable="true"]')!;
 
     const dataTransfer = {
       setData: vi.fn(),
@@ -373,7 +390,7 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    const reaeqCard = screen.getByText('ReaEQ').closest('button')!;
+    const reaeqCard = screen.getByText('ReaEQ').closest('[draggable="true"]')!;
 
     const dataTransfer = {
       setData: vi.fn(),
@@ -395,16 +412,31 @@ describe('TrackOverview — FX grid cards', () => {
     });
   });
 
-  it('opens inline drawer when FX card is tapped (Issue #94)', async () => {
-    // FX cards now open inline drawer instead of calling onSelectFx
+  it('calls onToggleBypass when FX card is tapped', async () => {
+    const { onToggleBypass } = renderTrackOverview();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Click the ReaEQ card — should toggle bypass
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(onToggleBypass).toHaveBeenCalledOnce();
+    });
+    expect(onToggleBypass).toHaveBeenCalledWith(0, 0);
+  });
+
+  it('opens inline drawer when expand arrow is clicked', async () => {
     const { onSelectFx } = renderTrackOverview();
 
     await waitFor(() => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Click the ReaEQ card — should open inline drawer
-    fireEvent.click(screen.getByText('ReaEQ'));
+    // Click the expand arrow on ReaEQ card — should open inline drawer
+    clickExpandArrow('ReaEQ');
 
     // Drawer shows a close button (✕) which is unique to the drawer
     await waitFor(() => {
@@ -900,6 +932,122 @@ describe('TrackOverview — FX grid cards', () => {
   });
 });
 
+// ── FX bypass and long-press delete tests (Issue #104) ───────
+
+describe('TrackOverview — FX bypass and delete', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls onToggleBypass when FX card is tapped', async () => {
+    const { onToggleBypass } = renderTrackOverview();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    // Tap the FX card
+    fireEvent.click(screen.getByText('ReaEQ'));
+
+    await waitFor(() => {
+      expect(onToggleBypass).toHaveBeenCalledOnce();
+    });
+    expect(onToggleBypass).toHaveBeenCalledWith(0, 0);
+  });
+
+  it('shows dimmed styling for bypassed FX', async () => {
+    // Override mockFx with a bypassed FX
+    const bypassedFx: Record<number, FxInfo[]> = {
+      0: [
+        { index: 0, name: 'VST3: ReaEQ', bypassed: true },
+      ],
+    };
+    const getTrackFx = vi.fn().mockImplementation(async (trackIdx: number) => {
+      return bypassedFx[trackIdx] || [];
+    });
+
+    renderTrackOverview({ getTrackFx });
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const card = screen.getByText('ReaEQ').closest('[draggable="true"]');
+    expect(card).not.toBeNull();
+    // Bypassed card should have opacity-40 and grayscale classes
+    expect(card!.className).toContain('opacity-40');
+    expect(card!.className).toContain('grayscale');
+  });
+
+  it('shows delete confirmation on long-press', async () => {
+    renderTrackOverview();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const card = screen.getByText('ReaEQ').closest('[draggable="true"]');
+    expect(card).not.toBeNull();
+
+    // Long-press: pointerDown triggers 500ms timer
+    fireEvent.pointerDown(card!);
+
+    // Wait for the long-press timer to fire (500ms)
+    await waitFor(() => {
+      expect(screen.getByText('Delete?')).toBeDefined();
+    }, { timeout: 1000 });
+
+    // Clean up
+    fireEvent.pointerUp(card!);
+  });
+
+  it('cancels delete confirmation on quick tap (pointerUp before 500ms)', async () => {
+    renderTrackOverview();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const card = screen.getByText('ReaEQ').closest('[draggable="true"]');
+    expect(card).not.toBeNull();
+
+    // Quick press-and-release before 500ms
+    fireEvent.pointerDown(card!);
+    fireEvent.pointerUp(card!);
+
+    // Wait a moment to ensure no delete confirmation appears
+    await new Promise((r) => setTimeout(r, 600));
+
+    expect(screen.queryByText('Delete?')).toBeNull();
+  });
+
+  it('calls onDeleteFx when confirming delete after long-press', async () => {
+    const { onDeleteFx } = renderTrackOverview();
+
+    await waitFor(() => {
+      expect(screen.getByText('ReaEQ')).toBeDefined();
+    });
+
+    const card = screen.getByText('ReaEQ').closest('[draggable="true"]');
+    expect(card).not.toBeNull();
+
+    // Long-press to show delete confirmation
+    fireEvent.pointerDown(card!);
+    await waitFor(() => {
+      expect(screen.getByText('Delete?')).toBeDefined();
+    }, { timeout: 1000 });
+    fireEvent.pointerUp(card!);
+
+    // Tap the card again to confirm delete
+    fireEvent.click(screen.getByText('Delete?'));
+
+    await waitFor(() => {
+      expect(onDeleteFx).toHaveBeenCalledOnce();
+    });
+    expect(onDeleteFx).toHaveBeenCalledWith(0, 0);
+  });
+});
+
 // ── Inline FX drawer tests (Issue #94) ────────────────────────
 
 describe('TrackOverview — Inline FX drawer', () => {
@@ -971,7 +1119,7 @@ describe('TrackOverview — Inline FX drawer', () => {
     });
 
     // Tap ReaEQ card
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     // Drawer should open — look for close button which is unique to drawer
     await waitFor(() => {
@@ -990,14 +1138,14 @@ describe('TrackOverview — Inline FX drawer', () => {
     });
 
     // Tap to open — use getAllByText and take first (the FX card, not drawer header)
-    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByLabelText('Close drawer')).toBeDefined();
     });
 
     // Tap same card again to close — use first ReaEQ element (FX card)
-    fireEvent.click(screen.getAllByText('ReaEQ')[0]);
+    clickExpandArrow('ReaEQ');
 
     // Drawer should be closed — close button should disappear
     await waitFor(() => {
@@ -1013,14 +1161,14 @@ describe('TrackOverview — Inline FX drawer', () => {
     });
 
     // Open ReaEQ drawer
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByText('Hall Reverb')).toBeDefined();
     });
 
     // Tap ReaComp (different FX)
-    fireEvent.click(screen.getByText('ReaComp'));
+    clickExpandArrow('ReaComp');
 
     // The drawer should still be open (now showing ReaComp)
     await waitFor(() => {
@@ -1036,7 +1184,7 @@ describe('TrackOverview — Inline FX drawer', () => {
     });
 
     // Open ReaEQ drawer
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByText('Hall Reverb')).toBeDefined();
@@ -1056,7 +1204,7 @@ describe('TrackOverview — Inline FX drawer', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByText('Hall Reverb')).toBeDefined();
@@ -1078,7 +1226,7 @@ describe('TrackOverview — Inline FX drawer', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     // Wait for params to load
     await waitFor(() => {
@@ -1100,7 +1248,7 @@ describe('TrackOverview — Inline FX drawer', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByText('Param 0')).toBeDefined();
@@ -1140,7 +1288,7 @@ describe('TrackOverview — Inline FX drawer', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByText('FewParam 0')).toBeDefined();
@@ -1158,7 +1306,7 @@ describe('TrackOverview — Inline FX drawer', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByText('Param 0')).toBeDefined();
@@ -1197,7 +1345,7 @@ describe('TrackOverview — Inline FX drawer', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByText('Param 0')).toBeDefined();
@@ -1234,7 +1382,7 @@ describe('TrackOverview — Inline FX drawer', () => {
     });
 
     // Wait for drawer to open with params
-    fireEvent.click(screen.getByText('ReaEQ'));
+    clickExpandArrow('ReaEQ');
 
     await waitFor(() => {
       expect(screen.getByText('Param 0')).toBeDefined();

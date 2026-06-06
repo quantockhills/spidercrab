@@ -6,6 +6,7 @@ import { useReaperClient } from './useReaperClient';
 export interface FxInfo {
   index: number;
   name: string;
+  bypassed?: boolean;
 }
 
 export interface EnumeratedFx {
@@ -108,6 +109,11 @@ export function useFx() {
     return resp.success;
   }, [send]);
 
+  const setFxBypass = useCallback(async (trackIdx: number, fxIdx: number, bypassed: boolean): Promise<boolean> => {
+    const resp = await send('fx/setBypass', { trackIdx, fxIdx, bypassed });
+    return resp.success;
+  }, [send]);
+
   const refreshFxCache = useCallback(async (): Promise<boolean> => {
     setIsRefreshingFx(true);
     try {
@@ -167,6 +173,7 @@ export function useFx() {
     addFx,
     reorderFx,
     deleteFx,
+    setFxBypass,
     refreshFxCache,
     isRefreshingFx,
     getFxPreset,

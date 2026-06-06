@@ -54,6 +54,8 @@ struct ReaperAPI {
     bool (*TrackFX_SetParam)(MediaTrack* track, int fx, int param, double val)        = nullptr;
     bool (*TrackFX_GetFormattedParamValue)(MediaTrack* track, int fx, int param, char* bufOut, int bufOut_sz) = nullptr;
     bool (*TrackFX_Delete)(MediaTrack* track, int fx)                                 = nullptr;
+    bool (*fxGetEnabled)(MediaTrack* track, int fx)                                 = nullptr;
+    void (*fxSetEnabled)(MediaTrack* track, int fx, bool enabled)                   = nullptr;
     void (*TrackFX_CopyToTrack)(MediaTrack* src_track, int src_fx, MediaTrack* dest_track,
         int dest_fx, bool is_move)                                                    = nullptr;
     int (*TrackFX_GetPresetIndex)(MediaTrack* track, int fx, int* numberOfPresetsOut) = nullptr;
@@ -264,6 +266,7 @@ private:
     void HandleAddFX(int clientId, const std::string& id, const std::string& params);
     void HandleDeleteFX(int clientId, const std::string& id, const std::string& params);
     void HandleReorderFX(int clientId, const std::string& id, const std::string& params);
+    void HandleSetFXBypass(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX presets
     void HandleGetFxPreset(int clientId, const std::string& id, const std::string& params);

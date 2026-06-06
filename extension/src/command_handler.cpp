@@ -271,6 +271,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fx/setParam"]            = &CommandHandler::HandleSetFXParam;
     m_commandMap["fx/add"]                 = &CommandHandler::HandleAddFX;
     m_commandMap["fx/delete"]              = &CommandHandler::HandleDeleteFX;
+    m_commandMap["fx/setBypass"]           = &CommandHandler::HandleSetFXBypass;
     m_commandMap["fx/enumerate"]           = &CommandHandler::HandleEnumerateFX;
     m_commandMap["fx/refreshCache"]        = &CommandHandler::HandleRefreshFxCache;
     m_commandMap["transport/getState"]     = &CommandHandler::HandleGetTransport;
@@ -494,9 +495,17 @@ void CommandHandler::HandleGetTrackFX(
             fxList += ",";
         char name[512] = { 0 };
         m_api.TrackFX_GetFXName(track, i, name, sizeof(name));
+
+        // Read bypass state
+        bool bypassed = false;
+        if (m_api.fxGetEnabled) {
+            bypassed = !m_api.fxGetEnabled(track, i);
+        }
+
         fxList += "{";
         fxList += json_string("index") + ":" + std::to_string(i) + ",";
         fxList += json_string("name") + ":" + json_string(name) + ",";
+        fxList += json_string("bypassed") + ":" + (bypassed ? "true" : "false") + ",";
         auto cpIt = fxChainPath.find(i);
         if (cpIt != fxChainPath.end() && !cpIt->second.empty()) {
             fxList += json_string("chainPath") + ":" + json_string(cpIt->second);
@@ -886,6 +895,51 @@ void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const s
 
     SendResponse(
         clientId, id, success, "{\"deleted\":" + std::string(success ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleSetFXBypass(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.fxGetEnabled || !m_api.fxSetEnabled) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string fxIdxStr    = parser.getString("fxIdx");
+    std::string bypassedStr = parser.getString("bypassed");
+
+    if (trackIdxStr.empty() || fxIdxStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'fxIdx' parameter\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+    int fxIdx    = atoi(fxIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    // Handle both string "true"/"false" and unquoted JSON boolean true/false
+    // The JsonParser returns empty string for JSON boolean values, so we
+    // also check the raw payload string for boolean patterns.
+    bool bypassed = (bypassedStr == "true" || bypassedStr == "1");
+    if (bypassedStr.empty()) {
+        bypassed = (payloadStr.find("\"bypassed\":true") != std::string::npos);
+    }
+    // TrackFX_SetEnabled: true = enabled (not bypassed), false = disabled (bypassed)
+    m_api.fxSetEnabled(track, fxIdx, !bypassed);
+
+    // Read back the actual state to confirm
+    bool actualBypassed = !m_api.fxGetEnabled(track, fxIdx);
+
+    SendResponse(clientId, id, true,
+        "{\"bypassed\":" + std::string(actualBypassed ? "true" : "false") + "}");
 }
 
 void CommandHandler::HandleReorderFX(int clientId, const std::string& id, const std::string& params)
