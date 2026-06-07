@@ -120,6 +120,7 @@ SRC="$SRC $SCRIPT_DIR/src/websocket_server.cpp"
 SRC="$SRC $SCRIPT_DIR/src/command_handler.cpp"
 SRC="$SRC $SCRIPT_DIR/src/fx_tags.cpp"
 SRC="$SRC $SCRIPT_DIR/src/fxchain_cache.cpp"
+SRC="$SRC $SCRIPT_DIR/src/sample_cache.cpp"
 SRC="$SRC $SCRIPT_DIR/src/sha1_utils.cpp"
 
 WDL_DIR="$PROJECT_DIR/docs/WDL/WDL"
