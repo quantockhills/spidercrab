@@ -283,7 +283,6 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/getAudioInfo"]    = &CommandHandler::HandleSampleGetAudioInfo;
     m_commandMap["sample/preview"]         = &CommandHandler::HandleSamplePreview;
     m_commandMap["sample/stopPreview"]     = &CommandHandler::HandleSampleStopPreview;
-    m_commandMap["sample/refreshCache"]    = &CommandHandler::HandleSampleRefreshCache;
     m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
     m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
     m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
@@ -1135,28 +1134,6 @@ void CommandHandler::PreCacheFxChains(const std::string& rootPath)
     fprintf(stderr, "[reaper-ipad] FX chain cache built with %d entries\n", count);
 }
 
-void CommandHandler::PreCacheSamples(const std::vector<std::string>& samplePaths)
-{
-    if (samplePaths.empty()) {
-        fprintf(stderr, "[reaper-ipad] No sample paths set, skipping cache\n");
-        return;
-    }
-
-    m_samplePaths = samplePaths;
-
-    fprintf(stderr, "[reaper-ipad] Pre-caching samples from %zu paths...\n", samplePaths.size());
-    for (const auto& path : samplePaths) {
-        fprintf(stderr, "[reaper-ipad]   Starting sample scan: %s\n", path.c_str());
-    }
-
-    // Start scanning the first path
-    m_sampleCache.BeginScan(samplePaths[0],
-        [this](int scanned, int total) {
-            this->BroadcastSampleIndexProgress(scanned, total, "scanning");
-        });
-    m_sampleScanInProgress = true;
-}
-
 void CommandHandler::HandleFxChainSearchCached(
     int clientId, const std::string& id, const std::string& params)
 {
@@ -1170,15 +1147,17 @@ void CommandHandler::HandleFxChainSearchCached(
     int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
     int limit  = limitStr.empty()  ? 16 : atoi(limitStr.c_str());
 
-    // Build cache on first use if not already indexed
+    // If rootPath changed from cached path, re-index silently
+    if (!rootPath.empty() && rootPath != m_fxChainCache.RootPath()) {
+        m_fxChainCache.BuildIndex(rootPath);
+    }
+
+    // If cache isn't indexed yet, build it now
     if (!m_fxChainCache.IsIndexed() && !rootPath.empty()) {
-        int n = m_fxChainCache.BuildIndex(rootPath);
-        fprintf(stderr, "[spidercrab] fxchain/searchCached: built cache with %d entries from '%s'\n", n, rootPath.c_str());
+        m_fxChainCache.BuildIndex(rootPath);
     }
 
     auto result = m_fxChainCache.Search(query, offset, limit);
-    fprintf(stderr, "[spidercrab] fxchain/searchCached: query='%s' offset=%d limit=%d -> %zu results/%d total\n",
-        query.c_str(), offset, limit, result.results.size(), result.total);
 
     std::string resultsJson = "[";
     for (size_t i = 0; i < result.results.size(); i++) {
@@ -1215,7 +1194,6 @@ void CommandHandler::HandleFxChainRefreshCache(
     }
 
     int count = m_fxChainCache.BuildIndex(rootPath);
-    fprintf(stderr, "[spidercrab] fxchain/refreshCache: %d entries from '%s'\n", count, rootPath.c_str());
 
     std::string payload = "{";
     payload += json_string("refreshed") + ":true,";
@@ -1490,162 +1468,44 @@ void CommandHandler::HandleSampleGetDirectory(
         return;
     }
 
-    // Try cache first
-    SampleCache::DirectoryResult cached = m_sampleCache.GetDirectory(path);
-    bool fromCache = !cached.entries.empty();
-
     std::string entries = "[";
     bool first = true;
 
-    if (fromCache) {
-        // Serve from cache — add ".." entry for navigation
+    try {
+        // Add parent directory entry (..) for navigation
         entries += "{\"name\":\"..\",\"type\":\"dir\",\"size\":0}";
         first = false;
 
-        for (const auto& entry : cached.entries) {
+        for (const auto& entry : fs::directory_iterator(path)) {
             if (!first) entries += ",";
             first = false;
 
+            std::string entryName = entry.path().filename().string();
+            std::string entryType = entry.is_directory() ? "dir" : "file";
+            uintmax_t   entrySize = entry.is_regular_file()
+                                         ? fs::file_size(entry.path())
+                                         : 0;
+
             entries += "{";
-            entries += json_string("name") + ":" + json_string(entry.name) + ",";
-            entries += json_string("type") + ":" + json_string(entry.type) + ",";
-            entries += json_string("size") + ":" + std::to_string(entry.size);
+            entries += json_string("name") + ":" + json_string(entryName) + ",";
+            entries += json_string("type") + ":" + json_string(entryType) + ",";
+            entries += json_string("size") + ":" + std::to_string(entrySize);
             entries += "}";
         }
-    } else {
-        // Fall back to live filesystem
-        try {
-            // Add parent directory entry (..) for navigation
-            entries += "{\"name\":\"..\",\"type\":\"dir\",\"size\":0}";
-            first = false;
-
-            for (const auto& entry : fs::directory_iterator(path)) {
-                if (!first) entries += ",";
-                first = false;
-
-                std::string entryName = entry.path().filename().string();
-                std::string entryType = entry.is_directory() ? "dir" : "file";
-                uintmax_t   entrySize = entry.is_regular_file()
-                                             ? fs::file_size(entry.path())
-                                             : 0;
-
-                entries += "{";
-                entries += json_string("name") + ":" + json_string(entryName) + ",";
-                entries += json_string("type") + ":" + json_string(entryType) + ",";
-                entries += json_string("size") + ":" + std::to_string(entrySize);
-                entries += "}";
-            }
-        } catch (const fs::filesystem_error& e) {
-            SendResponse(clientId, id, false,
-                "{\"error\":" + json_string(e.what()) + "}");
-            return;
-        }
+    } catch (const fs::filesystem_error& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
     }
 
     entries += "]";
 
     std::string payload = "{";
     payload += json_string("path") + ":" + json_string(path) + ",";
-    payload += json_string("fromCache") + ":" + (fromCache ? "true" : "false") + ",";
     payload += json_string("entries") + ":" + entries;
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
-}
-
-// ============================================================
-// Sample refresh cache / background scanning (Issue #107)
-// ============================================================
-
-void CommandHandler::HandleSampleRefreshCache(
-    int clientId, const std::string& id, const std::string& params)
-{
-    std::string payloadStr = extractPayload(params);
-    JsonParser  parser(payloadStr);
-    std::string rootPath = parser.getString("rootPath");
-
-    if (rootPath.empty()) {
-        // If no rootPath specified, use configured paths
-        if (!m_samplePaths.empty()) {
-            rootPath = m_samplePaths[0];
-        } else {
-            SendResponse(clientId, id, false,
-                "{\"error\":\"Missing 'rootPath' parameter and no configured paths\"}");
-            return;
-        }
-    }
-
-    // Clear the cache for this root and start a fresh scan
-    m_sampleCache.ClearRoot(rootPath);
-    m_sampleScanInProgress = true;
-
-    m_sampleCache.BeginScan(rootPath,
-        [this](int scanned, int total) {
-            // Broadcast progress event
-            this->BroadcastSampleIndexProgress(scanned, total, "scanning");
-        });
-
-    SendResponse(clientId, id, true,
-        "{\"refreshed\":true,\"rootPath\":" + json_string(rootPath) + "}");
-}
-
-void CommandHandler::PollSampleCache()
-{
-    if (!m_sampleCache.IsScanning())
-        return;
-
-    m_sampleScanInProgress = true;
-    bool done = m_sampleCache.ScanNextBatch();
-
-    if (done) {
-        m_sampleScanInProgress = false;
-
-        // Get the final progress for the completion event
-        std::string rootPath;
-        {
-            // HACK: We don't track rootPath in ScanState after completion.
-            // Use the first configured path as a best guess.
-            if (!m_samplePaths.empty())
-                rootPath = m_samplePaths[0];
-        }
-
-        // Broadcast completion event
-        std::string event = "{";
-        event += json_string("type") + ":" + json_string("event") + ",";
-        event += json_string("event") + ":" + json_string("sampleIndexComplete") + ",";
-        event += json_string("payload") + ":{";
-        event += json_string("total") + ":0,";
-        event += json_string("rootPath") + ":" + json_string(rootPath.empty() ? "" : rootPath);
-        event += "}}";
-
-        if (m_broadcastCb)
-            m_broadcastCb(event);
-        else if (m_ws)
-            m_ws->Broadcast(event);
-
-        fprintf(stderr, "[reaper-ipad] Sample index complete for %s\n",
-            rootPath.empty() ? "(unknown)" : rootPath.c_str());
-    }
-}
-
-void CommandHandler::BroadcastSampleIndexProgress(int scanned, int total, const std::string& status)
-{
-    std::string event = "{";
-    event += json_string("type") + ":" + json_string("event") + ",";
-    event += json_string("event") + ":" + json_string("sampleIndexProgress") + ",";
-    event += json_string("payload") + ":{";
-    event += json_string("scanned") + ":" + std::to_string(scanned) + ",";
-    event += json_string("total") + ":" + std::to_string(total) + ",";
-    event += json_string("status") + ":" + json_string(status);
-    event += "}}";
-
-    if (m_broadcastCb)
-        m_broadcastCb(event);
-    else if (m_ws)
-        m_ws->Broadcast(event);
-
-    fprintf(stderr, "[reaper-ipad] Sample index progress: %d/%d %s\n",
-        scanned, total, status.c_str());
 }
 
 // ============================================================

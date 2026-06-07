@@ -78,14 +78,16 @@ void SampleCache::BeginScan(const std::string& rootPath, ProgressCallback progre
                 }
             }
         } catch (const fs::filesystem_error&) {
-            // Graceful degradation: 0 files
+            // Graceful degradation: 0 files, path likely doesn't exist
         }
 
         m_scanState->counting = false;
         m_scanState->totalFiles = static_cast<int>(m_scanState->allFiles.size());
 
-        // Add the root directory itself as a directory entry
-        m_scanState->allDirectories.push_back(rootPath);
+        // Add the root directory itself as a directory entry (if it exists)
+        if (fs::exists(rootPath) && fs::is_directory(rootPath)) {
+            m_scanState->allDirectories.push_back(rootPath);
+        }
 
         // Call progress callback with initial state
         if (m_scanState->progressCb) {
@@ -205,8 +207,23 @@ bool SampleCache::ScanNextBatch()
                 });
         }
 
-        // Mark root as indexed
-        m_indexedRoots[m_scanState->rootPath] = true;
+        // Only mark as indexed and cache if the root path exists and is a directory
+        bool pathExists = false;
+        {
+            std::error_code ec;
+            pathExists = fs::exists(m_scanState->rootPath, ec) && fs::is_directory(m_scanState->rootPath, ec);
+        }
+        if (pathExists) {
+            m_indexedRoots[m_scanState->rootPath] = true;
+            // Ensure root directory is in the cache (even if empty)
+            if (m_directoryCache.find(m_scanState->rootPath) == m_directoryCache.end()) {
+                m_directoryCache[m_scanState->rootPath] = {};
+            }
+        }
+
+        // Save final progress values
+        m_lastScanned = m_scanState->scannedFiles;
+        m_lastTotal = m_scanState->totalFiles;
 
         fprintf(stderr, "[reaper-ipad] SampleCache: indexed %s (%d files, %zu dirs)\n",
             m_scanState->rootPath.c_str(),
@@ -242,8 +259,9 @@ void SampleCache::GetScanProgress(int& scanned, int& total) const
         scanned = m_scanState->scannedFiles;
         total = m_scanState->totalFiles;
     } else {
-        scanned = 0;
-        total = 0;
+        // Return last known progress after scan completion
+        scanned = m_lastScanned;
+        total = m_lastTotal;
     }
 }
 

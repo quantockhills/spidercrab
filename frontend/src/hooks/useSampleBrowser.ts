@@ -30,5 +30,15 @@ export function useSampleBrowser() {
     [send],
   );
 
-  return { getDirectory, sendSampleToTrack };
+  const refreshSampleCache = useCallback(
+    async (rootPath?: string): Promise<boolean> => {
+      const params: Record<string, unknown> = {};
+      if (rootPath) params.rootPath = rootPath;
+      const resp = await send('sample/refreshCache', params);
+      return resp.success;
+    },
+    [send],
+  );
+
+  return { getDirectory, sendSampleToTrack, refreshSampleCache };
 }
