@@ -57,6 +57,7 @@ function AppInner() {
     fxChainLoad,
     fxChainGetInfo,
     fxChainSearchRecursive,
+    fxChainSearchCached,
     fxChainCycle,
     getFxPreset,
     setFxPreset,
