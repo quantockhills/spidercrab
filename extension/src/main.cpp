@@ -300,6 +300,12 @@ public:
             g_cmdHandler->PollOscReceiver();
         }
 
+        // Poll sample cache background scan (Issue #107)
+        // Processes one batch per Run() cycle (~30 batches/sec).
+        if (g_cmdHandler) {
+            g_cmdHandler->PollSampleCache();
+        }
+
     }
 
     void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }
@@ -514,6 +520,27 @@ static bool InitializeCoreServices()
             : 0;
         if (gotChainRoot > 0 && chainRootBuf[0] != '\0') {
             g_cmdHandler->PreCacheFxChains(chainRootBuf);
+        }
+    }
+
+    // Pre-build sample index at startup (reads sample paths from ExtState)
+    {
+        std::vector<std::string> samplePaths;
+        int pathIdx = 0;
+        while (true) {
+            char key[64];
+            snprintf(key, sizeof(key), "samplePath%d", pathIdx);
+            char pathBuf[4096] = { 0 };
+            int got = GetProjExtState
+                ? GetProjExtState(nullptr, "REAPER_IPAD", key, pathBuf, (int)sizeof(pathBuf))
+                : 0;
+            if (got <= 0 || pathBuf[0] == '\0')
+                break;
+            samplePaths.push_back(pathBuf);
+            pathIdx++;
+        }
+        if (!samplePaths.empty()) {
+            g_cmdHandler->PreCacheSamples(samplePaths);
         }
     }
 

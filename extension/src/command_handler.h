@@ -8,6 +8,7 @@
 #include "osc_receiver.h"
 #include "sequencer_state.h"
 #include "fx_tags.h"
+#include "sample_cache.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -156,6 +157,18 @@ public:
     // Access the FX chain cache (for testing)
     FxChainCache& GetFxChainCache() { return m_fxChainCache; }
 
+    // Access the sample cache (for testing)
+    SampleCache& GetSampleCache() { return m_sampleCache; }
+
+    // Pre-build sample index at startup. Starts background scan.
+    void PreCacheSamples(const std::vector<std::string>& samplePaths);
+
+    // Poll the sample cache from Run() — advances background scan by one batch.
+    void PollSampleCache();
+
+    // Access configured sample paths
+    const std::vector<std::string>& GetSamplePaths() const { return m_samplePaths; }
+
     // Real-time event broadcasting (Issue #57)
     // Broadcast a track state change event (mute/solo/arm/volume) to all WS clients
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
@@ -163,6 +176,9 @@ public:
 
     // Broadcast a matrix slot state change event to all WS clients
     void BroadcastMatrixEvent(const std::string& eventType, const std::string& slotJson);
+
+    // Broadcast sample index progress event to all WS clients (Issue #107)
+    void BroadcastSampleIndexProgress(int scanned, int total, const std::string& status);
 
     // Build a WebSocket event JSON string for a slot state change
     std::string BuildSlotEvent(const std::string& slotJson);
@@ -208,6 +224,16 @@ private:
 
     // FX chain cache (Issue #103)
     FxChainCache m_fxChainCache;
+
+    // Sample cache (Issue #107)
+    SampleCache m_sampleCache;
+
+    // Sample paths to scan at startup
+    std::vector<std::string> m_samplePaths;
+
+    // Track whether sample scan progress was already broadcast on current batch
+    // (to avoid duplicate progress events)
+    bool m_sampleScanInProgress = false;
 
     // Chain-source tracking: maps trackIdx -> list of chain groups
     // Each chain group records the .RfxChain file path and the FX index range
@@ -256,6 +282,7 @@ private:
     void HandleSampleGetAudioInfo(int clientId, const std::string& id, const std::string& params);
     void HandleSamplePreview(int clientId, const std::string& id, const std::string& params);
     void HandleSampleStopPreview(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleRefreshCache(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);
