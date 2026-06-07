@@ -1,5 +1,5 @@
 
-## v0.2.3-alpha — 2026-06-07
+## v0.2.4-alpha — 2026-06-07
 
 ### Features
 - **Inline FX search** — long-press on the FX area of a track card to open an inline search bar (Issue #102):
@@ -26,8 +26,13 @@
 ### Fixes
 - **Restored 18 C++ tests** — merge regression left MakeMockHandler missing 10 API function pointer assignments (FxReorder, FxPreset, SequencerConvert)
 - **Fixed fxChainSearchCached destructure** — missing hook destructure in App.tsx caused ReferenceError on chain search (Issue #105)
-- **C++ test suite**: 294/294 tests passing
-- **Frontend test suite**: 368/368 tests passing
+- **Host-side audio preview** — replace sample/getAudioData with sample/getAudioInfo + sample/preview + sample/stopPreview (Issue #106):
+  - Waveform from downsampled peaks (~2000 points, a few KB)
+  - Playback through REAPER host audio (PCM_Source_CreateFromFile + PlayPreview/StopPreview)
+  - No more 5MB base64 limit — works with 60MB+ WAV files
+  - Canvas CSS var() rendering fixed with getComputedStyle
+- **C++ test suite**: 307/307 tests passing
+- **Frontend test suite**: 388/388 tests passing
 - **Fixed I_RECINPUT** — record mode toggle now sets I_RECINPUT alongside I_RECMODE (Issue #99)
 - **ESLint**: Clean
 - **make lint + make check**: Clean
