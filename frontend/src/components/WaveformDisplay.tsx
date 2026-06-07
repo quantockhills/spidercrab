@@ -1,5 +1,20 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 
+/**
+ * Resolve a CSS custom property value from the document root.
+ * Falls back to `fallback` if the variable is not defined.
+ * Canvas 2D context does NOT resolve `var()` syntax, so we must
+ * eagerly read the computed value at draw time.
+ */
+function resolveCSSVar(name: string, fallback: string): string {
+  try {
+    const val = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return val || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 interface WaveformDisplayProps {
   /** Waveform peaks (normalized 0-1) */
   peaks: Float32Array | null;
@@ -56,15 +71,21 @@ export function WaveformDisplay({
     // Clear
     ctx.clearRect(0, 0, w, h);
 
+    // Resolve CSS variable colors for canvas 2D (does not support var() syntax)
+    const bgColor = resolveCSSVar('--bg-tertiary', '#222');
+    const accentColor = resolveCSSVar('--accent-orange', '#e8883a');
+    const textColor = resolveCSSVar('--text-secondary', '#666');
+    const borderColor = resolveCSSVar('--border', '#444');
+
     if (!peaks || peaks.length === 0) {
       // Draw placeholder
-      ctx.strokeStyle = 'var(--border, #444)';
+      ctx.strokeStyle = borderColor;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, h / 2);
       ctx.lineTo(w, h / 2);
       ctx.stroke();
-      ctx.fillStyle = 'var(--text-secondary, #888)';
+      ctx.fillStyle = textColor;
       ctx.font = '11px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('No waveform data', w / 2, h / 2 + 4);
@@ -76,7 +97,7 @@ export function WaveformDisplay({
     const barWidth = w / peaks.length;
 
     // Draw background
-    ctx.fillStyle = 'var(--bg-tertiary, #222)';
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, w, h);
 
     // Draw waveform
@@ -91,17 +112,17 @@ export function WaveformDisplay({
 
       if (isPlayed) {
         // Played region: accent color
-        ctx.fillStyle = 'var(--accent-orange, #e8883a)';
+        ctx.fillStyle = accentColor;
       } else {
         // Unplayed region: dimmer
-        ctx.fillStyle = 'var(--text-secondary, #666)';
+        ctx.fillStyle = textColor;
       }
 
       ctx.fillRect(x, midY - amp, xRight - x, amp * 2);
     }
 
     // Draw playhead line
-    ctx.strokeStyle = 'var(--accent-orange, #e8883a)';
+    ctx.strokeStyle = accentColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(playheadX, 0);
@@ -109,7 +130,7 @@ export function WaveformDisplay({
     ctx.stroke();
 
     // Draw playhead triangle
-    ctx.fillStyle = 'var(--accent-orange, #e8883a)';
+    ctx.fillStyle = accentColor;
     ctx.beginPath();
     ctx.moveTo(playheadX - 5, 0);
     ctx.lineTo(playheadX + 5, 0);
@@ -122,7 +143,7 @@ export function WaveformDisplay({
       ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.font = 'bold 10px sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillStyle = 'var(--accent-orange, #e8883a)';
+      ctx.fillStyle = accentColor;
       ctx.fillText('↔ REV', w - 4, h - 4);
     }
   }, [peaks, currentTime, duration, isPlaying, reverse]);
