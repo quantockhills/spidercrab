@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Track, DirEntry } from '../hooks/useReaper';
+import type { DirResult } from '../hooks/useSampleBrowser';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
@@ -10,14 +11,13 @@ import { useDragContext } from '../hooks/useDragContext';
 interface FileInfo {
   name: string;
   path: string;
-  size: number;
   type: string;
 }
 
 interface SampleBrowserProps {
   tracks: Track[];
   selectedTrack: number | null;
-  getDirectory: (path: string) => Promise<{entries: DirEntry[]}>;
+  getDirectory: (path: string, offset?: number, limit?: number) => Promise<DirResult>;
   sendSampleToTrack: (path: string, trackIdx: number) => Promise<boolean>;
   sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>;
   onBack: () => void;
@@ -45,6 +45,9 @@ export function SampleBrowser({
   );
   const [currentRoot, setCurrentRoot] = useState<string | null>(null);
   const [entries, setEntries] = useState<DirEntry[]>([]);
+  const [dirTotal, setDirTotal] = useState(0);
+  const [dirOffset, setDirOffset] = useState(0);
+  const dirLimit = 100;
   const [loading, setLoading] = useState(
     () => !!currentPath // If no path (root selector mode), start not loading
   );
@@ -85,11 +88,13 @@ export function SampleBrowser({
 
   const audioPreview = useAudioPreview(selectedFile, sendCommand);
 
-  const loadDirectory = useCallback(async (path: string) => {
+  const loadDirectory = useCallback(async (path: string, offset = 0) => {
     try {
-      const result = await getDirectory(path);
+      const result = await getDirectory(path, offset, dirLimit);
       setError(null);
-      setEntries(result.entries || []);
+      setEntries(result.entries);
+      setDirTotal(result.total);
+      setDirOffset(result.offset);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load directory');
       setEntries([]);
@@ -132,18 +137,19 @@ export function SampleBrowser({
     }
   }, [currentPath, search, samplePaths, getDirectory]);
 
-  // Load directory on mount / path change
+  // Load directory on mount / path change (always start at offset 0)
   useEffect(() => {
     if (!currentPath) {
-      // Root selector mode — don't load any directory
       return;
     }
     let cancelled = false;
-    getDirectory(currentPath)
+    getDirectory(currentPath, 0, dirLimit)
       .then((result) => {
         if (!cancelled) {
           setError(null);
-          setEntries(result.entries || []);
+          setEntries(result.entries);
+          setDirTotal(result.total);
+          setDirOffset(0);
           setLoading(false);
         }
       })
@@ -176,14 +182,12 @@ export function SampleBrowser({
   const handleNavigate = useCallback((entry: DirEntry) => {
     if (entry.type === 'dir') {
       if (entry.name === '..') {
-        // Go up one level
         const parent = currentPath.substring(0, currentPath.lastIndexOf('/'));
-        // If we're at the root of our current root directory, return to root selector
         if (currentRoot && parent === currentRoot) {
-          // Root level — go back to root selector
           setCurrentRoot(null);
           setCurrentPath('');
           setEntries([]);
+          setDirTotal(0);
           setError(null);
           return;
         }
@@ -191,6 +195,7 @@ export function SampleBrowser({
       } else {
         setCurrentPath(currentPath + '/' + entry.name);
       }
+      setDirOffset(0);
       setLoading(true);
     }
   }, [currentPath, currentRoot]);
@@ -228,14 +233,6 @@ export function SampleBrowser({
   // Separate dirs and files for display
   const dirs = useMemo(() => filteredEntries.filter((e) => e.type === 'dir'), [filteredEntries]);
   const files = useMemo(() => filteredEntries.filter((e) => e.type === 'file'), [filteredEntries]);
-
-  // Format file size
-  const formatSize = (bytes: number): string => {
-    if (bytes === 0) return '';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
 
   // Audio file extensions
   const isAudioFile = (name: string): boolean => {
@@ -315,7 +312,6 @@ export function SampleBrowser({
         setFileInfo({
           name: entry.name,
           path: fullPath,
-          size: entry.size,
           type: isAudio ? 'Audio' : 'File',
         });
       },
@@ -454,7 +450,6 @@ export function SampleBrowser({
               searchQuery={search}
               selectedTrack={selectedTrack}
               isAudioFile={isAudioFile}
-              formatSize={formatSize}
               sending={sending}
               sentFiles={sentFiles}
               selectedFile={selectedFile}
@@ -538,13 +533,34 @@ export function SampleBrowser({
                 isSending={sending === entry.name}
                 isSent={sentFiles.has(entry.name)}
                 canSend={selectedTrack !== null}
-                formattedSize={formatSize(entry.size)}
                 isSelected={selectedFile !== null && currentPath + '/' + entry.name === selectedFile}
                 onSend={() => handleSendToTrack(entry)}
                 onSelect={() => handleFileClick(entry)}
                 onLongPress={(x, y) => handleLongPress(entry, currentPath, x, y)}
               />
             ))}
+            {/* Pagination */}
+            {dirTotal > dirLimit && (
+              <div className="flex items-center justify-between px-2 py-2 mt-1 border-t border-[var(--border)]">
+                <button
+                  disabled={dirOffset === 0}
+                  onClick={() => { const next = Math.max(0, dirOffset - dirLimit); setDirOffset(next); setLoading(true); loadDirectory(currentPath, next); }}
+                  className="px-3 py-1.5 text-xs disabled:opacity-30 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] min-h-[36px]"
+                >
+                  ← Prev
+                </button>
+                <span className="text-[10px] text-[var(--text-secondary)]">
+                  {dirOffset + 1}–{Math.min(dirOffset + dirLimit, dirTotal)} of {dirTotal}
+                </span>
+                <button
+                  disabled={dirOffset + dirLimit >= dirTotal}
+                  onClick={() => { const next = dirOffset + dirLimit; setDirOffset(next); setLoading(true); loadDirectory(currentPath, next); }}
+                  className="px-3 py-1.5 text-xs disabled:opacity-30 bg-[var(--bg-tertiary)] text-[var(--text-secondary)] min-h-[36px]"
+                >
+                  Next →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -646,7 +662,7 @@ export function SampleBrowser({
       {/* Footer stats */}
       {!loading && currentPath && entries.length > 0 && (
         <div className="px-4 py-2 border-t border-[var(--border)] flex justify-between text-[10px] text-[var(--text-secondary)]">
-          <span>{dirs.length} dirs · {files.length} files{search ? ` (filtered)` : ''}</span>
+          <span>{dirs.length} dirs · {files.length} files{dirTotal > dirLimit ? ` (${dirTotal} total)` : ''}{search ? ` (filtered)` : ''}</span>
           {currentRoot && <span className="font-mono">📁 {currentRoot}</span>}
           {selectedTrackName && <span>→ {selectedTrackName}</span>}
         </div>
@@ -668,7 +684,6 @@ interface CrossRootSearchResultsProps {
   searchQuery: string;
   selectedTrack: number | null;
   isAudioFile: (name: string) => boolean;
-  formatSize: (bytes: number) => string;
   sending: string | null;
   sentFiles: Set<string>;
   selectedFile: string | null;
@@ -682,7 +697,6 @@ function CrossRootSearchResults({
   searchQuery,
   selectedTrack,
   isAudioFile,
-  formatSize,
   sending,
   sentFiles,
   selectedFile,
@@ -751,7 +765,6 @@ function CrossRootSearchResults({
               isSending={sending === entry.name}
               isSent={sentFiles.has(entry.name)}
               canSend={selectedTrack !== null}
-              formattedSize={formatSize(entry.size)}
               isSelected={selectedFile !== null && group.root + '/' + entry.name === selectedFile}
               onSend={() => onSendToTrack(entry, group.root)}
               onSelect={() => onFileClick(entry, group.root)}
@@ -772,14 +785,13 @@ interface CrossRootEntryRowProps {
   isSending: boolean;
   isSent: boolean;
   canSend: boolean;
-  formattedSize: string;
   isSelected: boolean;
   onSend: () => void;
   onSelect: () => void;
   onLongPress: (x: number, y: number) => void;
 }
 
-function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, isSelected, onSend, onSelect, onLongPress }: CrossRootEntryRowProps) {
+function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, isSelected, onSend, onSelect, onLongPress }: CrossRootEntryRowProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
 
@@ -862,9 +874,6 @@ function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, formatt
       <span className="text-base flex-shrink-0">{icon}</span>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate">{entry.name}</div>
-        {formattedSize && (
-          <div className="text-[10px] text-[var(--text-secondary)]">{formattedSize}</div>
-        )}
       </div>
 
       {/* Send to track button (audio files only) */}
@@ -925,14 +934,13 @@ interface FileRowProps {
   isSending: boolean;
   isSent: boolean;
   canSend: boolean;
-  formattedSize: string;
   isSelected: boolean;
   onSend: () => void;
   onSelect: () => void;
   onLongPress: (x: number, y: number) => void;
 }
 
-function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, isSelected, onSend, onSelect, onLongPress }: FileRowProps) {
+function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, onSend, onSelect, onLongPress }: FileRowProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
 
@@ -1003,9 +1011,6 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, formattedSize, is
       <span className="text-base flex-shrink-0">{icon}</span>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate">{entry.name}</div>
-        {formattedSize && (
-          <div className="text-[10px] text-[var(--text-secondary)]">{formattedSize}</div>
-        )}
       </div>
 
       {/* Send to track button (audio files only) */}
@@ -1042,13 +1047,6 @@ interface FileInfoModalProps {
 }
 
 function FileInfoModal({ info, onClose }: FileInfoModalProps) {
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
@@ -1073,7 +1071,6 @@ function FileInfoModal({ info, onClose }: FileInfoModalProps) {
         <div className="space-y-3">
           <InfoRow label="Name" value={info.name} />
           <InfoRow label="Type" value={info.type} />
-          <InfoRow label="Size" value={formatFileSize(info.size)} />
           <div>
             <span className="text-[11px] text-[var(--text-secondary)] block mb-1">Path</span>
             <div className="text-xs text-[var(--text-primary)] font-mono bg-[var(--bg-tertiary)] p-2 break-all">

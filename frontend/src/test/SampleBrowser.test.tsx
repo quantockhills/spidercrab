@@ -15,13 +15,13 @@ function createMockTracks(): Track[] {
 
 function createMockEntries(): DirEntry[] {
   return [
-    { name: '..', type: 'dir', size: 0 },
-    { name: 'Drums', type: 'dir', size: 0 },
-    { name: 'Synth', type: 'dir', size: 0 },
-    { name: 'kick.wav', type: 'file', size: 102400 },
-    { name: 'snare.wav', type: 'file', size: 204800 },
-    { name: 'lead.mp3', type: 'file', size: 5120000 },
-    { name: 'notes.txt', type: 'file', size: 1024 },
+    { name: '..', type: 'dir' },
+    { name: 'Drums', type: 'dir' },
+    { name: 'Synth', type: 'dir' },
+    { name: 'kick.wav', type: 'file' },
+    { name: 'snare.wav', type: 'file' },
+    { name: 'lead.mp3', type: 'file' },
+    { name: 'notes.txt', type: 'file' },
   ];
 }
 
@@ -34,7 +34,7 @@ describe('SampleBrowser', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetDirectory.mockResolvedValue({ entries: createMockEntries() });
+    mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
     mockSendSampleToTrack.mockResolvedValue(true);
     mockSendCommand.mockResolvedValue({ payload: {} });
   });
@@ -714,7 +714,7 @@ describe('SampleBrowser', () => {
   describe('root selector with samplePaths', () => {
     beforeEach(() => {
       localStorage.clear();
-      mockGetDirectory.mockResolvedValue({ entries: createMockEntries() });
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
     });
 
     it('shows root selector when samplePaths is provided and no root selected', () => {
@@ -904,7 +904,7 @@ describe('SampleBrowser', () => {
     });
 
     it('persists root path to localStorage', async () => {
-      mockGetDirectory.mockResolvedValue({ entries: createMockEntries() });
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
 
       render(
         <SampleBrowser
@@ -946,7 +946,7 @@ describe('SampleBrowser', () => {
 
       // A fresh render should load from localStorage
       mockGetDirectory.mockClear();
-      mockGetDirectory.mockResolvedValue({ entries: createMockEntries() });
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
 
       render(
         <SampleBrowser

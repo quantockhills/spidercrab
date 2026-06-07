@@ -6,7 +6,13 @@ import { useReaperClient } from './useReaperClient';
 export interface DirEntry {
   name: string;
   type: 'dir' | 'file';
-  size: number;
+}
+
+export interface DirResult {
+  entries: DirEntry[];
+  total: number;
+  offset: number;
+  path: string;
 }
 
 // ── Hook ─────────────────────────────────────────────────────
@@ -15,9 +21,15 @@ export function useSampleBrowser() {
   const { send } = useReaperClient();
 
   const getDirectory = useCallback(
-    async (path: string): Promise<{ entries: DirEntry[] }> => {
-      const resp = await send('sample/getDirectory', { path });
-      return resp.payload as { entries: DirEntry[] };
+    async (path: string, offset = 0, limit = 100): Promise<DirResult> => {
+      const resp = await send('sample/getDirectory', { path, offset, limit });
+      const p = resp.payload as unknown as DirResult;
+      return {
+        entries: p.entries || [],
+        total:   typeof p.total  === 'number' ? p.total  : (p.entries || []).length,
+        offset:  typeof p.offset === 'number' ? p.offset : 0,
+        path:    p.path || path,
+      };
     },
     [send],
   );
