@@ -1,6 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { WaveformDisplay } from '../components/WaveformDisplay';
+
+// Mock getComputedStyle to return CSS variable values
+const mockCSSVars: Record<string, string> = {
+  '--bg-tertiary': '#EDE5D0',
+  '--accent-orange': '#E8A84C',
+  '--text-secondary': '#859289',
+  '--border': '#E0D8C4',
+};
+
+beforeEach(() => {
+  // Set up mock CSS variables on document root
+  Object.entries(mockCSSVars).forEach(([key, val]) => {
+    document.documentElement.style.setProperty(key, val);
+  });
+});
 
 // Mock canvas context for testing
 function createMockCanvas() {
@@ -44,7 +59,7 @@ describe('WaveformDisplay', () => {
   });
 
   it('renders without crashing', () => {
-    const ctx = createMockCanvas();
+    createMockCanvas();
     const { container } = render(
       <WaveformDisplay
         peaks={null}
@@ -57,7 +72,7 @@ describe('WaveformDisplay', () => {
   });
 
   it('renders with peaks data', () => {
-    const ctx = createMockCanvas();
+    createMockCanvas();
     const peaks = new Float32Array([0.1, 0.5, 0.8, 0.3, 0.2]);
     const { container } = render(
       <WaveformDisplay
@@ -71,7 +86,7 @@ describe('WaveformDisplay', () => {
   });
 
   it('renders with custom height', () => {
-    const ctx = createMockCanvas();
+    createMockCanvas();
     const { container } = render(
       <WaveformDisplay
         peaks={null}
@@ -153,5 +168,69 @@ describe('WaveformDisplay', () => {
     );
     const canvas = container.querySelector('canvas');
     expect(canvas?.className).toContain('test-class');
+  });
+
+  it('uses resolved CSS colors (not var() syntax) in canvas fillStyle when peaks exist', () => {
+    const ctx = createMockCanvas();
+    const peaks = new Float32Array([0.1, 0.5, 0.8, 0.3, 0.2]);
+    render(
+      <WaveformDisplay
+        peaks={peaks}
+        currentTime={0}
+        duration={10}
+        isPlaying={false}
+      />
+    );
+
+    // fillRect should have been called (background + each peak)
+    expect(ctx.fillRect).toHaveBeenCalled();
+
+    // strokeStyle should be a real color, not a CSS var() string
+    expect(ctx.strokeStyle.toString()).not.toContain('var(');
+
+    // fillStyle should have been set to a valid hex color at some point
+    const fillStyleStr = ctx.fillStyle.toString();
+    expect(fillStyleStr).not.toContain('var(');
+    expect(fillStyleStr).toMatch(/^#[0-9a-fA-F]{3,8}$|^rgb/);
+  });
+
+  it('uses resolved CSS colors when peaks is null (placeholder state)', () => {
+    const ctx = createMockCanvas();
+    render(
+      <WaveformDisplay
+        peaks={null}
+        currentTime={0}
+        duration={0}
+        isPlaying={false}
+      />
+    );
+
+    // strokeStyle for the placeholder line should not be var()
+    expect(ctx.strokeStyle.toString()).not.toContain('var(');
+    // fillStyle for placeholder text should not be var()
+    expect(ctx.fillStyle.toString()).not.toContain('var(');
+  });
+
+  it('falls back to hardcoded colors when CSS variables are not set', () => {
+    // Remove CSS variables
+    Object.keys(mockCSSVars).forEach((key) => {
+      document.documentElement.style.removeProperty(key);
+    });
+
+    const ctx = createMockCanvas();
+    const peaks = new Float32Array([0.5, 0.5]);
+    render(
+      <WaveformDisplay
+        peaks={peaks}
+        currentTime={0}
+        duration={10}
+        isPlaying={false}
+      />
+    );
+
+    // Should still draw (fillRect called)
+    expect(ctx.fillRect).toHaveBeenCalled();
+    // fillStyle should still be a valid color, not var()
+    expect(ctx.fillStyle.toString()).not.toContain('var(');
   });
 });
