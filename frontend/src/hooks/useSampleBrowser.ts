@@ -30,5 +30,13 @@ export function useSampleBrowser() {
     [send],
   );
 
-  return { getDirectory, sendSampleToTrack };
+  const refreshSampleCache = useCallback(
+    async (path?: string): Promise<{ total: number; rootPath: string }> => {
+      const resp = await send('sample/refreshCache', path ? { path } : {});
+      return resp.payload as { total: number; rootPath: string };
+    },
+    [send],
+  );
+
+  return { getDirectory, sendSampleToTrack, refreshSampleCache };
 }

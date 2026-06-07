@@ -275,6 +275,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["transport/stop"]         = &CommandHandler::HandleStop;
     m_commandMap["transport/record"]       = &CommandHandler::HandleRecord;
     m_commandMap["sample/getDirectory"]    = &CommandHandler::HandleSampleGetDirectory;
+    m_commandMap["sample/refreshCache"]    = &CommandHandler::HandleSampleRefreshCache;
     m_commandMap["sample/sendToTrack"]     = &CommandHandler::HandleSampleSendToTrack;
     m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
     m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
@@ -1042,6 +1043,53 @@ void CommandHandler::PreCacheFX()
         "[reaper-ipad] FX cache populated (%zu entries)\n", m_fxCache.size());
 }
 
+// Pre-populate sample cache at extension startup.
+// Similar to PreCacheFX, but for audio file browsing.
+// Uses a reasonable default path (home directory or current directory).
+void CommandHandler::PreCacheSamples()
+{
+    // Determine a reasonable default sample path
+    std::string samplePath;
+    
+    // Try common sample directory locations
+    const char* homeDir = getenv("HOME");
+    if (homeDir) {
+        std::string candidate = std::string(homeDir) + "/Music";
+        std::error_code ec;
+        if (fs::exists(candidate, ec) && fs::is_directory(candidate, ec)) {
+            samplePath = candidate;
+        }
+    }
+    
+    // Fallback: try current directory
+    if (samplePath.empty()) {
+        std::error_code ec;
+        auto cwd = fs::current_path(ec);
+        if (!ec) {
+            samplePath = cwd;
+        }
+    }
+    
+    if (samplePath.empty()) {
+        fprintf(stderr, "[reaper-ipad] No sample path found for pre-caching\n");
+        return;
+    }
+
+    fprintf(stderr, "[reaper-ipad] Pre-caching sample index from %s...\n",
+        samplePath.c_str());
+
+    // Build index without progress callback (no clients yet at startup)
+    bool ok = m_sampleCache.BuildIndex(samplePath, nullptr);
+
+    if (ok) {
+        fprintf(stderr,
+            "[reaper-ipad] Sample cache populated: %d audio files\n",
+            m_sampleCache.GetTotalFiles());
+    } else {
+        fprintf(stderr, "[reaper-ipad] Sample cache pre-cache failed\n");
+    }
+}
+
 void CommandHandler::HandleEnumerateFX(
     int clientId, const std::string& id, const std::string& params)
 {
@@ -1242,21 +1290,90 @@ void CommandHandler::HandleSampleGetDirectory(
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string path = parser.getString("path");
-    if (path.empty()) {
-        SendResponse(clientId, id, false,
-            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+
+    // Extract optional offset and limit for pagination
+    std::string offsetStr = parser.getString("offset");
+    std::string limitStr  = parser.getString("limit");
+    int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
+    int limit  = limitStr.empty()  ? 0 : atoi(limitStr.c_str());
+
+    // Use the sample cache if it's indexed and no explicit path is given
+    // (for root-level browsing), or if the path matches the cache root.
+    std::string cacheRoot = m_sampleCache.GetRootPath();
+    bool useCache = m_sampleCache.IsIndexed() && !cacheRoot.empty();
+
+    if (useCache && path.empty()) {
+        // Browse root from cache
+        auto entries = m_sampleCache.GetDirectory("", offset, limit);
+
+        std::string entriesJson = "[";
+        bool first = true;
+        for (const auto& entry : entries) {
+            if (!first) entriesJson += ",";
+            first = false;
+            entriesJson += "{";
+            entriesJson += json_string("name") + ":" + json_string(entry.name) + ",";
+            entriesJson += json_string("type") + ":" + json_string(entry.type) + ",";
+            entriesJson += json_string("size") + ":" + std::to_string(entry.size);
+            entriesJson += "}";
+        }
+        entriesJson += "]";
+
+        std::string payload = "{";
+        payload += json_string("path") + ":" + json_string(cacheRoot) + ",";
+        payload += json_string("entries") + ":" + entriesJson;
+        payload += "}";
+
+        SendResponse(clientId, id, true, payload);
         return;
+    }
+
+    if (useCache && !path.empty() && path != "..") {
+        // Check if path is under the cache root
+        if (path.find(cacheRoot) == 0 || cacheRoot.find(path) != std::string::npos) {
+            auto entries = m_sampleCache.GetDirectory(path, offset, limit);
+
+            std::string entriesJson = "[";
+            bool first = true;
+            for (const auto& entry : entries) {
+                if (!first) entriesJson += ",";
+                first = false;
+                entriesJson += "{";
+                entriesJson += json_string("name") + ":" + json_string(entry.name) + ",";
+                entriesJson += json_string("type") + ":" + json_string(entry.type) + ",";
+                entriesJson += json_string("size") + ":" + std::to_string(entry.size);
+                entriesJson += "}";
+            }
+            entriesJson += "]";
+
+            std::string payload = "{";
+            payload += json_string("path") + ":" + json_string(path) + ",";
+            payload += json_string("entries") + ":" + entriesJson;
+            payload += "}";
+
+            SendResponse(clientId, id, true, payload);
+            return;
+        }
+    }
+
+    // Fallback: direct filesystem lookup (original behavior)
+    // Also used when path is ".." (going up from a specific directory)
+    std::string targetPath = path;
+    if (targetPath.empty()) {
+        targetPath = cacheRoot.empty() ? "/" : cacheRoot;
     }
 
     std::string entries = "[";
     bool first = true;
 
     try {
-        // Add parent directory entry (..) for navigation
-        entries += "{\"name\":\"..\",\"type\":\"dir\",\"size\":0}";
-        first = false;
+        if (!targetPath.empty() && targetPath != "/") {
+            // Add parent directory entry (..) for navigation
+            entries += "{\"name\":\"..\",\"type\":\"dir\",\"size\":0}";
+            first = false;
+        }
 
-        for (const auto& entry : fs::directory_iterator(path)) {
+        for (const auto& entry : fs::directory_iterator(targetPath)) {
             if (!first) entries += ",";
             first = false;
 
@@ -1281,8 +1398,98 @@ void CommandHandler::HandleSampleGetDirectory(
     entries += "]";
 
     std::string payload = "{";
-    payload += json_string("path") + ":" + json_string(path) + ",";
+    payload += json_string("path") + ":" + json_string(targetPath) + ",";
     payload += json_string("entries") + ":" + entries;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSampleRefreshCache(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    // Get the current root path (or use a default path)
+    std::string rootPath;
+    {
+        // Check if there's a path in the params
+        std::string payloadStr = extractPayload(params);
+        if (!payloadStr.empty()) {
+            JsonParser parser(payloadStr);
+            rootPath = parser.getString("path");
+        }
+    }
+
+    if (rootPath.empty()) {
+        // Reuse existing cache root path
+        rootPath = m_sampleCache.GetRootPath();
+    }
+
+    if (rootPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"No sample path configured\"}");
+        return;
+    }
+
+    // Verify path exists
+    std::error_code ec;
+    if (!fs::exists(rootPath, ec) || !fs::is_directory(rootPath, ec)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string("Path does not exist: " + rootPath) + "}");
+        return;
+    }
+
+    // Build the callback to emit progress events
+    int clientIdCopy = clientId;
+    auto progressCb = [this, clientIdCopy](int scanned, int total, const std::string& status) {
+        std::string event = "{";
+        event += "\"type\":\"event\",";
+        event += "\"event\":\"sampleIndexProgress\",";
+        event += "\"payload\":{";
+        event += "\"scanned\":" + std::to_string(scanned) + ",";
+        event += "\"total\":" + std::to_string(total) + ",";
+        event += "\"status\":" + json_string(status);
+        event += "}}";
+
+        // Broadcast progress to all clients
+        if (m_broadcastCb) {
+            m_broadcastCb(event);
+        } else if (m_ws) {
+            m_ws->Broadcast(event);
+        }
+    };
+
+    // Build the index (this will trigger progress callbacks)
+    bool ok = m_sampleCache.BuildIndex(rootPath, progressCb);
+
+    if (!ok) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to build sample index\"}");
+        return;
+    }
+
+    // Send completion event
+    {
+        std::string event = "{";
+        event += "\"type\":\"event\",";
+        event += "\"event\":\"sampleIndexComplete\",";
+        event += "\"payload\":{";
+        event += "\"total\":" + std::to_string(m_sampleCache.GetTotalFiles()) + ",";
+        event += "\"rootPath\":" + json_string(rootPath);
+        event += "}}";
+
+        if (m_broadcastCb) {
+            m_broadcastCb(event);
+        } else if (m_ws) {
+            m_ws->Broadcast(event);
+        }
+    }
+
+    // Return cache info
+    std::string payload = "{";
+    payload += json_string("total") + ":" + std::to_string(m_sampleCache.GetTotalFiles()) + ",";
+    payload += json_string("rootPath") + ":" + json_string(rootPath);
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
@@ -2786,74 +2993,6 @@ void CommandHandler::HandleFxChainGetInfo(
     payload += json_string("fxCount") + ":" + std::to_string(fxCount) + ",";
     payload += json_string("fxNames") + ":" + fxNames + ",";
     payload += json_string("fileSize") + ":" + std::to_string(fileSize);
-    payload += "}";
-
-    SendResponse(clientId, id, true, payload);
-}
-
-void CommandHandler::HandleFxChainSearchRecursive(
-    int clientId, const std::string& id, const std::string& params)
-{
-    std::string payloadStr = extractPayload(params);
-    JsonParser  parser(payloadStr);
-    std::string query    = parser.getString("query");
-    std::string rootPath = parser.getString("rootPath");
-
-    if (rootPath.empty()) {
-        SendResponse(clientId, id, false,
-            "{\"error\":\"Missing \\\"rootPath\\\" parameter\"}");
-        return;
-    }
-
-    // Build lowercase query for case-insensitive matching
-    std::string lowerQuery;
-    for (char c : query) lowerQuery += tolower((unsigned char)c);
-
-    std::string results = "[";
-    bool first = true;
-
-    try {
-        for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
-            if (!entry.is_regular_file()) continue;
-
-            std::string name = entry.path().filename().string();
-            std::string ext;
-            size_t dotPos = name.rfind('.');
-            if (dotPos == std::string::npos) continue;
-            ext = name.substr(dotPos);
-            std::string lowerExt;
-            for (char c : ext) lowerExt += tolower((unsigned char)c);
-            if (lowerExt != ".rfxchain") continue;
-
-            // If query is non-empty, filter by case-insensitive substring match
-            if (!lowerQuery.empty()) {
-                std::string lowerName;
-                for (char c : name) lowerName += tolower((unsigned char)c);
-                if (lowerName.find(lowerQuery) == std::string::npos) continue;
-            }
-
-            if (!first) results += ",";
-            first = false;
-
-            uintmax_t fileSize = 0;
-            std::error_code ec;
-            fileSize = fs::file_size(entry.path(), ec);
-            results += "{";
-            results += json_string("filePath") + ":" + json_string(entry.path().string()) + ",";
-            results += json_string("name") + ":" + json_string(name) + ",";
-            results += json_string("size") + ":" + std::to_string(fileSize);
-            results += "}";
-        }
-    } catch (const fs::filesystem_error&) {
-        // Non-existent rootPath returns empty results, not error (graceful)
-        results = "[";
-        first = true;
-    }
-
-    results += "]";
-
-    std::string payload = "{";
-    payload += json_string("results") + ":" + results;
     payload += "}";
 
     SendResponse(clientId, id, true, payload);

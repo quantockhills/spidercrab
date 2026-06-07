@@ -32,6 +32,7 @@ set(EXTENSION_SOURCES
     src/main.cpp
     src/websocket_server.cpp
     src/command_handler.cpp
+    src/sample_cache.cpp
     src/sha1_utils.cpp
     ${WDL_SOURCES}
 )
@@ -46,6 +47,7 @@ set(TEST_SOURCES
     test/test_frontend_server.cpp
     test/test_sha1_utils.cpp
     test/test_websocket.cpp
+    test/sample_cache_test.cpp
 )
 
 # ============================================================

@@ -483,6 +483,10 @@ static bool InitializeCoreServices()
     // from a Chromium WebSocket context (X11/SWELL display conflict).
     g_cmdHandler->PreCacheFX();
 
+    // Pre-cache sample index at startup (Issue #107).
+    // Walks audio files in default sample directories.
+    g_cmdHandler->PreCacheSamples();
+
     // Initialize Playtime 2 API (resolves HB_* function pointers)
     if (g_pluginInfo) {
         initPlaytimeApi(g_pluginInfo->GetFunc);

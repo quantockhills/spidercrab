@@ -5,6 +5,13 @@ import type { WsResponse } from '../lib/wsClient';
 import { ParamSlider } from './ParamControl';
 import { ChainCycler } from './ChainCycler';
 
+// ── Chain search type (Issue #105) ───────────────────────────
+
+export interface ChainSearchItem {
+  filePath: string;
+  name: string;
+}
+
 interface TrackOverviewProps {
   tracks: Track[];
   selectedTrack: number | null;
@@ -32,6 +39,12 @@ interface TrackOverviewProps {
   getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
   setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
   getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
+  // FX bypass (Issue #104)
+  onToggleBypass?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onDeleteFx?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  // Inline FX chain search (Issue #105)
+  searchChains?: (query: string) => Promise<ChainSearchItem[]>;
+  loadChain?: (trackIdx: number, filePath: string) => Promise<boolean>;
 }
 
 
@@ -161,6 +174,12 @@ export function TrackOverview({
   setFxPreset,
   getAllFxPresetNames,
   fxChainCycle,
+  enumerateFx,
+  addFx,
+  onToggleBypass,
+  onDeleteFx,
+  searchChains,
+  loadChain,
 }: TrackOverviewProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -403,6 +422,29 @@ export function TrackOverview({
                   fxChainCycle={fxChainCycle}
                 />
               )}
+              {/* Inline FX search (Issue #102) */}
+              {inlineSearchTrackIdx === track.index && enumerateFx && addFx && (
+                <>
+                  {/* Backdrop for tap-outside-to-close */}
+                  <div
+                    data-testid="inline-fx-search-backdrop"
+                    className="fixed inset-0 z-10"
+                    onClick={handleCloseInlineSearch}
+                  />
+                  {/* Search panel (stop propagation to prevent backdrop close) */}
+                  <div className="relative z-20" onClick={(e) => e.stopPropagation()}>
+                    <InlineFxSearch
+                      trackIdx={track.index}
+                      enumerateFx={enumerateFx}
+                      addFx={addFx}
+                      searchChains={searchChains}
+                      loadChain={loadChain}
+                      onClose={handleCloseInlineSearch}
+                      onFxAdded={handleInlineFxAdded}
+                    />
+                  </div>
+                </>
+              )
               {/* Inline FX drawer (Issue #94) */}
               {expandedFx?.trackIdx === track.index && getFxParams && setFxParam && (
                 <InlineFxDrawer
@@ -1140,6 +1182,285 @@ function InlineFxDrawer({
   );
 }
 
+// ── Inline FX Search (Issue #102) ──────────────────────────
+// ── Chain search integration (Issue #105) ───────────────────
+
+type ResultItem = 
+  | { kind: 'fx'; fx: EnumeratedFx }
+  | { kind: 'chain'; chain: ChainSearchItem };
+
+interface InlineFxSearchProps {
+  trackIdx: number;
+  enumerateFx: () => Promise<EnumeratedFx[]>;
+  addFx: (trackIdx: number, fxName: string) => Promise<number>;
+  searchChains?: (query: string) => Promise<ChainSearchItem[]>;
+  loadChain?: (trackIdx: number, filePath: string) => Promise<boolean>;
+  onClose: () => void;
+  onFxAdded: () => void;
+}
+
+function InlineFxSearch({
+  trackIdx,
+  enumerateFx,
+  addFx,
+  searchChains,
+  loadChain,
+  onClose,
+  onFxAdded,
+}: InlineFxSearchProps) {
+  const [allFx, setAllFx] = useState<EnumeratedFx[]>([]);
+  const [allChains, setAllChains] = useState<ChainSearchItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [adding, setAdding] = useState<string | null>(null);
+  const [filteredResults, setFilteredResults] = useState<ResultItem[]>([]);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load all FX and chains on mount (in parallel)
+  useEffect(() => {
+    let cancelled = false;
+    const promises: Promise<void>[] = [
+      enumerateFx().then((fx) => {
+        if (!cancelled) setAllFx(fx);
+      }).catch(() => { /* ignore */ }),
+    ];
+    if (searchChains) {
+      // Load chains with empty query to get all
+      promises.push(
+        searchChains('').then((chains) => {
+          if (!cancelled) setAllChains(chains);
+        }).catch(() => { /* ignore */ }),
+      );
+    }
+    Promise.all(promises).then(() => {
+      if (!cancelled) {
+        setLoading(false);
+        // Auto-focus input after render
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [enumerateFx, searchChains]);
+
+  // Debounced search filter (filters both FX and chains)
+  useEffect(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+    debounceTimer.current = setTimeout(() => {
+      const query = search.toLowerCase().trim();
+      const results: ResultItem[] = [];
+
+      // Filter FX
+      if (!query) {
+        for (const fx of allFx) {
+          results.push({ kind: 'fx', fx });
+        }
+      } else {
+        for (const fx of allFx) {
+          const cleanName = cleanFxName(fx.name).toLowerCase();
+          if (cleanName.includes(query) || fx.ident.toLowerCase().includes(query)) {
+            results.push({ kind: 'fx', fx });
+          }
+        }
+      }
+
+      // Filter chains
+      if (!query) {
+        for (const chain of allChains) {
+          results.push({ kind: 'chain', chain });
+        }
+      } else {
+        for (const chain of allChains) {
+          const cleanName = chain.name.replace(/\.RfxChain$/i, '').toLowerCase();
+          if (cleanName.includes(query) || chain.filePath.toLowerCase().includes(query)) {
+            results.push({ kind: 'chain', chain });
+          }
+        }
+      }
+
+      setFilteredResults(results);
+    }, 300);
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [search, allFx, allChains]);
+
+  const handleAddFx = useCallback(
+    async (fx: EnumeratedFx) => {
+      if (adding) return; // Prevent double-tap
+      setAdding(fx.name);
+      try {
+        const idx = await addFx(trackIdx, fx.name);
+        if (idx >= 0) {
+          onFxAdded();
+        }
+      } catch {
+        // Error handled silently — search stays open
+      } finally {
+        setAdding(null);
+      }
+    },
+    [trackIdx, addFx, onFxAdded, adding],
+  );
+
+  const handleLoadChain = useCallback(
+    async (chain: ChainSearchItem) => {
+      if (adding || !loadChain) return;
+      setAdding(chain.filePath);
+      try {
+        const ok = await loadChain(trackIdx, chain.filePath);
+        if (ok) {
+          onFxAdded();
+        }
+      } catch {
+        // Error handled silently
+      } finally {
+        setAdding(null);
+      }
+    },
+    [trackIdx, loadChain, onFxAdded, adding],
+  );
+
+  // Clamp results to first 30 for performance
+  const visibleResults = filteredResults.slice(0, 30);
+
+  return (
+    <div className="mx-3 mb-2 bg-[var(--bg-secondary)] ring-1 ring-[var(--accent-orange)]/30 overflow-hidden">
+      {/* Header with search input */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-tertiary)]/50 border-b border-[var(--border)]">
+        <div className="relative flex-1">
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)]">
+            🔍
+          </span>
+          <input
+            ref={inputRef}
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search FX or chains..."
+            data-testid="inline-fx-search-input"
+            className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] text-sm
+              text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
+              outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
+          />
+        </div>
+        <button
+          data-testid="inline-fx-search-close"
+          onClick={onClose}
+          className="text-xs px-2 py-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] active:brightness-95"
+          aria-label="Close FX search"
+        >
+          ✕
+        </button>
+      </div>
+
+      {/* Loading state */}
+      {loading ? (
+        <div
+          data-testid="inline-fx-search-loading"
+          className="px-3 py-4 text-center text-xs text-[var(--text-secondary)] animate-pulse"
+        >
+          Loading plugins…
+        </div>
+      ) : visibleResults.length === 0 ? (
+        <div
+          data-testid="inline-fx-search-empty"
+          className="px-3 py-4 text-center text-xs text-[var(--text-tertiary)]"
+        >
+          {search.trim() ? 'No results match your search' : 'No plugins or chains found'}
+        </div>
+      ) : (
+        <div className="max-h-48 overflow-y-auto">
+          {visibleResults.map((item) => {
+            if (item.kind === 'fx') {
+              const fx = item.fx;
+              const displayName = cleanFxName(fx.name);
+              const isAddingThis = adding === fx.name;
+              return (
+                <button
+                  key={fx.ident || fx.name}
+                  data-testid="inline-fx-result"
+                  onClick={() => handleAddFx(fx)}
+                  disabled={isAddingThis}
+                  className={[
+                    'w-full flex items-center gap-2 px-3 py-2 text-left',
+                    isAddingThis
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                      : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-primary)]',
+                    'active:brightness-95 transition-colors duration-75',
+                    'border-b border-[var(--border)] last:border-b-0',
+                  ].join(' ')}
+                >
+                  <span className="flex-1 min-w-0 text-sm font-medium truncate">
+                    {displayName}
+                  </span>
+                  <span
+                    data-testid="inline-fx-format-badge"
+                    className="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
+                  >
+                    {fx.format}
+                  </span>
+                </button>
+              );
+            } else {
+              // Chain result
+              const chain = item.chain;
+              const displayName = chain.name.replace(/\.RfxChain$/i, '');
+              const isAddingThis = adding === chain.filePath;
+              return (
+                <button
+                  key={chain.filePath}
+                  data-testid="inline-fx-result"
+                  onClick={() => handleLoadChain(chain)}
+                  disabled={isAddingThis}
+                  className={[
+                    'w-full flex items-center gap-2 px-3 py-2 text-left',
+                    isAddingThis
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                      : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] text-[var(--text-primary)]',
+                    'active:brightness-95 transition-colors duration-75',
+                    'border-b border-[var(--border)] last:border-b-0',
+                  ].join(' ')}
+                >
+                  <span
+                    data-testid="inline-fx-chain-icon"
+                    className="flex-shrink-0 text-sm mr-1"
+                  >
+                    📦
+                  </span>
+                  <span className="flex-1 min-w-0 text-sm font-medium truncate">
+                    {displayName}
+                  </span>
+                  <span
+                    className="flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 bg-[var(--accent-green)]/15 text-[var(--accent-green)]"
+                  >
+                    Chain
+                  </span>
+                </button>
+              );
+            }
+          })}
+        </div>
+      )}
+
+      {/* Result count footer */}
+      {!loading && (allFx.length > 0 || allChains.length > 0) && (
+        <div className="px-3 py-1.5 border-t border-[var(--border)] text-[10px] text-[var(--text-secondary)] flex justify-between">
+          <span>{allFx.length} plugins, {allChains.length} chains</span>
+          {search.trim() && (
+            <span>{filteredResults.length} match{filteredResults.length !== 1 ? 'es' : ''}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 // ── Individual track row ─────────────────────────────────
 
 interface TrackRowProps {

@@ -95,4 +95,46 @@ describe('useSampleBrowser', () => {
 
     expect(await promise).toBe(true);
   });
+
+  it('refreshSampleCache sends sample/refreshCache command', async () => {
+    const { result } = renderHook(() => useSampleBrowser(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.refreshSampleCache('/samples');
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('sample/refreshCache');
+    expect(sentMsg.path).toBe('/samples');
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { total: 42, rootPath: '/samples' },
+      }));
+    });
+
+    const data = await promise;
+    expect(data.total).toBe(42);
+    expect(data.rootPath).toBe('/samples');
+  });
+
+  it('refreshSampleCache works without path argument', async () => {
+    const { result } = renderHook(() => useSampleBrowser(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    result.current.refreshSampleCache();
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('sample/refreshCache');
+    // Should send empty params object when no path given
+    expect(sentMsg).not.toHaveProperty('path');
+  });
 });

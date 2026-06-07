@@ -41,6 +41,7 @@ function AppInner() {
     reorderFx,
     getDirectory,
     sendSampleToTrack,
+    refreshSampleCache,
     isRefreshingFx,
     refreshFxCache,
     play,
@@ -98,6 +99,35 @@ function AppInner() {
     fxIdx: number;
     fxName: string;
   } | null>(null);
+
+  // Sample index progress state (Issue #107)
+  const [sampleIndexProgress, setSampleIndexProgress] = useState<{
+    scanning: boolean;
+    progress: number;
+    total: number;
+    status: string;
+  }>({ scanning: false, progress: 0, total: 0, status: '' });
+
+  // Listen for sample index progress events
+  useEffect(() => {
+    const unsubProgress = onEvent('event:sampleIndexProgress', (msg: unknown) => {
+      const m = msg as Record<string, unknown>;
+      const payload = m.payload as Record<string, unknown> || {};
+      setSampleIndexProgress({
+        scanning: true,
+        progress: (payload.scanned as number) || 0,
+        total: (payload.total as number) || 0,
+        status: (payload.status as string) || 'scanning',
+      });
+    });
+    const unsubComplete = onEvent('event:sampleIndexComplete', () => {
+      setSampleIndexProgress({ scanning: false, progress: 0, total: 0, status: 'complete' });
+    });
+    return () => {
+      unsubProgress();
+      unsubComplete();
+    };
+  }, [onEvent]);
 
   // Refresh tracks on connect
   useEffect(() => {
@@ -237,6 +267,24 @@ function AppInner() {
             )}
           </div>
         </div>
+        {/* Global Sample Index Progress Bar (visible from any tab) */}
+        {sampleIndexProgress.scanning && (
+          <div className="mt-1.5">
+            <div className="w-full bg-[var(--bg-tertiary)] rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-[var(--accent-orange)] h-1.5 rounded-full transition-all duration-300"
+                style={{
+                  width: sampleIndexProgress.total > 0
+                    ? `${Math.round((sampleIndexProgress.progress / sampleIndexProgress.total) * 100)}%`
+                    : '5%', // Show indeterminate when total unknown
+                }}
+              />
+            </div>
+            <p className="text-[10px] text-[var(--text-secondary)] text-center mt-0.5">
+              Indexing samples: {sampleIndexProgress.progress} of {sampleIndexProgress.total} files...
+            </p>
+          </div>
+        )}
       </header>
 
       {/* ── Main Content ── */}
@@ -378,6 +426,14 @@ function AppInner() {
             setFxPreset={setFxPreset}
             getAllFxPresetNames={getAllFxPresetNames}
             fxChainCycle={fxChainCycle}
+            enumerateFx={enumerateFx}
+            addFx={addFx}
+            searchChains={async (query: string) => {
+              if (!fxChainPath) return [];
+              const result = await fxChainSearchCached(query, fxChainPath, 0, 100);
+              return result.results.map(r => ({ filePath: r.filePath, name: r.name }));
+            }}
+            loadChain={(trackIdx: number, filePath: string) => fxChainLoad(trackIdx, filePath)}
           />
         )}
 
@@ -420,6 +476,41 @@ function AppInner() {
                   <p className="text-[11px] text-[var(--text-secondary)] text-center">
                     Scanning installed plugins...
                   </p>
+                )}
+              </div>
+
+              {/* Sample Cache section (Issue #107) */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => refreshSampleCache()}
+                  disabled={sampleIndexProgress.scanning}
+                  className={`w-full py-2.5 text-sm active:brightness-95 transition-colors flex items-center justify-center gap-2 ${
+                    sampleIndexProgress.scanning
+                      ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] cursor-not-allowed'
+                      : 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+                  }`}
+                >
+                  {sampleIndexProgress.scanning && (
+                    <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {sampleIndexProgress.scanning ? 'Scanning Samples...' : 'Refresh Sample Index'}
+                </button>
+                {sampleIndexProgress.scanning && (
+                  <div className="space-y-1">
+                    <div className="w-full bg-[var(--bg-secondary)] rounded-full h-2">
+                      <div
+                        className="bg-[var(--accent-orange)] h-2 rounded-full transition-all duration-300"
+                        style={{
+                          width: sampleIndexProgress.total > 0
+                            ? `${Math.round((sampleIndexProgress.progress / sampleIndexProgress.total) * 100)}%`
+                            : '0%',
+                        }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-[var(--text-secondary)] text-center">
+                      Scanned {sampleIndexProgress.progress} of {sampleIndexProgress.total} files...
+                    </p>
+                  </div>
                 )}
               </div>
             </div>

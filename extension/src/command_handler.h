@@ -4,6 +4,7 @@
 #include "playtime_state.h"
 #include "playtime_midi.h"
 #include "sequencer_state.h"
+#include "sample_cache.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -122,6 +123,10 @@ public:
     // display conflict). Safe to call before any WebSocket client connects.
     void PreCacheFX();
 
+    // Pre-populate sample index at extension startup.
+    // Scans audio directories in the background.
+    void PreCacheSamples();
+
     // Real-time event broadcasting (Issue #57)
     // Broadcast a track state change event (mute/solo/arm/volume) to all WS clients
     void BroadcastTrackEvent(const std::string& eventType, int trackIdx, bool value);
@@ -162,6 +167,9 @@ private:
 
     // Step sequencer state (Issue #63)
     SequencerState m_sequencerState;
+
+    // Sample cache for audio file browsing (Issue #107)
+    SampleCache m_sampleCache;
 
     // Track the last param we set ourselves, so we can suppress
     // REAPER's OnFxParamChanged talkback (Issue #73)
@@ -206,6 +214,7 @@ private:
 
     // Command handlers — sample/media
     void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleRefreshCache(int clientId, const std::string& id, const std::string& params);
     void HandleSampleSendToTrack(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
