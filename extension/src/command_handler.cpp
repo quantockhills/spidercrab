@@ -283,6 +283,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/getAudioInfo"]    = &CommandHandler::HandleSampleGetAudioInfo;
     m_commandMap["sample/preview"]         = &CommandHandler::HandleSamplePreview;
     m_commandMap["sample/stopPreview"]     = &CommandHandler::HandleSampleStopPreview;
+    m_commandMap["sample/refreshCache"]    = &CommandHandler::HandleSampleRefreshCache;
+    m_commandMap["sample/getCacheStatus"]  = &CommandHandler::HandleSampleGetCacheStatus;
     m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
     m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
     m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
@@ -1489,7 +1491,41 @@ void CommandHandler::HandleSampleGetDirectory(
     int limit  = limitStr.empty()  ? 100 : atoi(limitStr.c_str());
     if (limit <= 0) limit = 100;
 
-    // Collect all names first (cheap — no stat), then page, then stat only the page
+    // Serve from cache if available — avoids directory_iterator on every request
+    if (m_sampleCache.HasCachedData(path)) {
+        auto cached = m_sampleCache.GetDirectory(path);
+        // Prepend ".." for navigation; cache entries are already sorted (dirs first, then files)
+        struct RawEntry { std::string name; bool isDir; };
+        std::vector<RawEntry> all;
+        all.push_back({ "..", true });
+        for (const auto& e : cached.entries)
+            all.push_back({ e.name, e.type == "dir" });
+
+        int total = (int)all.size();
+        int start = std::min(offset, total);
+        int end   = std::min(start + limit, total);
+        std::string entries = "[";
+        for (int i = start; i < end; i++) {
+            if (i > start) entries += ",";
+            const auto& e = all[i];
+            entries += "{";
+            entries += json_string("name") + ":" + json_string(e.name) + ",";
+            entries += json_string("type") + ":" + json_string(e.isDir ? "dir" : "file");
+            entries += "}";
+        }
+        entries += "]";
+        std::string payload = "{";
+        payload += json_string("path")    + ":" + json_string(path) + ",";
+        payload += json_string("entries") + ":" + entries + ",";
+        payload += json_string("total")   + ":" + std::to_string(total) + ",";
+        payload += json_string("offset")  + ":" + std::to_string(start) + ",";
+        payload += json_string("cached")  + ":true";
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+        return;
+    }
+
+    // Cache miss — live filesystem fallback
     struct RawEntry { std::string name; bool isDir; };
     std::vector<RawEntry> dirs, files;
 
@@ -2334,6 +2370,64 @@ void CommandHandler::HandleSampleStopPreview(
 
     SendResponse(clientId, id, true,
         "{\"stopped\":true}");
+}
+
+void CommandHandler::HandleSampleRefreshCache(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rootPath = parser.getString("rootPath");
+
+    if (rootPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"rootPath\\\" parameter\"}");
+        return;
+    }
+
+    m_sampleCache.ClearRoot(rootPath);
+    m_sampleCache.BeginScan(rootPath, [this](int scanned, int total) {
+        if (!m_broadcastCb) return;
+        std::string evt = "{\"type\":\"event\",\"event\":\"sampleIndexProgress\","
+            "\"payload\":{\"scanned\":" + std::to_string(scanned) + ","
+            "\"total\":"  + std::to_string(total) + "}}";
+        m_broadcastCb(evt);
+    });
+
+    int scanned = 0, total = 0;
+    m_sampleCache.GetScanProgress(scanned, total);
+    SendResponse(clientId, id, true,
+        "{\"scanning\":true,\"total\":" + std::to_string(total) + "}");
+}
+
+void CommandHandler::HandleSampleGetCacheStatus(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rootPath = parser.getString("rootPath");
+
+    bool scanning = m_sampleCache.IsScanning();
+    bool indexed  = !rootPath.empty() && m_sampleCache.IsIndexed(rootPath);
+    int scanned = 0, total = 0;
+    m_sampleCache.GetScanProgress(scanned, total);
+
+    std::string payload = "{";
+    payload += json_string("scanning") + ":" + (scanning ? "true" : "false") + ",";
+    payload += json_string("indexed")  + ":" + (indexed  ? "true" : "false") + ",";
+    payload += json_string("scanned")  + ":" + std::to_string(scanned) + ",";
+    payload += json_string("total")    + ":" + std::to_string(total);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::TickSampleCache()
+{
+    if (!m_sampleCache.IsScanning()) return;
+    bool done = m_sampleCache.ScanNextBatch();
+    if (done && m_broadcastCb) {
+        m_broadcastCb("{\"type\":\"event\",\"event\":\"sampleIndexComplete\",\"payload\":{}}");
+    }
 }
 
 // ============================================================

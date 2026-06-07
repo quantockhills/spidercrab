@@ -1,6 +1,7 @@
 #pragma once
 #include "websocket_server.h"
 #include "fxchain_cache.h"
+#include "sample_cache.h"
 #include "playtime_api.h"
 #include "playtime_state.h"
 #include "playtime_midi.h"
@@ -160,6 +161,9 @@ public:
     // Pre-build FX chain index at startup. Safe to call before WebSocket client connects.
     void PreCacheFxChains(const std::string& rootPath);
 
+    // Called from Run() each cycle: drains one batch of the sample cache scan (if active).
+    void TickSampleCache();
+
     // Access the FX chain cache (for testing)
     FxChainCache& GetFxChainCache() { return m_fxChainCache; }
 
@@ -218,6 +222,9 @@ private:
     // FX chain cache (Issue #103)
     FxChainCache m_fxChainCache;
 
+    // Sample directory cache (built on-demand via sample/refreshCache)
+    SampleCache m_sampleCache;
+
     // Chain-source tracking: maps trackIdx -> list of chain groups
     // Each chain group records the .RfxChain file path and the FX index range
     struct ChainSource {
@@ -265,6 +272,8 @@ private:
     void HandleSampleGetAudioInfo(int clientId, const std::string& id, const std::string& params);
     void HandleSamplePreview(int clientId, const std::string& id, const std::string& params);
     void HandleSampleStopPreview(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleRefreshCache(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleGetCacheStatus(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);
