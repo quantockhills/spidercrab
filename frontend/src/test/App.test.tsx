@@ -748,6 +748,106 @@ describe('App — Settings tab', () => {
 
     localStorage.removeItem('fxChainPath');
   });
+
+  it('inline FX search shows chain results via searchChains prop (Issue #105)', async () => {
+    localStorage.setItem('fxChainPath', '/tmp/chains');
+
+    const mockSearchCached = vi.fn().mockResolvedValue({
+      results: [
+        { filePath: '/tmp/chains/Vocal Chain.RfxChain', name: 'Vocal Chain.RfxChain', size: 2048 },
+        { filePath: '/tmp/chains/Master Bus.RfxChain', name: 'Master Bus.RfxChain', size: 4096 },
+      ],
+      total: 2,
+      offset: 0,
+      limit: 16,
+    });
+
+    const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
+    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+      connected: true,
+      tracks: mockTracks,
+      refreshTracks: vi.fn(),
+      toggleTrackMute: vi.fn(),
+      toggleTrackSolo: vi.fn(),
+      toggleTrackArm: vi.fn(),
+      selectTrack: vi.fn(),
+      enumerateFx: vi.fn().mockResolvedValue([
+        { name: 'VST3: ReaEQ', ident: 'ReaEQ', format: 'VST3', tags: [] },
+        { name: 'VST3: ReaComp', ident: 'ReaComp', format: 'VST3', tags: [] },
+      ]),
+      getTrackFx: vi.fn().mockResolvedValue([]),
+      getFxParams: vi.fn().mockResolvedValue({params: [], total: 0, offset: 0, limit: 32}),
+      setFxParam: vi.fn(),
+      addFx: vi.fn().mockResolvedValue(0),
+      deleteFx: vi.fn(),
+      getDirectory: vi.fn().mockResolvedValue([]),
+      sendSampleToTrack: vi.fn(),
+      isRefreshingFx: false,
+      refreshFxCache: vi.fn(),
+      fxChainSearchCached: mockSearchCached,
+      fxChainRefreshCache: vi.fn(),
+      fxChainGetDirectory: vi.fn().mockResolvedValue({ chains: [], dirs: [] }),
+      fxChainSave: vi.fn(),
+      fxChainLoad: vi.fn().mockResolvedValue(true),
+      fxChainGetInfo: vi.fn(),
+      fxChainSearchRecursive: undefined,
+      fxChainCycle: vi.fn().mockResolvedValue(undefined),
+      play: vi.fn(),
+      stop: vi.fn(),
+      record: vi.fn(),
+      getTransportState: vi.fn().mockResolvedValue({playing: false, recording: false}),
+      onEvent: mockOnEvent,
+      updateTrack: vi.fn(),
+      launchPlaytime: vi.fn(),
+      checkPlaytimeAvailable: vi.fn(),
+      getMatrix: vi.fn(),
+      triggerSlot: vi.fn(),
+      triggerScene: vi.fn(),
+      sequencer: null,
+      getSequencer: vi.fn(),
+      toggleStep: vi.fn(),
+      setStep: vi.fn(),
+      seqClearAll: vi.fn(),
+      seqSetLength: vi.fn(),
+      seqSetBaseNote: vi.fn(),
+      addTrack: vi.fn(),
+    });
+
+    render(<App />);
+
+    // Wait for tracks to render
+    await waitFor(() => {
+      expect(screen.getByText('Kick')).toBeDefined();
+    });
+
+    // Open inline FX search via long-press on Add FX button
+    const addFxBtn = screen.getAllByTestId('inline-add-fx')[0];
+    fireEvent.pointerDown(addFxBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+
+    // fxChainSearchCached should have been called via searchChains callback
+    await waitFor(() => {
+      expect(mockSearchCached).toHaveBeenCalledOnce();
+    });
+
+    // Chain results should be visible
+    await waitFor(() => {
+      expect(screen.getByText('Vocal Chain')).toBeDefined();
+      expect(screen.getByText('Master Bus')).toBeDefined();
+    });
+
+    // Chain icon should be present
+    const chainIcons = screen.getAllByTestId('inline-fx-chain-icon');
+    expect(chainIcons.length).toBe(2);
+
+    // Footer should show chain count
+    expect(screen.getByText(/2 chains/)).toBeDefined();
+
+    localStorage.removeItem('fxChainPath');
+  });
 });
 
 // ── Drag-drop: edge-reached tab switch (Issue #74) ──
