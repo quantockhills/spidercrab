@@ -5,6 +5,7 @@ import { TrackOverview } from '../components/TrackOverview';
 import { volumeToDb } from '../utils/volume';
 import type { Track, FxInfo, EnumeratedFx } from '../hooks/useReaper';
 
+
 // ── Mock data ────────────────────────────────────────────────
 
 const mockTracks: Track[] = [
@@ -1683,6 +1684,242 @@ describe('TrackOverview — Inline FX Search', () => {
       // Only one search input should be visible at a time
       const searchInputs = screen.getAllByTestId('inline-fx-search-input');
       expect(searchInputs).toHaveLength(1);
+    });
+  });
+});
+
+// ── Inline FX Search Chain Integration tests (Issue #105) ──────
+
+describe('TrackOverview — Inline FX Search — Chain Integration', () => {
+  const mockEnumerateFx: EnumeratedFx[] = [
+    { index: 0, name: 'VST3: ReaComp', ident: 'reacomp', format: 'VST3' },
+    { index: 1, name: 'VST3: ReaEQ', ident: 'reaeq', format: 'VST3' },
+  ];
+
+  const mockChainResults: { filePath: string; name: string; size: number }[] = [
+    { filePath: '/chains/Vocal Chain.RfxChain', name: 'Vocal Chain.RfxChain', size: 2048 },
+    { filePath: '/chains/Master Bus.RfxChain', name: 'Master Bus.RfxChain', size: 4096 },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function renderWithChainSearch(props: Partial<Parameters<typeof TrackOverview>[0]> = {}) {
+    const enumerateFx = vi.fn().mockResolvedValue(mockEnumerateFx);
+    const addFx = vi.fn().mockResolvedValue(0);
+    const searchChains = vi.fn().mockResolvedValue(mockChainResults);
+    const loadChain = vi.fn().mockResolvedValue(true);
+
+    const utils = renderTrackOverview({
+      enumerateFx,
+      addFx,
+      searchChains,
+      loadChain,
+      ...props,
+    });
+
+    return { ...utils, enumerateFx, addFx, searchChains, loadChain };
+  }
+
+  // Helper: long-press the Add FX button and wait for search
+  async function longPressAddFx(trackIndex: number = 0) {
+    const btn = screen.getAllByTestId('inline-add-fx')[trackIndex];
+    fireEvent.pointerDown(btn);
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+    await waitFor(() => {
+      const results = screen.queryAllByTestId('inline-fx-result');
+      expect(results.length).toBeGreaterThan(0);
+    });
+  }
+
+  it('calls both enumerateFx and searchChains when search is opened with searchChains prop', async () => {
+    const { enumerateFx, searchChains } = renderWithChainSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    await longPressAddFx();
+
+    // Both should have been called
+    expect(enumerateFx).toHaveBeenCalledOnce();
+    expect(searchChains).toHaveBeenCalledOnce();
+  });
+
+  it('shows chain results with a 📦 icon in search results', async () => {
+    renderWithChainSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    await longPressAddFx();
+
+    // Chain results should be visible with 📦 indicator
+    await waitFor(() => {
+      expect(screen.getByText('Vocal Chain')).toBeDefined();
+      expect(screen.getByText('Master Bus')).toBeDefined();
+    });
+
+    // Chain results should have the chain-icon testid
+    const chainIcons = screen.getAllByTestId('inline-fx-chain-icon');
+    expect(chainIcons.length).toBe(2);
+
+    // Regular FX results should NOT have the chain icon
+    const fxResults = screen.getAllByTestId('inline-fx-result');
+    const reacompBtn = fxResults.find(el => el.textContent?.includes('ReaComp'));
+    expect(reacompBtn).toBeDefined();
+    expect(reacompBtn!.querySelector('[data-testid="inline-fx-chain-icon"]')).toBeNull();
+  });
+
+  it('calls loadChain (not addFx) when a chain result is clicked', async () => {
+    const { addFx, loadChain } = renderWithChainSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    await longPressAddFx();
+
+    // Wait for chain results to appear
+    await waitFor(() => {
+      expect(screen.getByText('Vocal Chain')).toBeDefined();
+    });
+
+    // Click the chain result
+    const chainBtn = screen.getByText('Vocal Chain').closest('button');
+    expect(chainBtn).not.toBeNull();
+    fireEvent.click(chainBtn!);
+
+    // loadChain should be called, not addFx
+    await waitFor(() => {
+      expect(loadChain).toHaveBeenCalledOnce();
+    });
+    expect(loadChain).toHaveBeenCalledWith(0, '/chains/Vocal Chain.RfxChain');
+    expect(addFx).not.toHaveBeenCalled();
+  });
+
+  it('still calls addFx (not loadChain) when a regular FX result is clicked', async () => {
+    const { addFx, loadChain } = renderWithChainSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    await longPressAddFx();
+
+    // Click a regular FX result (ReaComp)
+    const fxBtn = screen.getAllByTestId('inline-fx-result').find(
+      el => el.textContent?.includes('ReaComp')
+    );
+    expect(fxBtn).toBeDefined();
+    fireEvent.click(fxBtn!);
+
+    await waitFor(() => {
+      expect(addFx).toHaveBeenCalledOnce();
+    });
+    expect(addFx).toHaveBeenCalledWith(0, 'VST3: ReaComp');
+    expect(loadChain).not.toHaveBeenCalled();
+  });
+
+  it('filters both FX and chain results as user types', async () => {
+    renderWithChainSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    await longPressAddFx();
+
+    // Type 'vocal' — should filter chains but not affect FX
+    const input = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(input, { target: { value: 'vocal' } });
+
+    await waitFor(() => {
+      // Chain results should be filtered
+      const results = screen.queryAllByTestId('inline-fx-result');
+      // Only Vocal Chain should remain
+      const chainResults = results.filter(r => r.querySelector('[data-testid="inline-fx-chain-icon"]'));
+      expect(chainResults.length).toBe(1);
+      expect(chainResults[0].textContent).toContain('Vocal Chain');
+      // Regular FX results should be filtered out (none match 'vocal')
+      const fxResults = results.filter(r => !r.querySelector('[data-testid="inline-fx-chain-icon"]'));
+      expect(fxResults.length).toBe(0);
+    });
+  });
+
+  it('shows no chain results when searchChains returns empty', async () => {
+    const searchChains = vi.fn().mockResolvedValue([]);
+    renderWithChainSearch({ searchChains });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    await longPressAddFx();
+
+    // No chain icons should appear
+    const chainIcons = screen.queryAllByTestId('inline-fx-chain-icon');
+    expect(chainIcons.length).toBe(0);
+  });
+
+  it('does not call searchChains when prop is not provided', async () => {
+    const searchChains = vi.fn();
+    // Render without searchChains prop
+    renderWithChainSearch({ searchChains: undefined });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    // Override to test without searchChains — renderTrackOverview without it
+    vi.clearAllMocks();
+    const enumerateFx = vi.fn().mockResolvedValue(mockEnumerateFx);
+    const addFx = vi.fn().mockResolvedValue(0);
+    renderTrackOverview({ enumerateFx, addFx });
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    const btn = screen.getAllByTestId('inline-add-fx')[0];
+    fireEvent.pointerDown(btn);
+    await waitFor(() => {
+      expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
+    });
+
+    // searchChains should not have been called (not provided)
+    expect(searchChains).not.toHaveBeenCalled();
+  });
+
+  it('closes search after loading a chain (same as adding FX)', async () => {
+    const { loadChain } = renderWithChainSearch();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('ReaEQ').length).toBeGreaterThanOrEqual(1);
+    });
+
+    await longPressAddFx();
+
+    await waitFor(() => {
+      expect(screen.getByText('Vocal Chain')).toBeDefined();
+    });
+
+    // Click the chain result
+    const chainBtn = screen.getByText('Vocal Chain').closest('button');
+    expect(chainBtn).not.toBeNull();
+    fireEvent.click(chainBtn!);
+
+    await waitFor(() => {
+      expect(loadChain).toHaveBeenCalledOnce();
+    });
+
+    // Search should close
+    await waitFor(() => {
+      expect(screen.queryByTestId('inline-fx-search-input')).toBeNull();
     });
   });
 });
