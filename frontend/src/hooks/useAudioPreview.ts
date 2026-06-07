@@ -46,7 +46,8 @@ export interface AudioPreviewState {
  */
 export function useAudioPreview(
   filePath: string | null,
-  sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>
+  sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>,
+  autoplay = false
 ): AudioPreviewState {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -61,6 +62,8 @@ export function useAudioPreview(
   const startOffsetRef = useRef(0);     // position offset (in seconds) at start
   const animFrameRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const autoplayRef = useRef(autoplay);
+  autoplayRef.current = autoplay;
 
   // Cleanup on unmount
   useEffect(() => {
@@ -142,6 +145,18 @@ export function useAudioPreview(
         }
         setDuration(payload.duration || 0);
         setError(null);
+
+        if (autoplayRef.current && payload.peaks && payload.peaks.length > 0) {
+          // Start at position 0
+          startOffsetRef.current = 0;
+          sendCommand('sample/preview', { path: filePath, startPos: '0' })
+            .then(() => {
+              startTimeRef.current = Date.now();
+              setIsPlaying(true);
+              animFrameRef.current = requestAnimationFrame(updatePosition);
+            })
+            .catch(() => {});
+        }
       } catch (err) {
         if (signal.aborted) return;
         const msg = err instanceof Error ? err.message : 'Failed to load audio info';

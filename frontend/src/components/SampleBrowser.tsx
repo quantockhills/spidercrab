@@ -56,6 +56,7 @@ export function SampleBrowser({
   const [sending, setSending] = useState<string | null>(null);
   const [sentFiles, setSentFiles] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [autoplay, setAutoplay] = useState(() => localStorage.getItem('sampleAutoplay') === 'true');
 
   // Context menu state (Issue #28)
   const [contextMenu, setContextMenu] = useState<{
@@ -86,7 +87,7 @@ export function SampleBrowser({
   const isCrossRootSearchActive = !currentPath && samplePaths && samplePaths.length > 0 && search.trim().length > 0;
   const crossRootLoading = isCrossRootSearchActive && crossRootResults === null;
 
-  const audioPreview = useAudioPreview(selectedFile, sendCommand);
+  const audioPreview = useAudioPreview(selectedFile, sendCommand, autoplay);
 
   const loadDirectory = useCallback(async (path: string, offset = 0) => {
     try {
@@ -409,20 +410,37 @@ export function SampleBrowser({
           ) : null}
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)]">
-            🔍
-          </span>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Filter files..."
-            className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] text-sm
-              text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
-              outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
-          />
+        {/* Search + autoplay toggle */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-secondary)]">
+              🔍
+            </span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Filter files..."
+              className="w-full pl-8 pr-3 py-2 bg-[var(--bg-tertiary)] text-sm
+                text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]
+                outline-none ring-1 ring-[var(--border)] focus:ring-[var(--accent-orange)]/40"
+            />
+          </div>
+          <button
+            onClick={() => {
+              const next = !autoplay;
+              setAutoplay(next);
+              localStorage.setItem('sampleAutoplay', String(next));
+            }}
+            className={`flex-shrink-0 px-2.5 py-2 text-xs font-medium min-h-[36px] transition-colors ${
+              autoplay
+                ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/40'
+                : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+            }`}
+            title={autoplay ? 'Autoplay on' : 'Autoplay off'}
+          >
+            ▶ Auto
+          </button>
         </div>
       </div>
 
