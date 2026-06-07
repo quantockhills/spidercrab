@@ -97,6 +97,61 @@ server.on('connection', (ws) => {
         ws.send(makeResponse(id, true, { success: true }));
         break;
 
+      // ── Sample Browser commands (Issue #107) ──
+
+      case 'sample/getDirectory': {
+        const samplePath = msg.path || '';
+        console.log(`  sample/getDirectory path="${samplePath}"`);
+        ws.send(makeResponse(id, true, {
+          entries: [
+            { name: 'Kick.wav', type: 'file', size: 2048576 },
+            { name: 'Snare.wav', type: 'file', size: 1024576 },
+            { name: 'HiHat.wav', type: 'file', size: 512576 },
+            { name: 'Bass.wav', type: 'file', size: 4096576 },
+            { name: 'Piano.wav', type: 'file', size: 8192576 },
+            { name: 'Drums', type: 'dir', size: 0 },
+            { name: 'Synth', type: 'dir', size: 0 },
+          ],
+        }));
+        break;
+      }
+
+      case 'sample/refreshCache': {
+        console.log(`  sample/refreshCache`);
+        ws.send(makeResponse(id, true, { total: 5000, rootPath: '/home/sasha/samples' }));
+        // Send progress events after response
+        let progress = 0;
+        const total = 5000;
+        const progressInterval = setInterval(() => {
+          progress += 500;
+          if (progress > total) progress = total;
+          ws.send(JSON.stringify({
+            type: 'event',
+            event: 'sampleIndexProgress',
+            payload: { scanned: progress, total, status: 'scanning' },
+          }));
+          console.log(`  -> progress: ${progress}/${total}`);
+          if (progress >= total) {
+            clearInterval(progressInterval);
+            setTimeout(() => {
+              ws.send(JSON.stringify({
+                type: 'event',
+                event: 'sampleIndexComplete',
+                payload: { total, rootPath: '/home/sasha/samples' },
+              }));
+              console.log(`  -> complete`);
+            }, 500);
+          }
+        }, 300);
+        break;
+      }
+
+      case 'sample/sendToTrack': {
+        console.log(`  sample/sendToTrack: path=${msg.path} trackIdx=${msg.trackIdx}`);
+        ws.send(makeResponse(id, true, { success: true }));
+        break;
+      }
+
       // ── FX Chain commands (Issue #78) ──
 
       case 'fxchain/getDirectory': {

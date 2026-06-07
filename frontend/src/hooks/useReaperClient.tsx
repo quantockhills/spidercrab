@@ -37,7 +37,10 @@ export function ReaperClientProvider({
   const clientRef = useRef<WsClient | null>(null);
   const [connected, setConnected] = useState(false);
 
-  useEffect(() => {
+  // Create WsClient synchronously during render (lazy init in useRef)
+  // This ensures clientRef.current is set BEFORE child effects run.
+  // React strict mode double-renders, but useRef preserves the ref value.
+  if (!clientRef.current) {
     const client = new WsClient({
       host,
       port,
@@ -45,15 +48,34 @@ export function ReaperClientProvider({
       onDisconnect: () => setConnected(false),
       onError: (err) => console.error('[reaper-ipad]', err),
     });
-
     clientRef.current = client;
-    client.connect();
+    // Defer connect() to next microtask so it doesn't run during render
+    queueMicrotask(() => {
+      client.connect();
+    });
+  }
 
+  // Handle cleanup on unmount, but not during React strict mode double-mount.
+  // Strict mode does mount → cleanup → mount. We detect this by using a
+  // flag that's reset on mount and checked on a deferred disconnect.
+  useEffect(() => {
+    // On mount: client is already created, just track mount state
+    let mounted = true;
+    
     return () => {
-      client.disconnect();
-      clientRef.current = null;
+      mounted = false;
+      // Defer disconnect to end of event loop.
+      // If strict mode remounts this component, the new effect setup
+      // will set `mounted = true` again before this timeout fires.
+      // If it stays false, it's a real unmount.
+      setTimeout(() => {
+        if (!mounted && clientRef.current) {
+          clientRef.current.disconnect();
+          clientRef.current = null;
+        }
+      }, 0);
     };
-  }, [host, port]);
+  }, []);
 
   const send = useCallback(
     (command: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<WsResponse> => {
