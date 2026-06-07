@@ -101,6 +101,10 @@ private:
 
     std::unique_ptr<ScanState> m_scanState;
 
+    /// Final progress values saved after scan completes (for GetScanProgress query)
+    int m_lastScanned = 0;
+    int m_lastTotal = 0;
+
     /// Supported audio file extensions (lowercase, with dot).
     static bool IsAudioExtension(const std::string& ext);
 };

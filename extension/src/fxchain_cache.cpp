@@ -23,11 +23,10 @@ int FxChainCache::BuildIndex(const std::string& rootPath)
     std::lock_guard<std::mutex> lock(m_mutex);
     m_entries.clear();
     m_rootPath = rootPath;
+    m_isIndexed = true;
 
-    if (rootPath.empty()) {
-        m_isIndexed = false;
+    if (rootPath.empty())
         return 0;
-    }
 
     try {
         for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
@@ -62,11 +61,8 @@ int FxChainCache::BuildIndex(const std::string& rootPath)
             [](const Entry& a, const Entry& b) {
                 return a.filePath < b.filePath;
             });
-
-        m_isIndexed = true;
     } catch (const fs::filesystem_error&) {
         // Non-existent rootPath returns 0 entries (graceful degradation)
-        m_isIndexed = false;
         return 0;
     }
 
