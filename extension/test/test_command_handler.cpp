@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cmath>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -5725,4 +5726,251 @@ TEST(MatrixTest, SetSlotReversePreservesSlotName)
     EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
     EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
     EXPECT_NE(responses[0].find("\"reversed\":true"), std::string::npos);
+}
+
+// ============================================================
+// Sample audio info command tests (Issue #106)
+// ============================================================
+
+// Helper: create a minimal valid PCM WAV file at the given path
+// Mono, 16-bit, 44100 Hz, with a simple sine wave
+static void CreateTestWavFile(const std::string& path, int numSamples = 44100)
+{
+    // 16-bit mono WAV at 44100 Hz
+    const int sampleRate = 44100;
+    const int channels = 1;
+    const int bitsPerSample = 16;
+    const int byteRate = sampleRate * channels * (bitsPerSample / 8);
+    const int blockAlign = channels * (bitsPerSample / 8);
+    const int dataSize = numSamples * blockAlign;
+    const int fileSize = 36 + dataSize; // 36 bytes before data chunk
+
+    FILE* f = fopen(path.c_str(), "wb");
+    ASSERT_NE(f, nullptr);
+
+    // RIFF header
+    fwrite("RIFF", 1, 4, f);
+    uint32_t riffSize = fileSize;
+    fwrite(&riffSize, 4, 1, f);
+    fwrite("WAVE", 1, 4, f);
+
+    // fmt chunk
+    fwrite("fmt ", 1, 4, f);
+    uint32_t fmtSize = 16;
+    fwrite(&fmtSize, 4, 1, f);
+    uint16_t audioFormat = 1; // PCM
+    fwrite(&audioFormat, 2, 1, f);
+    uint16_t numChannels = channels;
+    fwrite(&numChannels, 2, 1, f);
+    uint32_t sr = sampleRate;
+    fwrite(&sr, 4, 1, f);
+    uint32_t br = byteRate;
+    fwrite(&br, 4, 1, f);
+    uint16_t ba = blockAlign;
+    fwrite(&ba, 2, 1, f);
+    uint16_t bps = bitsPerSample;
+    fwrite(&bps, 2, 1, f);
+
+    // data chunk
+    fwrite("data", 1, 4, f);
+    uint32_t ds = dataSize;
+    fwrite(&ds, 4, 1, f);
+
+    // Write sine wave samples
+    for (int i = 0; i < numSamples; i++) {
+        double t = (double)i / sampleRate;
+        int16_t sample = (int16_t)(std::sin(2.0 * 3.14159265358979323846 * 440.0 * t) * 16384.0);
+        fwrite(&sample, 2, 1, f);
+    }
+
+    fclose(f);
+}
+
+TEST(SampleAudioInfoTest, MissingPath)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sample/getAudioInfo","payload":{},"id":"ai1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Missing"), std::string::npos);
+    EXPECT_NE(responses[0].find("path"), std::string::npos);
+}
+
+TEST(SampleAudioInfoTest, FileNotFound)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sample/getAudioInfo","payload":{"path":"/nonexistent/file_abcdef123.wav"},"id":"ai2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("File not found"), std::string::npos);
+}
+
+TEST(SampleAudioInfoTest, InvalidFile)
+{
+    // Create a temp file that is NOT a valid WAV
+    std::string tmpPath = std::string("/tmp/spidercrab_test_notawav_") + std::to_string(rand()) + ".dat";
+    {
+        FILE* f = fopen(tmpPath.c_str(), "w");
+        ASSERT_NE(f, nullptr);
+        fwrite("not a wav file content here", 1, 28, f);
+        fclose(f);
+    }
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        "{\"type\":\"command\",\"command\":\"sample/getAudioInfo\",\"payload\":{\"path\":\"" + tmpPath + "\"},\"id\":\"ai3\"}");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Not a valid PCM WAV file"), std::string::npos);
+
+    std::remove(tmpPath.c_str());
+}
+
+TEST(SampleAudioInfoTest, ValidWavFile)
+{
+    // Create a real WAV file
+    std::string tmpPath = std::string("/tmp/spidercrab_test_wav_") + std::to_string(rand()) + ".wav";
+    CreateTestWavFile(tmpPath, 4410); // 0.1 seconds of 440 Hz sine
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        "{\"type\":\"command\",\"command\":\"sample/getAudioInfo\",\"payload\":{\"path\":\"" + tmpPath + "\"},\"id\":\"ai4\"}");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+
+    // Verify payload fields
+    std::string& resp = responses[0];
+    EXPECT_NE(resp.find("\"duration\":"), std::string::npos);
+    EXPECT_NE(resp.find("\"sampleRate\":44100"), std::string::npos);
+    EXPECT_NE(resp.find("\"channels\":1"), std::string::npos);
+    EXPECT_NE(resp.find("\"peaks\":["), std::string::npos);
+    EXPECT_NE(resp.find("]"), std::string::npos);
+
+    std::remove(tmpPath.c_str());
+}
+
+TEST(SampleAudioInfoTest, LargeWavFile)
+{
+    // Create a larger WAV file (no 5MB limit anymore)
+    std::string tmpPath = std::string("/tmp/spidercrab_test_largewav_") + std::to_string(rand()) + ".wav";
+    CreateTestWavFile(tmpPath, 44100 * 10); // 10 seconds of audio
+
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        "{\"type\":\"command\",\"command\":\"sample/getAudioInfo\",\"payload\":{\"path\":\"" + tmpPath + "\"},\"id\":\"ai5\"}");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"peaks\":["), std::string::npos);
+
+    std::remove(tmpPath.c_str());
+}
+
+// ============================================================
+// Sample preview command tests (Issue #106)
+// ============================================================
+
+TEST(SamplePreviewTest, MissingPath)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sample/preview","payload":{},"id":"sp1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Missing"), std::string::npos);
+}
+
+TEST(SamplePreviewTest, FileNotFound)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sample/preview","payload":{"path":"/nonexistent/file_xyz.wav"},"id":"sp2"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("File not found"), std::string::npos);
+}
+
+TEST(SamplePreviewTest, ApiNotLoaded)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Create a temp file (exists but APIs are null)
+    std::string tmpPath = std::string("/tmp/spidercrab_test_preview_") + std::to_string(rand()) + ".wav";
+    CreateTestWavFile(tmpPath, 4410);
+
+    handler->HandleMessage(1,
+        "{\"type\":\"command\",\"command\":\"sample/preview\",\"payload\":{\"path\":\"" + tmpPath + "\"},\"id\":\"sp3\"}");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("Preview API not loaded"), std::string::npos);
+
+    std::remove(tmpPath.c_str());
+}
+
+// ============================================================
+// Sample stop preview command tests (Issue #106)
+// ============================================================
+
+TEST(SampleStopPreviewTest, NoActivePreview)
+{
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"sample/stopPreview","id":"ssp1"})");
+
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"alreadyStopped\":true"), std::string::npos);
 }
