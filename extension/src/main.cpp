@@ -196,6 +196,9 @@ public:
         // Drain main-thread deferred ops (PlayPreview, SetTrackStateChunk, etc.)
         if (g_cmdHandler) g_cmdHandler->DrainPendingOps();
 
+        // Process next batch of sample cache scan (incremental, ~100 files/tick)
+        if (g_cmdHandler) g_cmdHandler->TickSampleCache();
+
         // Retry Playtime API resolution if it wasn't available at init time.
         // helgobox may register its API functions after our extension starts.
         retryPlaytimeApi();

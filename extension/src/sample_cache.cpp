@@ -118,18 +118,10 @@ bool SampleCache::ScanNextBatch()
         std::string parentDir = p.parent_path().string();
         std::string fileName = p.filename().string();
 
-        // Get file size
-        uintmax_t fileSize = 0;
-        std::error_code ec;
-        auto fsize = fs::file_size(p, ec);
-        if (!ec)
-            fileSize = fsize;
-
         // Add entry to the parent directory's cache
         Entry entry;
         entry.name = fileName;
         entry.type = "file";
-        entry.size = fileSize;
         m_directoryCache[parentDir].push_back(std::move(entry));
 
         m_scanState->currentFileIdx++;

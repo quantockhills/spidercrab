@@ -9,6 +9,7 @@ import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
 import ErrorBoundary from './components/ErrorBoundary';
+import SampleIndexProgressBar from './components/SampleIndexProgressBar';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 
@@ -42,6 +43,7 @@ function AppInner() {
     reorderFx,
     getDirectory,
     sendSampleToTrack,
+    refreshSampleCache,
     sendCommand,
     isRefreshingFx,
     refreshFxCache,
@@ -296,15 +298,18 @@ function AppInner() {
       <main className="flex-1 overflow-hidden min-h-0">
         <ErrorBoundary>
         {activeTab === 'media' && (
-          <SampleBrowser
-            tracks={tracks}
-            selectedTrack={selectedTrack}
-            getDirectory={getDirectory}
-            sendSampleToTrack={sendSampleToTrack}
-            sendCommand={sendCommand}
-            onBack={() => setActiveTab('tracks')}
-            samplePaths={samplePaths}
-          />
+          <div className="flex flex-col h-full min-h-0">
+            <SampleIndexProgressBar onEvent={onEvent} />
+            <SampleBrowser
+              tracks={tracks}
+              selectedTrack={selectedTrack}
+              getDirectory={getDirectory}
+              sendSampleToTrack={sendSampleToTrack}
+              sendCommand={sendCommand}
+              onBack={() => setActiveTab('tracks')}
+              samplePaths={samplePaths}
+            />
+          </div>
         )}
 
         {activeTab === 'clips' && (
@@ -586,6 +591,14 @@ function AppInner() {
                       <span className="text-sm font-mono truncate flex-1 text-[var(--text-primary)]">
                         📁 {path}
                       </span>
+                      <button
+                        onClick={() => refreshSampleCache(path)}
+                        className="text-xs px-2 py-1 text-[var(--accent-orange)] hover:bg-[var(--bg-tertiary)] active:brightness-95 min-h-[36px]"
+                        title="Scan this directory into cache"
+                        aria-label={`Scan ${path}`}
+                      >
+                        ⟳
+                      </button>
                       <button
                         onClick={() => handleRemoveSamplePath(path)}
                         className="text-xs px-2 py-1 text-[var(--accent-red)] hover:bg-[var(--bg-tertiary)] active:brightness-95 min-h-[36px]"
