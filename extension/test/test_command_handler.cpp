@@ -9,6 +9,7 @@
 // In a test-only build, this is fine — the .cpp has no global state dependencies.
 #include "../src/command_handler.cpp"
 #include "../src/fxchain_cache.h"
+#include "../src/sample_cache.h"
 
 // ============================================================
 // JsonParser tests
@@ -5973,4 +5974,386 @@ TEST(SampleStopPreviewTest, NoActivePreview)
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
     EXPECT_NE(responses[0].find("\"alreadyStopped\":true"), std::string::npos);
+}
+
+// ============================================================
+// SampleCache tests (Issue #107)
+// ============================================================
+
+TEST(SampleCacheTest, EmptyBuild)
+{
+    SampleCache cache;
+    EXPECT_FALSE(cache.IsIndexed("/nonexistent"));
+    EXPECT_FALSE(cache.HasCachedData("/tmp"));
+
+    auto result = cache.GetDirectory("/tmp");
+    EXPECT_TRUE(result.entries.empty());
+    EXPECT_EQ(result.path, "/tmp");
+}
+
+TEST(SampleCacheTest, AudioExtensionCheck)
+{
+    // Test the extension detection via the SampleCache
+    // The cache only indexes audio files during scanning
+    
+    // Create a temp dir with mix of file types
+    const char* tmpdir = "/tmp/spidercrab_sample_test_ext";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+    
+    // Create various audio and non-audio files
+    {
+        std::ofstream f(std::string(tmpdir) + "/test.wav"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/song.mp3"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/loop.flac"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/sample.ogg"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/audio.aiff"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/doc.txt"); f << "not audio";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/image.png"); f << "not audio";
+    }
+    
+    SampleCache cache;
+    bool progressCalled = false;
+    int lastScanned = 0;
+    int lastTotal = 0;
+    
+    cache.BeginScan(tmpdir, [&](int scanned, int total) {
+        progressCalled = true;
+        lastScanned = scanned;
+        lastTotal = total;
+    });
+    
+    // Process batches until done
+    while (!cache.ScanNextBatch()) {
+        // keep scanning
+    }
+    
+    EXPECT_TRUE(progressCalled);
+    EXPECT_EQ(lastTotal, 5) << "Should find 5 audio files (.wav, .mp3, .flac, .ogg, .aiff)";
+    EXPECT_EQ(lastScanned, 5);
+    EXPECT_TRUE(cache.IsIndexed(tmpdir));
+    
+    // Verify cached directory listing
+    auto result = cache.GetDirectory(tmpdir);
+    EXPECT_GE(result.entries.size(), 5u) << "Should have at least 5 entries (audio files)";
+    
+    // Check specific entries exist
+    bool foundWav = false, foundMp3 = false, foundFlac = false;
+    bool foundOgg = false, foundAiff = false;
+    bool foundTxt = false, foundPng = false;
+    for (const auto& e : result.entries) {
+        if (e.name == "test.wav") foundWav = true;
+        if (e.name == "song.mp3") foundMp3 = true;
+        if (e.name == "loop.flac") foundFlac = true;
+        if (e.name == "sample.ogg") foundOgg = true;
+        if (e.name == "audio.aiff") foundAiff = true;
+        if (e.name == "doc.txt") foundTxt = true;
+        if (e.name == "image.png") foundPng = true;
+    }
+    EXPECT_TRUE(foundWav) << "Should find .wav files";
+    EXPECT_TRUE(foundMp3) << "Should find .mp3 files";
+    EXPECT_TRUE(foundFlac) << "Should find .flac files";
+    EXPECT_TRUE(foundOgg) << "Should find .ogg files";
+    EXPECT_TRUE(foundAiff) << "Should find .aiff files";
+    EXPECT_FALSE(foundTxt) << "Should NOT include .txt files";
+    EXPECT_FALSE(foundPng) << "Should NOT include .png files";
+    
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(SampleCacheTest, BuildIndexFromRealDir)
+{
+    const char* tmpdir = "/tmp/spidercrab_sample_test";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+    
+    // Create some test files (various audio and non-audio)
+    {
+        std::ofstream f(std::string(tmpdir) + "/kick.wav"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/snare.wav"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/loop.mp3"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/readme.txt"); f << "not audio";
+    }
+    
+    // Subdirectory with more audio
+    fs::create_directories(std::string(tmpdir) + "/sub", ec);
+    {
+        std::ofstream f(std::string(tmpdir) + "/sub/deep.wav"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(tmpdir) + "/sub/other.flac"); f << "dummy";
+    }
+    
+    SampleCache cache;
+    cache.BeginScan(tmpdir, nullptr);
+    while (!cache.ScanNextBatch()) {
+        // keep scanning
+    }
+    
+    EXPECT_TRUE(cache.IsIndexed(tmpdir));
+    EXPECT_TRUE(cache.HasCachedData(tmpdir));
+    
+    // Root directory should have entries
+    auto rootResult = cache.GetDirectory(tmpdir);
+    EXPECT_GE(rootResult.entries.size(), 3u) << "Root should have 3 audio files + sub dir entry";
+    
+    // Sub directory should have entries
+    std::string subdir = std::string(tmpdir) + "/sub";
+    EXPECT_TRUE(cache.HasCachedData(subdir));
+    auto subResult = cache.GetDirectory(subdir);
+    EXPECT_GE(subResult.entries.size(), 2u) << "Subdir should have 2 audio files";
+    
+    bool foundDeepWav = false, foundOtherFlac = false;
+    for (const auto& e : subResult.entries) {
+        if (e.name == "deep.wav") foundDeepWav = true;
+        if (e.name == "other.flac") foundOtherFlac = true;
+    }
+    EXPECT_TRUE(foundDeepWav);
+    EXPECT_TRUE(foundOtherFlac);
+    
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(SampleCacheTest, MultipleRootPaths)
+{
+    const char* dir1 = "/tmp/spidercrab_multi1";
+    const char* dir2 = "/tmp/spidercrab_multi2";
+    std::error_code ec;
+    fs::remove_all(dir1, ec);
+    fs::remove_all(dir2, ec);
+    fs::create_directories(dir1, ec);
+    fs::create_directories(dir2, ec);
+    
+    {
+        std::ofstream f(std::string(dir1) + "/a.wav"); f << "dummy";
+    }
+    {
+        std::ofstream f(std::string(dir2) + "/b.wav"); f << "dummy";
+    }
+    
+    SampleCache cache;
+    
+    // Scan first root
+    cache.BeginScan(dir1, nullptr);
+    while (!cache.ScanNextBatch()) {}
+    EXPECT_TRUE(cache.IsIndexed(dir1));
+    EXPECT_FALSE(cache.IsIndexed(dir2));
+    EXPECT_TRUE(cache.HasCachedData(dir1));
+    EXPECT_FALSE(cache.HasCachedData(dir2));
+    
+    // Scan second root
+    cache.BeginScan(dir2, nullptr);
+    while (!cache.ScanNextBatch()) {}
+    EXPECT_TRUE(cache.IsIndexed(dir1));
+    EXPECT_TRUE(cache.IsIndexed(dir2));
+    EXPECT_TRUE(cache.HasCachedData(dir1));
+    EXPECT_TRUE(cache.HasCachedData(dir2));
+    
+    // Both root directories should have their files
+    auto r1 = cache.GetDirectory(dir1);
+    EXPECT_EQ(r1.entries.size(), 1u);
+    EXPECT_EQ(r1.entries[0].name, "a.wav");
+    
+    auto r2 = cache.GetDirectory(dir2);
+    EXPECT_EQ(r2.entries.size(), 1u);
+    EXPECT_EQ(r2.entries[0].name, "b.wav");
+    
+    // Cleanup
+    fs::remove_all(dir1, ec);
+    fs::remove_all(dir2, ec);
+}
+
+TEST(SampleCacheTest, ClearAndReindex)
+{
+    const char* tmpdir = "/tmp/spidercrab_clear_test";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+    
+    {
+        std::ofstream f(std::string(tmpdir) + "/kick.wav"); f << "dummy";
+    }
+    
+    SampleCache cache;
+    cache.BeginScan(tmpdir, nullptr);
+    while (!cache.ScanNextBatch()) {}
+    EXPECT_TRUE(cache.IsIndexed(tmpdir));
+    EXPECT_EQ(cache.GetDirectory(tmpdir).entries.size(), 1u);
+    
+    // Clear for this root
+    cache.ClearRoot(tmpdir);
+    EXPECT_FALSE(cache.IsIndexed(tmpdir));
+    EXPECT_FALSE(cache.HasCachedData(tmpdir));
+    EXPECT_TRUE(cache.GetDirectory(tmpdir).entries.empty());
+    
+    // Re-index
+    cache.BeginScan(tmpdir, nullptr);
+    while (!cache.ScanNextBatch()) {}
+    EXPECT_TRUE(cache.IsIndexed(tmpdir));
+    EXPECT_EQ(cache.GetDirectory(tmpdir).entries.size(), 1u);
+    
+    // Clear all
+    cache.ClearAll();
+    EXPECT_FALSE(cache.IsIndexed(tmpdir));
+    EXPECT_FALSE(cache.HasCachedData(tmpdir));
+    
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(SampleCacheTest, ZeroFilesDir)
+{
+    // Directory with no audio files should still be indexed (with 0 files)
+    const char* tmpdir = "/tmp/spidercrab_zero_test";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+    
+    SampleCache cache;
+    cache.BeginScan(tmpdir, nullptr);
+    while (!cache.ScanNextBatch()) {}
+    
+    EXPECT_TRUE(cache.IsIndexed(tmpdir));
+    EXPECT_TRUE(cache.HasCachedData(tmpdir));
+    auto result = cache.GetDirectory(tmpdir);
+    EXPECT_TRUE(result.entries.empty()) << "No audio files = empty entries";
+    
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(SampleCacheTest, NonExistentPath)
+{
+    SampleCache cache;
+    cache.BeginScan("/nonexistent/path/12345", nullptr);
+    while (!cache.ScanNextBatch()) {}
+    
+    EXPECT_FALSE(cache.IsIndexed("/nonexistent/path/12345"));
+    EXPECT_FALSE(cache.HasCachedData("/nonexistent/path/12345"));
+}
+
+TEST(SampleCacheTest, ProgressCallbackCalled)
+{
+    const char* tmpdir = "/tmp/spidercrab_progress_test";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+    
+    // Create 10 audio files
+    for (int i = 0; i < 10; i++) {
+        std::ofstream f(std::string(tmpdir) + "/file" + std::to_string(i) + ".wav");
+        f << "dummy";
+    }
+    
+    SampleCache cache;
+    int callbackCount = 0;
+    int lastScanned = 0;
+    int lastTotal = 0;
+    
+    cache.BeginScan(tmpdir, [&](int scanned, int total) {
+        callbackCount++;
+        lastScanned = scanned;
+        lastTotal = total;
+    });
+    
+    // Should get initial callback
+    EXPECT_EQ(callbackCount, 1);
+    EXPECT_EQ(lastScanned, 0);
+    EXPECT_EQ(lastTotal, 10);
+    
+    // Process all batches
+    while (!cache.ScanNextBatch()) {}
+    
+    // Should have gotten multiple callbacks
+    EXPECT_GT(callbackCount, 1);
+    EXPECT_EQ(lastTotal, 10);
+    
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(SampleCacheTest, CancelScan)
+{
+    const char* tmpdir = "/tmp/spidercrab_cancel_test";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+    
+    // Create 50 audio files
+    for (int i = 0; i < 50; i++) {
+        std::ofstream f(std::string(tmpdir) + "/file" + std::to_string(i) + ".wav");
+        f << "dummy";
+    }
+    
+    SampleCache cache;
+    cache.BeginScan(tmpdir, nullptr);
+    EXPECT_TRUE(cache.IsScanning());
+    
+    // Scan a few batches
+    cache.ScanNextBatch();
+    cache.ScanNextBatch();
+    
+    // Cancel
+    cache.CancelScan();
+    EXPECT_FALSE(cache.IsScanning());
+    
+    // The partial cache should still be available
+    EXPECT_TRUE(cache.HasCachedData(tmpdir));
+    
+    // Cleanup
+    fs::remove_all(tmpdir, ec);
+}
+
+TEST(SampleCacheTest, ScanProgressQuery)
+{
+    const char* tmpdir = "/tmp/spidercrab_scanprog_test";
+    std::error_code ec;
+    fs::remove_all(tmpdir, ec);
+    fs::create_directories(tmpdir, ec);
+    
+    for (int i = 0; i < 10; i++) {
+        std::ofstream f(std::string(tmpdir) + "/file" + std::to_string(i) + ".wav");
+        f << "dummy";
+    }
+    
+    SampleCache cache;
+    cache.BeginScan(tmpdir, nullptr);
+    
+    int scanned = 0, total = 0;
+    cache.GetScanProgress(scanned, total);
+    EXPECT_EQ(total, 10);
+    
+    while (!cache.ScanNextBatch()) {
+        cache.GetScanProgress(scanned, total);
+        EXPECT_GE(scanned, 0);
+        EXPECT_EQ(total, 10);
+    }
+    
+    // After scan, progress should still be accessible
+    cache.GetScanProgress(scanned, total);
+    EXPECT_EQ(scanned, 10);
+    EXPECT_EQ(total, 10);
+    
+    fs::remove_all(tmpdir, ec);
 }
