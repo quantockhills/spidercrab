@@ -45,7 +45,7 @@ interface TrackOverviewProps {
   setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
   getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
   // FX bypass (Issue #104)
-  onToggleBypass?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onToggleBypass?: (trackIdx: number, fxIdx: number, currentBypassed: boolean) => Promise<boolean>;
   onDeleteFx?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
   // Inline FX chain search (Issue #105)
   searchChains?: (query: string) => Promise<ChainSearchItem[]>;
@@ -228,6 +228,20 @@ export function TrackOverview({
     if (ok) setFxRefreshVersion(v => v + 1);
     return ok;
   }, [onReorderFx]);
+
+  const handleDeleteFx = useCallback(async (trackIdx: number, fxIdx: number): Promise<boolean> => {
+    if (!onDeleteFx) return false;
+    const ok = await onDeleteFx(trackIdx, fxIdx);
+    if (ok) setFxRefreshVersion(v => v + 1);
+    return ok;
+  }, [onDeleteFx]);
+
+  const handleToggleBypass = useCallback(async (trackIdx: number, fxIdx: number, currentBypassed: boolean): Promise<boolean> => {
+    if (!onToggleBypass) return false;
+    const ok = await onToggleBypass(trackIdx, fxIdx, currentBypassed);
+    if (ok) setFxRefreshVersion(v => v + 1);
+    return ok;
+  }, [onToggleBypass]);
 
   // Inline FX search handlers (Issue #102)
   const handleOpenInlineSearch = useCallback((trackIdx: number) => {
@@ -453,8 +467,8 @@ export function TrackOverview({
                   setChainCycler={setChainCycler}
                   onReorderFx={handleReorderFx}
                   onOpenInlineSearch={enumerateFx && addFx ? handleOpenInlineSearch : undefined}
-                  onToggleBypass={onToggleBypass}
-                  onDeleteFx={onDeleteFx}
+                  onToggleBypass={onToggleBypass ? handleToggleBypass : undefined}
+                  onDeleteFx={onDeleteFx ? handleDeleteFx : undefined}
                 />
               )}
               {/* Inline FX search (Issue #102) */}
@@ -539,7 +553,7 @@ interface FxGridProps {
   setChainCycler: (v: {trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
   onOpenInlineSearch?: (trackIdx: number) => void;
-  onToggleBypass?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onToggleBypass?: (trackIdx: number, fxIdx: number, currentBypassed: boolean) => Promise<boolean>;
   onDeleteFx?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
 }
 
@@ -827,7 +841,7 @@ interface FxCardProps {
   setDropVisualIdx: React.Dispatch<React.SetStateAction<number | null>>;
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
-  onToggleBypass?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
+  onToggleBypass?: (trackIdx: number, fxIdx: number, currentBypassed: boolean) => Promise<boolean>;
   onDeleteFx?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
 }
 
@@ -892,9 +906,9 @@ function FxCard({
       return;
     }
     if (onToggleBypass) {
-      onToggleBypass(trackIdx, fx.index);
+      onToggleBypass(trackIdx, fx.index, fx.bypassed ?? false);
     }
-  }, [trackIdx, fx.index, showDeleteConfirm, onToggleBypass, onDeleteFx]);
+  }, [trackIdx, fx.index, fx.bypassed, showDeleteConfirm, onToggleBypass, onDeleteFx]);
 
   // Tap on arrow expands params (separate hit target)
   const handleExpandClick = useCallback((e: React.MouseEvent) => {

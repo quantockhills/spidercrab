@@ -40,6 +40,7 @@ function AppInner() {
     setFxParam,
     addFx,
     deleteFx,
+    setFxBypass,
     reorderFx,
     getDirectory,
     sendSampleToTrack,
@@ -236,6 +237,13 @@ function AppInner() {
       setActiveTab('fx');
     },
     [tracks],
+  );
+
+  const handleToggleBypass = useCallback(
+    async (trackIdx: number, fxIdx: number, currentBypassed: boolean): Promise<boolean> => {
+      return setFxBypass(trackIdx, fxIdx, !currentBypassed);
+    },
+    [setFxBypass],
   );
 
   // ── FX button from TrackOverview (Issue #86) ──
@@ -438,6 +446,8 @@ function AppInner() {
             onGetTransportState={getTransportState}
             getTrackFx={getTrackFx}
             onSelectFx={handleSelectFx}
+            onToggleBypass={handleToggleBypass}
+            onDeleteFx={deleteFx}
             onOpenFx={handleOpenFx}
             onReorderFx={reorderFx}
             getFxParams={getFxParams}
