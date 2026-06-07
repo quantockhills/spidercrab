@@ -442,6 +442,12 @@ function AppInner() {
             fxChainCycle={fxChainCycle}
             enumerateFx={enumerateFx}
             addFx={addFx}
+            searchChains={async (query: string) => {
+              if (!fxChainPath) return [];
+              const result = await fxChainSearchCached(query, fxChainPath, 0, 100);
+              return result.results.map(r => ({ filePath: r.filePath, name: r.name }));
+            }}
+            loadChain={(trackIdx: number, filePath: string) => fxChainLoad(trackIdx, filePath)}
           />
         )}
 
