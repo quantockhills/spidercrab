@@ -145,6 +145,13 @@ public:
     // In .cpp, cast to preview_register_t* when using.
     void* m_previewReg = nullptr;
 
+    // Main-thread deferred operations queue.
+    // WebSocket handlers enqueue lambdas here; DrainPendingOps() runs them
+    // on REAPER's main thread via Run(). Required for APIs like PlayPreview
+    // and SetTrackStateChunk that are not safe to call from background threads.
+    void QueueMainThread(std::function<void()> op);
+    void DrainPendingOps();
+
     // Pre-populate FX cache at extension startup (avoids crash when
     // EnumInstalledFX is called from Chromium WS context due to X11/SWELL
     // display conflict). Safe to call before any WebSocket client connects.
@@ -177,7 +184,9 @@ private:
     ReaperAPI         m_api;
     ResponseCallback  m_responseCb;
     BroadcastCallback m_broadcastCb;
-    std::mutex        m_apiMutex;  // Serialize Reaper API calls to prevent race conditions
+    std::mutex        m_apiMutex;       // Serialize Reaper API calls to prevent race conditions
+    std::mutex        m_pendingMutex;   // Guards m_pendingOps
+    std::vector<std::function<void()>> m_pendingOps;
 
     // FX enumeration cache (EnumInstalledFX takes ~35s)
     std::string m_fxCache;
