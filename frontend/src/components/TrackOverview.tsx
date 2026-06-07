@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Track, FxInfo, FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
+import type { EnumeratedFx } from '../hooks/useFx';
 import { volumeToDb } from '../utils/volume';
 import type { WsResponse } from '../lib/wsClient';
 import { ParamSlider } from './ParamControl';
@@ -45,6 +46,9 @@ interface TrackOverviewProps {
   // Inline FX chain search (Issue #105)
   searchChains?: (query: string) => Promise<ChainSearchItem[]>;
   loadChain?: (trackIdx: number, filePath: string) => Promise<boolean>;
+  // Inline FX search (Issue #102)
+  enumerateFx?: () => Promise<EnumeratedFx[]>;
+  addFx?: (trackIdx: number, fxName: string) => Promise<number>;
 }
 
 
@@ -202,6 +206,14 @@ export function TrackOverview({
   const [dropVisualIdx, setDropVisualIdx] = useState<number | null>(null); // visual-only: show insertion indicator
   const dragDataRef = useRef<{trackIdx: number; fxIdx: number} | null>(null);
   const dropTargetRef = useRef<{dropIndex: number} | null>(null);
+
+  // Inline FX search state (Issue #102)
+  const [inlineSearchTrackIdx, setInlineSearchTrackIdx] = useState<number | null>(null);
+  const handleCloseInlineSearch = useCallback(() => setInlineSearchTrackIdx(null), []);
+  const handleInlineFxAdded = useCallback(() => {
+    setInlineSearchTrackIdx(null);
+    if (onRefresh) onRefresh();
+  }, [onRefresh]);
 
   const handleRecord = useCallback(async () => {
     if (!onRecord) return;
@@ -444,7 +456,7 @@ export function TrackOverview({
                     />
                   </div>
                 </>
-              )
+              )}
               {/* Inline FX drawer (Issue #94) */}
               {expandedFx?.trackIdx === track.index && getFxParams && setFxParam && (
                 <InlineFxDrawer
@@ -500,7 +512,7 @@ interface FxGridProps {
   expandedFx: {trackIdx: number; fxIdx: number; fxName: string} | null;
   setDragActiveTrack: (v: number | null) => void;
   setDragSourceFxIdx: (v: number | null) => void;
-  setDropVisualIdx: (v: number | null) => void;
+  setDropVisualIdx: (v: number | null | ((prev: number | null) => number | null)) => void;
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   setChainCycler: (v: {trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
@@ -693,7 +705,7 @@ function FxGrid({
             }
           }}
           onDragLeave={() => {
-            setDropVisualIdx((prev) =>
+            setDropVisualIdx((prev: number | null) =>
               prev === fxList.length ? null : prev,
             );
           }}
@@ -740,7 +752,7 @@ interface FxCardProps {
   expandedFx: {trackIdx: number; fxIdx: number; fxName: string} | null;
   setDragActiveTrack: (v: number | null) => void;
   setDragSourceFxIdx: (v: number | null) => void;
-  setDropVisualIdx: (v: number | null) => void;
+  setDropVisualIdx: (v: number | null | ((prev: number | null) => number | null)) => void;
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
 }
@@ -795,7 +807,7 @@ function FxCard({
         setDropVisualIdx(dropIndex);
       }}
       onDragLeave={() => {
-        setDropVisualIdx((prev) => (prev === fx.index ? null : prev));
+        setDropVisualIdx((prev: number | null) => (prev === fx.index ? null : prev));
       }}
       onDrop={(e) => {
         e.preventDefault();

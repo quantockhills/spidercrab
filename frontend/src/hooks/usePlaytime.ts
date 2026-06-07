@@ -139,6 +139,19 @@ export function usePlaytime() {
     }
   }, [send]);
 
+  const convertToClip = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const resp = await send('sequencer/convertToClip');
+      const data = resp.payload as { success: boolean; trackIdx?: number; noteCount?: number; length?: number };
+      if (data?.success) {
+        return { success: true };
+      }
+      return { success: false, error: (resp.payload as any)?.error || 'Conversion failed' };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  }, [send]);
+
   return {
     matrix,
     getMatrix,
@@ -150,5 +163,6 @@ export function usePlaytime() {
     pollState,
     launchPlaytime,
     checkPlaytimeAvailable,
+    convertToClip,
   };
 }

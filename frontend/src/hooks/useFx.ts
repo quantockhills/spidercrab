@@ -6,6 +6,7 @@ import { useReaperClient } from './useReaperClient';
 export interface FxInfo {
   index: number;
   name: string;
+  chainPath?: string | null;
 }
 
 export interface EnumeratedFx {
@@ -13,6 +14,17 @@ export interface EnumeratedFx {
   name: string;
   ident: string;
   format: string;
+}
+
+export interface FxPresetInfo {
+  presetIndex: number;
+  presetName: string | null;
+  numPresets: number;
+}
+
+export interface FxPresetNames {
+  presetNames: string[];
+  currentIndex: number;
 }
 
 export interface FxParam {
@@ -93,6 +105,38 @@ export function useFx() {
     }
   }, [send]);
 
+  const reorderFx = useCallback(async (trackIdx: number, fromIndex: number, toIndex: number): Promise<boolean> => {
+    const resp = await send('fx/reorder', { trackIdx, fromIndex, toIndex });
+    return resp.success;
+  }, [send]);
+
+  const getFxPreset = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxPresetInfo | null> => {
+    try {
+      const resp = await send('fx/getPreset', { trackIdx, fxIdx });
+      return resp.payload as unknown as FxPresetInfo;
+    } catch {
+      return null;
+    }
+  }, [send]);
+
+  const setFxPreset = useCallback(async (trackIdx: number, fxIdx: number, presetIdx: number): Promise<FxPresetInfo | null> => {
+    try {
+      const resp = await send('fx/setPreset', { trackIdx, fxIdx, presetIdx });
+      return resp.payload as unknown as FxPresetInfo;
+    } catch {
+      return null;
+    }
+  }, [send]);
+
+  const getAllFxPresetNames = useCallback(async (trackIdx: number, fxIdx: number): Promise<FxPresetNames | null> => {
+    try {
+      const resp = await send('fx/getAllPresetNames', { trackIdx, fxIdx }, 30000);
+      return resp.payload as unknown as FxPresetNames;
+    } catch {
+      return null;
+    }
+  }, [send]);
+
   return {
     enumerateFx,
     getTrackFx,
@@ -100,6 +144,10 @@ export function useFx() {
     setFxParam,
     addFx,
     deleteFx,
+    reorderFx,
+    getFxPreset,
+    setFxPreset,
+    getAllFxPresetNames,
     refreshFxCache,
     isRefreshingFx,
   };

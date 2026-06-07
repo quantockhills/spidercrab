@@ -1,13 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Track, FxChainEntry, FxChainInfo, FxChainSearchResult } from '../hooks/useReaper';
 
-
-interface FxChainSearchResult {
-  filePath: string;
-  name: string;
-  size: number;
-}
-
 interface DirData { chains: FxChainEntry[]; dirs: string[] }
 
 interface FxChainBrowserProps {

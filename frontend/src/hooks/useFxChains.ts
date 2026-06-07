@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useReaperClient } from './useReaperClient';
+import type { FxInfo } from './useFx';
 
 // ── Public types ─────────────────────────────────────────────
 
@@ -75,5 +76,24 @@ export function useFxChains() {
     [send],
   );
 
-  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo, fxChainSearchRecursive };
+  const fxChainCycle = useCallback(async (
+    trackIdx: number,
+    direction: 'next' | 'prev',
+    chainPath?: string,
+  ): Promise<{ success: boolean; fx?: FxInfo[] }> => {
+    try {
+      const payload: Record<string, unknown> = { trackIdx, direction };
+      if (chainPath) payload.chainPath = chainPath;
+      const resp = await send('fxchain/cycle', payload, 30000);
+      if (!resp.success) return { success: false };
+      return {
+        success: true,
+        fx: (resp.payload as any)?.fx as FxInfo[] ?? [],
+      };
+    } catch {
+      return { success: false };
+    }
+  }, [send]);
+
+  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo, fxChainSearchRecursive, fxChainCycle };
 }
