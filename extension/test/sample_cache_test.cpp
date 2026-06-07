@@ -127,7 +127,7 @@ TEST_F(SampleCacheTest, BuildIndexScansAllAudioFiles)
     bool ok = cache.BuildIndex(tempDir.string());
     EXPECT_TRUE(ok);
     EXPECT_TRUE(cache.IsIndexed());
-    EXPECT_EQ(cache.GetTotalFiles(), 7); // 7 audio files across all dirs
+    EXPECT_EQ(cache.GetTotalFiles(), 9); // 9 audio files across all dirs (kick.wav, snare.wav, bass.mp3, melody.flac, loops/groove1.wav, loops/groove2.ogg, oneshots/clap.wav, oneshots/hat.aiff, loops/sub/deep.wav)
 }
 
 TEST_F(SampleCacheTest, BuildIndexFailsOnInvalidPath)
@@ -267,8 +267,8 @@ TEST_F(SampleCacheTest, BuildIndexReportsProgress)
 
     // Final progress should show completion
     EXPECT_EQ(lastStatus, "complete");
-    EXPECT_EQ(lastScanned, 7);
-    EXPECT_GE(lastTotal, 7);
+    EXPECT_EQ(lastScanned, 9);
+    EXPECT_GE(lastTotal, 9);
 }
 
 TEST_F(SampleCacheTest, ReIndexIsEquivalentToRefresh)
@@ -333,5 +333,5 @@ TEST_F(SampleCacheTest, ConcurrentAccess)
     reader.join();
 
     EXPECT_TRUE(cache.IsIndexed());
-    EXPECT_GE(cache.GetTotalFiles(), 8);
+    EXPECT_GE(cache.GetTotalFiles(), 9);
 }

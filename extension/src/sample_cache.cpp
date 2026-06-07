@@ -113,10 +113,11 @@ bool SampleCache::BuildIndex(const std::string& rootPath,
     // Second pass: collect entries with batching
     scanDirectory(rootPath, progressCallback, scanned, &totalEstimate);
 
-    // Mark indexed
+    // Mark indexed and store total file count
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_indexed = true;
+        m_totalFiles.store(scanned.load());
     }
 
     // Final progress report
