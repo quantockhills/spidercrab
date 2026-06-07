@@ -1475,36 +1475,29 @@ void CommandHandler::HandleSampleGetDirectory(
     // Extract "path" from payload
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
-    std::string path = parser.getString("path");
+    std::string path      = parser.getString("path");
+    std::string offsetStr = parser.getString("offset");
+    std::string limitStr  = parser.getString("limit");
+
     if (path.empty()) {
         SendResponse(clientId, id, false,
             "{\"error\":\"Missing \\\"path\\\" parameter\"}");
         return;
     }
 
-    std::string entries = "[";
-    bool first = true;
+    int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
+    int limit  = limitStr.empty()  ? 100 : atoi(limitStr.c_str());
+    if (limit <= 0) limit = 100;
+
+    // Collect all names first (cheap — no stat), then page, then stat only the page
+    struct RawEntry { std::string name; bool isDir; };
+    std::vector<RawEntry> dirs, files;
 
     try {
-        // Add parent directory entry (..) for navigation
-        entries += "{\"name\":\"..\",\"type\":\"dir\",\"size\":0}";
-        first = false;
-
         for (const auto& entry : fs::directory_iterator(path)) {
-            if (!first) entries += ",";
-            first = false;
-
-            std::string entryName = entry.path().filename().string();
-            std::string entryType = entry.is_directory() ? "dir" : "file";
-            uintmax_t   entrySize = entry.is_regular_file()
-                                         ? fs::file_size(entry.path())
-                                         : 0;
-
-            entries += "{";
-            entries += json_string("name") + ":" + json_string(entryName) + ",";
-            entries += json_string("type") + ":" + json_string(entryType) + ",";
-            entries += json_string("size") + ":" + std::to_string(entrySize);
-            entries += "}";
+            bool d = entry.is_directory();
+            dirs.resize(dirs.size()); // force evaluate
+            (d ? dirs : files).push_back({ entry.path().filename().string(), d });
         }
     } catch (const fs::filesystem_error& e) {
         SendResponse(clientId, id, false,
@@ -1512,11 +1505,36 @@ void CommandHandler::HandleSampleGetDirectory(
         return;
     }
 
+    // Sort dirs and files separately, dirs first
+    std::sort(dirs.begin(),  dirs.end(),  [](const RawEntry& a, const RawEntry& b){ return a.name < b.name; });
+    std::sort(files.begin(), files.end(), [](const RawEntry& a, const RawEntry& b){ return a.name < b.name; });
+
+    // Combine: .. + dirs + files
+    std::vector<RawEntry> all;
+    all.push_back({ "..", true });
+    for (auto& d : dirs)  all.push_back(d);
+    for (auto& f : files) all.push_back(f);
+
+    int total = (int)all.size();
+    int start = std::min(offset, total);
+    int end   = std::min(start + limit, total);
+
+    std::string entries = "[";
+    for (int i = start; i < end; i++) {
+        if (i > start) entries += ",";
+        const auto& e = all[i];
+        entries += "{";
+        entries += json_string("name") + ":" + json_string(e.name) + ",";
+        entries += json_string("type") + ":" + json_string(e.isDir ? "dir" : "file");
+        entries += "}";
+    }
     entries += "]";
 
     std::string payload = "{";
-    payload += json_string("path") + ":" + json_string(path) + ",";
-    payload += json_string("entries") + ":" + entries;
+    payload += json_string("path")    + ":" + json_string(path) + ",";
+    payload += json_string("entries") + ":" + entries + ",";
+    payload += json_string("total")   + ":" + std::to_string(total) + ",";
+    payload += json_string("offset")  + ":" + std::to_string(start);
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
