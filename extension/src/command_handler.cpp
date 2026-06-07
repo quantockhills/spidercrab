@@ -280,7 +280,9 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["transport/record"]       = &CommandHandler::HandleRecord;
     m_commandMap["sample/getDirectory"]    = &CommandHandler::HandleSampleGetDirectory;
     m_commandMap["sample/sendToTrack"]     = &CommandHandler::HandleSampleSendToTrack;
-    m_commandMap["sample/getAudioData"]    = &CommandHandler::HandleSampleGetAudioData;
+    m_commandMap["sample/getAudioInfo"]    = &CommandHandler::HandleSampleGetAudioInfo;
+    m_commandMap["sample/preview"]         = &CommandHandler::HandleSamplePreview;
+    m_commandMap["sample/stopPreview"]     = &CommandHandler::HandleSampleStopPreview;
     m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
     m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
     m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
@@ -2086,31 +2088,10 @@ void CommandHandler::HandleSampleSendToSlot(
 }
 
 // ============================================================
-// Sample audio data command (Issue #27)
+// Sample audio info command — lightweight WAV header + peaks (Issue #106)
 // ============================================================
 
-// Base64 encode binary data
-static std::string base64_encode(const uint8_t* data, size_t len)
-{
-    static const char* chars =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    out.reserve(((len + 2) / 3) * 4);
-    for (size_t i = 0; i < len; i += 3) {
-        uint32_t triple = 0;
-        int remain = (int)(len - i);
-        if (remain > 0) triple |= ((uint32_t)data[i]) << 16;
-        if (remain > 1) triple |= ((uint32_t)data[i+1]) << 8;
-        if (remain > 2) triple |= ((uint32_t)data[i+2]);
-        out += chars[(triple >> 18) & 0x3F];
-        out += chars[(triple >> 12) & 0x3F];
-        out += (remain > 1) ? chars[(triple >> 6) & 0x3F] : '=';
-        out += (remain > 2) ? chars[triple & 0x3F] : '=';
-    }
-    return out;
-}
-
-void CommandHandler::HandleSampleGetAudioData(
+void CommandHandler::HandleSampleGetAudioInfo(
     int clientId, const std::string& id, const std::string& params)
 {
     std::string payloadStr = extractPayload(params);
@@ -2130,17 +2111,27 @@ void CommandHandler::HandleSampleGetAudioData(
         return;
     }
 
-    // Check file size limit (5 MB default)
-    uintmax_t fileSize = fs::file_size(filePath);
-    const uintmax_t kMaxFileSize = 5 * 1024 * 1024;
-    if (fileSize > kMaxFileSize) {
-        std::string err = "{\"error\":\"File too large (" +
-            std::to_string(fileSize / (1024 * 1024)) + " MB), max 5 MB\"}";
-        SendResponse(clientId, id, false, err);
-        return;
+    // Try Reaper's PCM_Source first (gives duration even for non-WAV files)
+    // Fall back to manual WAV header parsing
+    double duration = 0.0;
+    int sampleRate = 0;
+    int channels = 0;
+    bool fromReaper = false;
+
+    if (m_api.PCM_Source_CreateFromFile && m_api.GetMediaSourceLength &&
+        m_api.GetMediaSourceSampleRate && m_api.GetMediaSourceNumChannels) {
+        PCM_source* src = m_api.PCM_Source_CreateFromFile(filePath.c_str());
+        if (src) {
+            bool lengthIsQN = false;
+            duration = m_api.GetMediaSourceLength(src, &lengthIsQN);
+            sampleRate = m_api.GetMediaSourceSampleRate(src);
+            channels = m_api.GetMediaSourceNumChannels(src);
+            delete src;
+            fromReaper = true;
+        }
     }
 
-    // Open file
+    // Open file for manual parsing (only WAV for peak computation)
     std::ifstream file(filePath, std::ios::binary);
     if (!file.is_open()) {
         SendResponse(clientId, id, false,
@@ -2164,56 +2155,265 @@ void CommandHandler::HandleSampleGetAudioData(
     } header;
 
     file.read(reinterpret_cast<char*>(&header), sizeof(header));
-    if (!file.good() ||
-        memcmp(header.riff, "RIFF", 4) != 0 ||
-        memcmp(header.wave, "WAVE", 4) != 0 ||
-        header.audioFormat != 1) {
-        SendResponse(clientId, id, false,
-            "{\"error\":\"Not a valid PCM WAV file\"}");
-        return;
-    }
-
-    // Skip to "data" chunk
-    struct { char id[4]; uint32_t size; } chunk;
-    uint32_t dataSize = 0;
-    while (file.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))) {
-        if (memcmp(chunk.id, "data", 4) == 0) {
-            dataSize = chunk.size;
-            break;
+    if (file.good() &&
+        memcmp(header.riff, "RIFF", 4) == 0 &&
+        memcmp(header.wave, "WAVE", 4) == 0 &&
+        header.audioFormat == 1) {
+        // Fill from header if Reaper couldn't provide
+        if (!fromReaper) {
+            sampleRate = header.sampleRate;
+            channels = header.numChannels;
         }
-        file.seekg(chunk.size, std::ios::cur);
-        if (chunk.size % 2 != 0)
-            file.seekg(1, std::ios::cur);
+
+        // Skip to "data" chunk and compute peaks
+        struct { char id[4]; uint32_t size; } chunk;
+        uint32_t dataSize = 0;
+        while (file.read(reinterpret_cast<char*>(&chunk), sizeof(chunk))) {
+            if (memcmp(chunk.id, "data", 4) == 0) {
+                dataSize = chunk.size;
+                break;
+            }
+            file.seekg(chunk.size, std::ios::cur);
+            if (chunk.size % 2 != 0)
+                file.seekg(1, std::ios::cur);
+        }
+
+        if (dataSize > 0 && file.good()) {
+            // For duration, use Reaper's value if available, else compute
+            if (duration <= 0.0 && sampleRate > 0 && channels > 0) {
+                duration = (double)dataSize / (double)(sampleRate * channels * (header.bitsPerSample / 8));
+            }
+
+            // Build downsampled peaks (~2000 points)
+            const int kNumPeaks = 2000;
+            int bytesPerSample = header.bitsPerSample / 8;
+            int frameSize = channels * bytesPerSample;
+            int totalFrames = dataSize / frameSize;
+            if (totalFrames > 0) {
+                // Read PCM data in chunks to build peaks
+                int samplesPerPeak = std::max(1, totalFrames / kNumPeaks);
+                int peaksCount = std::min(kNumPeaks, totalFrames);
+
+                // We'll stream through the data instead of reading all at once
+                std::vector<uint8_t> buf(frameSize * std::min(samplesPerPeak, 65536 / frameSize));
+                int bufFrames = (int)buf.size() / frameSize;
+
+                std::string peaksArr = "[";
+                int peakIdx = 0;
+                int frameOffset = 0;
+
+                while (frameOffset < totalFrames && peakIdx < peaksCount) {
+                    int endFrame = std::min(frameOffset + samplesPerPeak, totalFrames);
+                    double maxAmp = 0.0;
+
+                    for (int f = frameOffset; f < endFrame; ) {
+                        int remaining = endFrame - f;
+                        int chunkFrames = std::min(remaining, bufFrames);
+                        int chunkBytes = chunkFrames * frameSize;
+                        file.read(reinterpret_cast<char*>(buf.data()), chunkBytes);
+                        int actuallyRead = (int)file.gcount();
+                        int framesRead = actuallyRead / frameSize;
+
+                        for (int sf = 0; sf < framesRead; sf++) {
+                            int16_t sample;
+                            if (bytesPerSample == 2) {
+                                sample = (int16_t)(buf[sf * frameSize] | (buf[sf * frameSize + 1] << 8));
+                            } else if (bytesPerSample == 3) {
+                                int32_t s = buf[sf * frameSize] | (buf[sf * frameSize + 1] << 8) | (buf[sf * frameSize + 2] << 16);
+                                if (s & 0x800000) s |= 0xFF000000;
+                                sample = (int16_t)(s >> 8);
+                            } else if (bytesPerSample == 4) {
+                                // Treat 32-bit int samples: use top 16 bits
+                                int32_t s = (int32_t)(buf[sf * frameSize] | (buf[sf * frameSize + 1] << 8) |
+                                    (buf[sf * frameSize + 2] << 16) | (buf[sf * frameSize + 3] << 24));
+                                sample = (int16_t)(s >> 16);
+                            } else {
+                                sample = 0;
+                            }
+                            double amp = std::abs((double)sample / 32768.0);
+                            if (amp > maxAmp) maxAmp = amp;
+                        }
+
+                        f += framesRead;
+                        if (actuallyRead < chunkBytes) break;
+                    }
+
+                    if (peakIdx > 0) peaksArr += ",";
+                    peaksArr += std::to_string(maxAmp);
+                    peakIdx++;
+                    frameOffset = endFrame;
+                }
+                peaksArr += "]";
+
+                // Build response
+                std::string payload = "{";
+                payload += json_string("duration") + ":" + std::to_string(duration) + ",";
+                payload += json_string("sampleRate") + ":" + std::to_string(sampleRate) + ",";
+                payload += json_string("channels") + ":" + std::to_string(channels) + ",";
+                payload += json_string("peaks") + ":" + peaksArr;
+                payload += "}";
+
+                SendResponse(clientId, id, true, payload);
+                return;
+            }
+        }
     }
 
-    if (dataSize == 0 || !file.good()) {
-        SendResponse(clientId, id, false,
-            "{\"error\":\"No audio data found in WAV file\"}");
+    // Fallback: if we got metadata from Reaper but couldn't parse WAV peaks,
+    // return what we have (empty peaks array)
+    if (fromReaper) {
+        std::string payload = "{";
+        payload += json_string("duration") + ":" + std::to_string(duration) + ",";
+        payload += json_string("sampleRate") + ":" + std::to_string(sampleRate) + ",";
+        payload += json_string("channels") + ":" + std::to_string(channels) + ",";
+        payload += json_string("peaks") + ":[]";
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
         return;
     }
 
-    // Read PCM data
-    std::vector<uint8_t> pcmData(dataSize);
-    file.read(reinterpret_cast<char*>(pcmData.data()), dataSize);
-    if (!file.good() && file.gcount() < (int)dataSize) {
-        pcmData.resize(file.gcount());
+    SendResponse(clientId, id, false,
+        "{\"error\":\"Not a valid PCM WAV file\"}");
+}
+
+// ============================================================
+// Sample preview command (Issue #106) — play audio on host
+// ============================================================
+
+void CommandHandler::HandleSamplePreview(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string filePath = parser.getString("path");
+    std::string startPosStr = parser.getString("startPos");
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+        return;
     }
 
-    // Base64 encode PCM data
-    std::string b64 = base64_encode(pcmData.data(), pcmData.size());
+    // Check file existence
+    if (!fs::exists(filePath)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"File not found\"}");
+        return;
+    }
 
-    // Build response
-    std::string payload = "{";
-    payload += json_string("sampleRate") + ":" + std::to_string(header.sampleRate) + ",";
-    payload += json_string("channels") + ":" + std::to_string(header.numChannels) + ",";
-    payload += json_string("bitDepth") + ":" + std::to_string(header.bitsPerSample) + ",";
-    payload += json_string("format") + ":" + json_string("wav") + ",";
-    payload += json_string("fileSize") + ":" + std::to_string(fileSize) + ",";
-    payload += json_string("dataSize") + ":" + std::to_string(pcmData.size()) + ",";
-    payload += json_string("data") + ":" + json_string(b64);
-    payload += "}";
+    if (!m_api.PCM_Source_CreateFromFile || !m_api.PlayPreview || !m_api.StopPreview) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Preview API not loaded\"}");
+        return;
+    }
 
-    SendResponse(clientId, id, true, payload);
+    // Stop any existing preview
+    preview_register_t* oldReg = static_cast<preview_register_t*>(m_previewReg);
+    if (oldReg) {
+        m_api.StopPreview(oldReg);
+        if (oldReg->src) {
+            delete oldReg->src;
+            oldReg->src = nullptr;
+        }
+#ifndef _WIN32
+        pthread_mutex_destroy(&oldReg->mutex);
+#else
+        DeleteCriticalSection(&oldReg->cs);
+#endif
+        delete oldReg;
+        m_previewReg = nullptr;
+    }
+
+    // Create PCM source from file
+    PCM_source* src = m_api.PCM_Source_CreateFromFile(filePath.c_str());
+    if (!src) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to create PCM source from file\"}");
+        return;
+    }
+
+    // Create preview register
+    preview_register_t* reg = new preview_register_t();
+    memset(reg, 0, sizeof(*reg));
+    // Initialize mutex (pthreads on Linux, CRITICAL_SECTION on Windows)
+#ifndef _WIN32
+    pthread_mutex_init(&reg->mutex, nullptr);
+#else
+    InitializeCriticalSection(&reg->cs);
+#endif
+    reg->src = src;
+    reg->m_out_chan = 0; // output on first available channels
+    reg->loop = false;
+    reg->volume = 1.0;
+
+    // Set start position if provided
+    double startPos = 0.0;
+    if (!startPosStr.empty()) {
+        startPos = atof(startPosStr.c_str());
+    }
+    reg->curpos = startPos;
+
+    // Start preview playback
+    int result = m_api.PlayPreview(reg);
+    if (!result) {
+        // Failed — cleanup
+        if (reg->src) {
+            delete reg->src;
+            reg->src = nullptr;
+        }
+#ifndef _WIN32
+        pthread_mutex_destroy(&reg->mutex);
+#else
+        DeleteCriticalSection(&reg->cs);
+#endif
+        delete reg;
+
+        SendResponse(clientId, id, false,
+            "{\"error\":\"PlayPreview returned 0\"}");
+        return;
+    }
+
+    m_previewReg = static_cast<void*>(reg);
+
+    SendResponse(clientId, id, true,
+        "{\"playing\":true,\"startPos\":" + std::to_string(startPos) + "}");
+}
+
+// ============================================================
+// Sample stop preview command (Issue #106)
+// ============================================================
+
+void CommandHandler::HandleSampleStopPreview(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    preview_register_t* reg = static_cast<preview_register_t*>(m_previewReg);
+    if (!reg) {
+        SendResponse(clientId, id, true,
+            "{\"stopped\":true,\"alreadyStopped\":true}");
+        return;
+    }
+
+    if (m_api.StopPreview) {
+        m_api.StopPreview(reg);
+    }
+
+    if (reg->src) {
+        delete reg->src;
+        reg->src = nullptr;
+    }
+
+#ifndef _WIN32
+    pthread_mutex_destroy(&reg->mutex);
+#else
+    DeleteCriticalSection(&reg->cs);
+#endif
+    delete reg;
+    m_previewReg = nullptr;
+
+    SendResponse(clientId, id, true,
+        "{\"stopped\":true}");
 }
 
 // ============================================================

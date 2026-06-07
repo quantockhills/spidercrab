@@ -73,6 +73,12 @@ struct ReaperAPI {
     // Media/sample
     int (*InsertMedia)(const char* file, int mode) = nullptr;
     const char* (*EnumerateFiles)(const char* path, int fileindex) = nullptr;
+    PCM_source* (*PCM_Source_CreateFromFile)(const char* filename) = nullptr;
+    int (*PlayPreview)(void* preview) = nullptr;
+    int (*StopPreview)(void* preview) = nullptr;
+    double (*GetMediaSourceLength)(PCM_source* source, bool* lengthIsQNOut) = nullptr;
+    int (*GetMediaSourceSampleRate)(PCM_source* source) = nullptr;
+    int (*GetMediaSourceNumChannels)(PCM_source* source) = nullptr;
 
     // Track state chunk (for FX chain save/load)
     bool (*GetTrackStateChunk)(MediaTrack* track, char* strNeedBig, int strNeedBig_sz, bool isundoOptional)
@@ -133,6 +139,11 @@ public:
 
     // Access the playtime state (for tests)
     PlaytimeState& GetPlaytimeState() { return m_playtimeState; }
+
+    // Current preview state (host-side playback via PlayPreview/StopPreview)
+    // Uses void* to avoid depending on preview_register_t in the header.
+    // In .cpp, cast to preview_register_t* when using.
+    void* m_previewReg = nullptr;
 
     // Pre-populate FX cache at extension startup (avoids crash when
     // EnumInstalledFX is called from Chromium WS context due to X11/SWELL
@@ -242,7 +253,9 @@ private:
     void HandleSampleGetDirectory(int clientId, const std::string& id, const std::string& params);
     void HandleSampleSendToTrack(int clientId, const std::string& id, const std::string& params);
     void HandleSampleSendToSlot(int clientId, const std::string& id, const std::string& params);
-    void HandleSampleGetAudioData(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleGetAudioInfo(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplePreview(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleStopPreview(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

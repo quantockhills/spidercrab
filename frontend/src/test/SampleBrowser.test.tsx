@@ -310,16 +310,13 @@ describe('SampleBrowser', () => {
   });
 
   it('shows audio preview panel when play button is clicked', async () => {
-    // Mock sendCommand to return fake audio data
+    // Mock sendCommand to return audio info (Issue #106: sample/getAudioInfo)
     mockSendCommand.mockResolvedValue({
       payload: {
+        duration: 10.5,
         sampleRate: 44100,
-        channels: 1,
-        bitDepth: 16,
-        format: 'wav',
-        fileSize: 1024,
-        dataSize: 1024,
-        data: '', // empty base64 — will cause decode error, but preview panel opens
+        channels: 2,
+        peaks: [0.1, 0.3, 0.5, 0.8, 0.6, 0.4, 0.2, 0.1],
       },
     });
 
@@ -342,9 +339,9 @@ describe('SampleBrowser', () => {
     const playButtons = screen.getAllByLabelText('Preview');
     fireEvent.click(playButtons[0]);
 
-    // Preview panel should open with loading state
+    // Preview panel should show the waveform (peaks loaded)
     await waitFor(() => {
-      expect(screen.getByText(/Loading audio/i)).toBeDefined();
+      expect(screen.getByLabelText(/Play/i)).toBeDefined();
     });
   });
 
