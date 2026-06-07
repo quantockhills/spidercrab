@@ -4079,16 +4079,6 @@ TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
 //
 // Playtime 2 C API has no clip-triggering functions. Matrix commands
 // must work via MIDI notes sent to the Playtime 2 virtual MIDI input.
-// 
-
-    // Verify balanced JSON
-    int depth = 0;
-    for (char c : resp) {
-        if (c == '{') depth++;
-        if (c == '}') depth--;
-    }
-    EXPECT_EQ(depth, 0);
-}
 
 TEST(PlaytimeCommandTest, LaunchRecognizedAsValidCommand)
 {
@@ -4136,17 +4126,6 @@ TEST(PlaytimeCommandTest, LaunchReturnsProperPayloadStructure)
     EXPECT_NE(resp.find("\"type\":\"response\""), std::string::npos);
     EXPECT_NE(resp.find("\"id\":\"pl3\""), std::string::npos);
     EXPECT_NE(resp.find("\"payload\":{"), std::string::npos);
-
-    // Verify balanced JSON
-    int depth = 0;
-    for (char c : resp) {
-        if (c == '{') depth++;
-        if (c == '}') depth--;
-    }
-    EXPECT_EQ(depth, 0);
-}
-
-// 
 
     // Verify balanced JSON
     int depth = 0;
@@ -4334,13 +4313,6 @@ TEST(MatrixRecordSlotTest, RecordSlotSendsMidiNoteWhenAvailable)
     EXPECT_EQ(messages[0].d1, 36) << "Note 36 for slot (0,0)";
 }
 
-// 
-        if (c == '{') depth++;
-        if (c == '}') depth--;
-    }
-    EXPECT_EQ(depth, 0);
-}
-
 TEST(PlaytimePollTest, PollStateReturnsPlaytimeUnavailableInTests)
 {
     // When Playtime API is not loaded, pollState should reflect that
@@ -4458,32 +4430,6 @@ TEST(PlaytimeStateTest, RecordingThenTriggerSlotWorksCorrectly)
         R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":4},"id":"t1"})");
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
-}
-
-// 
-
-    MockState state;
-    state.tracks = {};
-
-    std::vector<std::string> responses;
-    auto handler = MakeMockHandler(&state, &responses);
-
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + testDir.string() + R"("},"id":"sr1"})";
-    handler->HandleMessage(1, cmd);
-
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
-    // Should find 4 RfxChain files across subdirectories
-    EXPECT_NE(resp.find("vca_comp"), std::string::npos);
-    EXPECT_NE(resp.find("hall"), std::string::npos);
-    EXPECT_NE(resp.find("room"), std::string::npos);
-    EXPECT_NE(resp.find("deep_nested"), std::string::npos);
-    // Should NOT include .txt files
-    EXPECT_EQ(resp.find("ignore.txt"), std::string::npos);
-
-
-    fs::remove_all(testDir);
 }
 
 TEST(FxChainTest, SearchRecursiveFiltersByQuery)
