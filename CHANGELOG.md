@@ -1,5 +1,5 @@
 
-## v0.2.3-alpha — 2026-06-06
+## v0.2.3-alpha — 2026-06-07
 
 ### Features
 - **Inline FX search** — long-press on the FX area of a track card to open an inline search bar (Issue #102):
@@ -14,6 +14,8 @@
   - Auto-caches on `SetConfigDir` change
   - Paginated results (16/page)
   - Refresh Cache button in Settings
+- **Inline FX search + FX chains** — inline search now also finds and loads FX chains (Issue #105)
+- **Tap to bypass FX, long-press to remove** — tap toggles bypass on track cards, long-press (500ms) shows delete confirmation (Issue #104)
 - **macOS (dylib) build target** — extension compiles as `reaper_spidercrab.dylib` (Issue #100)
 - **Windows cross-compilation** — build Windows DLL from Linux using xwin + clang-cl (Issue #72)
 - **OSC over UDP** — replace MIDI polling with OSC for ReaLearn two-way sync (Issue #98):
@@ -23,8 +25,9 @@
 
 ### Fixes
 - **Restored 18 C++ tests** — merge regression left MakeMockHandler missing 10 API function pointer assignments (FxReorder, FxPreset, SequencerConvert)
-- **C++ test suite**: 288/288 tests passing
-- **Frontend test suite**: 362/362 tests passing
+- **Fixed fxChainSearchCached destructure** — missing hook destructure in App.tsx caused ReferenceError on chain search (Issue #105)
+- **C++ test suite**: 294/294 tests passing
+- **Frontend test suite**: 368/368 tests passing
 - **Fixed I_RECINPUT** — record mode toggle now sets I_RECINPUT alongside I_RECMODE (Issue #99)
 - **ESLint**: Clean
 - **make lint + make check**: Clean
