@@ -89,7 +89,7 @@ export function useFxChains() {
   const fxChainSearchCached = useCallback(
     async (query: string, rootPath: string, offset: number = 0, limit: number = 16): Promise<FxChainCachedSearchResult> => {
       const resp = await send('fxchain/searchCached', { query, rootPath, offset, limit });
-      return resp.payload as FxChainCachedSearchResult;
+      return resp.payload as unknown as FxChainCachedSearchResult;
     },
     [send],
   );

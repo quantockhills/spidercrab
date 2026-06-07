@@ -83,11 +83,17 @@ FxChainCache::SearchResult FxChainCache::Search(
 
     std::string lowerQuery = toLower(query);
 
-    // Collect all matching entries (filename-only, case-insensitive)
+    // Collect matching entries — match on filename OR relative path (folder names)
     std::vector<const Entry*> matches;
     for (const auto& e : m_entries) {
         std::string lowerName = toLower(e.name);
-        bool matched = query.empty() || lowerName.find(lowerQuery) != std::string::npos;
+        // Compute relative path for folder-name matching
+        std::string relPath = e.filePath.size() > m_rootPath.size()
+            ? e.filePath.substr(m_rootPath.size()) : e.filePath;
+        std::string lowerRelPath = toLower(relPath);
+        bool matched = query.empty()
+            || lowerName.find(lowerQuery) != std::string::npos
+            || lowerRelPath.find(lowerQuery) != std::string::npos;
         if (matched) {
             matches.push_back(&e);
         }
