@@ -1382,31 +1382,24 @@ function InlineFxSearch({
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load all FX and chains on mount (in parallel)
+  // Load all FX and chains on mount (in parallel).
+  // Show FX results immediately, don't wait for chains.
   useEffect(() => {
     let cancelled = false;
-    const promises: Promise<void>[] = [
-      enumerateFx().then((fx) => {
-        if (!cancelled) setAllFx(fx);
-      }).catch(() => { /* ignore */ }),
-    ];
-    if (searchChains) {
-      // Load chains with empty query to get all
-      promises.push(
-        searchChains('').then((chains) => {
-          if (!cancelled) setAllChains(chains);
-        }).catch(() => { /* ignore */ }),
-      );
-    }
-    Promise.all(promises).then(() => {
+    enumerateFx().then((fx) => {
       if (!cancelled) {
+        setAllFx(fx);
         setLoading(false);
-        // Auto-focus input after render
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     }).catch(() => {
       if (!cancelled) setLoading(false);
     });
+    if (searchChains) {
+      searchChains('').then((chains) => {
+        if (!cancelled) setAllChains(chains);
+      }).catch(() => { /* ignore */ });
+    }
     return () => { cancelled = true; };
   }, [enumerateFx, searchChains]);
 

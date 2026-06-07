@@ -72,16 +72,18 @@ async function setupMockWs(page: any): Promise<void> {
           break;
         }
 
-        case 'sample/getAudioData':
+        case 'sample/getAudioInfo':
           respond({
+            duration: 10.5,
             sampleRate: 44100,
-            channels: 1,
-            bitDepth: 16,
-            format: 'wav',
-            fileSize: 88244,
-            dataSize: 88200,
-            data: '',
+            channels: 2,
+            peaks: [0.1, 0.3, 0.5, 0.8, 0.6, 0.4, 0.2, 0.1],
           });
+          break;
+
+        case 'sample/preview':
+        case 'sample/stopPreview':
+          respond({ status: 'ok' });
           break;
 
         case 'fx/enumerate':

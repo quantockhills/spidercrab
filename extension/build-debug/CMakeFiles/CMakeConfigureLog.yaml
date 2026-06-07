@@ -1761,3 +1761,1221 @@ events:
         
       exitCode: 2
 ...
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" failed.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      1
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ 
+      Build flags: 
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CMakeCXXCompilerId.o"
+      
+      The CXX compiler identification is GNU, found in:
+        /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/4.3.3/CompilerIdCXX/CMakeCXXCompilerId.o
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" failed.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cc 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      1
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cc 
+      Build flags: 
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.o"
+      
+      The C compiler identification is GNU, found in:
+        /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/4.3.3/CompilerIdC/CMakeCCompilerId.o
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-a2JISS"
+      binary: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-a2JISS"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-a2JISS'
+        
+        Run Build Command(s): /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E env VERBOSE=1 /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make -f Makefile cmTC_e2066/fast
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make  -f CMakeFiles/cmTC_e2066.dir/build.make CMakeFiles/cmTC_e2066.dir/build
+        make[1]: Entering directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-a2JISS'
+        Building CXX object CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++   -v -o CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o -c /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp
+        Using built-in specs.
+        COLLECT_GCC=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++
+        Target: x86_64-pc-linux-gnu
+        Configured with: ../configure --prefix=/home/linuxbrew/.linuxbrew/opt/gcc --libdir=/home/linuxbrew/.linuxbrew/opt/gcc/lib/gcc/current --disable-nls --enable-checking=release --with-gcc-major-version-only --enable-languages=c,c++,objc,obj-c++,fortran,m2 --program-suffix=-15 --with-gmp=/home/linuxbrew/.linuxbrew/opt/gmp --with-mpfr=/home/linuxbrew/.linuxbrew/opt/mpfr --with-mpc=/home/linuxbrew/.linuxbrew/opt/libmpc --with-isl=/home/linuxbrew/.linuxbrew/opt/isl --with-zstd=/home/linuxbrew/.linuxbrew/opt/zstd --with-pkgversion='Homebrew GCC 15.2.0_1' --with-bugurl=https://github.com/Homebrew/homebrew-core/issues --with-system-zlib --disable-multilib --enable-default-pie
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 15.2.0 (Homebrew GCC 15.2.0_1) 
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e2066.dir/'
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -iprefix /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/ -D_GNU_SOURCE /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_e2066.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -o /tmp/ccyW63FX.s
+        GNU C++17 (Homebrew GCC 15.2.0_1) version 15.2.0 (x86_64-pc-linux-gnu)
+        	compiled by GNU C version 15.2.0, GMP version 6.3.0, MPFR version 4.2.2, MPC version 1.3.1, isl version isl-0.27-GMP
+        
+        warning: MPC header version 1.3.1 differs from library version 1.4.1.
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring nonexistent directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../x86_64-pc-linux-gnu/include"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/x86_64-pc-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/backward"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include"
+        ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed/x86_64-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed"
+        ignoring nonexistent directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../x86_64-pc-linux-gnu/include"
+        ignoring nonexistent directory "/usr/include/x86_64-linux-gnu"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/x86_64-pc-linux-gnu
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/backward
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed/x86_64-linux-gnu
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed
+         /usr/local/include
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../include
+         /usr/include
+        End of search list.
+        Compiler executable checksum: 3bd3fb3e58763fe7544fc75eb157cd87
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e2066.dir/'
+         as -v --64 -o CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o /tmp/ccyW63FX.s
+        GNU assembler version 2.46.0 (x86_64-pc-linux-gnu) using BFD version (GNU Binutils) 2.46.0.20260210
+        COMPILER_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/
+        LIBRARY_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../:/lib/x86_64-linux-gnu/:/lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.'
+        Linking CXX executable cmTC_e2066
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e2066.dir/link.txt --verbose=1
+        Using built-in specs.
+        COLLECT_GCC=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++
+        COLLECT_LTO_WRAPPER=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper
+        Target: x86_64-pc-linux-gnu
+        Configured with: ../configure --prefix=/home/linuxbrew/.linuxbrew/opt/gcc --libdir=/home/linuxbrew/.linuxbrew/opt/gcc/lib/gcc/current --disable-nls --enable-checking=release --with-gcc-major-version-only --enable-languages=c,c++,objc,obj-c++,fortran,m2 --program-suffix=-15 --with-gmp=/home/linuxbrew/.linuxbrew/opt/gmp --with-mpfr=/home/linuxbrew/.linuxbrew/opt/mpfr --with-mpc=/home/linuxbrew/.linuxbrew/opt/libmpc --with-isl=/home/linuxbrew/.linuxbrew/opt/isl --with-zstd=/home/linuxbrew/.linuxbrew/opt/zstd --with-pkgversion='Homebrew GCC 15.2.0_1' --with-bugurl=https://github.com/Homebrew/homebrew-core/issues --with-system-zlib --disable-multilib --enable-default-pie
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 15.2.0 (Homebrew GCC 15.2.0_1) 
+        COMPILER_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/
+        LIBRARY_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../:/lib/x86_64-linux-gnu/:/lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_e2066' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_e2066.'
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/collect2 -plugin /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/liblto_plugin.so -plugin-opt=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper -plugin-opt=-fresolution=/tmp/cc8ie5zY.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -o cmTC_e2066 Scrt1.o crti.o /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtbeginS.o -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15 -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../.. -L/lib/x86_64-linux-gnu -L/lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib -v CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtendS.o crtn.o
+        collect2 version 15.2.0
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/ld -plugin /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/liblto_plugin.so -plugin-opt=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper -plugin-opt=-fresolution=/tmp/cc8ie5zY.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -o cmTC_e2066 Scrt1.o crti.o /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtbeginS.o -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15 -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../.. -L/lib/x86_64-linux-gnu -L/lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib -v CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtendS.o crtn.o
+        GNU ld (GNU Binutils) 2.46.0.20260210
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+        collect2: error: ld returned 1 exit status
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++  -v -Wl,-v CMakeFiles/cmTC_e2066.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_e2066
+        make[1]: *** [CMakeFiles/cmTC_e2066.dir/build.make:102: cmTC_e2066] Error 1
+        make[1]: Leaving directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-a2JISS'
+        make: *** [Makefile:134: cmTC_e2066/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeTestCXXCompiler.cmake:56 (try_compile)"
+      - "CMakeLists.txt:2 (project)"
+    checks:
+      - "Check for working CXX compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++"
+    directories:
+      source: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-8tltwK"
+      binary: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-8tltwK"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_COMPILER_WORKS"
+      cached: true
+      stdout: |
+        Change Dir: '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-8tltwK'
+        
+        Run Build Command(s): /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E env VERBOSE=1 /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make -f Makefile cmTC_8fab0/fast
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make  -f CMakeFiles/cmTC_8fab0.dir/build.make CMakeFiles/cmTC_8fab0.dir/build
+        make[1]: Entering directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-8tltwK'
+        Building CXX object CMakeFiles/cmTC_8fab0.dir/testCXXCompiler.cxx.o
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++    -o CMakeFiles/cmTC_8fab0.dir/testCXXCompiler.cxx.o -c /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-8tltwK/testCXXCompiler.cxx
+        Linking CXX executable cmTC_8fab0
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_8fab0.dir/link.txt --verbose=1
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+        collect2: error: ld returned 1 exit status
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ CMakeFiles/cmTC_8fab0.dir/testCXXCompiler.cxx.o -o cmTC_8fab0
+        make[1]: *** [CMakeFiles/cmTC_8fab0.dir/build.make:102: cmTC_8fab0] Error 1
+        make[1]: Leaving directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-8tltwK'
+        make: *** [Makefile:134: cmTC_8fab0/fast] Error 2
+        
+      exitCode: 2
+...
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" failed.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      1
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ 
+      Build flags: 
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CMakeCXXCompilerId.o"
+      
+      The CXX compiler identification is GNU, found in:
+        /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/4.3.3/CompilerIdCXX/CMakeCXXCompilerId.o
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" failed.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cc 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      1
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cc 
+      Build flags: 
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.o"
+      
+      The C compiler identification is GNU, found in:
+        /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/4.3.3/CompilerIdC/CMakeCCompilerId.o
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-uBIsD3"
+      binary: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-uBIsD3"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-uBIsD3'
+        
+        Run Build Command(s): /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E env VERBOSE=1 /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make -f Makefile cmTC_c72f2/fast
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make  -f CMakeFiles/cmTC_c72f2.dir/build.make CMakeFiles/cmTC_c72f2.dir/build
+        make[1]: Entering directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-uBIsD3'
+        Building CXX object CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++   -v -o CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o -c /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp
+        Using built-in specs.
+        COLLECT_GCC=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++
+        Target: x86_64-pc-linux-gnu
+        Configured with: ../configure --prefix=/home/linuxbrew/.linuxbrew/opt/gcc --libdir=/home/linuxbrew/.linuxbrew/opt/gcc/lib/gcc/current --disable-nls --enable-checking=release --with-gcc-major-version-only --enable-languages=c,c++,objc,obj-c++,fortran,m2 --program-suffix=-15 --with-gmp=/home/linuxbrew/.linuxbrew/opt/gmp --with-mpfr=/home/linuxbrew/.linuxbrew/opt/mpfr --with-mpc=/home/linuxbrew/.linuxbrew/opt/libmpc --with-isl=/home/linuxbrew/.linuxbrew/opt/isl --with-zstd=/home/linuxbrew/.linuxbrew/opt/zstd --with-pkgversion='Homebrew GCC 15.2.0_1' --with-bugurl=https://github.com/Homebrew/homebrew-core/issues --with-system-zlib --disable-multilib --enable-default-pie
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 15.2.0 (Homebrew GCC 15.2.0_1) 
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_c72f2.dir/'
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -iprefix /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/ -D_GNU_SOURCE /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_c72f2.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -o /tmp/ccpDT8mX.s
+        GNU C++17 (Homebrew GCC 15.2.0_1) version 15.2.0 (x86_64-pc-linux-gnu)
+        	compiled by GNU C version 15.2.0, GMP version 6.3.0, MPFR version 4.2.2, MPC version 1.3.1, isl version isl-0.27-GMP
+        
+        warning: MPC header version 1.3.1 differs from library version 1.4.1.
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring nonexistent directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../x86_64-pc-linux-gnu/include"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/x86_64-pc-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/backward"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include"
+        ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed/x86_64-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed"
+        ignoring nonexistent directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../x86_64-pc-linux-gnu/include"
+        ignoring nonexistent directory "/usr/include/x86_64-linux-gnu"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/x86_64-pc-linux-gnu
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/backward
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed/x86_64-linux-gnu
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed
+         /usr/local/include
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../include
+         /usr/include
+        End of search list.
+        Compiler executable checksum: 3bd3fb3e58763fe7544fc75eb157cd87
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_c72f2.dir/'
+         as -v --64 -o CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o /tmp/ccpDT8mX.s
+        GNU assembler version 2.46.0 (x86_64-pc-linux-gnu) using BFD version (GNU Binutils) 2.46.0.20260210
+        COMPILER_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/
+        LIBRARY_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../:/lib/x86_64-linux-gnu/:/lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.'
+        Linking CXX executable cmTC_c72f2
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_c72f2.dir/link.txt --verbose=1
+        Using built-in specs.
+        COLLECT_GCC=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++
+        COLLECT_LTO_WRAPPER=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper
+        Target: x86_64-pc-linux-gnu
+        Configured with: ../configure --prefix=/home/linuxbrew/.linuxbrew/opt/gcc --libdir=/home/linuxbrew/.linuxbrew/opt/gcc/lib/gcc/current --disable-nls --enable-checking=release --with-gcc-major-version-only --enable-languages=c,c++,objc,obj-c++,fortran,m2 --program-suffix=-15 --with-gmp=/home/linuxbrew/.linuxbrew/opt/gmp --with-mpfr=/home/linuxbrew/.linuxbrew/opt/mpfr --with-mpc=/home/linuxbrew/.linuxbrew/opt/libmpc --with-isl=/home/linuxbrew/.linuxbrew/opt/isl --with-zstd=/home/linuxbrew/.linuxbrew/opt/zstd --with-pkgversion='Homebrew GCC 15.2.0_1' --with-bugurl=https://github.com/Homebrew/homebrew-core/issues --with-system-zlib --disable-multilib --enable-default-pie
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 15.2.0 (Homebrew GCC 15.2.0_1) 
+        COMPILER_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/
+        LIBRARY_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../:/lib/x86_64-linux-gnu/:/lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_c72f2' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_c72f2.'
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/collect2 -plugin /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/liblto_plugin.so -plugin-opt=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper -plugin-opt=-fresolution=/tmp/cczLh5iS.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -o cmTC_c72f2 Scrt1.o crti.o /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtbeginS.o -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15 -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../.. -L/lib/x86_64-linux-gnu -L/lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib -v CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtendS.o crtn.o
+        collect2 version 15.2.0
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/ld -plugin /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/liblto_plugin.so -plugin-opt=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper -plugin-opt=-fresolution=/tmp/cczLh5iS.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -o cmTC_c72f2 Scrt1.o crti.o /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtbeginS.o -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15 -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../.. -L/lib/x86_64-linux-gnu -L/lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib -v CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtendS.o crtn.o
+        GNU ld (GNU Binutils) 2.46.0.20260210
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+        collect2: error: ld returned 1 exit status
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++  -v -Wl,-v CMakeFiles/cmTC_c72f2.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_c72f2
+        make[1]: *** [CMakeFiles/cmTC_c72f2.dir/build.make:102: cmTC_c72f2] Error 1
+        make[1]: Leaving directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-uBIsD3'
+        make: *** [Makefile:134: cmTC_c72f2/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeTestCXXCompiler.cmake:56 (try_compile)"
+      - "CMakeLists.txt:2 (project)"
+    checks:
+      - "Check for working CXX compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++"
+    directories:
+      source: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-Ana8vx"
+      binary: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-Ana8vx"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_COMPILER_WORKS"
+      cached: true
+      stdout: |
+        Change Dir: '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-Ana8vx'
+        
+        Run Build Command(s): /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E env VERBOSE=1 /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make -f Makefile cmTC_b648f/fast
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make  -f CMakeFiles/cmTC_b648f.dir/build.make CMakeFiles/cmTC_b648f.dir/build
+        make[1]: Entering directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-Ana8vx'
+        Building CXX object CMakeFiles/cmTC_b648f.dir/testCXXCompiler.cxx.o
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++    -o CMakeFiles/cmTC_b648f.dir/testCXXCompiler.cxx.o -c /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-Ana8vx/testCXXCompiler.cxx
+        Linking CXX executable cmTC_b648f
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_b648f.dir/link.txt --verbose=1
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+        collect2: error: ld returned 1 exit status
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ CMakeFiles/cmTC_b648f.dir/testCXXCompiler.cxx.o -o cmTC_b648f
+        make[1]: *** [CMakeFiles/cmTC_b648f.dir/build.make:102: cmTC_b648f] Error 1
+        make[1]: Leaving directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-Ana8vx'
+        make: *** [Makefile:134: cmTC_b648f/fast] Error 2
+        
+      exitCode: 2
+...
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" failed.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      1
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ 
+      Build flags: 
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CMakeCXXCompilerId.o"
+      
+      The CXX compiler identification is GNU, found in:
+        /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/4.3.3/CompilerIdCXX/CMakeCXXCompilerId.o
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" failed.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cc 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      1
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+      /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+      collect2: error: ld returned 1 exit status
+      
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/"
+    found: "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "/home/sasha/.cargo/bin"
+        - "/home/sasha/.local/bin"
+        - "/home/sasha/.npm-global/bin"
+        - "/usr/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/node/26.0.0/bin"
+        - "/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin"
+        - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/sbin"
+        - "/home/linuxbrew/.linuxbrew/bin"
+        - "/home/linuxbrew/.linuxbrew/sbin"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/sbin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cc 
+      Build flags: 
+      Id flags: -c 
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CMakeCCompilerId.o"
+      
+      The C compiler identification is GNU, found in:
+        /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/4.3.3/CompilerIdC/CMakeCCompilerId.o
+      
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-u4Fw8w"
+      binary: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-u4Fw8w"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-u4Fw8w'
+        
+        Run Build Command(s): /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E env VERBOSE=1 /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make -f Makefile cmTC_81317/fast
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make  -f CMakeFiles/cmTC_81317.dir/build.make CMakeFiles/cmTC_81317.dir/build
+        make[1]: Entering directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-u4Fw8w'
+        Building CXX object CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++   -v -o CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o -c /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp
+        Using built-in specs.
+        COLLECT_GCC=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++
+        Target: x86_64-pc-linux-gnu
+        Configured with: ../configure --prefix=/home/linuxbrew/.linuxbrew/opt/gcc --libdir=/home/linuxbrew/.linuxbrew/opt/gcc/lib/gcc/current --disable-nls --enable-checking=release --with-gcc-major-version-only --enable-languages=c,c++,objc,obj-c++,fortran,m2 --program-suffix=-15 --with-gmp=/home/linuxbrew/.linuxbrew/opt/gmp --with-mpfr=/home/linuxbrew/.linuxbrew/opt/mpfr --with-mpc=/home/linuxbrew/.linuxbrew/opt/libmpc --with-isl=/home/linuxbrew/.linuxbrew/opt/isl --with-zstd=/home/linuxbrew/.linuxbrew/opt/zstd --with-pkgversion='Homebrew GCC 15.2.0_1' --with-bugurl=https://github.com/Homebrew/homebrew-core/issues --with-system-zlib --disable-multilib --enable-default-pie
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 15.2.0 (Homebrew GCC 15.2.0_1) 
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_81317.dir/'
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/cc1plus -quiet -v -imultiarch x86_64-linux-gnu -iprefix /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/ -D_GNU_SOURCE /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeCXXCompilerABI.cpp -quiet -dumpdir CMakeFiles/cmTC_81317.dir/ -dumpbase CMakeCXXCompilerABI.cpp.cpp -dumpbase-ext .cpp -mtune=generic -march=x86-64 -version -o /tmp/cc3GgamD.s
+        GNU C++17 (Homebrew GCC 15.2.0_1) version 15.2.0 (x86_64-pc-linux-gnu)
+        	compiled by GNU C version 15.2.0, GMP version 6.3.0, MPFR version 4.2.2, MPC version 1.3.1, isl version isl-0.27-GMP
+        
+        warning: MPC header version 1.3.1 differs from library version 1.4.1.
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring nonexistent directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../x86_64-pc-linux-gnu/include"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/x86_64-pc-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/backward"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include"
+        ignoring nonexistent directory "/usr/local/include/x86_64-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed/x86_64-linux-gnu"
+        ignoring duplicate directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed"
+        ignoring nonexistent directory "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../x86_64-pc-linux-gnu/include"
+        ignoring nonexistent directory "/usr/include/x86_64-linux-gnu"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/x86_64-pc-linux-gnu
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../../../../include/c++/15/backward
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed/x86_64-linux-gnu
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/include-fixed
+         /usr/local/include
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/../../../../include
+         /usr/include
+        End of search list.
+        Compiler executable checksum: 3bd3fb3e58763fe7544fc75eb157cd87
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_81317.dir/'
+         as -v --64 -o CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o /tmp/cc3GgamD.s
+        GNU assembler version 2.46.0 (x86_64-pc-linux-gnu) using BFD version (GNU Binutils) 2.46.0.20260210
+        COMPILER_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/
+        LIBRARY_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../:/lib/x86_64-linux-gnu/:/lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o' '-c' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.'
+        Linking CXX executable cmTC_81317
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_81317.dir/link.txt --verbose=1
+        Using built-in specs.
+        COLLECT_GCC=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++
+        COLLECT_LTO_WRAPPER=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper
+        Target: x86_64-pc-linux-gnu
+        Configured with: ../configure --prefix=/home/linuxbrew/.linuxbrew/opt/gcc --libdir=/home/linuxbrew/.linuxbrew/opt/gcc/lib/gcc/current --disable-nls --enable-checking=release --with-gcc-major-version-only --enable-languages=c,c++,objc,obj-c++,fortran,m2 --program-suffix=-15 --with-gmp=/home/linuxbrew/.linuxbrew/opt/gmp --with-mpfr=/home/linuxbrew/.linuxbrew/opt/mpfr --with-mpc=/home/linuxbrew/.linuxbrew/opt/libmpc --with-isl=/home/linuxbrew/.linuxbrew/opt/isl --with-zstd=/home/linuxbrew/.linuxbrew/opt/zstd --with-pkgversion='Homebrew GCC 15.2.0_1' --with-bugurl=https://github.com/Homebrew/homebrew-core/issues --with-system-zlib --disable-multilib --enable-default-pie
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 15.2.0 (Homebrew GCC 15.2.0_1) 
+        COMPILER_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/
+        LIBRARY_PATH=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/:/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../../:/lib/x86_64-linux-gnu/:/lib/:/usr/lib/x86_64-linux-gnu/:/usr/lib/
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_81317' '-shared-libgcc' '-mtune=generic' '-march=x86-64' '-dumpdir' 'cmTC_81317.'
+         /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/collect2 -plugin /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/liblto_plugin.so -plugin-opt=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper -plugin-opt=-fresolution=/tmp/ccXL9H0P.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -o cmTC_81317 Scrt1.o crti.o /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtbeginS.o -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15 -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../.. -L/lib/x86_64-linux-gnu -L/lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib -v CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtendS.o crtn.o
+        collect2 version 15.2.0
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/ld -plugin /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/liblto_plugin.so -plugin-opt=/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../libexec/gcc/x86_64-pc-linux-gnu/15/lto-wrapper -plugin-opt=-fresolution=/tmp/ccXL9H0P.res -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lc -plugin-opt=-pass-through=-lgcc_s -plugin-opt=-pass-through=-lgcc --eh-frame-hdr -m elf_x86_64 -dynamic-linker /lib64/ld-linux-x86-64.so.2 -pie -o cmTC_81317 Scrt1.o crti.o /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtbeginS.o -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15 -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc -L/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/../../.. -L/lib/x86_64-linux-gnu -L/lib -L/usr/lib/x86_64-linux-gnu -L/usr/lib -v CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o -lstdc++ -lm -lgcc_s -lgcc -lc -lgcc_s -lgcc /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/gcc/15.2.0_1/bin/../lib/gcc/current/gcc/x86_64-pc-linux-gnu/15/crtendS.o crtn.o
+        GNU ld (GNU Binutils) 2.46.0.20260210
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+        collect2: error: ld returned 1 exit status
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++  -v -Wl,-v CMakeFiles/cmTC_81317.dir/CMakeCXXCompilerABI.cpp.o -o cmTC_81317
+        make[1]: *** [CMakeFiles/cmTC_81317.dir/build.make:102: cmTC_81317] Error 1
+        make[1]: Leaving directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-u4Fw8w'
+        make: *** [Makefile:134: cmTC_81317/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/mnt/HC_Volume_105854834/reaper-portable/linuxbrew/share/cmake/Modules/CMakeTestCXXCompiler.cmake:56 (try_compile)"
+      - "CMakeLists.txt:2 (project)"
+    checks:
+      - "Check for working CXX compiler: /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++"
+    directories:
+      source: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-OtESPs"
+      binary: "/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-OtESPs"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_CXX_COMPILER_WORKS"
+      cached: true
+      stdout: |
+        Change Dir: '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-OtESPs'
+        
+        Run Build Command(s): /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E env VERBOSE=1 /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make -f Makefile cmTC_f367f/fast
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/make  -f CMakeFiles/cmTC_f367f.dir/build.make CMakeFiles/cmTC_f367f.dir/build
+        make[1]: Entering directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-OtESPs'
+        Building CXX object CMakeFiles/cmTC_f367f.dir/testCXXCompiler.cxx.o
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++    -o CMakeFiles/cmTC_f367f.dir/testCXXCompiler.cxx.o -c /home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-OtESPs/testCXXCompiler.cxx
+        Linking CXX executable cmTC_f367f
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f367f.dir/link.txt --verbose=1
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find Scrt1.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find crti.o: No such file or directory
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/Cellar/binutils/2.46.0/bin/ld: cannot find -lm: No such file or directory
+        collect2: error: ld returned 1 exit status
+        /mnt/HC_Volume_105854834/reaper-portable/linuxbrew/bin/g++ CMakeFiles/cmTC_f367f.dir/testCXXCompiler.cxx.o -o cmTC_f367f
+        make[1]: *** [CMakeFiles/cmTC_f367f.dir/build.make:102: cmTC_f367f] Error 1
+        make[1]: Leaving directory '/home/sasha/projects/reaper-ipad/extension/build-debug/CMakeFiles/CMakeScratch/TryCompile-OtESPs'
+        make: *** [Makefile:134: cmTC_f367f/fast] Error 2
+        
+      exitCode: 2
+...

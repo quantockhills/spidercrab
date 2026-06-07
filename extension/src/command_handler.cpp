@@ -1147,16 +1147,8 @@ void CommandHandler::HandleFxChainSearchCached(
     int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
     int limit  = limitStr.empty()  ? 16 : atoi(limitStr.c_str());
 
-    // If rootPath changed from cached path, re-index silently
-    if (!rootPath.empty() && rootPath != m_fxChainCache.RootPath()) {
-        m_fxChainCache.BuildIndex(rootPath);
-    }
-
-    // If cache isn't indexed yet, build it now
-    if (!m_fxChainCache.IsIndexed() && !rootPath.empty()) {
-        m_fxChainCache.BuildIndex(rootPath);
-    }
-
+    // Search against cache only — no filesystem IO.
+    // If cache is empty, user should refresh via Settings.
     auto result = m_fxChainCache.Search(query, offset, limit);
 
     std::string resultsJson = "[";
