@@ -2,12 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Track, FxChainEntry, FxChainInfo, FxChainSearchResult, FxChainCachedSearchResult } from '../hooks/useReaper';
 
 
-interface FxChainSearchResult {
-  filePath: string;
-  name: string;
-  size: number;
-}
-
 interface DirData { chains: FxChainEntry[]; dirs: string[] }
 
 interface FxChainBrowserProps {
@@ -64,11 +58,16 @@ export function FxChainBrowser({
   const [search, setSearch] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<FxChainSearchResult[] | null>(null);
   const [remoteSearchTotal, setRemoteSearchTotal] = useState<number>(0);
-  const [remoteSearchOffset, setRemoteSearchOffset] = useState<number>(0);
   const [remoteSearching, setRemoteSearching] = useState(false);
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pageSize = 16;
+  const pageSize = 100;
+  const [searchPageStart, setSearchPageStart] = useState(0);
+  const [folderPage, setFolderPage] = useState<Map<string, number>>(new Map());
+  const getFolderPage = (path: string) => folderPage.get(path) ?? 0;
+  const setFolderPageFor = useCallback((path: string, page: number) => {
+    setFolderPage(prev => new Map(prev).set(path, page));
+  }, []);
   const [loadingFile, setLoadingFile] = useState<string | null>(null);
   const [loadedFiles, setLoadedFiles] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -163,7 +162,7 @@ export function FxChainBrowser({
     if (!search.trim()) {
       setRemoteSearchResults(null);
       setRemoteSearchTotal(0);
-      setRemoteSearchOffset(0);
+      setSearchPageStart(0);
       setRemoteSearching(false);
       if (searchTimerRef.current) {
         clearTimeout(searchTimerRef.current);
@@ -183,21 +182,14 @@ export function FxChainBrowser({
     }
 
     setRemoteSearching(true);
-    setRemoteSearchOffset(0);
+    setSearchPageStart(0);
     searchTimerRef.current = setTimeout(async () => {
       try {
         if (fxChainSearchCached) {
-          // Use cached search (zero IO, supports pagination)
           const result = await fxChainSearchCached(search, rootPath, 0, pageSize);
           setRemoteSearchResults(result.results);
           setRemoteSearchTotal(result.total);
-          setRemoteSearchOffset(result.offset + result.results.length);
-        } else if (fxChainSearchRecursive) {
-          // Fallback to recursive search (deprecated)
-          const result = await fxChainSearchRecursive(search, rootPath);
-          setRemoteSearchResults(result.results);
-          setRemoteSearchTotal(result.results.length);
-          setRemoteSearchOffset(result.results.length);
+          setSearchPageStart(0);
         } else {
           setRemoteSearchResults([]);
           setRemoteSearchTotal(0);
@@ -215,29 +207,30 @@ export function FxChainBrowser({
         clearTimeout(searchTimerRef.current);
       }
     };
-  }, [search, rootPath, fxChainSearchCached, fxChainSearchRecursive]);
+  }, [search, rootPath, fxChainSearchCached]);
 
-  // Load next page of cached search results
-  const handleNextPage = useCallback(async () => {
-    if (!search.trim() || !rootPath || !fxChainSearchCached || remoteSearchOffset >= remoteSearchTotal) return;
+  const handleNextSearchPage = useCallback(async () => {
+    if (!search.trim() || !rootPath || !fxChainSearchCached) return;
+    const nextStart = searchPageStart + pageSize;
+    if (nextStart >= remoteSearchTotal) return;
     try {
-      const result = await fxChainSearchCached(search, rootPath, remoteSearchOffset, pageSize);
-      setRemoteSearchResults(prev => {
-        const merged = [...(prev || [])];
-        const seenPaths = new Set(merged.map(r => r.filePath));
-        for (const r of result.results) {
-          if (!seenPaths.has(r.filePath)) {
-            merged.push(r);
-            seenPaths.add(r.filePath);
-          }
-        }
-        return merged;
-      });
-      setRemoteSearchOffset(result.offset + result.results.length);
-    } catch {
-      // Silently ignore
-    }
-  }, [search, rootPath, fxChainSearchCached, remoteSearchOffset, remoteSearchTotal]);
+      const result = await fxChainSearchCached(search, rootPath, nextStart, pageSize);
+      setRemoteSearchResults(result.results);
+      setRemoteSearchTotal(result.total);
+      setSearchPageStart(nextStart);
+    } catch { /* ignore */ }
+  }, [search, rootPath, fxChainSearchCached, searchPageStart, remoteSearchTotal, pageSize]);
+
+  const handlePrevSearchPage = useCallback(async () => {
+    if (!search.trim() || !rootPath || !fxChainSearchCached || searchPageStart === 0) return;
+    const prevStart = Math.max(0, searchPageStart - pageSize);
+    try {
+      const result = await fxChainSearchCached(search, rootPath, prevStart, pageSize);
+      setRemoteSearchResults(result.results);
+      setRemoteSearchTotal(result.total);
+      setSearchPageStart(prevStart);
+    } catch { /* ignore */ }
+  }, [search, rootPath, fxChainSearchCached, searchPageStart, pageSize]);
 
   // Merge local and remote results, deduplicate by filePath
 
@@ -263,7 +256,8 @@ export function FxChainBrowser({
     return merged;
   }, [search, allVisibleChains, remoteSearchResults]);
 
-  const hasMoreResults = remoteSearchTotal > (remoteSearchResults ? remoteSearchResults.length : 0);
+  const hasNextSearchPage = searchPageStart + pageSize < remoteSearchTotal;
+  const hasPrevSearchPage = searchPageStart > 0;
 
 
   const selectedTrackName = selectedTrack !== null ? tracks.find(t => t.index === selectedTrack)?.name : null;
@@ -304,10 +298,11 @@ export function FxChainBrowser({
     );
   }
 
-  function DirSection({ dirPath, dirName, depth }: { dirPath: string; dirName: string; depth: number }) {
+  function DirSection({ dirPath, dirName, depth, chainPage, onChainPageChange }: { dirPath: string; dirName: string; depth: number; chainPage: number; onChainPageChange: (path: string, page: number) => void }) {
     const isExpanded = expanded.has(dirPath);
     const isLoading = subLoading.has(dirPath);
     const data = subData.get(dirPath);
+    const chainStart = chainPage * pageSize;
     return (
       <div>
         <button
@@ -323,11 +318,20 @@ export function FxChainBrowser({
         {isExpanded && data && (
           <div style={{ paddingLeft: `${depth * 8}px` }}>
             {data.dirs.map(sub => (
-              <DirSection key={sub} dirPath={joinPath(dirPath, sub)} dirName={sub} depth={depth + 1} />
+              <DirSection key={sub} dirPath={joinPath(dirPath, sub)} dirName={sub} depth={depth + 1} chainPage={getFolderPage(joinPath(dirPath, sub))} onChainPageChange={onChainPageChange} />
             ))}
-            {data.chains.map(c => (
+            {data.chains.slice(chainStart, chainStart + pageSize).map(c => (
               <FileRow key={c.name} filePath={joinPath(dirPath, c.name)} name={c.name} size={c.size} />
             ))}
+            {data.chains.length > pageSize && (
+              <div className="flex items-center justify-between px-3 py-1 border-t border-[var(--border)]">
+                <button onClick={() => onChainPageChange(dirPath, Math.max(0, chainPage - 1))} disabled={chainPage === 0}
+                  className={`px-4 py-2 text-xs min-h-[44px] ${chainPage > 0 ? 'text-[var(--accent-orange)]' : 'text-[var(--text-secondary)]/30 cursor-not-allowed'}`}>← Prev</button>
+                <span className="text-[10px] text-[var(--text-secondary)]">{chainStart + 1}–{Math.min(chainStart + pageSize, data.chains.length)} of {data.chains.length}</span>
+                <button onClick={() => onChainPageChange(dirPath, chainPage + 1)} disabled={chainStart + pageSize >= data.chains.length}
+                  className={`px-4 py-2 text-xs min-h-[44px] ${chainStart + pageSize < data.chains.length ? 'text-[var(--accent-orange)]' : 'text-[var(--text-secondary)]/30 cursor-not-allowed'}`}>Next →</button>
+              </div>
+            )}
             {data.dirs.length === 0 && data.chains.length === 0 && (
               <div className="px-4 py-2 text-[11px] text-[var(--text-secondary)] italic">Empty</div>
             )}
@@ -414,14 +418,21 @@ export function FxChainBrowser({
                     {searchResults.map(c => (
                       <FileRow key={c.filePath} filePath={c.filePath} name={c.name} size={c.size} />
                     ))}
-                    {hasMoreResults && (
-                      <div className="flex justify-center pt-2 pb-1">
+                    {(hasPrevSearchPage || hasNextSearchPage) && (
+                      <div className="flex items-center justify-between px-1 pt-2 pb-1">
                         <button
-                          onClick={handleNextPage}
-                          className="px-6 py-2.5 text-xs font-medium bg-[var(--accent-dim)] text-[var(--accent-orange)] active:brightness-95 transition-colors"
-                        >
-                          Next ({remoteSearchTotal - (remoteSearchResults?.length || 0)} more)
-                        </button>
+                          onClick={handlePrevSearchPage}
+                          disabled={!hasPrevSearchPage}
+                          className={`px-4 py-2.5 text-xs font-medium min-h-[44px] transition-colors ${hasPrevSearchPage ? 'bg-[var(--accent-dim)] text-[var(--accent-orange)] active:brightness-95' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/30 cursor-not-allowed'}`}
+                        >← Prev</button>
+                        <span className="text-[10px] text-[var(--text-secondary)]">
+                          {searchPageStart + 1}–{Math.min(searchPageStart + pageSize, remoteSearchTotal)} of {remoteSearchTotal}
+                        </span>
+                        <button
+                          onClick={handleNextSearchPage}
+                          disabled={!hasNextSearchPage}
+                          className={`px-4 py-2.5 text-xs font-medium min-h-[44px] transition-colors ${hasNextSearchPage ? 'bg-[var(--accent-dim)] text-[var(--accent-orange)] active:brightness-95' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/30 cursor-not-allowed'}`}
+                        >Next →</button>
                       </div>
                     )}
                   </>
@@ -431,11 +442,27 @@ export function FxChainBrowser({
               /* Tree view */
               <div className="space-y-px">
                 {rootData.dirs.map(dir => (
-                  <DirSection key={dir} dirPath={joinPath(rootPath, dir)} dirName={dir} depth={0} />
+                  <DirSection key={dir} dirPath={joinPath(rootPath, dir)} dirName={dir} depth={0} chainPage={getFolderPage(joinPath(rootPath, dir))} onChainPageChange={setFolderPageFor} />
                 ))}
-                {rootData.chains.map(c => (
-                  <FileRow key={c.name} filePath={joinPath(rootPath, c.name)} name={c.name} size={c.size} />
-                ))}
+                {(() => {
+                  const page = getFolderPage(rootPath);
+                  const start = page * pageSize;
+                  const slice = rootData.chains.slice(start, start + pageSize);
+                  return (<>
+                    {slice.map(c => (
+                      <FileRow key={c.name} filePath={joinPath(rootPath, c.name)} name={c.name} size={c.size} />
+                    ))}
+                    {rootData.chains.length > pageSize && (
+                      <div className="flex items-center justify-between px-3 py-1 border-t border-[var(--border)]">
+                        <button onClick={() => setFolderPageFor(rootPath, Math.max(0, page - 1))} disabled={page === 0}
+                          className={`px-4 py-2 text-xs min-h-[44px] ${page > 0 ? 'text-[var(--accent-orange)]' : 'text-[var(--text-secondary)]/30 cursor-not-allowed'}`}>← Prev</button>
+                        <span className="text-[10px] text-[var(--text-secondary)]">{start + 1}–{Math.min(start + pageSize, rootData.chains.length)} of {rootData.chains.length}</span>
+                        <button onClick={() => setFolderPageFor(rootPath, page + 1)} disabled={start + pageSize >= rootData.chains.length}
+                          className={`px-4 py-2 text-xs min-h-[44px] ${start + pageSize < rootData.chains.length ? 'text-[var(--accent-orange)]' : 'text-[var(--text-secondary)]/30 cursor-not-allowed'}`}>Next →</button>
+                      </div>
+                    )}
+                  </>);
+                })()}
                 {rootData.dirs.length === 0 && rootData.chains.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-[var(--text-secondary)] space-y-2">
                     <div className="text-5xl">📭</div>

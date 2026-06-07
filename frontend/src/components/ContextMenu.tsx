@@ -27,7 +27,7 @@ export function ContextMenu({ items, x, y, onClose }: ContextMenuProps) {
 
   // Close on click outside
   const handleClickOutside = useCallback(
-    (e: MouseEvent) => {
+    (e: Event) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }

@@ -534,7 +534,7 @@ interface FxGridProps {
   expandedFx: {trackIdx: number; fxIdx: number; fxName: string} | null;
   setDragActiveTrack: (v: number | null) => void;
   setDragSourceFxIdx: (v: number | null) => void;
-  setDropVisualIdx: (v: number | null) => void;
+  setDropVisualIdx: React.Dispatch<React.SetStateAction<number | null>>;
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   setChainCycler: (v: {trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
@@ -824,7 +824,7 @@ interface FxCardProps {
   expandedFx: {trackIdx: number; fxIdx: number; fxName: string} | null;
   setDragActiveTrack: (v: number | null) => void;
   setDragSourceFxIdx: (v: number | null) => void;
-  setDropVisualIdx: (v: number | null) => void;
+  setDropVisualIdx: React.Dispatch<React.SetStateAction<number | null>>;
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
   onToggleBypass?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
@@ -1382,79 +1382,56 @@ function InlineFxSearch({
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Load all FX and chains on mount (in parallel)
+  // Load FX plugins on mount (chains are fetched on demand via search)
   useEffect(() => {
     let cancelled = false;
-    const promises: Promise<void>[] = [
-      enumerateFx().then((fx) => {
-        if (!cancelled) setAllFx(fx);
-      }).catch(() => { /* ignore */ }),
-    ];
-    if (searchChains) {
-      // Load chains with empty query to get all
-      promises.push(
-        searchChains('').then((chains) => {
-          if (!cancelled) setAllChains(chains);
-        }).catch(() => { /* ignore */ }),
-      );
-    }
-    Promise.all(promises).then(() => {
+    enumerateFx().then((fx) => {
       if (!cancelled) {
+        setAllFx(fx);
         setLoading(false);
-        // Auto-focus input after render
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     }).catch(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [enumerateFx, searchChains]);
+  }, [enumerateFx]);
 
-  // Debounced search filter (filters both FX and chains)
+  // Debounced search: FX filtered client-side, chains fetched server-side
   useEffect(() => {
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-    debounceTimer.current = setTimeout(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+
+    debounceTimer.current = setTimeout(async () => {
       const query = search.toLowerCase().trim();
       const results: ResultItem[] = [];
 
-      // Filter FX
-      if (!query) {
-        for (const fx of allFx) {
+      // FX: client-side filter
+      for (const fx of allFx) {
+        if (!query || cleanFxName(fx.name).toLowerCase().includes(query) || fx.ident.toLowerCase().includes(query)) {
           results.push({ kind: 'fx', fx });
-        }
-      } else {
-        for (const fx of allFx) {
-          const cleanName = cleanFxName(fx.name).toLowerCase();
-          if (cleanName.includes(query) || fx.ident.toLowerCase().includes(query)) {
-            results.push({ kind: 'fx', fx });
-          }
         }
       }
 
-      // Filter chains
-      if (!query) {
-        for (const chain of allChains) {
-          results.push({ kind: 'chain', chain });
-        }
-      } else {
-        for (const chain of allChains) {
-          const cleanName = chain.name.replace(/\.RfxChain$/i, '').toLowerCase();
-          if (cleanName.includes(query) || chain.filePath.toLowerCase().includes(query)) {
+      // Chains: server-side search (only when query is non-empty)
+      if (query && searchChains) {
+        try {
+          const chains = await searchChains(query);
+          setAllChains(chains);
+          for (const chain of chains) {
             results.push({ kind: 'chain', chain });
           }
-        }
+        } catch { /* ignore */ }
+      } else {
+        setAllChains([]);
       }
 
       setFilteredResults(results);
     }, 300);
+
     return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [search, allFx, allChains]);
+  }, [search, allFx, searchChains]);
 
   const handleAddFx = useCallback(
     async (fx: EnumeratedFx) => {

@@ -39,14 +39,7 @@ export interface UseReaperOptions {
   port?: number;
 }
 
-export function useReaper(_opts?: UseReaperOptions): ReturnType<typeof useReaperClient> &
-  ReturnType<typeof useTransport> &
-  ReturnType<typeof useTrackState> &
-  ReturnType<typeof useFx> &
-  ReturnType<typeof useFxChains> &
-  ReturnType<typeof useSampleBrowser> &
-  ReturnType<typeof usePlaytime> &
-  ReturnType<typeof useSequencer> {
+export function useReaper(_opts?: UseReaperOptions) {
   // _opts is unused — host/port are configured via ReaperClientProvider
   void _opts;
   const { connected, send, onEvent, clientRef } = useReaperClient();
@@ -93,6 +86,10 @@ export function useReaper(_opts?: UseReaperOptions): ReturnType<typeof useReaper
 
     // From useSequencer
     ...sequencer,
+
+    // Stubs for features not yet in domain hooks
+    fxChainCycle: useCallback(async (_trackIdx: number, _dir: 'next' | 'prev', _chainPath?: string) => ({ success: false as boolean }), []),
+    convertToClip: useCallback(async (): Promise<{success: boolean; error?: string}> => ({ success: false, error: 'not implemented' }), []),
 
     // Low-level access (kept for backward compat)
     clientRef,

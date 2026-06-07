@@ -7,6 +7,7 @@ export interface FxInfo {
   index: number;
   name: string;
   bypassed?: boolean;
+  chainPath?: string;
 }
 
 export interface EnumeratedFx {
