@@ -1001,11 +1001,11 @@ function FxCard({
         ${isDropTarget && !isDragSource ? 'ring-[var(--accent-orange)] bg-[var(--accent-orange)]/10' : ''}
         ${isBypassed && !showDeleteConfirm ? 'opacity-40 grayscale' : ''}
       `}
+      onClick={handleCardClick}
     >
-      {/* Card body — tap to toggle bypass */}
+      {/* Card body */}
       <div
         className="flex-1 w-full flex flex-col items-center justify-center"
-        onClick={handleCardClick}
       >
         {showDeleteConfirm ? (
           <div className="flex items-center gap-1">
