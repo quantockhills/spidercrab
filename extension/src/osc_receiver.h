@@ -203,11 +203,13 @@ public:
         const std::vector<uint8_t>& data,
         std::string& outAddress,
         std::vector<int>& outIntArgs,
-        std::vector<std::string>& outStrArgs) const
+        std::vector<std::string>& outStrArgs,
+        std::vector<float>& outFloatArgs) const
     {
         outAddress.clear();
         outIntArgs.clear();
         outStrArgs.clear();
+        outFloatArgs.clear();
 
         if (data.size() < 4)
             return false;
@@ -269,7 +271,16 @@ public:
                 break;
             }
             case 'f': {
-                // Float (4 bytes, big-endian IEEE 754) - skip for now
+                // Float (4 bytes, big-endian IEEE 754)
+                if (pos + 4 <= data.size()) {
+                    uint32_t bits = (static_cast<uint32_t>(data[pos]) << 24) |
+                                    (static_cast<uint32_t>(data[pos + 1]) << 16) |
+                                    (static_cast<uint32_t>(data[pos + 2]) << 8) |
+                                     static_cast<uint32_t>(data[pos + 3]);
+                    float val;
+                    memcpy(&val, &bits, 4);
+                    outFloatArgs.push_back(val);
+                }
                 pos += 4;
                 break;
             }
@@ -350,64 +361,107 @@ private:
     }
 
     // Dispatch a received OSC packet to the appropriate callback
+    // Try to parse /playtime/slot/{col}/{row}/{action} — returns true on match
+    static bool parseSlotAddress(const std::string& addr, int& col, int& row, std::string& action)
+    {
+        // expects: /playtime/slot/COL/ROW/ACTION
+        const char* p = addr.c_str();
+        if (strncmp(p, "/playtime/slot/", 15) != 0) return false;
+        p += 15;
+        char* end;
+        col = static_cast<int>(strtol(p, &end, 10));
+        if (end == p || *end != '/') return false;
+        p = end + 1;
+        row = static_cast<int>(strtol(p, &end, 10));
+        if (end == p || *end != '/') return false;
+        action = std::string(end + 1);
+        return true;
+    }
+
     void dispatchPacket(const std::vector<uint8_t>& data)
     {
-        std::string address;
-        std::vector<int> intArgs;
-        std::vector<std::string> strArgs;
+        { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "packet: %zu bytes\n", data.size()); fclose(f); } }
 
-        if (!parseMessage(data, address, intArgs, strArgs)) {
-            fprintf(stderr, "[spidercrab] osc_receiver: failed to parse OSC packet "
-                            "(%zu bytes)\n",
-                data.size());
+        // OSC bundle: "#bundle\0" + 8-byte timetag + (4-byte size + element)*
+        if (data.size() >= 16 && memcmp(data.data(), "#bundle\0", 8) == 0) {
+            size_t pos = 16;
+            while (pos + 4 <= data.size()) {
+                uint32_t elemSize = (static_cast<uint32_t>(data[pos]) << 24) |
+                                    (static_cast<uint32_t>(data[pos+1]) << 16) |
+                                    (static_cast<uint32_t>(data[pos+2]) << 8) |
+                                     static_cast<uint32_t>(data[pos+3]);
+                pos += 4;
+                if (pos + elemSize > data.size()) break;
+                std::vector<uint8_t> elem(data.begin() + pos, data.begin() + pos + elemSize);
+                dispatchPacket(elem);
+                pos += elemSize;
+            }
             return;
         }
 
+        std::string address;
+        std::vector<int> intArgs;
+        std::vector<std::string> strArgs;
+        std::vector<float> floatArgs;
+
+        if (!parseMessage(data, address, intArgs, strArgs, floatArgs)) {
+            { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "parse FAILED: %zu bytes\n", data.size()); fclose(f); } }
+            return;
+        }
+
+        // DEBUG: log received addresses to file
+        { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "addr='%s' f0=%.4f\n", address.c_str(), floatArgs.empty() ? -1.f : floatArgs[0]); fclose(f); } }
+
         // Dispatch based on address
         if (address == "/playtime/slot/state" && m_slotStateCb) {
+            // Native Helgobox format: iiiis (col, row, stateId, flags, stateName)
             if (intArgs.size() >= 2) {
                 int col = intArgs[0];
                 int row = intArgs[1];
-
-                // Determine state from stateId (third int) or state name string
                 std::string state;
                 if (intArgs.size() >= 3) {
-                    int stateId = intArgs[2];
-                    switch (stateId) {
-                    case 0:
-                        state = "stopped";
-                        break;
-                    case 1:
-                        state = "playing";
-                        break;
-                    case 2:
-                        state = "recording";
-                        break;
-                    case 3:
-                        state = "empty";
-                        break;
-                    case 4:
-                        state = "queued";
-                        break;
-                    default:
-                        state = "stopped";
-                        break;
+                    switch (intArgs[2]) {
+                    case 0: state = "stopped";   break;
+                    case 1: state = "playing";   break;
+                    case 2: state = "recording"; break;
+                    case 3: state = "empty";     break;
+                    case 4: state = "queued";    break;
+                    default: state = "stopped";  break;
                     }
                 } else if (!strArgs.empty()) {
                     state = strArgs[0];
                 } else {
                     state = "stopped";
                 }
-
                 m_slotStateCb(col, row, state);
             }
-        } else if (address == "/playtime/slot/color" && m_slotStateCb) {
-            // Alternative format: color change notification
-            if (intArgs.size() >= 2) {
-                m_slotStateCb(intArgs[0], intArgs[1], "stopped");
+        } else if (m_slotStateCb) {
+            // Per-slot float feedback from ReaLearn mapping:
+            //   /playtime/slot/{col}/{row}/trigger  f  (>0 = playing, 0 = stopped)
+            //   /playtime/slot/{col}/{row}/record   f  (>0 = recording)
+            int col, row;
+            std::string action;
+            if (parseSlotAddress(address, col, row, action)) {
+                float val = floatArgs.empty() ? 0.0f : floatArgs[0];
+                std::string state;
+                if (action == "trigger") {
+                    // ReaLearn encodes Playtime clip state as float ranges:
+                    // >0.95=playing, >0.82=recording, >0.62=playing(queued),
+                    // >0.30=recording(queued), >0.05=stopped, else=empty
+                    if      (val > 0.95f) state = "playing";
+                    else if (val > 0.82f) state = "recording";
+                    else if (val > 0.62f) state = "playing";
+                    else if (val > 0.30f) state = "recording";
+                    else if (val > 0.05f) state = "stopped";
+                    else                  state = "empty";
+                } else if (action == "record") {
+                    state = (val > 0.05f) ? "recording" : "stopped";
+                }
+                if (!state.empty()) {
+                    m_slotStateCb(col, row, state);
+                }
             }
         }
-        // Unknown addresses are silently ignored (ReaLearn may send
-        // status messages we don't care about)
+        // Unknown addresses are silently ignored
     }
 };

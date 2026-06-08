@@ -349,139 +349,91 @@ export function SessionView({
       </div>
 
       {/* Column headers */}
-      <div className="grid gap-px px-3 pt-2 border-b border-[var(--border)]" style={{
-        gridTemplateColumns: `repeat(${cols}, 1fr) 32px`,
-      }}>
-        {Array.from({ length: cols }, (_, col) => {
-          const trackName = tracks?.[col]?.name || `Track ${col + 1}`;
-          return (
-            <div
-              key={`col-header-${col}`}
-              className="flex items-center justify-center text-[10px] font-semibold text-[var(--text-secondary)] truncate px-1 py-1.5 border-b border-[var(--border)]"
-              title={trackName}
-              data-col={col}
-              aria-label={`Column ${col + 1}: ${trackName}`}
-            >
-              {trackName}
-            </div>
-          );
-        })}
-        <div className="border-b border-[var(--border)]" />
-      </div>
+      {(() => {
+        const matrixTracks = (tracks ?? []).filter(t => !/helgobox|realearn/i.test(t.name));
+        return (
+          <div className="flex gap-px px-3 pt-2 border-b border-[var(--border)]">
+            {Array.from({ length: cols }, (_, col) => {
+              const trackName = matrixTracks[col]?.name || `Track ${col + 1}`;
+              return (
+                <div
+                  key={col}
+                  className="flex-1 flex items-center justify-center text-[10px] font-semibold text-[var(--text-secondary)] truncate px-1 py-1.5"
+                  title={trackName}
+                >
+                  {trackName}
+                </div>
+              );
+            })}
+            <div className="w-8" />
+          </div>
+        );
+      })()}
 
       {/* Grid area */}
       <div className="flex-1 overflow-y-auto p-3">
-        <div className="grid gap-px" style={{
-          gridTemplateColumns: `repeat(${cols}, 1fr) 32px`,
-          gridTemplateRows: `repeat(${rows}, 1fr)`,
-        }}>
-          {/* Clip slots */}
-          {Array.from({ length: rows }, (_, row) =>
-            Array.from({ length: cols }, (_, col) => {
-              const slot = slotMap.get(`${col},${row}`);
-              const state = slot?.state ?? 'empty';
-              const color = stateColor(state);
-              const name = slot?.name ?? '';
-              const clipType = slot?.clipType ?? 'none';
-
-              return (
-                <button
-                  key={`${col}-${row}`}
-                  onClick={() => handleSlotTap(col, row)}
-                  className={`
-                    relative flex flex-col items-center justify-center
-                    aspect-square min-h-[44px] min-w-[44px]
-                    transition-all duration-75
-                    cursor-pointer overflow-hidden
-                    ${state === 'empty' ? 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]' : ''}
-                    ${state === 'stopped' ? 'bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)]/30 text-[var(--text-primary)]' : ''}
-                    ${state === 'playing' ? 'bg-[var(--accent-green)] text-black hover:brightness-110' : ''}
-                    ${state === 'recording' ? 'bg-[var(--accent-red)] text-black animate-pulse hover:brightness-110' : ''}
-                    active:brightness-90
-                  `}
-                  data-col={col}
-                  data-row={row}
-                  data-state={state}
-                  aria-label={`Slot ${col + 1},${row + 1}`}
-                >
-
-                  {/* Clip type icon */}
-                  {clipType === 'midi' && (
-                    <span className="text-[10px] opacity-50">♪</span>
-                  )}
-                  {clipType === 'audio' && (
-                    <span className="text-[10px] opacity-50">🔊</span>
-                  )}
-
-                  {/* Clip name (truncated) */}
-                  {name && (
-                    <span className="text-[9px] leading-tight text-center px-0.5 truncate w-full mt-0.5">
-                      {name}
-                    </span>
-                  )}
-
-                  {/* Reverse toggle button — shown on non-empty clips (Issue #75) */}
-                  {state !== 'empty' && onSetSlotReverse && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReverseToggle(col, row, slot?.reversed ?? false);
-                      }}
-                      className={`
-                        absolute top-0.5 right-0.5
-                        w-4 h-4 flex items-center justify-center
-                        rounded text-[9px] font-bold leading-none
-                        transition-all active:scale-90
-                        ${slot?.reversed
-                          ? 'bg-[var(--accent-orange)] text-black'
-                          : 'bg-black/20 text-[var(--text-secondary)] hover:bg-black/40'
-                        }
-                      `}
-                      title={slot?.reversed ? 'Forward' : 'Reverse'}
-                      aria-label={`Reverse slot ${col + 1},${row + 1}`}
-                    >
-                      {slot?.reversed ? '◄' : '↻'}
-                    </button>
-                  )}
-
-                  {/* State indicator icon */}
-                  {state === 'playing' && (
-                    <span className="absolute bottom-0.5 right-0.5 text-[8px] opacity-70">▶</span>
-                  )}
-                  {state === 'recording' && (
-                    <span className="absolute bottom-0.5 right-0.5 text-[8px] text-[var(--accent-red)] opacity-80">●</span>
-                  )}
-
-                  {/* Reversed visual indicator — reversed badge when clip is reversed */}
-                  {slot?.reversed && state !== 'empty' && (
-                    <span className="absolute top-0.5 left-0.5 text-[7px] font-bold text-[var(--accent-orange)] opacity-90">
-                      R
-                    </span>
-                  )}
-                </button>
-              );
-            }),
-          )}
-
-          {/* Scene launch buttons (right column) */}
+        <div className="flex flex-col gap-px">
           {Array.from({ length: rows }, (_, row) => (
-            <button
-              key={`scene-${row}`}
-              onClick={() => handleSceneLaunch(row)}
-              className={`
-                flex items-center justify-center
-                aspect-square min-h-[44px] min-w-[32px]
-                text-[10px] font-semibold
-                transition-colors active:brightness-90 cursor-pointer
-                ${activeScene === row
-                  ? 'bg-[var(--accent-orange)]/30 text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/50'
-                  : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
-                }
-              `}
-              aria-label={`Scene ${row + 1}`}
-            >
-              Scene {row + 1}
-            </button>
+            <div key={row} className="flex gap-px">
+              {Array.from({ length: cols }, (_, col) => {
+                const slot = slotMap.get(`${col},${row}`);
+                const state = slot?.state ?? 'empty';
+                const name = slot?.name ?? '';
+                const clipType = slot?.clipType ?? 'none';
+                return (
+                  <button
+                    key={col}
+                    onClick={() => handleSlotTap(col, row)}
+                    className={`
+                      relative flex-1 flex flex-col items-center justify-center
+                      aspect-square min-h-[44px]
+                      transition-all duration-75 cursor-pointer overflow-hidden
+                      ${state === 'empty' ? 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]' : ''}
+                      ${state === 'stopped' ? 'bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)]/30 text-[var(--text-primary)]' : ''}
+                      ${state === 'playing' ? 'bg-[var(--accent-green)] text-black hover:brightness-110' : ''}
+                      ${state === 'recording' ? 'bg-[var(--accent-red)] text-black animate-pulse hover:brightness-110' : ''}
+                      active:brightness-90
+                    `}
+                    aria-label={`Slot ${col + 1},${row + 1}`}
+                  >
+                    {clipType === 'midi' && <span className="text-[10px] opacity-50">♪</span>}
+                    {clipType === 'audio' && <span className="text-[10px] opacity-50">🔊</span>}
+                    {name && (
+                      <span className="text-[9px] leading-tight text-center px-0.5 truncate w-full mt-0.5">
+                        {name}
+                      </span>
+                    )}
+                    {state !== 'empty' && onSetSlotReverse && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleReverseToggle(col, row, slot?.reversed ?? false); }}
+                        className={`absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded text-[9px] font-bold leading-none transition-all active:scale-90 ${slot?.reversed ? 'bg-[var(--accent-orange)] text-black' : 'bg-black/20 text-[var(--text-secondary)] hover:bg-black/40'}`}
+                        aria-label={`Reverse slot ${col + 1},${row + 1}`}
+                      >
+                        {slot?.reversed ? '◄' : '↻'}
+                      </button>
+                    )}
+                    {state === 'playing' && <span className="absolute bottom-0.5 right-0.5 text-[8px] opacity-70">▶</span>}
+                    {state === 'recording' && <span className="absolute bottom-0.5 right-0.5 text-[8px] text-[var(--accent-red)] opacity-80">●</span>}
+                    {slot?.reversed && state !== 'empty' && <span className="absolute top-0.5 left-0.5 text-[7px] font-bold text-[var(--accent-orange)] opacity-90">R</span>}
+                  </button>
+                );
+              })}
+              <button
+                onClick={() => handleSceneLaunch(row)}
+                className={`
+                  w-8 flex items-center justify-center
+                  text-[10px] font-semibold
+                  transition-colors active:brightness-90 cursor-pointer
+                  ${activeScene === row
+                    ? 'bg-[var(--accent-orange)]/30 text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/50'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                  }
+                `}
+                aria-label={`Scene ${row + 1}`}
+              >
+                ▶
+              </button>
+            </div>
           ))}
         </div>
       </div>

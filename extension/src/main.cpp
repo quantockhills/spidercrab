@@ -549,7 +549,7 @@ static bool InitializeCoreServices()
     }
 
     // Initialize OSC sender for ReaLearn integration (Issue #98)
-    // Port 9001 = ReaLearn's control input port (receiver stays on 9000 for feedback)
+    // Port 9001 = ReaLearn's control input port (receiver stays on 9011 for feedback)
     g_cmdHandler->GetOscSender().setRemotePort(9001);
     g_cmdHandler->GetOscSender().setRemoteAddress("127.0.0.1");
 
@@ -564,14 +564,16 @@ static bool InitializeCoreServices()
             }
         });
 
-    // Try to bind OSC receiver. If port 9000 is taken, falls back to next available.
-    if (!g_cmdHandler->GetOscReceiver().bind(9000)) {
-        fprintf(stderr, "[reaper-ipad] WARNING: OSC receiver bind failed on port 9000\n"
+    // Try to bind OSC receiver. If port 9011 is taken, falls back to next available.
+    if (!g_cmdHandler->GetOscReceiver().bind(9011)) {
+        fprintf(stderr, "[reaper-ipad] WARNING: OSC receiver bind failed on port 9011\n"
                         "           ReaLearn feedback will not work.\n"
                         "           Check if another service is using this port.\n");
+        { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "STARTUP: bind FAILED on port 9011\n"); fclose(f); } }
     } else {
         fprintf(stderr, "[reaper-ipad] OSC receiver listening on port %d\n",
             g_cmdHandler->GetOscReceiver().port());
+        { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "STARTUP: bound to port %d\n", g_cmdHandler->GetOscReceiver().port()); fclose(f); } }
     }
 
     // Set up WebSocket message handler

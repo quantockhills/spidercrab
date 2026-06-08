@@ -84,8 +84,9 @@ Download and install the [Helgobox](https://www.helgoboss.org/projects/helgobox/
 #### 3. Import the spidercrab preset
 
 1. In the spidercrab web UI, go to **Settings** → **Playtime 2** → click **↓ Download ReaLearn Preset**
-2. In ReaLearn's **Main** compartment, click the menu (three dots) → **Import from Lua**
-3. Paste (or open) the downloaded file and confirm
+2. Open the downloaded `.lua` file in a text editor and copy all the contents
+3. In ReaLearn's **Main** compartment, click the menu (three dots) → **Import from Lua**
+4. Paste the copied text and confirm
 
 This preset creates OSC-to-Playtime mappings for an 8×8 grid of slots.
 

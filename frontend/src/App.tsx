@@ -182,13 +182,14 @@ function AppInner() {
     // dispatches to 'event:{msg.event}', so we must match 'matrix/slotStateChanged'.
     // See command_handler.cpp: BroadcastMatrixEvent("matrix/slotStateChanged", ...)
     const unsubSlot = onEvent('event:matrix/slotStateChanged', () => {
-      // Refresh matrix state on any slot change
       getMatrix();
     });
+    const pollInterval = setInterval(() => { getMatrix(); }, 1000);
     return () => {
       unsubTrack();
       unsubList();
       unsubSlot();
+      clearInterval(pollInterval);
     };
   }, [onEvent, refreshTracks, updateTrack, getMatrix]);
 

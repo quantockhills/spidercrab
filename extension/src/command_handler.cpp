@@ -1683,31 +1683,11 @@ void CommandHandler::HandleMatrixTriggerSlot(
         return;
     }
 
-    // Toggle: playing → stopped, otherwise → playing
-    SlotState current = m_playtimeState.getSlot(col, row);
-    std::string newState;
-    if (current.state == "playing") {
-        newState = "stopped";
-    } else {
-        newState = "playing";
-    }
-
-    m_playtimeState.setSlotState(col, row, newState);
-
-    // Send MIDI note if MIDI output is available
-    if (m_playtimeMidi.isAvailable()) {
-        m_playtimeMidi.triggerSlotViaMidi(col, row);
-    }
-
-    // Send OSC message for ReaLearn integration (Issue #98)
+    // Send OSC to ReaLearn — real state will come back via OSC feedback on port 9000
     m_oscSender.sendTriggerSlot(col, row);
 
-    // Get updated slot and broadcast event to all clients
-    SlotState updated = m_playtimeState.getSlot(col, row);
-    std::string event = BuildSlotEvent(updated.toJson());
-    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
-
-    SendResponse(clientId, id, true, updated.toJson());
+    SlotState current = m_playtimeState.getSlot(col, row);
+    SendResponse(clientId, id, true, current.toJson());
 }
 
 // Trigger (or stop) all slots in a given scene row.
