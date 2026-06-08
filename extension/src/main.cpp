@@ -61,6 +61,10 @@
 #define REAPERAPI_WANT_AddMediaItemToTrack
 #define REAPERAPI_WANT_AddTakeToMediaItem
 #define REAPERAPI_WANT_CountTrackMediaItems
+#define REAPERAPI_WANT_GetTrackMediaItem
+#define REAPERAPI_WANT_SetMediaItemSelected
+#define REAPERAPI_WANT_DeleteTrackMediaItem
+#define REAPERAPI_WANT_UpdateArrange
 #define REAPERAPI_WANT_PCM_Source_CreateFromFile
 #define REAPERAPI_WANT_PlayPreview
 #define REAPERAPI_WANT_StopPreview

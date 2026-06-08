@@ -1621,6 +1621,39 @@ TEST(SampleBrowserTest, SendToTrackNoApi)
     EXPECT_EQ(parser.getString("trackIdx"), "0");
 }
 
+TEST(SampleBrowserTest, SendToSlotExtractsParams)
+{
+    // Verify sample/sendToSlot extracts path, column, and row
+    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":"/tmp/kick.wav","column":3,"row":5},"id":"slot_1"})";
+    std::string payloadStr = extractPayload(json);
+    JsonParser  parser(payloadStr);
+    EXPECT_EQ(parser.getString("path"), "/tmp/kick.wav");
+    EXPECT_EQ(parser.getString("column"), "3");
+    EXPECT_EQ(parser.getString("row"), "5");
+}
+
+TEST(SampleBrowserTest, SendToSlotMissingPath)
+{
+    // Missing path should extract empty string
+    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"column":0,"row":0},"id":"slot_1"})";
+    std::string payloadStr = extractPayload(json);
+    JsonParser  parser(payloadStr);
+    EXPECT_EQ(parser.getString("path"), "");
+    EXPECT_EQ(parser.getString("column"), "0");
+    EXPECT_EQ(parser.getString("row"), "0");
+}
+
+TEST(SampleBrowserTest, SendToSlotMissingColumn)
+{
+    // Missing column should extract empty string
+    std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"path":"/tmp/kick.wav","row":2},"id":"slot_2"})";
+    std::string payloadStr = extractPayload(json);
+    JsonParser  parser(payloadStr);
+    EXPECT_EQ(parser.getString("path"), "/tmp/kick.wav");
+    EXPECT_EQ(parser.getString("column"), "");
+    EXPECT_EQ(parser.getString("row"), "2");
+}
+
 TEST(SampleBrowserTest, JsonEscapeFilepath)
 {
     // Verify json_escape handles paths with spaces and special chars

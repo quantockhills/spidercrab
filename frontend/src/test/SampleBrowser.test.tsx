@@ -1349,4 +1349,236 @@ describe('SampleBrowser', () => {
       expect(mockGetDirectory).not.toHaveBeenCalled();
     });
   });
+
+  describe('Session/Arrangement toggle with mini grid', () => {
+    it('does not show Arrangement|Session toggle when sendToSlot is not provided', async () => {
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          // No sendToSlot prop
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText('Arrangement')).toBeNull();
+        expect(screen.queryByText('Session')).toBeNull();
+      });
+    });
+
+    it('shows Arrangement|Session toggle when sendToSlot is provided', async () => {
+      const mockSendToSlot = vi.fn();
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          sendToSlot={mockSendToSlot}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Arrangement')).toBeDefined();
+        expect(screen.getByText('Session')).toBeDefined();
+      });
+    });
+
+    it('defaults to Arrangement mode', async () => {
+      const mockSendToSlot = vi.fn();
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          sendToSlot={mockSendToSlot}
+        />
+      );
+
+      await waitFor(() => {
+        // Arrangement button should be highlighted (active)
+        const arrangementBtn = screen.getByText('Arrangement');
+        expect(arrangementBtn.className).toContain('accent-orange');
+      });
+    });
+
+    it('switches to Session mode when toggle clicked', async () => {
+      const mockSendToSlot = vi.fn();
+      const mockMatrix = {
+        columns: 8,
+        rows: 8,
+        slots: [],
+      };
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          sendToSlot={mockSendToSlot}
+          matrix={mockMatrix}
+        />
+      );
+
+      // Click Session toggle
+      fireEvent.click(screen.getByText('Session'));
+
+      await waitFor(() => {
+        // Should show the mini grid header
+        expect(screen.getByText('Send to Session Grid')).toBeDefined();
+        // Session button should be highlighted
+        const sessionBtn = screen.getByText('Session');
+        expect(sessionBtn.className).toContain('accent-orange');
+      });
+    });
+
+    it('renders mini grid cells in Session mode', async () => {
+      const mockSendToSlot = vi.fn();
+      const mockMatrix = {
+        columns: 3,
+        rows: 2,
+        slots: [
+          { column: 0, row: 0, state: 'playing' as const, color: '', name: 'Kick', clipType: 'audio' as const },
+          { column: 1, row: 0, state: 'stopped' as const, color: '', name: 'Snare', clipType: 'audio' as const },
+          { column: 2, row: 0, state: 'empty' as const, color: '', name: '', clipType: 'none' as const },
+        ],
+      };
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          sendToSlot={mockSendToSlot}
+          matrix={mockMatrix}
+        />
+      );
+
+      // Switch to Session mode
+      fireEvent.click(screen.getByText('Session'));
+
+      await waitFor(() => {
+        // Should have 6 cells (3 columns x 2 rows)
+        const cells = screen.getAllByRole('button').filter((btn) =>
+          btn.getAttribute('title')?.includes('Slot')
+        );
+        expect(cells.length).toBe(6);
+
+        // Should show state in tooltips
+        expect(screen.getByTitle(/Slot 1,1.*playing/)).toBeDefined();
+        expect(screen.getByTitle(/Slot 2,1.*stopped/)).toBeDefined();
+      });
+    });
+
+    it('tapping a mini grid cell calls sendToSlot with the selected file', async () => {
+      const mockSendToSlot = vi.fn().mockResolvedValue(true);
+      const mockMatrix = {
+        columns: 2,
+        rows: 1,
+        slots: [],
+      };
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
+      render(
+        <DragProvider>
+          <SampleBrowser
+            tracks={createMockTracks()}
+            selectedTrack={0}
+            getDirectory={mockGetDirectory}
+            sendSampleToTrack={mockSendSampleToTrack}
+            sendCommand={mockSendCommand}
+            onBack={() => {}}
+            sendToSlot={mockSendToSlot}
+            matrix={mockMatrix}
+          />
+        </DragProvider>
+      );
+
+      // Wait for content to load
+      await waitFor(() => {
+        expect(screen.getByText('kick.wav')).toBeDefined();
+      });
+
+      // Select a file by clicking its play button
+      const playButtons = screen.getAllByLabelText('Preview');
+      fireEvent.click(playButtons[0]);
+
+      // Switch to Session mode
+      fireEvent.click(screen.getByText('Session'));
+
+      await waitFor(() => {
+        // Should find the mini grid header
+        expect(screen.getByText('Send to Session Grid')).toBeDefined();
+      });
+
+      // Find and click the first mini grid cell
+      const cells = screen.getAllByTitle(/^Slot/);
+      expect(cells.length).toBeGreaterThan(0);
+      
+      // Click on a mini grid cell to send
+      fireEvent.click(cells[0]);
+
+      // Should have called sendToSlot with the file path and slot coordinates
+      await vi.waitFor(() => {
+        expect(mockSendToSlot).toHaveBeenCalled();
+        const callArgs = mockSendToSlot.mock.calls[0];
+        expect(callArgs[0]).toContain('kick.wav');
+        expect(typeof callArgs[1]).toBe('number'); // column
+        expect(typeof callArgs[2]).toBe('number'); // row
+      });
+    });
+
+    it('disables mini grid cells when no file is selected', async () => {
+      const mockSendToSlot = vi.fn();
+      const mockMatrix = {
+        columns: 2,
+        rows: 1,
+        slots: [],
+      };
+      // Don't select any file
+      mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
+      render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          sendToSlot={mockSendToSlot}
+          matrix={mockMatrix}
+        />
+      );
+
+      // Switch to Session mode
+      fireEvent.click(screen.getByText('Session'));
+
+      await waitFor(() => {
+        expect(screen.getByText('Send to Session Grid')).toBeDefined();
+      });
+
+      // Cells should be disabled since no file is selected
+      const cells = screen.getAllByTitle(/^Slot/);
+      cells.forEach((cell) => {
+        expect(cell).toBeDisabled();
+      });
+    });
+  });
 });
