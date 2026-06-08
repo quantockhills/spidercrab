@@ -52,5 +52,13 @@ export function useSampleBrowser() {
     [send],
   );
 
-  return { getDirectory, sendSampleToTrack, refreshSampleCache };
+  const sendSampleToSlot = useCallback(
+    async (path: string, column: number, row: number): Promise<boolean> => {
+      const resp = await send('sample/sendToSlot', { path, column, row });
+      return resp.success;
+    },
+    [send],
+  );
+
+  return { getDirectory, sendSampleToTrack, refreshSampleCache, sendSampleToSlot };
 }

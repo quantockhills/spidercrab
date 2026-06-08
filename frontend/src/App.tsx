@@ -44,6 +44,7 @@ function AppInner() {
     reorderFx,
     getDirectory,
     sendSampleToTrack,
+    sendSampleToSlot,
     refreshSampleCache,
     sendCommand,
     isRefreshingFx,
@@ -317,6 +318,8 @@ function AppInner() {
               sendCommand={sendCommand}
               onBack={() => setActiveTab('tracks')}
               samplePaths={samplePaths}
+              sendToSlot={sendSampleToSlot}
+              matrix={matrix}
             />
           </div>
         )}

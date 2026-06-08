@@ -419,13 +419,19 @@ TEST(OscSenderTest, RecordSlotMessageFormat)
     // Address should be "/playtime/slot/1/5/record" (26 chars, padded to 28)
     const char* expectedAddr = "/playtime/slot/1/5/record";
     EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 26));
-    // Message should have no type tag and no args — just address + ","
+    // Type tag ",f" at byte 28
     EXPECT_EQ(buf[28], ',');
-    EXPECT_EQ(buf[29], '\0');
+    EXPECT_EQ(buf[29], 'f');
     EXPECT_EQ(buf[30], '\0');
     EXPECT_EQ(buf[31], '\0');
-    // Total = 28 (addr) + 4 (type tag) = 32
-    EXPECT_EQ(buf.size(), 32);
+    // Float 1.0 at bytes 32-35 (big-endian IEEE 754)
+    // 1.0f = 0x3f800000
+    EXPECT_EQ(buf[32], 0x3f);
+    EXPECT_EQ(buf[33], 0x80);
+    EXPECT_EQ(buf[34], 0x00);
+    EXPECT_EQ(buf[35], 0x00);
+    // Total = 28 (addr) + 4 (type tag) + 4 (float) = 36
+    EXPECT_EQ(buf.size(), 36);
 }
 
 TEST(OscSenderTest, TriggerSceneMessageFormat)
@@ -439,16 +445,21 @@ TEST(OscSenderTest, TriggerSceneMessageFormat)
     // Address should be "/playtime/scene/4/trigger" (26 chars, padded to 28)
     const char* expectedAddr = "/playtime/scene/4/trigger";
     EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 26));
-    // Type tag at byte 28
+    // Type tag ",f" at byte 28
     EXPECT_EQ(buf[28], ',');
-    EXPECT_EQ(buf[29], '\0');
+    EXPECT_EQ(buf[29], 'f');
     EXPECT_EQ(buf[30], '\0');
     EXPECT_EQ(buf[31], '\0');
-    // Total = 28 (addr) + 4 (type tag) = 32
-    EXPECT_EQ(buf.size(), 32);
+    // Float 1.0 at bytes 32-35
+    EXPECT_EQ(buf[32], 0x3f);
+    EXPECT_EQ(buf[33], 0x80);
+    EXPECT_EQ(buf[34], 0x00);
+    EXPECT_EQ(buf[35], 0x00);
+    // Total = 28 (addr) + 4 (type tag) + 4 (float) = 36
+    EXPECT_EQ(buf.size(), 36);
 }
 
-TEST(OscSenderTest, SceneTriggerSingleDigit)
+TEST(OscSenderTest, TriggerSceneSingleDigit)
 {
     OscSender sender;
     sender.setRemotePort(9000);
@@ -458,8 +469,67 @@ TEST(OscSenderTest, SceneTriggerSingleDigit)
     ASSERT_FALSE(buf.empty());
     // "/playtime/scene/0/trigger" = 25 chars, padded to 28
     EXPECT_EQ(0, memcmp(buf.data(), "/playtime/scene/0/trigger", 25));
+    // Type tag ",f" at byte 28
     EXPECT_EQ(buf[28], ',');
-    EXPECT_EQ(buf.size(), 32);
+    EXPECT_EQ(buf[29], 'f');
+    EXPECT_EQ(buf[30], '\0');
+    EXPECT_EQ(buf[31], '\0');
+    // Float 1.0 at bytes 32-35
+    EXPECT_EQ(buf[32], 0x3f);
+    EXPECT_EQ(buf[33], 0x80);
+    EXPECT_EQ(buf[34], 0x00);
+    EXPECT_EQ(buf[35], 0x00);
+    // Total = 28 (addr) + 4 (type tag) + 4 (float) = 36
+    EXPECT_EQ(buf.size(), 36);
+}
+
+TEST(OscSenderTest, ImportSlotMessageFormat)
+{
+    OscSender sender;
+    sender.setRemotePort(9000);
+
+    auto buf = sender.buildImportSlotMessage(2, 3);
+
+    ASSERT_FALSE(buf.empty());
+    // Address should be "/playtime/slot/2/3/import" (26 chars, padded to 28)
+    const char* expectedAddr = "/playtime/slot/2/3/import";
+    EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 26));
+    // Type tag ",f" at byte 28 (buildMessageWithFloat)
+    EXPECT_EQ(buf[28], ',');
+    EXPECT_EQ(buf[29], 'f');
+    EXPECT_EQ(buf[30], '\0');
+    EXPECT_EQ(buf[31], '\0');
+    // Float 1.0 at bytes 32-35 (big-endian IEEE 754)
+    EXPECT_EQ(buf[32], 0x3f);
+    EXPECT_EQ(buf[33], 0x80);
+    EXPECT_EQ(buf[34], 0x00);
+    EXPECT_EQ(buf[35], 0x00);
+    // Total = 28 (addr) + 4 (type tag) + 4 (float) = 36
+    EXPECT_EQ(buf.size(), 36);
+}
+
+TEST(OscSenderTest, ImportSlotMessageLargeNumbers)
+{
+    OscSender sender;
+    sender.setRemotePort(9000);
+
+    auto buf = sender.buildImportSlotMessage(10, 25);
+
+    ASSERT_FALSE(buf.empty());
+    // "/playtime/slot/10/25/import" = 29 chars, padded to 32
+    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/slot/10/25/import", 29));
+    // Type tag at byte 32
+    EXPECT_EQ(buf[32], ',');
+    EXPECT_EQ(buf[33], 'f');
+    EXPECT_EQ(buf[34], '\0');
+    EXPECT_EQ(buf[35], '\0');
+    // Float 1.0 at bytes 36-39
+    EXPECT_EQ(buf[36], 0x3f);
+    EXPECT_EQ(buf[37], 0x80);
+    EXPECT_EQ(buf[38], 0x00);
+    EXPECT_EQ(buf[39], 0x00);
+    // Total = 32 (addr) + 4 (type tag) + 4 (float) = 40
+    EXPECT_EQ(buf.size(), 40);
 }
 
 // ============================================================

@@ -103,6 +103,12 @@ struct ReaperAPI {
     MediaItem* (*AddMediaItemToTrack)(MediaTrack* tr) = nullptr;
     MediaItem_Take* (*AddTakeToMediaItem)(MediaItem* item) = nullptr;
     int (*CountTrackMediaItems)(MediaTrack* track) = nullptr;
+
+    // Sample send to Playtime slot (Issue #74)
+    MediaItem* (*GetTrackMediaItem)(MediaTrack* tr, int itemidx) = nullptr;
+    void (*SetMediaItemSelected)(MediaItem* item, bool selected) = nullptr;
+    bool (*DeleteTrackMediaItem)(MediaTrack* tr, MediaItem* it) = nullptr;
+    void (*UpdateArrange)() = nullptr;
 };
 
 class CommandHandler {

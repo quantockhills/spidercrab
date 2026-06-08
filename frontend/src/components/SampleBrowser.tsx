@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Track, DirEntry } from '../hooks/useReaper';
+import type { Track, DirEntry, MatrixData, ClipSlot } from '../hooks/useReaper';
 import type { DirResult } from '../hooks/useSampleBrowser';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
@@ -23,6 +23,7 @@ interface SampleBrowserProps {
   onBack: () => void;
   sendToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
   samplePaths?: string[];
+  matrix?: MatrixData | null;
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -35,6 +36,8 @@ export function SampleBrowser({
   sendCommand,
   onBack,
   samplePaths,
+  sendToSlot,
+  matrix,
 }: SampleBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>(
     () => {
@@ -57,6 +60,7 @@ export function SampleBrowser({
   const [sentFiles, setSentFiles] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [autoplay, setAutoplay] = useState(() => localStorage.getItem('sampleAutoplay') === 'true');
+  const [sessionMode, setSessionMode] = useState<'arrangement' | 'session'>('arrangement');
 
   // Context menu state (Issue #28)
   const [contextMenu, setContextMenu] = useState<{
@@ -441,6 +445,31 @@ export function SampleBrowser({
           >
             ▶ Auto
           </button>
+          {/* Arrangement|Session toggle */}
+          {sendToSlot && (
+            <div className="flex-shrink-0 flex rounded overflow-hidden ring-1 ring-[var(--border)]">
+              <button
+                onClick={() => setSessionMode('arrangement')}
+                className={`px-2 py-2 text-[10px] font-medium min-h-[36px] transition-colors ${
+                  sessionMode === 'arrangement'
+                    ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)]'
+                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                }`}
+              >
+                Arrangement
+              </button>
+              <button
+                onClick={() => setSessionMode('session')}
+                className={`px-2 py-2 text-[10px] font-medium min-h-[36px] transition-colors ${
+                  sessionMode === 'session'
+                    ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)]'
+                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                }`}
+              >
+                Session
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -582,6 +611,19 @@ export function SampleBrowser({
           </div>
         )}
       </div>
+
+      {/* Mini Playtime grid in Session mode (Issue #108) */}
+      {sessionMode === 'session' && matrix && sendToSlot && (
+        <MiniPlaytimeGrid
+          matrix={matrix}
+          selectedFile={selectedFile}
+          onSendToSlot={(col, row) => {
+            if (selectedFile) {
+              sendToSlot(selectedFile, col, row);
+            }
+          }}
+        />
+      )}
 
       {/* Context menu (Issue #28) */}
       {contextMenu && (
@@ -1115,6 +1157,99 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <span className="text-xs text-[var(--text-primary)] font-medium truncate ml-2 max-w-[200px]">
         {value}
       </span>
+    </div>
+  );
+}
+
+// ── Mini Playtime Grid (Issue #108) ───────────────────────────
+
+interface MiniPlaytimeGridProps {
+  matrix: MatrixData;
+  selectedFile: string | null;
+  onSendToSlot: (column: number, row: number) => void;
+}
+
+function slotStateColor(state: ClipSlot['state']): string {
+  switch (state) {
+    case 'empty':     return 'var(--text-secondary)';
+    case 'stopped':   return 'var(--accent-dim)';
+    case 'playing':   return 'var(--accent-green)';
+    case 'recording': return 'var(--accent-red)';
+  }
+}
+
+function MiniPlaytimeGrid({ matrix, selectedFile, onSendToSlot }: MiniPlaytimeGridProps) {
+  const columns = matrix?.columns ?? 8;
+  const rows = matrix?.rows ?? 8;
+
+  // Build a lookup map from column,row to slot
+  const slotMap = useMemo(() => {
+    const map = new Map<string, ClipSlot>();
+    if (matrix?.slots) {
+      for (const slot of matrix.slots) {
+        map.set(`${slot.column},${slot.row}`, slot);
+      }
+    }
+    return map;
+  }, [matrix]);
+
+  return (
+    <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
+      <div className="px-3 py-2 text-[10px] text-[var(--text-secondary)] font-medium uppercase tracking-wider">
+        Send to Session Grid
+      </div>
+      <div className="px-3 pb-3">
+        <div
+          className="grid gap-[2px]"
+          style={{
+            gridTemplateColumns: `repeat(${columns}, 1fr)`,
+            gridTemplateRows: `repeat(${rows}, 1fr)`,
+            aspectRatio: `${columns} / ${rows}`,
+            maxHeight: '220px',
+          }}
+        >
+          {Array.from({ length: columns * rows }).map((_, i) => {
+            const col = i % columns;
+            const row = Math.floor(i / columns);
+            const key = `${col},${row}`;
+            const slot = slotMap.get(key);
+            const state = slot?.state ?? 'empty';
+            const clipType = slot?.clipType ?? 'none';
+
+            return (
+              <button
+                key={key}
+                onClick={() => onSendToSlot(col, row)}
+                disabled={!selectedFile}
+                className={`
+                  relative flex items-center justify-center
+                  transition-colors active:brightness-90
+                  min-h-[24px]
+                  ${!selectedFile
+                    ? 'bg-[var(--bg-tertiary)]/40 cursor-not-allowed'
+                    : 'bg-[var(--bg-tertiary)] hover:bg-[var(--accent-orange)]/15 cursor-pointer'
+                  }
+                `}
+                title={`Slot ${col + 1},${row + 1}${slot?.name ? ': ' + slot.name : ''} [${state}]`}
+              >
+                {/* State indicator accent bar */}
+                <div
+                  className="absolute top-0 left-0 right-0 h-[2px]"
+                  style={{ backgroundColor: slotStateColor(state) }}
+                />
+                {/* Clip type icon */}
+                <span className="text-[9px] opacity-50">
+                  {clipType === 'midi' ? '♪' : clipType === 'audio' ? '🔊' : ''}
+                </span>
+                {/* Position label */}
+                <span className="absolute bottom-0.5 right-0.5 text-[7px] text-[var(--text-secondary)]/40">
+                  {col + 1},{row + 1}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

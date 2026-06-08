@@ -95,4 +95,31 @@ describe('useSampleBrowser', () => {
 
     expect(await promise).toBe(true);
   });
+
+  it('sendSampleToSlot sends sample/sendToSlot command with column and row', async () => {
+    const { result } = renderHook(() => useSampleBrowser(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.sendSampleToSlot('/samples/kick.wav', 3, 5);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('sample/sendToSlot');
+    expect(sentMsg.path).toBe('/samples/kick.wav');
+    expect(sentMsg.column).toBe(3);
+    expect(sentMsg.row).toBe(5);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: {},
+      }));
+    });
+
+    expect(await promise).toBe(true);
+  });
 });

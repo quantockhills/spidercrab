@@ -240,6 +240,14 @@ public:
         return buildMessageWithFloat(addr, 1.0f);
     }
 
+    // Build an "import slot" message: /playtime/slot/<col>/<row>/import  float=1.0
+    std::vector<uint8_t> buildImportSlotMessage(int col, int row) const
+    {
+        std::string addr = "/playtime/slot/" + std::to_string(col) + "/"
+            + std::to_string(row) + "/import";
+        return buildMessageWithFloat(addr, 1.0f);
+    }
+
     // Build a "trigger scene" message: /playtime/scene/<row>/trigger  float=1.0
     std::vector<uint8_t> buildTriggerSceneMessage(int row) const
     {
@@ -307,6 +315,12 @@ public:
     bool sendTriggerScene(int row)
     {
         return sendPacket(buildTriggerSceneMessage(row));
+    }
+
+    // Import into a slot: sends /playtime/slot/<col>/<row>/import
+    bool sendImportSlot(int col, int row)
+    {
+        return sendPacket(buildImportSlotMessage(col, row));
     }
 
 private:

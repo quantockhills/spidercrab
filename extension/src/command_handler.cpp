@@ -281,6 +281,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["transport/record"]       = &CommandHandler::HandleRecord;
     m_commandMap["sample/getDirectory"]    = &CommandHandler::HandleSampleGetDirectory;
     m_commandMap["sample/sendToTrack"]     = &CommandHandler::HandleSampleSendToTrack;
+    m_commandMap["sample/sendToSlot"]      = &CommandHandler::HandleSampleSendToSlot;
     m_commandMap["sample/getAudioInfo"]    = &CommandHandler::HandleSampleGetAudioInfo;
     m_commandMap["sample/preview"]         = &CommandHandler::HandleSamplePreview;
     m_commandMap["sample/stopPreview"]     = &CommandHandler::HandleSampleStopPreview;
@@ -2084,26 +2085,35 @@ void CommandHandler::HandleSampleSendToSlot(
         return;
     }
 
-    if (!m_api.InsertMedia || !m_api.CountTracks) {
+    // Check required APIs
+    if (!m_api.InsertMedia || !m_api.CountTracks ||
+        !m_api.CountTrackMediaItems || !m_api.GetTrackMediaItem ||
+        !m_api.SetMediaItemSelected || !m_api.DeleteTrackMediaItem) {
         SendResponse(clientId, id, false,
             "{\"error\":\"Required API functions not loaded\"}");
         return;
     }
 
-    // Map Playtime column to track index
-    int currentTrackCount = m_api.CountTracks(nullptr);
-    int targetTrackIdx = col;
-
-    // Auto-create tracks if column exceeds track count
-    int tracksToCreate = (targetTrackIdx + 1) - currentTrackCount;
-    for (int t = 0; t < tracksToCreate; t++) {
-        if (m_api.Main_OnCommand) {
-            m_api.Main_OnCommand(40001, 0); // Insert track at end
-        }
+    int numTracks = m_api.CountTracks(nullptr);
+    if (numTracks < 1) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"No tracks in project\"}");
+        return;
     }
 
-    // Insert media on the target track (mode=512 for absolute track index)
-    int insertFlags = 512 | (targetTrackIdx << 16);
+    // Use track 0 as scratch track (column->track mapping is for playback routing, not import)
+    MediaTrack* scratchTrack = m_api.GetTrack(nullptr, 0);
+    if (!scratchTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Could not get scratch track\"}");
+        return;
+    }
+
+    // Count items before insert so we can find the new one
+    int itemCountBefore = m_api.CountTrackMediaItems(scratchTrack);
+
+    // Step 1: Insert media on scratch track (mode=512 for absolute track index 0)
+    int insertFlags = 512 | (0 << 16);
     int insertResult = m_api.InsertMedia(filePath.c_str(), insertFlags);
 
     if (insertResult <= 0) {
@@ -2112,28 +2122,67 @@ void CommandHandler::HandleSampleSendToSlot(
         return;
     }
 
-    // Extract filename from path for the slot name
-    std::string fileName = filePath;
-    size_t slashPos = fileName.find_last_of("/\\");
-    if (slashPos != std::string::npos) {
-        fileName = fileName.substr(slashPos + 1);
+    // Step 2: Find and select the newly created item
+    int itemCountAfter = m_api.CountTrackMediaItems(scratchTrack);
+    MediaItem* insertedItem = nullptr;
+    if (itemCountAfter > itemCountBefore) {
+        insertedItem = m_api.GetTrackMediaItem(scratchTrack, itemCountAfter - 1);
     }
 
-    // Update PlaytimeState slot metadata
-    SlotState updated;
-    updated.column   = col;
-    updated.row      = row;
-    updated.state    = "stopped";
-    updated.clipType = "audio";
-    updated.name     = fileName;
-    updated.color    = "";
-    m_playtimeState.setSlot(col, row, updated);
+    if (!insertedItem && itemCountAfter == 1) {
+        insertedItem = m_api.GetTrackMediaItem(scratchTrack, 0);
+    }
 
-    // Broadcast slot state change event
-    updated = m_playtimeState.getSlot(col, row);
-    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+    if (!insertedItem) {
+        m_api.Main_OnCommand(40029, 0); // Edit: Undo
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Could not find inserted item\"}");
+        return;
+    }
 
-    SendResponse(clientId, id, true, updated.toJson());
+    // Select item and refresh arrange so Playtime can see it
+    m_api.SetMediaItemSelected(insertedItem, true);
+    if (m_api.UpdateArrange) {
+        m_api.UpdateArrange();
+    }
+
+    // Step 3: Send OSC import message -> ReaLearn triggers FillSlotWithSelectedItem
+    m_oscSender.sendImportSlot(col, row);
+
+    // Step 4: Defer item cleanup to next Run() tick so FillSlotWithSelectedItem has time
+    QueueMainThread([this, insertedItem, scratchTrack, col, row, filePath, clientId, id]() {
+        // Deselect and delete the temp item
+        m_api.SetMediaItemSelected(insertedItem, false);
+        m_api.DeleteTrackMediaItem(scratchTrack, insertedItem);
+
+        if (m_api.UpdateArrange) {
+            m_api.UpdateArrange();
+        }
+
+        // Extract filename from path for the slot name
+        std::string fileName = filePath;
+        size_t slashPos = fileName.find_last_of("/\\");
+        if (slashPos != std::string::npos) {
+            fileName = fileName.substr(slashPos + 1);
+        }
+
+        // Update PlaytimeState slot metadata
+        SlotState updated;
+        updated.column   = col;
+        updated.row      = row;
+        updated.state    = "stopped";
+        updated.clipType = "audio";
+        updated.name     = fileName;
+        updated.color    = "";
+        m_playtimeState.setSlot(col, row, updated);
+
+        // Broadcast slot state change event
+        updated = m_playtimeState.getSlot(col, row);
+        BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+        // Send response back to client
+        SendResponse(clientId, id, true, updated.toJson());
+    });
 }
 
 // ============================================================

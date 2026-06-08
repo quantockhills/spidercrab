@@ -64,6 +64,31 @@ for col = 0, COLS - 1 do
     end
 end
 
+-- Slot import mappings: /playtime/slot/COL/ROW/import
+for col = 0, COLS - 1 do
+    for row = 0, ROWS - 1 do
+        table.insert(mappings, {
+            name = string.format("Import %d/%d", col + 1, row + 1),
+            source = {
+                kind = "Osc",
+                address = string.format("/playtime/slot/%d/%d/import", col, row),
+                argument = { index = 0, kind = "Float" },
+                feedback_behavior = "Normal",
+            },
+            glue = { absolute_mode = "Normal" },
+            target = {
+                kind = "SlotManagementAction",
+                slot = {
+                    address = "ByIndex",
+                    column_index = col,
+                    row_index = row,
+                },
+                action = "FillSlotWithSelectedItem",
+            },
+        })
+    end
+end
+
 -- Scene trigger mappings: /playtime/scene/ROW/trigger
 for row = 0, ROWS - 1 do
     table.insert(mappings, {
