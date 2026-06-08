@@ -25,6 +25,8 @@ set(WDL_SOURCES
     ${WDL_DIR}/WDL/jnetlib/connection.cpp
     ${WDL_DIR}/WDL/jnetlib/util.cpp
     ${WDL_DIR}/WDL/jnetlib/asyncdns.cpp
+    ${WDL_DIR}/WDL/jnetlib/webserver.cpp
+    ${WDL_DIR}/WDL/jnetlib/httpserv.cpp
 )
 
 # ---- Extension source files ----
@@ -82,9 +84,10 @@ else()
     set_target_properties(reaper-spidercrab PROPERTIES
         OUTPUT_NAME reaper_spidercrab
         PREFIX ""
-        SUFFIX ".so"
+        SUFFIX ".dll"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
     )
+    target_link_libraries(reaper-spidercrab PRIVATE ws2_32)
 endif()
 
 # ============================================================

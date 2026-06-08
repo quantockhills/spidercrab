@@ -656,6 +656,24 @@ function AppInner() {
               )}
             </div>
 
+            {/* ReaLearn preset download */}
+            <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Playtime 2</h3>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Download the ReaLearn OSC preset and import it into ReaLearn's Main compartment to control Playtime 2 clips from the Playtime tab.
+              </p>
+              <a
+                href="/spidercrab-playtime.lua"
+                download="spidercrab-playtime.lua"
+                className="block w-full py-2.5 text-center bg-[var(--accent-dim)] text-[var(--accent-orange)] text-sm active:brightness-95 transition-colors"
+              >
+                ↓ Download ReaLearn Preset
+              </a>
+              <p className="text-[11px] text-[var(--text-secondary)]">
+                OSC ports: spidercrab sends triggers to <span className="font-mono">127.0.0.1:9001</span>, receives state feedback on <span className="font-mono">:9000</span>.
+              </p>
+            </div>
+
             {/* Build version */}
             <div className="text-[10px] text-[var(--text-secondary)] text-center font-mono opacity-50">
               build {__BUILD_TIME__}

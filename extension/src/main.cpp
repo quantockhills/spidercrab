@@ -549,7 +549,8 @@ static bool InitializeCoreServices()
     }
 
     // Initialize OSC sender for ReaLearn integration (Issue #98)
-    g_cmdHandler->GetOscSender().setRemotePort(9000);
+    // Port 9001 = ReaLearn's control input port (receiver stays on 9000 for feedback)
+    g_cmdHandler->GetOscSender().setRemotePort(9001);
     g_cmdHandler->GetOscSender().setRemoteAddress("127.0.0.1");
 
     // Initialize OSC receiver for ReaLearn feedback (Issue #98)

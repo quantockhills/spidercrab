@@ -1,5 +1,6 @@
 #include "command_handler.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
