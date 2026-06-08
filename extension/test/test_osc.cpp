@@ -179,7 +179,8 @@ TEST(OscReceiverTest, ParseSingleInt)
     std::string addr;
     std::vector<int> intArgs;
     std::vector<std::string> strArgs;
-    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs);
+    std::vector<float> floatArgs;
+    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs, floatArgs);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(addr, "/test");
@@ -205,7 +206,8 @@ TEST(OscReceiverTest, ParseTwoInts)
     std::string addr;
     std::vector<int> intArgs;
     std::vector<std::string> strArgs;
-    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs);
+    std::vector<float> floatArgs;
+    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs, floatArgs);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(addr, "/slot");
@@ -234,7 +236,8 @@ TEST(OscReceiverTest, ParseMessageWithString)
     std::string addr;
     std::vector<int> intArgs;
     std::vector<std::string> strArgs;
-    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs);
+    std::vector<float> floatArgs;
+    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs, floatArgs);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(addr, "/state");
@@ -256,7 +259,8 @@ TEST(OscReceiverTest, ParseTruncatedPacket)
     std::string addr;
     std::vector<int> intArgs;
     std::vector<std::string> strArgs;
-    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs);
+    std::vector<float> floatArgs;
+    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs, floatArgs);
 
     EXPECT_FALSE(ok) << "Truncated packet should fail";
 }
@@ -269,7 +273,8 @@ TEST(OscReceiverTest, ParseEmptyPacket)
     std::string addr;
     std::vector<int> intArgs;
     std::vector<std::string> strArgs;
-    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs);
+    std::vector<float> floatArgs;
+    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs, floatArgs);
 
     EXPECT_FALSE(ok) << "Empty packet should fail";
 }
@@ -286,7 +291,8 @@ TEST(OscReceiverTest, ParseMalformedTypeTag)
     std::string addr;
     std::vector<int> intArgs;
     std::vector<std::string> strArgs;
-    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs);
+    std::vector<float> floatArgs;
+    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs, floatArgs);
 
     EXPECT_FALSE(ok) << "Type tag should start with comma";
 }
@@ -302,7 +308,8 @@ TEST(OscReceiverTest, ParseMessageWithoutTypeTag)
     std::string addr;
     std::vector<int> intArgs;
     std::vector<std::string> strArgs;
-    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs);
+    std::vector<float> floatArgs;
+    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs, floatArgs);
 
     EXPECT_FALSE(ok) << "Message without type tag should fail";
 }
@@ -386,13 +393,18 @@ TEST(OscSenderTest, TriggerSlotMessageFormat)
     // Address should be "/playtime/slot/3/7/trigger" (27 chars, padded to 28)
     const char* expectedAddr = "/playtime/slot/3/7/trigger";
     EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 27));
-    // Message should have type tag "," (comma only, no args) at byte 28
+    // Type tag ",f" at byte 28 (buildMessageWithFloat adds float 1.0)
     EXPECT_EQ(buf[28], ',');
-    EXPECT_EQ(buf[29], '\0');
+    EXPECT_EQ(buf[29], 'f');
     EXPECT_EQ(buf[30], '\0');
     EXPECT_EQ(buf[31], '\0');
-    // Total = 28 (addr) + 4 (type tag) = 32
-    EXPECT_EQ(buf.size(), 32);
+    // Float 1.0 at bytes 32-35
+    EXPECT_EQ(buf[32], 0x3f);
+    EXPECT_EQ(buf[33], 0x80);
+    EXPECT_EQ(buf[34], 0x00);
+    EXPECT_EQ(buf[35], 0x00);
+    // Total = 28 (addr) + 4 (type tag) + 4 (float) = 36
+    EXPECT_EQ(buf.size(), 36);
 }
 
 TEST(OscSenderTest, TriggerSlotMessageLargeNumbers)
@@ -404,8 +416,20 @@ TEST(OscSenderTest, TriggerSlotMessageLargeNumbers)
 
     ASSERT_FALSE(buf.empty());
     // "/playtime/slot/10/25/trigger" = 29 chars, padded to 32
-    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/slot/10/25/trigger", 29));
-    EXPECT_EQ(buf.size(), 36); // 32 addr + 4 type tag
+    const char* expectedAddr = "/playtime/slot/10/25/trigger";
+    EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 29));
+    // Type tag at byte 32
+    EXPECT_EQ(buf[32], ',');
+    EXPECT_EQ(buf[33], 'f');
+    EXPECT_EQ(buf[34], '\0');
+    EXPECT_EQ(buf[35], '\0');
+    // Float 1.0 at bytes 36-39
+    EXPECT_EQ(buf[36], 0x3f);
+    EXPECT_EQ(buf[37], 0x80);
+    EXPECT_EQ(buf[38], 0x00);
+    EXPECT_EQ(buf[39], 0x00);
+    // Total = 32 (addr) + 4 (type tag) + 4 (float) = 40
+    EXPECT_EQ(buf.size(), 40);
 }
 
 TEST(OscSenderTest, RecordSlotMessageFormat)
@@ -516,20 +540,21 @@ TEST(OscSenderTest, ImportSlotMessageLargeNumbers)
     auto buf = sender.buildImportSlotMessage(10, 25);
 
     ASSERT_FALSE(buf.empty());
-    // "/playtime/slot/10/25/import" = 29 chars, padded to 32
-    EXPECT_EQ(0, memcmp(buf.data(), "/playtime/slot/10/25/import", 29));
-    // Type tag at byte 32
-    EXPECT_EQ(buf[32], ',');
-    EXPECT_EQ(buf[33], 'f');
-    EXPECT_EQ(buf[34], '\0');
-    EXPECT_EQ(buf[35], '\0');
-    // Float 1.0 at bytes 36-39
-    EXPECT_EQ(buf[36], 0x3f);
-    EXPECT_EQ(buf[37], 0x80);
-    EXPECT_EQ(buf[38], 0x00);
-    EXPECT_EQ(buf[39], 0x00);
-    // Total = 32 (addr) + 4 (type tag) + 4 (float) = 40
-    EXPECT_EQ(buf.size(), 40);
+    // "/playtime/slot/10/25/import" = 27 chars, padded to 28
+    const char* expectedAddr = "/playtime/slot/10/25/import";
+    EXPECT_EQ(0, memcmp(buf.data(), expectedAddr, 27));
+    // Type tag at byte 28
+    EXPECT_EQ(buf[28], ',');
+    EXPECT_EQ(buf[29], 'f');
+    EXPECT_EQ(buf[30], '\0');
+    EXPECT_EQ(buf[31], '\0');
+    // Float 1.0 at bytes 32-35
+    EXPECT_EQ(buf[32], 0x3f);
+    EXPECT_EQ(buf[33], 0x80);
+    EXPECT_EQ(buf[34], 0x00);
+    EXPECT_EQ(buf[35], 0x00);
+    // Total = 28 (addr) + 4 (type tag) + 4 (float) = 36
+    EXPECT_EQ(buf.size(), 36);
 }
 
 // ============================================================
@@ -562,7 +587,8 @@ TEST(OscReceiverTest, ParseSlotStateMessage)
     std::string addr;
     std::vector<int> intArgs;
     std::vector<std::string> strArgs;
-    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs);
+    std::vector<float> floatArgs;
+    bool ok = receiver.parseMessage(packet, addr, intArgs, strArgs, floatArgs);
 
     EXPECT_TRUE(ok);
     EXPECT_EQ(addr, "/playtime/slot/state");
