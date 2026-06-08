@@ -83,10 +83,9 @@ Download and install the [Helgobox](https://www.helgoboss.org/projects/helgobox/
 
 #### 3. Import the spidercrab preset
 
-1. Open `docs/realearn-presets/spidercrab-playtime.lua` from the spidercrab repo
-2. Copy the entire file contents
-3. In ReaLearn's **Main** compartment, click the menu (three dots) → **Import**
-4. Paste the Lua code and confirm
+1. In the spidercrab web UI, go to **Settings** → **Playtime 2** → click **↓ Download ReaLearn Preset**
+2. In ReaLearn's **Main** compartment, click the menu (three dots) → **Import from Lua**
+3. Paste (or open) the downloaded file and confirm
 
 This preset creates OSC-to-Playtime mappings for an 8×8 grid of slots.
 
@@ -95,23 +94,12 @@ This preset creates OSC-to-Playtime mappings for an 8×8 grid of slots.
 1. In ReaLearn, go to **Preferences** → **OSC devices**
 2. Click **Add OSC device**
 3. Give it a name (e.g., "spidercrab")
-4. Set **Control input** to listen on port **9001** (or any free port)
-5. Set **Feedback output** address to `127.0.0.1` port **9000**
+4. Set **Control input** to listen on port **9001** (spidercrab sends triggers here)
+5. Set **Feedback output** address to `127.0.0.1` port **9000** (spidercrab listens for state here)
 6. Save the device
 7. In the **Main** compartment, select this device as both **Control input** and **Feedback output**
 
-#### 5. Configure spidercrab to send to the right port
-
-By default, spidercrab sends OSC to `127.0.0.1:9000`. If you configured ReaLearn on port 9001:
-
-- The OSC sender port is configurable in `extension/src/osc_sender.h` (default: 9000)
-- The OSC receiver listens on port 9000 for feedback from ReaLearn
-
-For now, you can either:
-- Configure ReaLearn to listen on port 9000 (easiest)
-- Or change the sender port in the C++ code
-
-#### 6. Verify it works
+#### 5. Verify it works
 
 1. Make sure Playtime 2 has a matrix with clips loaded
 2. Open the spidercrab web UI on your iPad
@@ -138,7 +126,7 @@ State IDs: `0=stopped`, `1=playing`, `2=recording`, `3=empty`, `4=queued`
 | Slot triggers work but state doesn't update | Feedback not reaching spidercrab | Verify Feedback output points to `127.0.0.1:9000` |
 | "OSC receiver bind failed" in console | Port 9000 in use by another app | Kill the conflicting app or change spidercrab's receiver port |
 | Clips don't play | Playtime 2 not running | Open Playtime 2 window and create a matrix |
-| Only MIDI works, not OSC | Extension running old MIDI-only code | Rebuild extension from latest source |
+| Triggers work but state doesn't update | ReaLearn feedback output misconfigured | Set feedback output to `127.0.0.1:9000` |
 | `make test` fails with OSC tests | Linker issues with Berkeley sockets | Add `-lws2_32` on Windows or ensure `#include <sys/socket.h>` works |
 
 ## 🔧 For developers
