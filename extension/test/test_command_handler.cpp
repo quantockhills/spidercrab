@@ -1638,9 +1638,13 @@ TEST(SampleBrowserTest, SendToSlotMissingPath)
     std::string json = R"({"type":"command","command":"sample/sendToSlot","payload":{"column":0,"row":0},"id":"slot_1"})";
     std::string payloadStr = extractPayload(json);
     JsonParser  parser(payloadStr);
+    // JsonParser is forward-only; once "path" is not found, the parser
+    // advances past all keys. So we check path directly from payload.
     EXPECT_EQ(parser.getString("path"), "");
-    EXPECT_EQ(parser.getString("column"), "0");
-    EXPECT_EQ(parser.getString("row"), "0");
+    // Use a fresh parser for the remaining keys
+    JsonParser parser2(payloadStr);
+    EXPECT_EQ(parser2.getString("column"), "0");
+    EXPECT_EQ(parser2.getString("row"), "0");
 }
 
 TEST(SampleBrowserTest, SendToSlotMissingColumn)
@@ -1651,7 +1655,9 @@ TEST(SampleBrowserTest, SendToSlotMissingColumn)
     JsonParser  parser(payloadStr);
     EXPECT_EQ(parser.getString("path"), "/tmp/kick.wav");
     EXPECT_EQ(parser.getString("column"), "");
-    EXPECT_EQ(parser.getString("row"), "2");
+    // After column fails (not found), scanner is at end. Use fresh parser for row.
+    JsonParser parser2(payloadStr);
+    EXPECT_EQ(parser2.getString("row"), "2");
 }
 
 TEST(SampleBrowserTest, JsonEscapeFilepath)

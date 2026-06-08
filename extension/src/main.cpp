@@ -509,6 +509,11 @@ static bool InitializeCoreServices()
     api.GetMediaSourceLength = GetMediaSourceLength;
     api.GetMediaSourceSampleRate = GetMediaSourceSampleRate;
     api.GetMediaSourceNumChannels = GetMediaSourceNumChannels;
+    api.CountTrackMediaItems        = CountTrackMediaItems;
+    api.GetTrackMediaItem           = GetTrackMediaItem;
+    api.SetMediaItemSelected        = SetMediaItemSelected;
+    api.DeleteTrackMediaItem        = DeleteTrackMediaItem;
+    api.UpdateArrange               = UpdateArrange;
     g_cmdHandler->SetApi(api);
 
     // Pre-cache FX list at startup, before any WebSocket client
