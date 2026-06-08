@@ -245,29 +245,16 @@ return realearn.Compartment {
     },
     notes = [[
 spidercrab OSC-to-Playtime Preset
-===================================
 
-This preset connects the spidercrab iOS extension to Playtime 2
-via OSC over UDP.
+Setup:
+1. In ReaLearn Preferences -> OSC devices, add a device named "spidercrab"
+   - Control input: port 9001 (spidercrab sends triggers here)
+   - Feedback output: 127.0.0.1:9000 (spidercrab listens for state here)
+2. Select that device as Control input + Feedback output in Main compartment
 
-Setup Instructions:
-1. Install ReaLearn and Playtime 2 (part of the Helgobox package)
-2. In REAPER, add ReaLearn as a track FX or monitoring FX
-3. Open the ReaLearn window and go to the "Main" compartment
-4. Import this preset (paste the Lua code into the "Import" dialog)
-5. Configure an OSC device in ReaLearn:
-   - Add a new OSC device
-   - Set "Control input" to listen on port 9001
-   - Set "Feedback output" to send to 127.0.0.1:{feedback_port}
-   - Give the device a name like "spidercrab"
-
-OSC Address Convention:
-- /playtime/slot/<col>/<row>/trigger → Trigger slot at (col, row)
-- /playtime/slot/<col>/<row>/record  → Record into slot at (col, row)
-- /playtime/scene/<row>/trigger      → Trigger scene at row
-
-Both col and row are 0-based indices matching Playtime's internal grid.
-
-For more details, see: http://localhost:3000/madhav/spidercrab
+OSC addresses:
+- /playtime/slot/COL/ROW/trigger  ->  trigger slot
+- /playtime/slot/COL/ROW/record   ->  record slot
+- /playtime/scene/ROW/trigger     ->  trigger scene
 ]],
 }
