@@ -105,6 +105,32 @@ public:
         return ((withNul + 3) / 4) * 4;
     }
 
+    // Build an OSC message with a single float argument
+    std::vector<uint8_t> buildMessageWithFloat(
+        const std::string& address, float val) const
+    {
+        std::vector<uint8_t> buf;
+
+        // 1. Address pattern
+        size_t addrLen = paddedStringLength(address.size());
+        buf.reserve(addrLen + 8 + 4);
+        buf.insert(buf.end(), address.begin(), address.end());
+        buf.resize(buf.size() + addrLen - address.size(), 0);
+
+        // 2. Type tag ",f" padded to 4 bytes
+        buf.push_back(','); buf.push_back('f'); buf.push_back('\0'); buf.push_back('\0');
+
+        // 3. Float (big-endian IEEE 754)
+        uint32_t bits;
+        memcpy(&bits, &val, 4);
+        buf.push_back(static_cast<uint8_t>((bits >> 24) & 0xFF));
+        buf.push_back(static_cast<uint8_t>((bits >> 16) & 0xFF));
+        buf.push_back(static_cast<uint8_t>((bits >> 8)  & 0xFF));
+        buf.push_back(static_cast<uint8_t>( bits        & 0xFF));
+
+        return buf;
+    }
+
     // Build an address-only OSC message (no arguments)
     std::vector<uint8_t> buildMessage(
         const std::string& address) const
@@ -198,27 +224,27 @@ public:
 
     // --- Convenience builders ---
 
-    // Build a "trigger slot" message: /playtime/slot/<col>/<row>/trigger
+    // Build a "trigger slot" message: /playtime/slot/<col>/<row>/trigger  float=1.0
     std::vector<uint8_t> buildTriggerSlotMessage(int col, int row) const
     {
         std::string addr = "/playtime/slot/" + std::to_string(col) + "/"
             + std::to_string(row) + "/trigger";
-        return buildMessage(addr);
+        return buildMessageWithFloat(addr, 1.0f);
     }
 
-    // Build a "record slot" message: /playtime/slot/<col>/<row>/record
+    // Build a "record slot" message: /playtime/slot/<col>/<row>/record  float=1.0
     std::vector<uint8_t> buildRecordSlotMessage(int col, int row) const
     {
         std::string addr = "/playtime/slot/" + std::to_string(col) + "/"
             + std::to_string(row) + "/record";
-        return buildMessage(addr);
+        return buildMessageWithFloat(addr, 1.0f);
     }
 
-    // Build a "trigger scene" message: /playtime/scene/<row>/trigger
+    // Build a "trigger scene" message: /playtime/scene/<row>/trigger  float=1.0
     std::vector<uint8_t> buildTriggerSceneMessage(int row) const
     {
         std::string addr = "/playtime/scene/" + std::to_string(row) + "/trigger";
-        return buildMessage(addr);
+        return buildMessageWithFloat(addr, 1.0f);
     }
 
     // --- Send methods ---
