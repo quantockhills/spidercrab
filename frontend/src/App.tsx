@@ -655,6 +655,11 @@ function AppInner() {
                 </button>
               )}
             </div>
+
+            {/* Build version */}
+            <div className="text-[10px] text-[var(--text-secondary)] text-center font-mono opacity-50">
+              build {__BUILD_TIME__}
+            </div>
           </div>
         )}
         </ErrorBoundary>

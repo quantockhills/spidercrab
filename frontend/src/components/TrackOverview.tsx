@@ -882,7 +882,7 @@ function FxCard({
     }, 500);
   }, []);
 
-  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+  const handlePointerUp = useCallback((_e: React.PointerEvent) => {
     if (longPressTimerRef.current) {
       // Timer still running = quick tap (< 500ms)
       clearTimeout(longPressTimerRef.current);
@@ -894,7 +894,6 @@ function FxCard({
         if (onToggleBypass) onToggleBypass(trackIdx, fx.index, fx.bypassed ?? false);
       }
     }
-    // If timer is null (long press already fired), release does nothing
   }, [showDeleteConfirm, onDeleteFx, onToggleBypass, trackIdx, fx.index, fx.bypassed]);
 
   const cancelLongPress = useCallback(() => {
@@ -923,6 +922,13 @@ function FxCard({
   }, [trackIdx, fx.index, expandedFx, setExpandedFx]);
 
   return (
+    <>
+    {showDeleteConfirm && (
+      <div
+        className="fixed inset-0 z-10"
+        onPointerDown={() => setShowDeleteConfirm(false)}
+      />
+    )}
     <div
       key={fx.index}
       draggable={true}
@@ -930,6 +936,7 @@ function FxCard({
       onPointerUp={handlePointerUp}
       onPointerLeave={cancelLongPress}
       onPointerCancel={cancelLongPress}
+      onContextMenu={(e) => e.preventDefault()}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', `${trackIdx}:${fx.index}`);
         e.dataTransfer.effectAllowed = 'move';
@@ -997,7 +1004,8 @@ function FxCard({
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
         ring-1 ring-[var(--border)]
         transition-all duration-100
-        cursor-pointer text-center
+        cursor-pointer text-center select-none
+        ${showDeleteConfirm ? 'z-20' : ''}
         ${isDragSource ? 'opacity-40' : ''}
         ${isDropTarget && !isDragSource ? 'ring-[var(--accent-orange)] bg-[var(--accent-orange)]/10' : ''}
         ${isBypassed && !showDeleteConfirm ? 'opacity-40 grayscale' : ''}
@@ -1033,6 +1041,7 @@ function FxCard({
         </div>
       )}
     </div>
+    </>
   );
 }
 
