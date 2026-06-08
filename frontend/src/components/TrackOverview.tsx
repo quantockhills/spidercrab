@@ -870,15 +870,34 @@ function FxCard({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Long-press handler for delete
-  const handlePointerDown = useCallback(() => {
+  // Long-press (500ms) → delete confirm; quick release → bypass toggle or confirm delete.
+  // Using pointer events instead of onClick because draggable={true} suppresses click
+  // events on Firefox and other browsers after a hold gesture.
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.button !== 0) return; // left button / touch only
+    e.stopPropagation();
     longPressTimerRef.current = setTimeout(() => {
       setShowDeleteConfirm(true);
       longPressTimerRef.current = null;
     }, 500);
   }, []);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (longPressTimerRef.current) {
+      // Timer still running = quick tap (< 500ms)
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+      if (showDeleteConfirm) {
+        if (onDeleteFx) onDeleteFx(trackIdx, fx.index);
+        setShowDeleteConfirm(false);
+      } else {
+        if (onToggleBypass) onToggleBypass(trackIdx, fx.index, fx.bypassed ?? false);
+      }
+    }
+    // If timer is null (long press already fired), release does nothing
+  }, [showDeleteConfirm, onDeleteFx, onToggleBypass, trackIdx, fx.index, fx.bypassed]);
+
+  const cancelLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
@@ -888,27 +907,9 @@ function FxCard({
   // Cleanup timer on unmount
   useEffect(() => {
     return () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     };
   }, []);
-
-  // Tap on card toggles bypass
-  const handleCardClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (showDeleteConfirm) {
-      // If showing delete confirmation, tap again to confirm
-      if (onDeleteFx) {
-        onDeleteFx(trackIdx, fx.index);
-      }
-      setShowDeleteConfirm(false);
-      return;
-    }
-    if (onToggleBypass) {
-      onToggleBypass(trackIdx, fx.index, fx.bypassed ?? false);
-    }
-  }, [trackIdx, fx.index, fx.bypassed, showDeleteConfirm, onToggleBypass, onDeleteFx]);
 
   // Tap on arrow expands params (separate hit target)
   const handleExpandClick = useCallback((e: React.MouseEvent) => {
@@ -927,8 +928,8 @@ function FxCard({
       draggable={true}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onPointerLeave={cancelLongPress}
+      onPointerCancel={cancelLongPress}
       onDragStart={(e) => {
         e.dataTransfer.setData('text/plain', `${trackIdx}:${fx.index}`);
         e.dataTransfer.effectAllowed = 'move';
@@ -1001,7 +1002,6 @@ function FxCard({
         ${isDropTarget && !isDragSource ? 'ring-[var(--accent-orange)] bg-[var(--accent-orange)]/10' : ''}
         ${isBypassed && !showDeleteConfirm ? 'opacity-40 grayscale' : ''}
       `}
-      onClick={handleCardClick}
     >
       {/* Card body */}
       <div
