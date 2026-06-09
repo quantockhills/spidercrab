@@ -72,6 +72,10 @@
 #define REAPERAPI_WANT_GetMediaSourceSampleRate
 #define REAPERAPI_WANT_GetMediaSourceNumChannels
 #define REAPERAPI_WANT_NamedCommandLookup
+#define REAPERAPI_WANT_Master_GetTempo
+#define REAPERAPI_WANT_GetSetMediaItemTakeInfo
+#define REAPERAPI_WANT_GetMediaFileMetadata
+#define REAPERAPI_WANT_PCM_Source_GetPeaks
 
 // CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
 // Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.
@@ -516,6 +520,12 @@ static bool InitializeCoreServices()
     api.SetMediaItemSelected        = SetMediaItemSelected;
     api.DeleteTrackMediaItem        = DeleteTrackMediaItem;
     api.UpdateArrange               = UpdateArrange;
+    api.GetActiveTake               = GetActiveTake;
+    api.GetMediaItemTake_Source     = GetMediaItemTake_Source;
+    api.Master_GetTempo             = Master_GetTempo;
+    api.GetSetMediaItemTakeInfo     = GetSetMediaItemTakeInfo;
+    api.GetMediaFileMetadata        = GetMediaFileMetadata;
+    api.PCM_Source_GetPeaks         = PCM_Source_GetPeaks;
     g_cmdHandler->SetApi(api);
 
     // Pre-cache FX list at startup, before any WebSocket client

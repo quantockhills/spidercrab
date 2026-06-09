@@ -39,6 +39,7 @@ set(EXTENSION_SOURCES
     src/fxchain_cache.cpp
     src/sample_cache.cpp
     src/sha1_utils.cpp
+    src/MiniBpm.cpp
     ${WDL_SOURCES}
 )
 

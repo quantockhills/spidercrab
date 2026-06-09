@@ -1,4 +1,5 @@
 #include "command_handler.h"
+#include "MiniBpm.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -2056,6 +2057,60 @@ void CommandHandler::HandleSampleSendToTrack(
 // Sample send to Playtime clip slot (Issue #74)
 // ============================================================
 
+// Detect BPM from audio file using MiniBPM.
+// Uses PCM_source::GetSamples() virtual method to decode raw audio.
+// Returns 0.0 if detection fails or clip is too short.
+static double detectBpmFromFile(PCM_source* src,
+    int (*getMediaSourceSampleRate)(PCM_source*),
+    int (*getMediaSourceNumChannels)(PCM_source*))
+{
+    if (!src || !getMediaSourceSampleRate || !getMediaSourceNumChannels)
+        return 0.0;
+
+    int sampleRate = getMediaSourceSampleRate(src);
+    int channels   = getMediaSourceNumChannels(src);
+    if (sampleRate <= 0 || channels <= 0) return 0.0;
+
+    // Read up to 30s of audio
+    const int maxSecs  = 30;
+    const int hopSize  = 4096;
+    int totalSamples   = sampleRate * maxSecs;
+
+    std::vector<float>      mono(totalSamples, 0.0f);
+    std::vector<ReaSample>  buf((size_t)channels * hopSize, 0.0);
+
+    PCM_source_transfer_t block = {};
+    block.samplerate = (double)sampleRate;
+    block.nch        = channels;
+    block.length     = hopSize;
+    block.samples    = buf.data();
+    block.time_s     = 0.0;
+
+    int written = 0;
+    while (written < totalSamples) {
+        block.length     = std::min(hopSize, totalSamples - written);
+        block.samples_out = 0;
+        src->GetSamples(&block);
+        int got = block.samples_out;
+        if (got <= 0) break;
+        // Mix down to mono
+        for (int i = 0; i < got; i++) {
+            float sum = 0.0f;
+            for (int c = 0; c < channels; c++)
+                sum += (float)buf[(size_t)i * channels + c];
+            mono[written + i] = sum / (float)channels;
+        }
+        written += got;
+        block.time_s += (double)got / (double)sampleRate;
+    }
+
+    if (written < sampleRate) return 0.0; // less than 1s
+
+    breakfastquay::MiniBPM bpm((float)sampleRate);
+    bpm.setBPMRange(60.0, 200.0);
+    return bpm.estimateTempoOfSamples(mono.data(), written);
+}
+
 void CommandHandler::HandleSampleSendToSlot(
     int clientId, const std::string& id, const std::string& params)
 {
@@ -2147,6 +2202,36 @@ void CommandHandler::HandleSampleSendToSlot(
         SendResponse(clientId, id, false,
             "{\"error\":\"Could not find inserted item\"}");
         return;
+    }
+
+    // Tempo-match: set D_PLAYRATE so Playtime imports at project tempo.
+    // Fast path: ACID/BWF embedded metadata. Slow path: MiniBPM audio analysis.
+    if (m_api.Master_GetTempo && m_api.GetActiveTake &&
+        m_api.GetMediaItemTake_Source && m_api.GetSetMediaItemTakeInfo) {
+        double projectBpm = m_api.Master_GetTempo();
+        double sampleBpm  = 0.0;
+        MediaItem_Take* take = m_api.GetActiveTake(insertedItem);
+        if (take) {
+            PCM_source* src = m_api.GetMediaItemTake_Source(take);
+            if (src) {
+                // Try embedded metadata first (instant)
+                if (m_api.GetMediaFileMetadata) {
+                    char tempoBuf[64] = {0};
+                    m_api.GetMediaFileMetadata(src, "TEMPO", tempoBuf, (int)sizeof(tempoBuf));
+                    if (tempoBuf[0] != '\0') sampleBpm = atof(tempoBuf);
+                }
+                // Fall back to audio analysis via MiniBPM
+                if (sampleBpm <= 0.0) {
+                    sampleBpm = detectBpmFromFile(src,
+                        m_api.GetMediaSourceSampleRate,
+                        m_api.GetMediaSourceNumChannels);
+                }
+            }
+            if (sampleBpm > 0.0 && projectBpm > 0.0) {
+                double rate = projectBpm / sampleBpm;
+                m_api.GetSetMediaItemTakeInfo(take, "D_PLAYRATE", &rate);
+            }
+        }
     }
 
     // Deselect all items project-wide before selecting ours.

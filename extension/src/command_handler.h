@@ -111,6 +111,12 @@ struct ReaperAPI {
     void (*SetMediaItemSelected)(MediaItem* item, bool selected) = nullptr;
     bool (*DeleteTrackMediaItem)(MediaTrack* tr, MediaItem* it) = nullptr;
     void (*UpdateArrange)() = nullptr;
+
+    // Tempo matching for slot import
+    double (*Master_GetTempo)() = nullptr;
+    void* (*GetSetMediaItemTakeInfo)(MediaItem_Take* tk, const char* parmname, void* setNewValue) = nullptr;
+    int (*GetMediaFileMetadata)(PCM_source* mediaSource, const char* identifier, char* bufOutNeedBig, int bufOutNeedBig_sz) = nullptr;
+    int (*PCM_Source_GetPeaks)(PCM_source* src, double peakrate, double starttime, int numchannels, int numsamplesperchannel, int want_extra_type, double* buf) = nullptr;
 };
 
 class CommandHandler {
