@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { ReaperClientProvider, useTheme } from './hooks';
 import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
@@ -10,6 +10,8 @@ import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
 import ErrorBoundary from './components/ErrorBoundary';
 import SampleIndexProgressBar from './components/SampleIndexProgressBar';
+import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
+import type { DirResult } from './hooks/useSampleBrowser';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 
@@ -131,6 +133,51 @@ function AppInner() {
   const handleRemoveSamplePath = useCallback((path: string) => {
     setSamplePaths((prev) => prev.filter((p) => p !== path));
   }, []);
+
+  const [scanStatus, setScanStatus] = useState<{
+    phase: 'scanning' | 'transferring' | 'done';
+    scanned: number;
+    total: number;
+  } | null>(null);
+  const scanPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const handleScanPath = useCallback(async (path: string) => {
+    if (scanPollRef.current) clearInterval(scanPollRef.current);
+    setScanStatus({ phase: 'scanning', scanned: 0, total: 0 });
+    await refreshSampleCache(path);
+    scanPollRef.current = setInterval(async () => {
+      try {
+        const resp = await sendCommand('sample/getCacheStatus', { rootPath: path });
+        const p = resp.payload as { scanning?: boolean; scanned?: number; total?: number };
+        if (p.scanning) {
+          setScanStatus({ phase: 'scanning', scanned: p.scanned ?? 0, total: p.total ?? 0 });
+        } else {
+          if (scanPollRef.current) { clearInterval(scanPollRef.current); scanPollRef.current = null; }
+          setScanStatus({ phase: 'transferring', scanned: 0, total: 0 });
+          try {
+            const pathsResp = await sendCommand('sample/getCachedPaths', { rootPath: path });
+            const dirPaths = (pathsResp.payload as { paths?: string[] }).paths ?? [];
+            const total = dirPaths.length;
+            setScanStatus({ phase: 'transferring', scanned: 0, total });
+            const BATCH = 20;
+            for (let i = 0; i < dirPaths.length; i += BATCH) {
+              const batch = dirPaths.slice(i, i + BATCH);
+              const results = await Promise.all(
+                batch.map(dirPath => sendCommand('sample/getDirectory', { path: dirPath, offset: 0, limit: 10000 }))
+              );
+              results.forEach((res, idx) => {
+                const dir = res.payload as unknown as DirResult;
+                if (dir) dirCacheStore.set(batch[idx], dir);
+              });
+              persistDirCache();
+              setScanStatus({ phase: 'transferring', scanned: Math.min(i + BATCH, total), total });
+            }
+          } catch { /* ignore */ }
+          setScanStatus(prev => prev ? { ...prev, phase: 'done' } : null);
+        }
+      } catch { /* ignore */ }
+    }, 300);
+  }, [refreshSampleCache, sendCommand]);
 
   // FX chain browser state (Issue #7)
   const [fxChainView, setFxChainView] = useState(false);
@@ -617,7 +664,7 @@ function AppInner() {
                         📁 {path}
                       </span>
                       <button
-                        onClick={() => refreshSampleCache(path)}
+                        onClick={() => handleScanPath(path)}
                         className="text-xs px-2 py-1 text-[var(--accent-orange)] hover:bg-[var(--bg-tertiary)] active:brightness-95 min-h-[36px]"
                         title="Scan this directory into cache"
                         aria-label={`Scan ${path}`}
@@ -633,6 +680,28 @@ function AppInner() {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+              {scanStatus && (
+                <div className="px-2 py-2 bg-[var(--bg-secondary)]">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-[var(--text-secondary)]">
+                      {scanStatus.phase === 'done'
+                        ? `Done: ${scanStatus.total} dirs cached`
+                        : scanStatus.phase === 'transferring'
+                        ? `Loading: ${scanStatus.scanned}/${scanStatus.total} dirs`
+                        : `Scanning: ${scanStatus.scanned}/${scanStatus.total} files`}
+                    </span>
+                    <span className="text-[11px] font-mono text-[var(--text-secondary)]">
+                      {scanStatus.total > 0 ? Math.round((scanStatus.scanned / scanStatus.total) * 100) : 0}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1 bg-[var(--bg-tertiary)] overflow-hidden">
+                    <div
+                      className="h-full bg-[var(--accent-orange)] transition-all duration-200"
+                      style={{ width: `${scanStatus.phase === 'done' ? 100 : scanStatus.total > 0 ? Math.round((scanStatus.scanned / scanStatus.total) * 100) : 0}%` }}
+                    />
+                  </div>
                 </div>
               )}
               {editingSamplePath ? (

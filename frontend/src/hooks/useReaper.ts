@@ -53,9 +53,9 @@ export function useReaper(_opts?: UseReaperOptions) {
 
   // Generic sendCommand for hooks that need raw access (e.g. useAudioPreview)
   const sendCommand = useCallback(
-    async (command: string, params?: Record<string, unknown>): Promise<{ payload: Record<string, unknown> }> => {
+    async (command: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<{ payload: Record<string, unknown> }> => {
       if (!clientRef.current) throw new Error('Not connected');
-      return await clientRef.current.send(command, params || {});
+      return await clientRef.current.send(command, params || {}, timeoutMs);
     },
     []
   );

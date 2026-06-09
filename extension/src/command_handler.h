@@ -280,6 +280,8 @@ private:
     void HandleSampleStopPreview(int clientId, const std::string& id, const std::string& params);
     void HandleSampleRefreshCache(int clientId, const std::string& id, const std::string& params);
     void HandleSampleGetCacheStatus(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleGetAllCached(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleGetCachedPaths(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

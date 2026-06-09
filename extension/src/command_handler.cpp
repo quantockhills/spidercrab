@@ -287,6 +287,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/stopPreview"]     = &CommandHandler::HandleSampleStopPreview;
     m_commandMap["sample/refreshCache"]    = &CommandHandler::HandleSampleRefreshCache;
     m_commandMap["sample/getCacheStatus"]  = &CommandHandler::HandleSampleGetCacheStatus;
+    m_commandMap["sample/getAllCached"]    = &CommandHandler::HandleSampleGetAllCached;
+    m_commandMap["sample/getCachedPaths"] = &CommandHandler::HandleSampleGetCachedPaths;
     m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
     m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
     m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
@@ -1489,6 +1491,9 @@ void CommandHandler::HandleSampleGetDirectory(
         return;
     }
 
+    // Resolve actual filesystem case + native separators so cache keys match
+    { std::error_code ec; auto cp = fs::weakly_canonical(fs::path(path), ec); path = ec ? fs::path(path).lexically_normal().make_preferred().string() : cp.make_preferred().string(); }
+
     int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
     int limit  = limitStr.empty()  ? 100 : atoi(limitStr.c_str());
     if (limit <= 0) limit = 100;
@@ -2140,7 +2145,21 @@ void CommandHandler::HandleSampleSendToSlot(
         return;
     }
 
-    // Select item and refresh arrange so Playtime can see it
+    // Deselect all items project-wide before selecting ours.
+    // FillSlotWithSelectedItem processes ALL selected items — any previously
+    // moved items still selected in arrangement would cause extra clips.
+    int totalTracks = m_api.CountTracks(nullptr);
+    for (int t = 0; t < totalTracks; t++) {
+        MediaTrack* tr = m_api.GetTrack(nullptr, t);
+        if (!tr) continue;
+        int tc = m_api.CountTrackMediaItems(tr);
+        for (int i = 0; i < tc; i++) {
+            MediaItem* it = m_api.GetTrackMediaItem(tr, i);
+            if (it) m_api.SetMediaItemSelected(it, false);
+        }
+    }
+
+    // Select only our new item
     m_api.SetMediaItemSelected(insertedItem, true);
     if (m_api.UpdateArrange) {
         m_api.UpdateArrange();
@@ -2149,40 +2168,36 @@ void CommandHandler::HandleSampleSendToSlot(
     // Step 3: Send OSC import message -> ReaLearn triggers FillSlotWithSelectedItem
     m_oscSender.sendImportSlot(col, row);
 
-    // Step 4: Defer item cleanup to next Run() tick so FillSlotWithSelectedItem has time
-    QueueMainThread([this, insertedItem, scratchTrack, col, row, filePath, clientId, id]() {
-        // Deselect and delete the temp item
+    // Step 4: Respond immediately so the UI feels instant, then clean up the
+    // temp item after ~5 Run() ticks (~165ms) — enough time for ReaLearn to
+    // receive the OSC and fire FillSlotWithSelectedItem before we delete it.
+    std::string fileName = filePath;
+    {
+        size_t slashPos = fileName.find_last_of("/\\");
+        if (slashPos != std::string::npos) fileName = fileName.substr(slashPos + 1);
+    }
+    SlotState immediate;
+    immediate.column   = col;
+    immediate.row      = row;
+    immediate.state    = "stopped";
+    immediate.clipType = "audio";
+    immediate.name     = fileName;
+    m_playtimeState.setSlot(col, row, immediate);
+    BroadcastMatrixEvent("matrix/slotStateChanged", m_playtimeState.getSlot(col, row).toJson());
+    SendResponse(clientId, id, true, m_playtimeState.getSlot(col, row).toJson());
+
+    // Chain 5 deferred ticks before cleanup so ReaLearn has time to process OSC
+    auto doCleanup = std::make_shared<std::function<void()>>();
+    *doCleanup = [this, insertedItem, scratchTrack, doCleanup, ticksLeft = 5]() mutable {
+        if (--ticksLeft > 0) {
+            QueueMainThread(*doCleanup);
+            return;
+        }
         m_api.SetMediaItemSelected(insertedItem, false);
         m_api.DeleteTrackMediaItem(scratchTrack, insertedItem);
-
-        if (m_api.UpdateArrange) {
-            m_api.UpdateArrange();
-        }
-
-        // Extract filename from path for the slot name
-        std::string fileName = filePath;
-        size_t slashPos = fileName.find_last_of("/\\");
-        if (slashPos != std::string::npos) {
-            fileName = fileName.substr(slashPos + 1);
-        }
-
-        // Update PlaytimeState slot metadata
-        SlotState updated;
-        updated.column   = col;
-        updated.row      = row;
-        updated.state    = "stopped";
-        updated.clipType = "audio";
-        updated.name     = fileName;
-        updated.color    = "";
-        m_playtimeState.setSlot(col, row, updated);
-
-        // Broadcast slot state change event
-        updated = m_playtimeState.getSlot(col, row);
-        BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
-
-        // Send response back to client
-        SendResponse(clientId, id, true, updated.toJson());
-    });
+        if (m_api.UpdateArrange) m_api.UpdateArrange();
+    };
+    QueueMainThread(*doCleanup);
 }
 
 // ============================================================
@@ -2415,6 +2430,7 @@ void CommandHandler::HandleSampleRefreshCache(
         return;
     }
 
+    { std::error_code ec; auto cp = fs::weakly_canonical(fs::path(rootPath), ec); rootPath = ec ? fs::path(rootPath).lexically_normal().make_preferred().string() : cp.make_preferred().string(); }
     m_sampleCache.ClearRoot(rootPath);
     m_sampleCache.BeginScan(rootPath, [this](int scanned, int total) {
         if (!m_broadcastCb) return;
@@ -2437,6 +2453,7 @@ void CommandHandler::HandleSampleGetCacheStatus(
     JsonParser  parser(payloadStr);
     std::string rootPath = parser.getString("rootPath");
 
+    if (!rootPath.empty()) { std::error_code ec; auto cp = fs::weakly_canonical(fs::path(rootPath), ec); rootPath = ec ? fs::path(rootPath).lexically_normal().make_preferred().string() : cp.make_preferred().string(); }
     bool scanning = m_sampleCache.IsScanning();
     bool indexed  = !rootPath.empty() && m_sampleCache.IsIndexed(rootPath);
     int scanned = 0, total = 0;
@@ -2458,6 +2475,61 @@ void CommandHandler::TickSampleCache()
     if (done && m_broadcastCb) {
         m_broadcastCb("{\"type\":\"event\",\"event\":\"sampleIndexComplete\",\"payload\":{}}");
     }
+}
+
+void CommandHandler::HandleSampleGetAllCached(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rootPath = parser.getString("rootPath");
+
+    auto allDirs = m_sampleCache.GetAllCachedDirectories(rootPath);
+
+    std::string payload = "{\"dirs\":{";
+    bool firstDir = true;
+    for (const auto& pair : allDirs) {
+        if (!firstDir) payload += ",";
+        firstDir = false;
+        payload += json_string(pair.first) + ":{";
+        payload += json_string("entries") + ":[";
+        bool firstEntry = true;
+        for (const auto& e : pair.second) {
+            if (!firstEntry) payload += ",";
+            firstEntry = false;
+            payload += "{";
+            payload += json_string("name") + ":" + json_string(e.name) + ",";
+            payload += json_string("type") + ":" + json_string(e.type);
+            payload += "}";
+        }
+        payload += "],";
+        payload += json_string("total") + ":" + std::to_string((int)pair.second.size()) + ",";
+        payload += json_string("offset") + ":0,";
+        payload += json_string("path") + ":" + json_string(pair.first);
+        payload += "}";
+    }
+    payload += "}}";
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleSampleGetCachedPaths(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rootPath = parser.getString("rootPath");
+
+    auto allDirs = m_sampleCache.GetAllCachedDirectories(rootPath);
+
+    std::string payload = "{\"paths\":[";
+    bool first = true;
+    for (const auto& pair : allDirs) {
+        if (!first) payload += ",";
+        first = false;
+        payload += json_string(pair.first);
+    }
+    payload += "]}";
+    SendResponse(clientId, id, true, payload);
 }
 
 // ============================================================
