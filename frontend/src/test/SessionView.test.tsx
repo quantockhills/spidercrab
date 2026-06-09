@@ -872,4 +872,68 @@ describe('SessionView', () => {
       expect(screen.getByLabelText('Track 1 solo toggle')).toBeDefined();
     });
   });
+
+  // ── Navigate to Track tests (Issue #111) ──
+
+  it('renders navigate-to-track button in column headers', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 1, name: 'Snare', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Navigate to track 1')).toBeDefined();
+      expect(screen.getByLabelText('Navigate to track 2')).toBeDefined();
+    });
+  });
+
+  it('calls onNavigateToTrack with correct index when nav button is tapped', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 1, name: 'Snare', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+    ];
+    const onNavigateToTrack = vi.fn();
+    renderSessionView({ matrix, tracks: mockTracks, onNavigateToTrack });
+
+    await waitFor(() => {
+      const navBtn1 = screen.getByLabelText('Navigate to track 1');
+      fireEvent.click(navBtn1);
+      expect(onNavigateToTrack).toHaveBeenCalledWith(0);
+    });
+
+    await waitFor(() => {
+      const navBtn2 = screen.getByLabelText('Navigate to track 2');
+      fireEvent.click(navBtn2);
+      expect(onNavigateToTrack).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it('renders navigate-to-track button for fallback track names when no tracks prop', async () => {
+    const matrix = makeEmptyMatrix();
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      // Should render nav buttons for each column using fallback names
+      for (let i = 1; i <= 8; i++) {
+        expect(screen.getByLabelText(`Navigate to track ${i}`)).toBeDefined();
+      }
+    });
+  });
+
+  it('navigate-to-track button has correct accessible label', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      const navBtn = screen.getByLabelText('Navigate to track 1');
+      // Should show an arrow/icon indicating navigation
+      expect(navBtn.textContent).toBe('↗');
+    });
+  });
 });
