@@ -403,12 +403,20 @@ export function SessionView({
                     <span className="text-[10px] opacity-50">🔊</span>
                   )}
 
-                  {/* Clip name (truncated) */}
-                  {name && (
-                    <span className="text-[9px] leading-tight text-center px-0.5 truncate w-full mt-0.5">
-                      {name}
-                    </span>
-                  )}
+                  {/* Clip name (responsive, multi-line) */}
+                  {(() => {
+                    const displayName = name || (clipType === 'audio' ? 'Audio Clip' : clipType === 'midi' ? 'MIDI Clip' : '');
+                    const isFallback = !name && clipType !== 'none';
+                    if (!displayName) return null;
+                    return (
+                      <span
+                        className={`text-[11px] leading-tight text-center px-0.5 w-full mt-0.5 line-clamp-2${isFallback ? ' italic opacity-60' : ''}`}
+                        style={{ fontSize: 'max(11px, 1.5vw)', overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                      >
+                        {displayName}
+                      </span>
+                    );
+                  })()}
 
                   {/* State indicator icon */}
                   {state === 'playing' && (

@@ -517,7 +517,7 @@ describe('SessionView', () => {
     const onGetMatrix = vi.fn().mockResolvedValue(null);
 
     // Render with matrix=null so the launch prompt is shown
-    const { rerender } = render(
+    render(
       <SessionView
         matrix={null}
         getMatrix={onGetMatrix}
@@ -558,6 +558,101 @@ describe('SessionView', () => {
       // Track with empty name should fall back to "Track N"
       expect(screen.getByLabelText('Column 1: Track 1')).toBeDefined();
       expect(screen.getByLabelText('Column 2: Snare')).toBeDefined();
+    });
+  });
+
+  // ── Clip name prominence tests (Issue #109) ──
+
+  it('renders clip name with responsive font size (min 11px)', async () => {
+    const matrix = makeEmptyMatrix();
+    matrix.slots[0] = { column: 0, row: 0, state: 'stopped', color: '#888888', name: 'Kick', clipType: 'audio' };
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      const slot = screen.getByLabelText('Slot 1,1');
+      expect(slot.textContent).toContain('Kick');
+    });
+
+    // Verify the className includes text-[11px] minimum size
+    const nameSpan = screen.getByText('Kick');
+    expect(nameSpan.className).toContain('text-[11px]');
+    // Verify inline style includes responsive max() for real browsers
+    // (jsdom drops CSS math functions, so we verify the className fallback)
+  });
+
+  it('shows fallback name "Audio Clip" for audio slots without user-set name', async () => {
+    const matrix = makeEmptyMatrix();
+    // Audio slot with empty name
+    matrix.slots[0] = { column: 0, row: 0, state: 'stopped', color: '#888888', name: '', clipType: 'audio' };
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      expect(screen.getByText('Audio Clip')).toBeDefined();
+    });
+  });
+
+  it('shows fallback name "MIDI Clip" for MIDI slots without user-set name', async () => {
+    const matrix = makeEmptyMatrix();
+    // MIDI slot with empty name
+    matrix.slots[8] = { column: 0, row: 1, state: 'stopped', color: '#888888', name: '', clipType: 'midi' };
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      expect(screen.getByText('MIDI Clip')).toBeDefined();
+    });
+  });
+
+  it('does not show fallback name for truly empty slots (state=empty, clipType=none)', async () => {
+    const matrix = makeEmptyMatrix();
+    // The default slot is already empty with clipType='none' and name=''
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      // Render the grid
+      expect(screen.getByLabelText('Slot 1,1')).toBeDefined();
+    });
+
+    // No fallback text should appear for empty slots
+    expect(screen.queryByText('Audio Clip')).toBeNull();
+    expect(screen.queryByText('MIDI Clip')).toBeNull();
+  });
+
+  it('wraps long clip names across multiple lines (no truncate class)', async () => {
+    const matrix = makeEmptyMatrix();
+    const longName = 'A very long clip name that should wrap across multiple lines in the grid cell'; 
+    matrix.slots[0] = { column: 0, row: 0, state: 'stopped', color: '#888888', name: longName, clipType: 'audio' };
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      expect(screen.getByText(longName)).toBeDefined();
+    });
+
+    const nameSpan = screen.getByText(longName);
+    // Should NOT have the truncate class
+    expect(nameSpan.className).not.toContain('truncate');
+    // Should have line-clamp-2 class for multi-line wrapping
+    expect(nameSpan.className).toContain('line-clamp-2');
+  });
+
+  it('shows fallback in italic style for slots without user-set names', async () => {
+    const matrix = makeEmptyMatrix();
+    matrix.slots[0] = { column: 0, row: 0, state: 'stopped', color: '#888888', name: '', clipType: 'audio' };
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      const fallback = screen.getByText('Audio Clip');
+      expect(fallback.className).toContain('italic');
+    });
+  });
+
+  it('shows user-set name in normal (non-italic) style', async () => {
+    const matrix = makeEmptyMatrix();
+    matrix.slots[0] = { column: 0, row: 0, state: 'stopped', color: '#888888', name: 'Kick_01', clipType: 'audio' };
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      const name = screen.getByText('Kick_01');
+      expect(name.className).not.toContain('italic');
     });
   });
 });
