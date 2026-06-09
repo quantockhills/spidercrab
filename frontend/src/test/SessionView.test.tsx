@@ -700,4 +700,176 @@ describe('SessionView', () => {
       expect(onSetSlotReverse).toHaveBeenCalledWith(0, 0, true);
     });
   });
+
+  // ── Column header track control tests (Issue #110) ──
+
+  it('renders arm/mute/solo buttons in column headers when tracks prop is provided', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+      { index: 1, name: 'Snare', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Column 1: Kick')).toBeDefined();
+      expect(screen.getByLabelText('Track 1 arm toggle')).toBeDefined();
+      expect(screen.getByLabelText('Track 1 mute toggle')).toBeDefined();
+      expect(screen.getByLabelText('Track 1 solo toggle')).toBeDefined();
+      expect(screen.getByLabelText('Track 2 arm toggle')).toBeDefined();
+      expect(screen.getByLabelText('Track 2 mute toggle')).toBeDefined();
+      expect(screen.getByLabelText('Track 2 solo toggle')).toBeDefined();
+    });
+  });
+
+  it('calls onToggleArm when arm button is clicked in column header', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    const onToggleArm = vi.fn();
+    renderSessionView({ matrix, tracks: mockTracks, onToggleArm });
+
+    await waitFor(() => {
+      const armBtn = screen.getByLabelText('Track 1 arm toggle');
+      fireEvent.click(armBtn);
+      expect(onToggleArm).toHaveBeenCalledWith(0);
+    });
+  });
+
+  it('calls onToggleMute when mute button is clicked in column header', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    const onToggleMute = vi.fn();
+    renderSessionView({ matrix, tracks: mockTracks, onToggleMute });
+
+    await waitFor(() => {
+      const muteBtn = screen.getByLabelText('Track 1 mute toggle');
+      fireEvent.click(muteBtn);
+      expect(onToggleMute).toHaveBeenCalledWith(0);
+    });
+  });
+
+  it('calls onToggleSolo when solo button is clicked in column header', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    const onToggleSolo = vi.fn();
+    renderSessionView({ matrix, tracks: mockTracks, onToggleSolo });
+
+    await waitFor(() => {
+      const soloBtn = screen.getByLabelText('Track 1 solo toggle');
+      fireEvent.click(soloBtn);
+      expect(onToggleSolo).toHaveBeenCalledWith(0);
+    });
+  });
+
+  it('shows arm button as red when track is armed', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: true, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      const armBtn = screen.getByLabelText('Track 1 arm toggle');
+      expect(armBtn.className).toContain('accent-red');
+    });
+  });
+
+  it('shows mute button as dimmed when track is muted', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: true, soloed: false, armed: false, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      const muteBtn = screen.getByLabelText('Track 1 mute toggle');
+      expect(muteBtn.className).toContain('accent-red');
+    });
+  });
+
+  it('shows solo button as highlighted when track is soloed', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: true, armed: false, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      const soloBtn = screen.getByLabelText('Track 1 solo toggle');
+      expect(soloBtn.className).toContain('accent-yellow');
+    });
+  });
+
+  it('shows record mode toggle as A (audio) when recMode is 0', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: true, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      const modeToggle = screen.getByLabelText('Track 1 record mode toggle');
+      expect(modeToggle).toBeDefined();
+      expect(modeToggle.textContent).toBe('A');
+    });
+  });
+
+  it('shows record mode toggle as M (MIDI) when recMode is 7 or 8', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: true, recMode: 7, recInput: 6112, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      const modeToggle = screen.getByLabelText('Track 1 record mode toggle');
+      expect(modeToggle).toBeDefined();
+      expect(modeToggle.textContent).toBe('M');
+    });
+  });
+
+  it('calls onToggleRecordMode when A/M toggle is clicked', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: true, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    const onToggleRecordMode = vi.fn();
+    renderSessionView({ matrix, tracks: mockTracks, onToggleRecordMode });
+
+    await waitFor(() => {
+      const modeToggle = screen.getByLabelText('Track 1 record mode toggle');
+      fireEvent.click(modeToggle);
+      expect(onToggleRecordMode).toHaveBeenCalledWith(0);
+    });
+  });
+
+  it('does not show record mode toggle when track is not armed', async () => {
+    const matrix = makeEmptyMatrix();
+    const mockTracks = [
+      { index: 0, name: 'Kick', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, recMode: 0, recInput: 0, volume: 0.75, pan: 0 },
+    ];
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText('Track 1 record mode toggle')).toBeNull();
+    });
+  });
+
+  it('shows track control buttons with fallback tracks when no tracks prop', async () => {
+    const matrix = makeEmptyMatrix();
+    renderSessionView({ matrix });
+
+    await waitFor(() => {
+      // With no tracks prop, control labels use 1-indexed column + 1
+      expect(screen.getByLabelText('Track 1 arm toggle')).toBeDefined();
+      expect(screen.getByLabelText('Track 1 mute toggle')).toBeDefined();
+      expect(screen.getByLabelText('Track 1 solo toggle')).toBeDefined();
+    });
+  });
 });

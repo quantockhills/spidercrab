@@ -20,6 +20,14 @@ interface SessionViewProps {
   onRecordSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
   /** Toggle reverse on a clip slot (Issue #75) */
   onSetSlotReverse?: (column: number, row: number, reversed: boolean) => Promise<ClipSlot | null>;
+  /** Track arm toggle (Issue #110) */
+  onToggleArm?: (trackIdx: number) => void;
+  /** Track mute toggle (Issue #110) */
+  onToggleMute?: (trackIdx: number) => void;
+  /** Track solo toggle (Issue #110) */
+  onToggleSolo?: (trackIdx: number) => void;
+  /** Track record mode toggle (audio/MIDI) (Issue #110) */
+  onToggleRecordMode?: (trackIdx: number) => void;
 }
 
 /** Map slot state to display color hex (for the cell accent) */
@@ -47,6 +55,10 @@ export function SessionView({
   onCheckPlaytimeAvailable,
   onRecordSlot,
   onSetSlotReverse,
+  onToggleArm,
+  onToggleMute,
+  onToggleSolo,
+  onToggleRecordMode,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
@@ -352,20 +364,88 @@ export function SessionView({
       {(() => {
         const matrixTracks = (tracks ?? []).filter(t => !/helgobox|realearn/i.test(t.name));
         return (
-          <div className="flex gap-px px-3 pt-2 border-b border-[var(--border)]">
-            {Array.from({ length: cols }, (_, col) => {
-              const trackName = matrixTracks[col]?.name || `Track ${col + 1}`;
-              return (
-                <div
-                  key={col}
-                  className="flex-1 flex items-center justify-center text-[10px] font-semibold text-[var(--text-secondary)] truncate px-1 py-1.5"
-                  title={trackName}
-                >
-                  {trackName}
-                </div>
-              );
-            })}
-            <div className="w-8" />
+          <div className="px-3 pt-2 border-b border-[var(--border)]">
+            <div className="flex gap-px">
+              {Array.from({ length: cols }, (_, col) => {
+                const trackName = matrixTracks[col]?.name || `Track ${col + 1}`;
+                const track = matrixTracks[col];
+                const isArmed = track?.armed ?? false;
+                const isMuted = track?.muted ?? false;
+                const isSoloed = track?.soloed ?? false;
+                const recMode = track?.recMode ?? 0;
+                const isMidiMode = recMode >= 7;
+                return (
+                  <div key={col} className="flex-1 flex flex-col items-center min-w-0 px-px">
+                    {/* Track name */}
+                    <div
+                      className="w-full text-center text-[10px] font-semibold text-[var(--text-secondary)] truncate py-1"
+                      title={trackName}
+                      aria-label={`Column ${col + 1}: ${trackName}`}
+                    >
+                      {trackName}
+                    </div>
+                    {/* Control buttons row */}
+                    <div className="flex items-center gap-px pb-1">
+                      {/* Record arm button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onToggleArm?.(col); }}
+                        className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
+                          isArmed
+                            ? 'bg-[var(--accent-red)]/40 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/50'
+                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
+                        }`}
+                        aria-label={`Track ${col + 1} arm toggle`}
+                        title={isArmed ? 'Armed' : 'Disarmed'}
+                      >
+                        R
+                      </button>
+                      {/* Record mode toggle (A/M) — only visible when armed */}
+                      {isArmed && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onToggleRecordMode?.(col); }}
+                          className={`w-5 h-5 flex items-center justify-center text-[8px] font-bold rounded transition-all active:brightness-90 ${
+                            isMidiMode
+                              ? 'bg-[var(--accent-blue)]/30 text-[var(--accent-blue)] ring-1 ring-[var(--accent-blue)]/40'
+                              : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/80 hover:bg-[var(--bg-secondary)]'
+                          }`}
+                          aria-label={`Track ${col + 1} record mode toggle`}
+                          title={isMidiMode ? 'MIDI input' : 'Audio input'}
+                        >
+                          {isMidiMode ? 'M' : 'A'}
+                        </button>
+                      )}
+                      {/* Mute button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onToggleMute?.(col); }}
+                        className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
+                          isMuted
+                            ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
+                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
+                        }`}
+                        aria-label={`Track ${col + 1} mute toggle`}
+                        title={isMuted ? 'Muted' : 'Unmuted'}
+                      >
+                        M
+                      </button>
+                      {/* Solo button */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onToggleSolo?.(col); }}
+                        className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
+                          isSoloed
+                            ? 'bg-[var(--accent-yellow)]/25 text-[var(--accent-yellow)] ring-1 ring-[var(--accent-yellow)]/40'
+                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
+                        }`}
+                        aria-label={`Track ${col + 1} solo toggle`}
+                        title={isSoloed ? 'Soloed' : 'Unsoloed'}
+                      >
+                        S
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="w-8 flex-shrink-0" />
+            </div>
           </div>
         );
       })()}
