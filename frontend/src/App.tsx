@@ -365,6 +365,10 @@ function AppInner() {
                   onLaunchPlaytime={launchPlaytime}
                   onCheckPlaytimeAvailable={checkPlaytimeAvailable}
                   onRecordSlot={recordSlot}
+                  onToggleArm={handleToggleArm}
+                  onToggleMute={handleToggleMute}
+                  onToggleSolo={handleToggleSolo}
+                  onToggleRecordMode={handleToggleRecordMode}
                 />
               ) : (
                 <SequencerView
