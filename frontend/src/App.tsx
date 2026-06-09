@@ -215,6 +215,12 @@ function AppInner() {
     await toggleTrackRecordMode(index);
   }, [toggleTrackRecordMode]);
 
+  const handleNavigateToTrack = useCallback((trackIdx: number) => {
+    setSelectedTrack(trackIdx);
+    selectTrack(trackIdx);
+    setActiveTab('tracks');
+  }, [selectTrack]);
+
   const handleVolumeChange = useCallback(async (index: number, volume: number) => {
     const ok = await setTrackVolume(index, volume);
     if (ok) updateTrack(index, { volume });
@@ -369,6 +375,7 @@ function AppInner() {
                   onToggleMute={handleToggleMute}
                   onToggleSolo={handleToggleSolo}
                   onToggleRecordMode={handleToggleRecordMode}
+                  onNavigateToTrack={handleNavigateToTrack}
                 />
               ) : (
                 <SequencerView
