@@ -68,6 +68,9 @@ public:
     /// Check if a root path has been fully indexed.
     bool IsIndexed(const std::string& rootPath) const;
 
+    /// Return all cached directory listings, optionally filtered to paths under rootPath.
+    std::unordered_map<std::string, std::vector<Entry>> GetAllCachedDirectories(const std::string& rootPath) const;
+
     // ── Management ──
 
     /// Clear all cached data for all roots.

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { dirCacheStore, persistDirCache } from '../utils/dirCacheStore';
 import type { Track, DirEntry, MatrixData, ClipSlot } from '../hooks/useReaper';
 import type { DirResult } from '../hooks/useSampleBrowser';
 import { useAudioPreview } from '../hooks/useAudioPreview';
@@ -79,6 +80,9 @@ export function SampleBrowser({
   const [editingRoot, setEditingRoot] = useState(false);
   const [rootPathInput, setRootPathInput] = useState(currentPath);
 
+  // Frontend directory cache: module-level singleton shared with App.tsx
+  const dirCache = useRef(dirCacheStore);
+
   // Cross-root search state (Issue #101, Acceptance Criterion #4)
   const crossRootSearchVersion = useRef(0);
   const [crossRootResults, setCrossRootResults] = useState<{
@@ -147,10 +151,24 @@ export function SampleBrowser({
     if (!currentPath) {
       return;
     }
+
+    // Serve from frontend cache immediately — no loading state
+    const cached = dirCache.current.get(currentPath);
+    if (cached) {
+      setError(null);
+      setEntries(cached.entries);
+      setDirTotal(cached.total);
+      setDirOffset(0);
+      setLoading(false);
+    }
+
+    // Always fetch fresh data in the background to keep cache up to date
     let cancelled = false;
     getDirectory(currentPath, 0, dirLimit)
       .then((result) => {
         if (!cancelled) {
+          dirCache.current.set(currentPath, result);
+          persistDirCache();
           setError(null);
           setEntries(result.entries);
           setDirTotal(result.total);
@@ -172,7 +190,7 @@ export function SampleBrowser({
     setCurrentRoot(root);
     setCurrentPath(root);
     setCrossRootResults(null);
-    setLoading(true);
+    if (!dirCache.current.has(root)) setLoading(true);
   }, []);
 
   const handleRootPathSubmit = useCallback(() => {
@@ -186,6 +204,7 @@ export function SampleBrowser({
 
   const handleNavigate = useCallback((entry: DirEntry) => {
     if (entry.type === 'dir') {
+      let nextPath: string;
       if (entry.name === '..') {
         const parent = currentPath.substring(0, currentPath.lastIndexOf('/'));
         if (currentRoot && parent === currentRoot) {
@@ -196,12 +215,13 @@ export function SampleBrowser({
           setError(null);
           return;
         }
-        setCurrentPath(parent || '/');
+        nextPath = parent || '/';
       } else {
-        setCurrentPath(currentPath + '/' + entry.name);
+        nextPath = currentPath + '/' + entry.name;
       }
       setDirOffset(0);
-      setLoading(true);
+      if (!dirCache.current.has(nextPath)) setLoading(true);
+      setCurrentPath(nextPath);
     }
   }, [currentPath, currentRoot]);
 

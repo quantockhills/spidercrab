@@ -8,6 +8,16 @@
 
 namespace fs = std::filesystem;
 
+// Resolve path to actual filesystem case + native separators.
+// Uses weakly_canonical so it works even when parts of the path don't exist yet.
+static std::string canonicalizePath(const std::string& s)
+{
+    std::error_code ec;
+    fs::path p = fs::weakly_canonical(fs::path(s), ec);
+    if (!ec) return p.make_preferred().string();
+    return fs::path(s).lexically_normal().make_preferred().string();
+}
+
 // Lowercase helper for extension comparison
 static std::string toLowerExt(const std::string& s)
 {
@@ -42,8 +52,10 @@ void SampleCache::BeginScan(const std::string& rootPath, ProgressCallback progre
         m_scanState->cancelled = true;
     }
 
+    const std::string canonRoot = canonicalizePath(rootPath);
+
     auto state = std::make_unique<ScanState>();
-    state->rootPath = rootPath;
+    state->rootPath = canonRoot;
     state->progressCb = std::move(progressCb);
     state->counting = true;
     state->totalFiles = 0;
@@ -56,8 +68,8 @@ void SampleCache::BeginScan(const std::string& rootPath, ProgressCallback progre
     // We also collect all directory paths so we can populate the cache in phase 2.
     if (m_scanState) {
         try {
-            if (fs::exists(rootPath) && fs::is_directory(rootPath)) {
-                for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
+            if (fs::exists(canonRoot) && fs::is_directory(canonRoot)) {
+                for (const auto& entry : fs::recursive_directory_iterator(canonRoot)) {
                     if (m_scanState->cancelled)
                         break;
 
@@ -85,8 +97,8 @@ void SampleCache::BeginScan(const std::string& rootPath, ProgressCallback progre
         m_scanState->totalFiles = static_cast<int>(m_scanState->allFiles.size());
 
         // Add the root directory itself as a directory entry (if it exists)
-        if (fs::exists(rootPath) && fs::is_directory(rootPath)) {
-            m_scanState->allDirectories.push_back(rootPath);
+        if (fs::exists(canonRoot) && fs::is_directory(canonRoot)) {
+            m_scanState->allDirectories.push_back(canonRoot);
         }
 
         // Call progress callback with initial state
@@ -263,10 +275,11 @@ SampleCache::DirectoryResult SampleCache::GetDirectory(const std::string& path) 
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
+    const std::string canon = canonicalizePath(path);
     DirectoryResult result;
-    result.path = path;
+    result.path = canon;
 
-    auto it = m_directoryCache.find(path);
+    auto it = m_directoryCache.find(canon);
     if (it != m_directoryCache.end()) {
         result.entries = it->second;
     }
@@ -277,7 +290,7 @@ SampleCache::DirectoryResult SampleCache::GetDirectory(const std::string& path) 
 bool SampleCache::HasCachedData(const std::string& path) const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    return m_directoryCache.find(path) != m_directoryCache.end();
+    return m_directoryCache.find(canonicalizePath(path)) != m_directoryCache.end();
 }
 
 bool SampleCache::IsIndexed(const std::string& rootPath) const
@@ -285,6 +298,23 @@ bool SampleCache::IsIndexed(const std::string& rootPath) const
     std::lock_guard<std::mutex> lock(m_mutex);
     auto it = m_indexedRoots.find(rootPath);
     return it != m_indexedRoots.end() && it->second;
+}
+
+std::unordered_map<std::string, std::vector<SampleCache::Entry>>
+SampleCache::GetAllCachedDirectories(const std::string& rootPath) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (rootPath.empty()) return m_directoryCache;
+
+    const std::string canon = canonicalizePath(rootPath);
+    std::unordered_map<std::string, std::vector<Entry>> result;
+    for (const auto& pair : m_directoryCache) {
+        if (pair.first.size() >= canon.size() &&
+            pair.first.compare(0, canon.size(), canon) == 0) {
+            result[pair.first] = pair.second;
+        }
+    }
+    return result;
 }
 
 // ── Management ──
