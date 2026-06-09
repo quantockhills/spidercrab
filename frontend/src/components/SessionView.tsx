@@ -28,6 +28,8 @@ interface SessionViewProps {
   onToggleSolo?: (trackIdx: number) => void;
   /** Track record mode toggle (audio/MIDI) (Issue #110) */
   onToggleRecordMode?: (trackIdx: number) => void;
+  /** Navigate to Track view and select this track (Issue #111) */
+  onNavigateToTrack?: (trackIdx: number) => void;
 }
 
 /** Map slot state to display color hex (for the cell accent) */
@@ -59,6 +61,7 @@ export function SessionView({
   onToggleMute,
   onToggleSolo,
   onToggleRecordMode,
+  onNavigateToTrack,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
@@ -376,13 +379,25 @@ export function SessionView({
                 const isMidiMode = recMode >= 7;
                 return (
                   <div key={col} className="flex-1 flex flex-col items-center min-w-0 px-px">
-                    {/* Track name */}
+                    {/* Track name + nav button */}
                     <div
-                      className="w-full text-center text-[10px] font-semibold text-[var(--text-secondary)] truncate py-1"
-                      title={trackName}
-                      aria-label={`Column ${col + 1}: ${trackName}`}
+                      className="w-full flex items-center justify-center gap-0.5 py-1"
                     >
-                      {trackName}
+                      <span
+                        className="text-[10px] font-semibold text-[var(--text-secondary)] truncate"
+                        title={trackName}
+                        aria-label={`Column ${col + 1}: ${trackName}`}
+                      >
+                        {trackName}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onNavigateToTrack?.(col); }}
+                        className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-[10px] leading-none rounded transition-all active:brightness-90 hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:text-[var(--accent-orange)]"
+                        aria-label={`Navigate to track ${col + 1}`}
+                        title="Go to Track view"
+                      >
+                        ↗
+                      </button>
                     </div>
                     {/* Control buttons row */}
                     <div className="flex items-center gap-px pb-1">
