@@ -112,6 +112,11 @@ public:
         if (idx < 0 || idx >= (int)m_slots.size())
             return;
         m_slots[idx].state = newState;
+        if (newState == "empty") {
+            m_slots[idx].name     = "";
+            m_slots[idx].clipType = "none";
+            m_slots[idx].reversed = false;
+        }
     }
 
     // Replace an entire slot (thread-safe)

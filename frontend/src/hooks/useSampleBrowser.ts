@@ -8,6 +8,10 @@ export interface DirEntry {
   type: 'dir' | 'file';
 }
 
+export interface SampleTagData {
+  sampleTags: Record<string, string[]>;
+}
+
 export interface DirResult {
   entries: DirEntry[];
   total: number;
@@ -60,5 +64,22 @@ export function useSampleBrowser() {
     [send],
   );
 
-  return { getDirectory, sendSampleToTrack, refreshSampleCache, sendSampleToSlot };
+  const getSampleTags = useCallback(async (): Promise<SampleTagData | null> => {
+    try {
+      const resp = await send('sample/tags/getAll', {});
+      return resp.payload as unknown as SampleTagData;
+    } catch { return null; }
+  }, [send]);
+
+  const setSampleTags = useCallback(
+    async (filePath: string, tags: string[]): Promise<boolean> => {
+      try {
+        await send('sample/tags/set', { filePath, tags });
+        return true;
+      } catch { return false; }
+    },
+    [send],
+  );
+
+  return { getDirectory, sendSampleToTrack, refreshSampleCache, sendSampleToSlot, getSampleTags, setSampleTags };
 }

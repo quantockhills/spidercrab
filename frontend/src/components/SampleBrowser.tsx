@@ -1,11 +1,32 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { dirCacheStore, persistDirCache } from '../utils/dirCacheStore';
-import type { Track, DirEntry, MatrixData, ClipSlot } from '../hooks/useReaper';
+import type { Track, DirEntry, MatrixData, ClipSlot, SampleTagData } from '../hooks/useReaper';
 import type { DirResult } from '../hooks/useSampleBrowser';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
 import { useDragContext } from '../hooks/useDragContext';
+
+// ── Tag colors (deterministic by name hash) ──────────────────
+
+const TAG_COLORS = [
+  { bg: 'bg-blue-500/20',   text: 'text-blue-400' },
+  { bg: 'bg-green-500/20',  text: 'text-green-400' },
+  { bg: 'bg-purple-500/20', text: 'text-purple-400' },
+  { bg: 'bg-pink-500/20',   text: 'text-pink-400' },
+  { bg: 'bg-yellow-500/20', text: 'text-yellow-400' },
+  { bg: 'bg-red-500/20',    text: 'text-red-400' },
+  { bg: 'bg-indigo-500/20', text: 'text-indigo-400' },
+  { bg: 'bg-teal-500/20',   text: 'text-teal-400' },
+  { bg: 'bg-orange-500/20', text: 'text-orange-400' },
+  { bg: 'bg-cyan-500/20',   text: 'text-cyan-400' },
+];
+
+function getTagColor(tag: string) {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) hash = tag.charCodeAt(i) + ((hash << 5) - hash);
+  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+}
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -25,6 +46,8 @@ interface SampleBrowserProps {
   sendToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
   samplePaths?: string[];
   matrix?: MatrixData | null;
+  getSampleTags?: () => Promise<SampleTagData | null>;
+  setSampleTags?: (filePath: string, tags: string[]) => Promise<boolean>;
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -39,6 +62,8 @@ export function SampleBrowser({
   samplePaths,
   sendToSlot,
   matrix,
+  getSampleTags,
+  setSampleTags,
 }: SampleBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>(
     () => {
@@ -80,6 +105,12 @@ export function SampleBrowser({
   const [editingRoot, setEditingRoot] = useState(false);
   const [rootPathInput, setRootPathInput] = useState(currentPath);
 
+  // Tags state
+  const [tagData, setTagData] = useState<SampleTagData | null>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [editingTagPath, setEditingTagPath] = useState<string | null>(null);
+  const [tagEditInput, setTagEditInput] = useState('');
+
   // Frontend directory cache: module-level singleton shared with App.tsx
   const dirCache = useRef(dirCacheStore);
 
@@ -96,6 +127,12 @@ export function SampleBrowser({
   const crossRootLoading = isCrossRootSearchActive && crossRootResults === null;
 
   const audioPreview = useAudioPreview(selectedFile, sendCommand, autoplay);
+
+  // Load tags on mount
+  useEffect(() => {
+    if (!getSampleTags) return;
+    getSampleTags().then((data) => { if (data) setTagData(data); });
+  }, [getSampleTags]);
 
   const loadDirectory = useCallback(async (path: string, offset = 0) => {
     try {
@@ -186,6 +223,38 @@ export function SampleBrowser({
     return () => { cancelled = true; };
   }, [currentPath, getDirectory]);
 
+  const handleToggleTagFilter = useCallback((tag: string) => {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag); else next.add(tag);
+      return next;
+    });
+  }, []);
+
+  const handleStartEditTags = useCallback((fullPath: string) => {
+    if (!tagData) return;
+    const existing = tagData.sampleTags[fullPath] ?? [];
+    setTagEditInput(existing.join(', '));
+    setEditingTagPath(fullPath);
+  }, [tagData]);
+
+  const handleSaveTags = useCallback(async (fullPath: string) => {
+    if (!setSampleTags) return;
+    const newTags = tagEditInput.split(',').map((t) => t.trim()).filter(Boolean);
+    const ok = await setSampleTags(fullPath, newTags);
+    if (ok && getSampleTags) {
+      const data = await getSampleTags();
+      if (data) setTagData(data);
+    }
+    setEditingTagPath(null);
+    setTagEditInput('');
+  }, [tagEditInput, setSampleTags, getSampleTags]);
+
+  const handleCancelEditTags = useCallback(() => {
+    setEditingTagPath(null);
+    setTagEditInput('');
+  }, []);
+
   const handleSelectRoot = useCallback((root: string) => {
     setCurrentRoot(root);
     setCurrentPath(root);
@@ -257,7 +326,26 @@ export function SampleBrowser({
 
   // Separate dirs and files for display
   const dirs = useMemo(() => filteredEntries.filter((e) => e.type === 'dir'), [filteredEntries]);
-  const files = useMemo(() => filteredEntries.filter((e) => e.type === 'file'), [filteredEntries]);
+  const files = useMemo(() => {
+    const allFiles = filteredEntries.filter((e) => e.type === 'file');
+    if (selectedTags.size === 0 || !tagData) return allFiles;
+    return allFiles.filter((e) => {
+      const fullPath = currentPath + '/' + e.name;
+      const tags = tagData.sampleTags[fullPath] ?? [];
+      return tags.some((t) => selectedTags.has(t));
+    });
+  }, [filteredEntries, selectedTags, tagData, currentPath]);
+
+  // All unique tags across files in the current directory
+  const currentDirTags = useMemo(() => {
+    if (!tagData || !currentPath) return [];
+    const tagSet = new Set<string>();
+    filteredEntries.filter((e) => e.type === 'file').forEach((e) => {
+      const fullPath = currentPath + '/' + e.name;
+      (tagData.sampleTags[fullPath] ?? []).forEach((t) => tagSet.add(t));
+    });
+    return Array.from(tagSet).sort();
+  }, [tagData, filteredEntries, currentPath]);
 
   // Audio file extensions
   const isAudioFile = (name: string): boolean => {
@@ -434,6 +522,37 @@ export function SampleBrowser({
           ) : null}
         </div>
 
+        {/* Tag filter bar — only shown when current dir has tagged files */}
+        {currentDirTags.length > 0 && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              onClick={() => setSelectedTags(new Set())}
+              className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+                selectedTags.size === 0
+                  ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)]'
+                  : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+              }`}
+            >
+              All
+            </button>
+            {currentDirTags.map((tag) => {
+              const color = getTagColor(tag);
+              const active = selectedTags.has(tag);
+              return (
+                <button
+                  key={tag}
+                  onClick={() => handleToggleTagFilter(tag)}
+                  className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+                    active ? `${color.bg} ${color.text} ring-1 ring-current/30` : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                  }`}
+                >
+                  {tag}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Search + autoplay toggle */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -592,20 +711,31 @@ export function SampleBrowser({
               />
             ))}
             {/* Files */}
-            {files.map((entry) => (
-              <FileRow
-                key={entry.name}
-                entry={entry}
-                isAudio={isAudioFile(entry.name)}
-                isSending={sending === entry.name}
-                isSent={sentFiles.has(entry.name)}
-                canSend={selectedTrack !== null}
-                isSelected={selectedFile !== null && currentPath + '/' + entry.name === selectedFile}
-                onSend={() => handleSendToTrack(entry)}
-                onSelect={() => handleFileClick(entry)}
-                onLongPress={(x, y) => handleLongPress(entry, currentPath, x, y)}
-              />
-            ))}
+            {files.map((entry) => {
+              const fullPath = currentPath + '/' + entry.name;
+              const fileTags = tagData?.sampleTags[fullPath] ?? [];
+              return (
+                <FileRow
+                  key={entry.name}
+                  entry={entry}
+                  isAudio={isAudioFile(entry.name)}
+                  isSending={sending === entry.name}
+                  isSent={sentFiles.has(entry.name)}
+                  canSend={selectedTrack !== null}
+                  isSelected={selectedFile !== null && fullPath === selectedFile}
+                  tags={fileTags}
+                  isEditingTags={editingTagPath === fullPath}
+                  tagEditInput={tagEditInput}
+                  onTagEditInputChange={setTagEditInput}
+                  onStartEditTags={setSampleTags ? () => handleStartEditTags(fullPath) : undefined}
+                  onSaveTags={() => handleSaveTags(fullPath)}
+                  onCancelEditTags={handleCancelEditTags}
+                  onSend={() => handleSendToTrack(entry)}
+                  onSelect={() => handleFileClick(entry)}
+                  onLongPress={(x, y) => handleLongPress(entry, currentPath, x, y)}
+                />
+              );
+            })}
             {/* Pagination */}
             {dirTotal > dirLimit && (
               <div className="flex items-center justify-between px-2 py-2 mt-1 border-t border-[var(--border)]">
@@ -1015,12 +1145,19 @@ interface FileRowProps {
   isSent: boolean;
   canSend: boolean;
   isSelected: boolean;
+  tags?: string[];
+  isEditingTags?: boolean;
+  tagEditInput?: string;
+  onTagEditInputChange?: (v: string) => void;
+  onStartEditTags?: () => void;
+  onSaveTags?: () => void;
+  onCancelEditTags?: () => void;
   onSend: () => void;
   onSelect: () => void;
   onLongPress: (x: number, y: number) => void;
 }
 
-function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, onSend, onSelect, onLongPress }: FileRowProps) {
+function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, tags, isEditingTags, tagEditInput, onTagEditInputChange, onStartEditTags, onSaveTags, onCancelEditTags, onSend, onSelect, onLongPress }: FileRowProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
 
@@ -1087,17 +1224,66 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, onSen
         </button>
       )}
 
-      {/* Icon + name */}
+      {/* Icon + name + tags */}
       <span className="text-base flex-shrink-0">{icon}</span>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate">{entry.name}</div>
+        {/* Tag badges */}
+        {tags && tags.length > 0 && !isEditingTags && (
+          <div className="flex flex-wrap gap-1 mt-0.5">
+            {tags.map((tag) => {
+              const c = getTagColor(tag);
+              return (
+                <span key={tag} className={`text-[9px] px-1.5 py-0.5 ${c.bg} ${c.text} font-medium`}>
+                  {tag}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {/* Tag editor */}
+        {isEditingTags && (
+          <div className="flex items-center gap-1 mt-1" onClick={(e) => e.stopPropagation()}>
+            <input
+              autoFocus
+              type="text"
+              value={tagEditInput ?? ''}
+              onChange={(e) => onTagEditInputChange?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.stopPropagation(); onSaveTags?.(); }
+                if (e.key === 'Escape') { e.stopPropagation(); onCancelEditTags?.(); }
+              }}
+              placeholder="tag1, tag2"
+              className="flex-1 px-2 py-1 text-[11px] bg-[var(--bg-primary)] text-[var(--text-primary)]
+                outline-none ring-1 ring-[var(--accent-orange)]/40 placeholder:text-[var(--text-secondary)]"
+            />
+            <button onClick={(e) => { e.stopPropagation(); onSaveTags?.(); }}
+              className="text-[11px] px-1.5 py-1 text-[var(--accent-green)] bg-[var(--bg-primary)] min-h-[28px]">✓</button>
+            <button onClick={(e) => { e.stopPropagation(); onCancelEditTags?.(); }}
+              className="text-[11px] px-1.5 py-1 text-[var(--text-secondary)] bg-[var(--bg-primary)] min-h-[28px]">✕</button>
+          </div>
+        )}
       </div>
+
+      {/* Tag edit button */}
+      {onStartEditTags && !isEditingTags && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onStartEditTags(); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="flex-shrink-0 w-7 h-7 flex items-center justify-center text-[11px]
+            text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          aria-label="Edit tags"
+          title="Edit tags"
+        >
+          🏷
+        </button>
+      )}
 
       {/* Send to track button (audio files only) */}
       {isAudio && (
         <button
           onClick={(e) => { e.stopPropagation(); onSend(); }}
-          onPointerDown={(e) => e.stopPropagation()} // Don't trigger long-press on button
+          onPointerDown={(e) => e.stopPropagation()}
           disabled={!canSend || isSending}
           className={`
             flex-shrink-0 px-3 py-1.5 text-xs font-medium
