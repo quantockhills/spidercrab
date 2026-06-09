@@ -48,6 +48,8 @@ function AppInner() {
     sendSampleToTrack,
     sendSampleToSlot,
     refreshSampleCache,
+    getSampleTags,
+    setSampleTags,
     sendCommand,
     isRefreshingFx,
     refreshFxCache,
@@ -373,6 +375,8 @@ function AppInner() {
               samplePaths={samplePaths}
               sendToSlot={sendSampleToSlot}
               matrix={matrix}
+              getSampleTags={getSampleTags}
+              setSampleTags={setSampleTags}
             />
           </div>
         )}

@@ -322,6 +322,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
     m_commandMap["fx/tags/getAll"]           = &CommandHandler::HandleFxTagsGetAll;
     m_commandMap["fx/tags/set"]              = &CommandHandler::HandleFxTagsSet;
+    m_commandMap["sample/tags/getAll"]       = &CommandHandler::HandleSampleTagsGetAll;
+    m_commandMap["sample/tags/set"]          = &CommandHandler::HandleSampleTagsSet;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -343,6 +345,8 @@ void CommandHandler::SetConfigDir(const std::string& dir)
 {
     m_fxTagStorage = FxTagStorage(dir);
     m_fxTagStorage.Load();
+    m_sampleTagStorage = SampleTagStorage(dir);
+    m_sampleTagStorage.Load();
     PreCacheFxChains(dir);
 }
 
@@ -4376,15 +4380,104 @@ void CommandHandler::HandleFxTagsSet(
 }
 
 // ============================================================
+// Sample tag command handlers
+// ============================================================
+
+void CommandHandler::HandleSampleTagsGetAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    std::string tagsJson = m_sampleTagStorage.GetAllTagsJson();
+    SendResponse(clientId, id, true, tagsJson);
+}
+
+void CommandHandler::HandleSampleTagsSet(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string filePath = parser.getString("filePath");
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Missing 'filePath' parameter\"}");
+        return;
+    }
+
+    // Parse tags array from payload
+    std::vector<std::string> tags;
+    {
+        size_t tagsPos = payloadStr.find("\"tags\"");
+        if (tagsPos != std::string::npos) {
+            size_t colonPos = payloadStr.find(':', tagsPos);
+            if (colonPos != std::string::npos) {
+                size_t arrStart = payloadStr.find('[', colonPos);
+                if (arrStart != std::string::npos) {
+                    size_t arrEnd = payloadStr.find(']', arrStart);
+                    if (arrEnd != std::string::npos) {
+                        std::string arrContent = payloadStr.substr(arrStart + 1, arrEnd - arrStart - 1);
+                        size_t p = 0;
+                        while (p < arrContent.size()) {
+                            while (p < arrContent.size() && (arrContent[p]==' '||arrContent[p]=='\t')) p++;
+                            if (p >= arrContent.size()) break;
+                            if (arrContent[p] == ',') { p++; continue; }
+                            if (arrContent[p] == '"') {
+                                p++;
+                                std::string tag;
+                                while (p < arrContent.size() && arrContent[p] != '"') {
+                                    if (arrContent[p]=='\\' && p+1 < arrContent.size()) {
+                                        p++; tag += arrContent[p++];
+                                    } else {
+                                        tag += arrContent[p++];
+                                    }
+                                }
+                                if (p < arrContent.size()) p++;
+                                tags.push_back(tag);
+                            } else {
+                                p++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    m_sampleTagStorage.SetTags(filePath, tags);
+
+    try {
+        m_sampleTagStorage.Save();
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to save tags: " + json_escape(e.what()) + "\"}");
+        return;
+    }
+
+    SendResponse(clientId, id, true, "{\"saved\":true}");
+}
+
+// ============================================================
 // Playtime 2 launch command (Issue #88)
 // ============================================================
 void CommandHandler::HandlePlaytimeLaunch(
     int clientId, const std::string& id, const std::string& /* params */)
 {
-    // Attempt to launch/show Playtime 2 by calling HB_ShowOrHidePlaytime
-    // on the first available Helgobox/Playtime instance.
     bool launched = false;
     std::string message;
+
+    // Try the named REAPER action first — simplest and most reliable
+    if (m_api.NamedCommandLookup && m_api.Main_OnCommand) {
+        int cmdId = m_api.NamedCommandLookup("_HB_SHOW_HIDE_PLAYTIME");
+        if (cmdId > 0) {
+            m_api.Main_OnCommand(cmdId, 0);
+            launched = true;
+            message = "Playtime toggled via _HB_SHOW_HIDE_PLAYTIME";
+            fprintf(stderr, "[reaper-ipad] Playtime toggled via action %d\n", cmdId);
+        }
+    }
+
+    if (!launched) {
+    // Attempt to launch/show Playtime 2 by calling HB_ShowOrHidePlaytime
+    // on the first available Helgobox/Playtime instance.
 
     if (isPlaytimeAvailable()) {
         // Find the first Playtime/Helgobox instance in the current project
@@ -4418,6 +4511,7 @@ void CommandHandler::HandlePlaytimeLaunch(
             fprintf(stderr, "[reaper-ipad] Playtime 2 not available: cannot launch\n");
         }
     }
+    } // end if (!launched)
 
     std::string payload = "{";
     payload += json_string("launched") + ":" + (launched ? "true" : "false") + ",";

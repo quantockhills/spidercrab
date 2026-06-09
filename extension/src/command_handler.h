@@ -9,6 +9,7 @@
 #include "osc_receiver.h"
 #include "sequencer_state.h"
 #include "fx_tags.h"
+#include "sample_tags.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -66,6 +67,7 @@ struct ReaperAPI {
 
     // Transport
     void (*Main_OnCommand)(int command, int flag) = nullptr;
+    int  (*NamedCommandLookup)(const char* name)  = nullptr;
     void (*CSurf_OnPlay)() = nullptr;
     void (*CSurf_OnStop)() = nullptr;
     void (*CSurf_OnRecord)() = nullptr;
@@ -143,6 +145,9 @@ public:
 
     // Access the FX tag storage (for testing)
     FxTagStorage& GetFxTagStorage() { return m_fxTagStorage; }
+
+    // Access the sample tag storage
+    SampleTagStorage& GetSampleTagStorage() { return m_sampleTagStorage; }
 
     // Access the playtime state (for tests)
     PlaytimeState& GetPlaytimeState() { return m_playtimeState; }
@@ -225,6 +230,9 @@ private:
     // FX/chain tag storage (Issue #97)
     FxTagStorage m_fxTagStorage;
 
+    // Sample tag storage
+    SampleTagStorage m_sampleTagStorage;
+
     // FX chain cache (Issue #103)
     FxChainCache m_fxChainCache;
 
@@ -282,6 +290,8 @@ private:
     void HandleSampleGetCacheStatus(int clientId, const std::string& id, const std::string& params);
     void HandleSampleGetAllCached(int clientId, const std::string& id, const std::string& params);
     void HandleSampleGetCachedPaths(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleTagsGetAll(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleTagsSet(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

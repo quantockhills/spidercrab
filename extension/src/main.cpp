@@ -71,6 +71,7 @@
 #define REAPERAPI_WANT_GetMediaSourceLength
 #define REAPERAPI_WANT_GetMediaSourceSampleRate
 #define REAPERAPI_WANT_GetMediaSourceNumChannels
+#define REAPERAPI_WANT_NamedCommandLookup
 
 // CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
 // Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.
@@ -500,6 +501,7 @@ static bool InitializeCoreServices()
     api.GetTrackStateChunk          = GetTrackStateChunk;
     api.SetTrackStateChunk          = SetTrackStateChunk;
     api.Main_OnCommand              = Main_OnCommand;
+    api.NamedCommandLookup          = NamedCommandLookup;
     api.CSurf_OnPlay                = CSurf_OnPlay;
     api.CSurf_OnStop                = CSurf_OnStop;
     api.GetPlayState                = GetPlayState;

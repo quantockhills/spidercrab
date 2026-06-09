@@ -295,6 +295,12 @@ export function SessionView({
     slotMap.set(`${slot.column},${slot.row}`, slot);
   }
 
+  // Column order — push helgobox/realearn/playtime tracks to the end
+  const isSystemTrack = (col: number) =>
+    /helgobox|realearn|playtime/i.test((tracks ?? [])[col]?.name ?? '');
+  const visibleColumns = Array.from({ length: cols }, (_, col) => col)
+    .sort((a, b) => Number(isSystemTrack(a)) - Number(isSystemTrack(b)));
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -361,17 +367,33 @@ export function SessionView({
         >
           ●
         </button>
+        <div className="flex-1" />
+        {onLaunchPlaytime && (
+          <button
+            onClick={handleLaunchPlaytime}
+            disabled={playtimeLaunching}
+            className="flex items-center gap-1.5 px-3 h-8 rounded text-xs font-semibold
+              bg-[var(--accent-dim)] text-[var(--accent-orange)] hover:brightness-110
+              active:brightness-90 transition-all disabled:opacity-50"
+            title="Show/hide Playtime 2 window"
+            aria-label="Launch Playtime"
+          >
+            {playtimeLaunching
+              ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              : '🎹'}
+            Playtime
+          </button>
+        )}
       </div>
 
       {/* Column headers */}
       {(() => {
-        const matrixTracks = (tracks ?? []).filter(t => !/helgobox|realearn/i.test(t.name));
         return (
           <div className="px-3 pt-2 border-b border-[var(--border)]">
             <div className="flex gap-px">
-              {Array.from({ length: cols }, (_, col) => {
-                const trackName = matrixTracks[col]?.name || `Track ${col + 1}`;
-                const track = matrixTracks[col];
+              {visibleColumns.map((col) => {
+                const track = (tracks ?? [])[col];
+                const trackName = track?.name || `Track ${col + 1}`;
                 const isArmed = track?.armed ?? false;
                 const isMuted = track?.muted ?? false;
                 const isSoloed = track?.soloed ?? false;
@@ -470,7 +492,7 @@ export function SessionView({
         <div className="flex flex-col gap-px">
           {Array.from({ length: rows }, (_, row) => (
             <div key={row} className="flex gap-px">
-              {Array.from({ length: cols }, (_, col) => {
+              {visibleColumns.map((col) => {
                 const slot = slotMap.get(`${col},${row}`);
                 const state = slot?.state ?? 'empty';
                 const name = slot?.name ?? '';

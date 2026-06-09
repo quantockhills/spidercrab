@@ -77,7 +77,7 @@ for col = 0, COLS - 1 do
             },
             glue = { absolute_mode = "Normal" },
             target = {
-                kind = "SlotManagementAction",
+                kind = "PlaytimeSlotManagementAction",
                 slot = {
                     address = "ByIndex",
                     column_index = col,
