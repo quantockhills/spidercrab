@@ -581,14 +581,83 @@ static inline MIDI_event_t BuildMidiEvent(const std::string& eventType, int chan
 // ============================================================
 // BPM detection helper (for sample import)
 // ============================================================
+// Full BPM detection via PCM_Source_GetPeaks (REAPER's peak API).
+// Reads onset energy from first ~4 seconds of audio and uses
+// autocorrelation to find dominant tempo.
+static inline double detectBpmFromFile(PCM_source* src,
+    void* (*getMediaItemTakeInfo)(MediaItem_Take*, const char*, void*),
+    int (*getMediaFileMetadata)(PCM_source*, const char*, char*, int),
+    int (*pcmSourceGetPeaks)(PCM_source*, double, double, int, int, int, double*))
+{
+    if (!src) return 0.0;
+
+    // Try to read BPM from media file metadata (REAPER caches this)
+    if (getMediaFileMetadata) {
+        char buf[4096] = {0};
+        int ret = getMediaFileMetadata(src, "BPM", buf, sizeof(buf));
+        if (ret > 0 && buf[0]) {
+            char* end = nullptr;
+            double bpm = strtod(buf, &end);
+            if (end != buf && bpm > 0.0 && bpm < 1000.0) {
+                return bpm;
+            }
+        }
+    }
+
+    if (!pcmSourceGetPeaks) return 0.0;
+
+    const double analysisDuration = 4.0;
+    const double peakRate = 100.0;
+    int numChannels = 1;
+    int numSamples = (int)(analysisDuration * peakRate);
+    std::vector<double> peaks(numSamples * numChannels, 0.0);
+    int got = pcmSourceGetPeaks(src, peakRate, 0.0, numChannels, numSamples, 0, peaks.data());
+    if (got <= 0) return 0.0;
+
+    std::vector<double> energy(numSamples, 0.0);
+    for (int i = 0; i < numSamples; i++) {
+        double sum = 0.0;
+        for (int ch = 0; ch < numChannels; ch++)
+            sum += peaks[i * numChannels + ch] * peaks[i * numChannels + ch];
+        energy[i] = sum;
+    }
+
+    std::vector<double> onset(numSamples - 1, 0.0);
+    for (size_t i = 0; i < onset.size(); i++)
+        onset[i] = energy[i + 1] > energy[i] ? energy[i + 1] - energy[i] : 0.0;
+
+    const int minLag = (int)(peakRate / 240.0);
+    const int maxLag = (int)(peakRate / 40.0);
+    if ((int)onset.size() <= maxLag) return 0.0;
+
+    double bestLag = 0, bestCorr = 0;
+    for (int lag = minLag; lag <= maxLag; lag++) {
+        double corr = 0.0;
+        for (size_t i = 0; i + lag < onset.size(); i++)
+            corr += onset[i] * onset[i + lag];
+        double norm = (double)(onset.size() - lag);
+        if (norm > 0) corr /= norm;
+        if (corr > bestCorr) { bestCorr = corr; bestLag = (double)lag; }
+    }
+
+    if (bestLag > 0 && bestCorr > 0.001) {
+        double bpm = 60.0 * peakRate / bestLag;
+        if (bpm >= 40.0 && bpm <= 240.0) return bpm;
+    }
+    return 0.0;
+}
+
+// Simple overload — wraps the full version.
 static inline double detectBpmFromFile(PCM_source* src,
     int (*getMediaSourceSampleRate)(PCM_source*),
     int (*getMediaSourceNumChannels)(PCM_source*))
 {
-    (void)src;
     (void)getMediaSourceSampleRate;
     (void)getMediaSourceNumChannels;
-    return 0.0;
+    return detectBpmFromFile(src,
+        (void* (*)(MediaItem_Take*, const char*, void*))nullptr,
+        (int (*)(PCM_source*, const char*, char*, int))nullptr,
+        (int (*)(PCM_source*, double, double, int, int, int, double*))nullptr);
 }
 
 // ============================================================
