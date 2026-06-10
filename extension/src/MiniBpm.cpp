@@ -391,7 +391,7 @@ public:
         m_input = new double[m_blockSize];
         m_partial = new double[m_stepSize];
 
-        int frameSize = std::max(lfsize, hfsize);
+        int frameSize = (std::max)(lfsize, hfsize);
         m_frame = new double[frameSize];
 
         zero(m_input, m_blockSize);
