@@ -1968,6 +1968,34 @@ void CommandHandler::HandleMatrixSetSlotReverse(
         reversed = (payloadStr.find("\"reversed\":true") != std::string::npos);
     }
 
+    // Apply the actual REAPER take reverse via B_REVERSETAKES (Issue #75)
+    // Playtime columns map to REAPER tracks by index; slot rows map to
+    // media items on that track ordered by position.
+    if (m_api.GetTrack && m_api.CountTrackMediaItems &&
+        m_api.GetTrackMediaItem && m_api.GetActiveTake &&
+        m_api.GetSetMediaItemTakeInfo) {
+        int numTracks = m_api.CountTracks ? m_api.CountTracks(nullptr) : 0;
+        if (col >= 0 && col < numTracks) {
+            MediaTrack* track = m_api.GetTrack(nullptr, col);
+            if (track) {
+                int itemCount = m_api.CountTrackMediaItems(track);
+                if (row >= 0 && row < itemCount) {
+                    MediaItem* item = m_api.GetTrackMediaItem(track, row);
+                    if (item) {
+                        MediaItem_Take* take = m_api.GetActiveTake(item);
+                        if (take) {
+                            int reverseVal = reversed ? 1 : 0;
+                            m_api.GetSetMediaItemTakeInfo(take, "B_REVERSETAKES", &reverseVal);
+                            fprintf(stderr,
+                                "[reaper-ipad] Reverse slot %d,%d: %s (take %p)\n",
+                                col, row, reversed ? "ON" : "OFF", (void*)take);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Update the slot's reversed flag
     SlotState current = m_playtimeState.getSlot(col, row);
     current.reversed = reversed;
