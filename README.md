@@ -7,12 +7,12 @@
 <div align="center">
   <table>
     <tr>
-      <td><img src="docs/screenshots/ss-tracks.jpg" width="240" alt="Track overview" /></td>
-      <td><img src="docs/screenshots/ss-fx-browser.jpg" width="240" alt="FX browser with plugins" /></td>
+      <td><img src="docs/screenshots/ss-playtime-grid.png" width="240" alt="Playtime clip grid with names" /></td>
+      <td><img src="docs/screenshots/ss-fx-search.png" width="240" alt="FX browser with inline search" /></td>
     </tr>
     <tr>
-      <td><img src="docs/screenshots/ss-fx.jpg" width="240" alt="FX browser with search" /></td>
-      <td><img src="docs/screenshots/ss-settings.jpg" width="240" alt="Settings" /></td>
+      <td><img src="docs/screenshots/ss-waveform.png" width="240" alt="Sample browser with waveform preview" /></td>
+      <td><img src="docs/screenshots/ss-sample-sent.png" width="240" alt="Sample sent to Playtime slot" /></td>
     </tr>
   </table>
 </div>
@@ -176,13 +176,15 @@ cd frontend && npm run dev   # Frontend dev server
 
 ## 📸 Screenshots
 
-The full feature set has been captured throughout development in [`gui_testing/`](gui_testing/). For organized per-issue galleries, see the [GitHub screenshots folder](https://github.com/quantockhills/spidercrab/tree/master/screenshots) including:
-- Unified FX + chain search
+The gallery above shows the current UI. For more per-issue galleries, see the [GitHub screenshots folder](https://github.com/quantockhills/spidercrab/tree/master/screenshots) and [`gui_testing/`](gui_testing/) including:
+- Unified FX + chain search and inline search
 - Tag badges and editor
-- Sample browser with waveform preview
-- Playtime grid with clip names
-- Track controls per column
-- And more
+- Multi-root sample browser with waveform preview
+- Playtime grid with clip names and track controls
+- FX reorder, preset browser, bypass/delete
+- Record mode (audio/MIDI toggle)
+- Go to Track navigation
+- And more from the full Phase 1 MVP pipeline
 
 ## License
 
