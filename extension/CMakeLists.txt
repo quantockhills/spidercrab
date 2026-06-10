@@ -51,6 +51,7 @@ set(TEST_SOURCES
     src/fxchain_cache.cpp
     src/sample_cache.cpp
     src/sha1_utils.cpp
+    src/MiniBpm.cpp
     ${WDL_SOURCES}
     test/test_main.cpp
     test/test_command_handler.cpp
