@@ -11,7 +11,7 @@ import { FxChainBrowser } from './components/FxChainBrowser';
 import ErrorBoundary from './components/ErrorBoundary';
 import SampleIndexProgressBar from './components/SampleIndexProgressBar';
 import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
-import type { DirResult } from './hooks/useSampleBrowser';
+import type { DirResult, ReaperLibrary } from './hooks/useSampleBrowser';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 
@@ -50,6 +50,8 @@ function AppInner() {
     refreshSampleCache,
     getSampleTags,
     setSampleTags,
+    getReaperLibraries,
+    getReaperLibraryFiles,
     sendCommand,
     isRefreshingFx,
     refreshFxCache,
@@ -169,7 +171,11 @@ function AppInner() {
               );
               results.forEach((res, idx) => {
                 const dir = res.payload as unknown as DirResult;
-                if (dir) dirCacheStore.set(batch[idx], dir);
+                if (dir) {
+                  const key = dir.path || batch[idx];
+                  dirCacheStore.set(key, dir);
+                  if (batch[idx] !== key) dirCacheStore.set(batch[idx], dir);
+                }
               });
               persistDirCache();
               setScanStatus({ phase: 'transferring', scanned: Math.min(i + BATCH, total), total });
@@ -377,6 +383,8 @@ function AppInner() {
               matrix={matrix}
               getSampleTags={getSampleTags}
               setSampleTags={setSampleTags}
+              getReaperLibraries={getReaperLibraries}
+              getReaperLibraryFiles={getReaperLibraryFiles}
             />
           </div>
         )}
@@ -534,7 +542,7 @@ function AppInner() {
         )}
 
         {activeTab === 'settings' && (
-          <div className="p-6 text-[var(--text-secondary)] space-y-4">
+          <div className="p-6 text-[var(--text-secondary)] space-y-4 overflow-y-auto h-full">
             <h2 className="text-sm font-semibold uppercase tracking-wider">Settings</h2>
             <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
               <div className="flex items-center justify-between">
@@ -735,12 +743,24 @@ function AppInner() {
                   </button>
                 </div>
               ) : (
-                <button
-                  onClick={() => setEditingSamplePath(true)}
-                  className="w-full py-2.5 bg-[var(--bg-secondary)] text-sm text-[var(--accent-orange)] active:brightness-95 transition-colors"
-                >
-                  + Add Directory
-                </button>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setEditingSamplePath(true)}
+                    className="w-full py-2.5 bg-[var(--bg-secondary)] text-sm text-[var(--accent-orange)] active:brightness-95 transition-colors"
+                  >
+                    + Add Directory
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const resp = await sendCommand('sample/purgeStaleCache', { paths: samplePaths });
+                      const removed = (resp.payload as { removed?: number }).removed ?? 0;
+                      alert(removed > 0 ? `Cleared ${removed} stale cache(s).` : 'Nothing to clear — all cached paths are still active.');
+                    }}
+                    className="w-full py-2.5 bg-[var(--bg-secondary)] text-sm text-[var(--text-secondary)] active:brightness-95 transition-colors"
+                  >
+                    Clear stale cache
+                  </button>
+                </div>
               )}
             </div>
 
@@ -758,7 +778,7 @@ function AppInner() {
                 ↓ Download ReaLearn Preset
               </a>
               <p className="text-[11px] text-[var(--text-secondary)]">
-                OSC ports: spidercrab sends triggers to <span className="font-mono">127.0.0.1:9001</span>, receives state feedback on <span className="font-mono">:9000</span>.
+                OSC ports: spidercrab sends triggers to <span className="font-mono">127.0.0.1:9001</span>, receives state feedback on <span className="font-mono">:9011</span>.
               </p>
             </div>
 

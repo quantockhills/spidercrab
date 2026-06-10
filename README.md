@@ -25,7 +25,8 @@ An extension that turns REAPER into a WiFi-enabled DAW you can control from an i
 - **FX browser** — browse 250+ plugins, search, filter by format
 - **Param control** — touch sliders for every FX parameter, real-time feedback
 - **FX chains** — save and load `.RfxChain` files with tag filtering
-- **Tags** — organize FX and chains with custom labels, filter by tag
+- **Sample browser** — browse your sample library, tag files, preview audio, send to tracks or Playtime 2 slots with automatic tempo matching
+- **Tags** — organize FX, chains, and samples with custom labels, filter by tag
 
 No Node.js, no separate server process, no cloud. Works on your local network.
 
@@ -55,7 +56,11 @@ That's it. No configuration needed.
 | **FX** | Browse all installed plugins, search by name, filter by VST3/VST2/JSFX/CLAP |
 | **Parameters** | Touch sliders for every FX parameter with real-time updates |
 | **FX Chains** | Browse, save, and load `.RfxChain` files from your iPad |
-| **Tags** | Label FX and chains with custom tags, filter by tag |
+| **Tags** | Label FX, chains, and samples with custom tags; filter by tag across all folders |
+| **Sample browser** | Browse local sample libraries with persistent cache, audio preview, and tag filtering |
+| **Sample → track** | Send a sample to any track with one tap |
+| **Sample → Playtime** | Send a sample to a Playtime 2 slot with automatic tempo matching and bar-snapping |
+| **REAPER libraries** | Browse Media Explorer databases directly inside spidercrab |
 | **Transport** | Play/Stop from iPad |
 | **Dark mode** | Toggle between light and dark themes |
 | **FX presets** | Browse and apply presets from the param view |
@@ -96,7 +101,7 @@ This preset creates OSC-to-Playtime mappings for an 8×8 grid of slots.
 2. Click **Add OSC device**
 3. Give it a name (e.g., "spidercrab")
 4. Set **Control input** to listen on port **9001** (spidercrab sends triggers here)
-5. Set **Feedback output** address to `127.0.0.1` port **9000** (spidercrab listens for state here)
+5. Set **Feedback output** address to `127.0.0.1` port **9011** (spidercrab listens for state here)
 6. Save the device
 7. In the **Main** compartment, select this device as both **Control input** and **Feedback output**
 
@@ -115,7 +120,7 @@ This preset creates OSC-to-Playtime mappings for an 8×8 grid of slots.
 | Trigger slot | `/playtime/slot/<col>/<row>/trigger` | none | Play/stop slot at (col, row) |
 | Record slot | `/playtime/slot/<col>/<row>/record` | none | Start/stop recording in slot at (col, row) |
 | Trigger scene | `/playtime/scene/<row>/trigger` | none | Play/stop scene at row |
-| Slot state (feedback) | `/playtime/slot/state` | `iiiis` (col, row, stateId, flags, stateName) | Sent by ReaLearn |
+| Slot state (feedback) | `/playtime/slot/state` | `iiiis` (col, row, stateId, flags, stateName) | Sent by ReaLearn on port 9011 |
 
 State IDs: `0=stopped`, `1=playing`, `2=recording`, `3=empty`, `4=queued`
 
@@ -124,11 +129,34 @@ State IDs: `0=stopped`, `1=playing`, `2=recording`, `3=empty`, `4=queued`
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
 | No response when tapping a slot | OSC device not configured | Check ReaLearn OSC device settings (step 4) |
-| Slot triggers work but state doesn't update | Feedback not reaching spidercrab | Verify Feedback output points to `127.0.0.1:9000` |
-| "OSC receiver bind failed" in console | Port 9000 in use by another app | Kill the conflicting app or change spidercrab's receiver port |
+| Slot triggers work but state doesn't update | Feedback not reaching spidercrab | Verify Feedback output points to `127.0.0.1:9011` |
+| "OSC receiver bind failed" in console | Port 9011 in use by another app | Kill the conflicting app or change spidercrab's receiver port |
 | Clips don't play | Playtime 2 not running | Open Playtime 2 window and create a matrix |
-| Triggers work but state doesn't update | ReaLearn feedback output misconfigured | Set feedback output to `127.0.0.1:9000` |
+| Triggers work but state doesn't update | ReaLearn feedback output misconfigured | Set feedback output to `127.0.0.1:9011` |
 | `make test` fails with OSC tests | Linker issues with Berkeley sockets | Add `-lws2_32` on Windows or ensure `#include <sys/socket.h>` works |
+
+## 🎛️ Sample Browser
+
+The sample browser lets you navigate your local sample library, preview audio, tag files, and send samples directly to tracks or Playtime 2 slots.
+
+### Setup
+
+1. Go to **Settings** → **Sample paths** and add one or more root directories
+2. Click **⟳** to scan — the extension indexes all audio files in the background
+3. Navigate to **Media** tab on your iPad
+
+### Features
+
+- **Persistent cache** — directory listings are cached in the browser's localStorage and survive REAPER restarts. First visit to a folder may be slow on network drives; every visit after is instant.
+- **Audio preview** — tap a file to preview it; toggle autoplay in the toolbar
+- **Tags** — long-press (or right-click) any file to add tags. Tags persist to `UserPlugins/sample_tags.json` and survive restarts.
+- **Global tag filter** — home screen shows all tags across all folders; tap a tag to see every file with that tag regardless of location
+- **Tempo matching** — when sending to a Playtime 2 slot, playrate is set automatically so the sample plays at project tempo. Clip length is snapped to the nearest whole bar (within 10%).
+- **REAPER Media Explorer libraries** — any `.ReaperFileList` databases configured in REAPER appear as a Libraries section on the home screen
+
+### Note on filenames
+
+Filenames with accented or non-ASCII characters (e.g. `é`, `ñ`, `ü`) are fully supported. If you have samples with such names that fail to load in older versions, they will work correctly with the current build.
 
 ## 🔧 For developers
 

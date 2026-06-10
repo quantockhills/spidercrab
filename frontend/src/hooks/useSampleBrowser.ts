@@ -12,6 +12,11 @@ export interface SampleTagData {
   sampleTags: Record<string, string[]>;
 }
 
+export interface ReaperLibrary {
+  name: string;
+  file: string;
+}
+
 export interface DirResult {
   entries: DirEntry[];
   total: number;
@@ -26,7 +31,7 @@ export function useSampleBrowser() {
 
   const getDirectory = useCallback(
     async (path: string, offset = 0, limit = 100): Promise<DirResult> => {
-      const resp = await send('sample/getDirectory', { path, offset, limit });
+      const resp = await send('sample/getDirectory', { path, offset, limit }, 300000);
       const p = resp.payload as unknown as DirResult;
       return {
         entries: p.entries || [],
@@ -81,5 +86,21 @@ export function useSampleBrowser() {
     [send],
   );
 
-  return { getDirectory, sendSampleToTrack, refreshSampleCache, sendSampleToSlot, getSampleTags, setSampleTags };
+  const getReaperLibraries = useCallback(async (): Promise<ReaperLibrary[]> => {
+    try {
+      const resp = await send('sample/reaper/libraries', {});
+      const p = resp.payload as unknown as { libraries: ReaperLibrary[] };
+      return p.libraries || [];
+    } catch { return []; }
+  }, [send]);
+
+  const getReaperLibraryFiles = useCallback(async (file: string): Promise<string[]> => {
+    try {
+      const resp = await send('sample/reaper/library/files', { file });
+      const p = resp.payload as unknown as { files: string[] };
+      return p.files || [];
+    } catch { return []; }
+  }, [send]);
+
+  return { getDirectory, sendSampleToTrack, refreshSampleCache, sendSampleToSlot, getSampleTags, setSampleTags, getReaperLibraries, getReaperLibraryFiles };
 }
