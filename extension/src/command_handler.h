@@ -117,6 +117,9 @@ struct ReaperAPI {
     void* (*GetSetMediaItemTakeInfo)(MediaItem_Take* tk, const char* parmname, void* setNewValue) = nullptr;
     int (*GetMediaFileMetadata)(PCM_source* mediaSource, const char* identifier, char* bufOutNeedBig, int bufOutNeedBig_sz) = nullptr;
     int (*PCM_Source_GetPeaks)(PCM_source* src, double peakrate, double starttime, int numchannels, int numsamplesperchannel, int want_extra_type, double* buf) = nullptr;
+    void (*InsertTrackAtIndex)(int idx, bool wantDefaults) = nullptr;
+    void (*DeleteTrack)(MediaTrack* tr) = nullptr;
+    void (*SetOnlyTrackSelected)(MediaTrack* track) = nullptr;
 };
 
 class CommandHandler {
@@ -298,6 +301,9 @@ private:
     void HandleSampleGetCachedPaths(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsGetAll(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsSet(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleReaperLibraries(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleReaperLibraryFiles(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplePurgeStaleCache(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

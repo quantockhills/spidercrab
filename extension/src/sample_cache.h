@@ -79,6 +79,12 @@ public:
     /// Clear cached data for a specific root path.
     void ClearRoot(const std::string& rootPath);
 
+    /// Remove all cached roots whose paths are not in keepRoots. Returns count removed.
+    int PurgeStaleRoots(const std::vector<std::string>& keepRoots);
+
+    /// Directly store a directory listing (e.g., from a live fallback read).
+    void SetDirectory(const std::string& path, const std::vector<Entry>& entries);
+
 private:
     mutable std::mutex m_mutex;
 

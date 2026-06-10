@@ -323,8 +323,11 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
     m_commandMap["fx/tags/getAll"]           = &CommandHandler::HandleFxTagsGetAll;
     m_commandMap["fx/tags/set"]              = &CommandHandler::HandleFxTagsSet;
-    m_commandMap["sample/tags/getAll"]       = &CommandHandler::HandleSampleTagsGetAll;
-    m_commandMap["sample/tags/set"]          = &CommandHandler::HandleSampleTagsSet;
+    m_commandMap["sample/tags/getAll"]           = &CommandHandler::HandleSampleTagsGetAll;
+    m_commandMap["sample/tags/set"]              = &CommandHandler::HandleSampleTagsSet;
+    m_commandMap["sample/reaper/libraries"]      = &CommandHandler::HandleSampleReaperLibraries;
+    m_commandMap["sample/reaper/library/files"]  = &CommandHandler::HandleSampleReaperLibraryFiles;
+    m_commandMap["sample/purgeStaleCache"]       = &CommandHandler::HandleSamplePurgeStaleCache;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -1545,7 +1548,7 @@ void CommandHandler::HandleSampleGetDirectory(
         for (const auto& entry : fs::directory_iterator(path)) {
             bool d = entry.is_directory();
             dirs.resize(dirs.size()); // force evaluate
-            (d ? dirs : files).push_back({ entry.path().filename().string(), d });
+            (d ? dirs : files).push_back({ entry.path().filename().u8string(), d });
         }
     } catch (const fs::filesystem_error& e) {
         SendResponse(clientId, id, false,
@@ -1556,6 +1559,15 @@ void CommandHandler::HandleSampleGetDirectory(
     // Sort dirs and files separately, dirs first
     std::sort(dirs.begin(),  dirs.end(),  [](const RawEntry& a, const RawEntry& b){ return a.name < b.name; });
     std::sort(files.begin(), files.end(), [](const RawEntry& a, const RawEntry& b){ return a.name < b.name; });
+
+    // Cache the live result so subsequent requests are served instantly
+    {
+        std::vector<SampleCache::Entry> cacheEntries;
+        cacheEntries.reserve(dirs.size() + files.size());
+        for (auto& d : dirs)  { SampleCache::Entry e; e.name = d.name; e.type = "dir";  cacheEntries.push_back(std::move(e)); }
+        for (auto& f : files) { SampleCache::Entry e; e.name = f.name; e.type = "file"; cacheEntries.push_back(std::move(e)); }
+        m_sampleCache.SetDirectory(path, cacheEntries);
+    }
 
     // Combine: .. + dirs + files
     std::vector<RawEntry> all;
@@ -2104,11 +2116,13 @@ static double detectBpmFromFile(PCM_source* src,
         block.time_s += (double)got / (double)sampleRate;
     }
 
-    if (written < sampleRate) return 0.0; // less than 1s
-
-    breakfastquay::MiniBPM bpm((float)sampleRate);
-    bpm.setBPMRange(60.0, 200.0);
-    return bpm.estimateTempoOfSamples(mono.data(), written);
+    double result = 0.0;
+    if (written >= sampleRate) {
+        breakfastquay::MiniBPM bpm((float)sampleRate);
+        bpm.setBPMRange(60.0, 200.0);
+        result = bpm.estimateTempoOfSamples(mono.data(), written);
+    }
+    return result;
 }
 
 void CommandHandler::HandleSampleSendToSlot(
@@ -2165,19 +2179,24 @@ void CommandHandler::HandleSampleSendToSlot(
         return;
     }
 
-    // Use track 0 as scratch track (column->track mapping is for playback routing, not import)
-    MediaTrack* scratchTrack = m_api.GetTrack(nullptr, 0);
+    // Create a temporary track at the end for staging — we'll delete the whole
+    // track after Playtime has imported the clip, avoiding any track-management
+    // conflicts with existing tracks.
+    if (!m_api.InsertTrackAtIndex || !m_api.DeleteTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"InsertTrackAtIndex/DeleteTrack not available\"}");
+        return;
+    }
+    m_api.InsertTrackAtIndex(numTracks, false);
+    MediaTrack* scratchTrack = m_api.GetTrack(nullptr, numTracks);
     if (!scratchTrack) {
         SendResponse(clientId, id, false,
-            "{\"error\":\"Could not get scratch track\"}");
+            "{\"error\":\"Could not create temp track\"}");
         return;
     }
 
-    // Count items before insert so we can find the new one
-    int itemCountBefore = m_api.CountTrackMediaItems(scratchTrack);
-
-    // Step 1: Insert media on scratch track (mode=512 for absolute track index 0)
-    int insertFlags = 512 | (0 << 16);
+    // Step 1: Insert media on the temp track
+    int insertFlags  = 512 | (numTracks << 16);
     int insertResult = m_api.InsertMedia(filePath.c_str(), insertFlags);
 
     if (insertResult <= 0) {
@@ -2186,15 +2205,11 @@ void CommandHandler::HandleSampleSendToSlot(
         return;
     }
 
-    // Step 2: Find and select the newly created item
+    // Step 2: Find and select the newly created item (last item on track)
     int itemCountAfter = m_api.CountTrackMediaItems(scratchTrack);
     MediaItem* insertedItem = nullptr;
-    if (itemCountAfter > itemCountBefore) {
+    if (itemCountAfter > 0) {
         insertedItem = m_api.GetTrackMediaItem(scratchTrack, itemCountAfter - 1);
-    }
-
-    if (!insertedItem && itemCountAfter == 1) {
-        insertedItem = m_api.GetTrackMediaItem(scratchTrack, 0);
     }
 
     if (!insertedItem) {
@@ -2228,8 +2243,32 @@ void CommandHandler::HandleSampleSendToSlot(
                 }
             }
             if (sampleBpm > 0.0 && projectBpm > 0.0) {
-                double rate = projectBpm / sampleBpm;
+                // Normalise detected BPM: keep halving/doubling until the rate
+                // is in [0.5, 2.0] — corrects MiniBPM half/double detections.
+                double normalBpm = sampleBpm;
+                while (projectBpm / normalBpm > 2.0)  normalBpm *= 2.0;
+                while (projectBpm / normalBpm < 0.5)  normalBpm /= 2.0;
+                double rate = projectBpm / normalBpm;
                 m_api.GetSetMediaItemTakeInfo(take, "D_PLAYRATE", &rate);
+                // Set item to beat-based mode and encode clip length in quarter notes.
+                // This tells Playtime the correct musical loop length regardless of
+                // whether it reads D_LENGTH in seconds or QN.
+                if (m_api.GetMediaSourceLength && m_api.SetMediaItemInfo_Value && src) {
+                    bool isQN = false;
+                    double srcLen = m_api.GetMediaSourceLength(src, &isQN);
+                    if (!isQN && srcLen > 0.0) {
+                        double newLen = srcLen / rate;
+                        // Snap to nearest whole bar at project tempo if within 10%
+                        if (projectBpm > 0.0) {
+                            double secsPerBar = 240.0 / projectBpm;
+                            double bars       = newLen / secsPerBar;
+                            double rounded    = std::round(bars);
+                            if (rounded > 0.0 && std::abs(bars - rounded) / rounded < 0.10)
+                                newLen = rounded * secsPerBar;
+                        }
+                        m_api.SetMediaItemInfo_Value(insertedItem, "D_LENGTH", newLen);
+                    }
+                }
             }
         }
     }
@@ -2275,15 +2314,35 @@ void CommandHandler::HandleSampleSendToSlot(
     BroadcastMatrixEvent("matrix/slotStateChanged", m_playtimeState.getSlot(col, row).toJson());
     SendResponse(clientId, id, true, m_playtimeState.getSlot(col, row).toJson());
 
-    // Chain 5 deferred ticks before cleanup so ReaLearn has time to process OSC
+    // Determine the track name REAPER will assign (filename without extension)
+    std::string trackName;
+    {
+        size_t slash = filePath.find_last_of("/\\");
+        trackName = (slash != std::string::npos) ? filePath.substr(slash + 1) : filePath;
+        size_t dot = trackName.find_last_of('.');
+        if (dot != std::string::npos) trackName = trackName.substr(0, dot);
+    }
+
+    // Delete the temp track by name after Playtime has imported the clip.
+    // ticksLeft is a shared_ptr<int> so all re-queued copies decrement the same counter.
+    auto ticksLeft = std::make_shared<int>(90);
     auto doCleanup = std::make_shared<std::function<void()>>();
-    *doCleanup = [this, insertedItem, scratchTrack, doCleanup, ticksLeft = 5]() mutable {
-        if (--ticksLeft > 0) {
+    *doCleanup = [this, trackName, doCleanup, ticksLeft]() {
+        if (--(*ticksLeft) > 0) {
             QueueMainThread(*doCleanup);
             return;
         }
-        m_api.SetMediaItemSelected(insertedItem, false);
-        m_api.DeleteTrackMediaItem(scratchTrack, insertedItem);
+        int n = m_api.CountTracks(nullptr);
+        for (int t = n - 1; t >= 0; t--) {
+            MediaTrack* tr = m_api.GetTrack(nullptr, t);
+            if (!tr) continue;
+            char nameBuf[512] = {0};
+            m_api.GetSetMediaTrackInfo_String(tr, "P_NAME", nameBuf, false);
+            if (trackName == nameBuf) {
+                m_api.DeleteTrack(tr);
+                break;
+            }
+        }
         if (m_api.UpdateArrange) m_api.UpdateArrange();
     };
     QueueMainThread(*doCleanup);
@@ -4603,4 +4662,127 @@ void CommandHandler::HandlePlaytimeLaunch(
     payload += json_string("message") + ":" + json_string(message);
     payload += "}";
     SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// REAPER Media Explorer library commands
+// ============================================================
+
+static std::string getReaperAppDataPath() {
+    char buf[MAX_PATH] = {0};
+    GetEnvironmentVariableA("APPDATA", buf, MAX_PATH);
+    return std::string(buf) + "\\REAPER";
+}
+
+void CommandHandler::HandleSampleReaperLibraries(
+    int clientId, const std::string& id, const std::string& /* params */)
+{
+    std::string iniPath = getReaperAppDataPath() + "\\REAPER.ini";
+    std::ifstream f(iniPath);
+    if (!f.is_open()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Could not open REAPER.ini\"}");
+        return;
+    }
+
+    std::map<int, std::string> files; // index -> xx.ReaperFileList
+    std::map<int, std::string> names; // index -> display name
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.rfind("Shortcut", 0) != 0) continue;
+        size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        std::string key = line.substr(0, eq);
+        std::string val = line.substr(eq + 1);
+        bool isName = (key.rfind("ShortcutT", 0) == 0);
+        std::string numStr = key.substr(isName ? 9 : 8);
+        if (numStr.empty()) continue;
+        try {
+            int n = std::stoi(numStr);
+            if (isName) {
+                names[n] = val;
+            } else if (val.find(".ReaperFileList") != std::string::npos) {
+                files[n] = val;
+            }
+        } catch (...) {}
+    }
+
+    std::string resp = "{\"libraries\":[";
+    bool first = true;
+    for (auto& [n, file] : files) {
+        if (!first) resp += ",";
+        first = false;
+        std::string name = names.count(n) ? names[n] : file;
+        resp += "{" + json_string("name") + ":" + json_string(name) + ","
+                    + json_string("file") + ":" + json_string(file) + "}";
+    }
+    resp += "]}";
+    SendResponse(clientId, id, true, resp);
+}
+
+void CommandHandler::HandleSampleReaperLibraryFiles(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string file = parser.getString("file");
+    if (file.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Missing 'file' parameter\"}");
+        return;
+    }
+
+    std::string dbPath = getReaperAppDataPath() + "\\MediaDB\\" + file;
+    std::ifstream f(dbPath);
+    if (!f.is_open()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Could not open database file\"}");
+        return;
+    }
+
+    std::string resp = "{\"files\":[";
+    bool first = true;
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.rfind("FILE \"", 0) != 0) continue;
+        size_t end = line.find('"', 6);
+        if (end == std::string::npos) continue;
+        std::string path = line.substr(6, end - 6);
+        if (!first) resp += ",";
+        first = false;
+        resp += json_string(path);
+    }
+    resp += "]}";
+    SendResponse(clientId, id, true, resp);
+}
+
+void CommandHandler::HandleSamplePurgeStaleCache(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+
+    // Parse "paths" string array
+    std::vector<std::string> keepPaths;
+    size_t arrPos = payloadStr.find("\"paths\"");
+    if (arrPos != std::string::npos) {
+        size_t arrStart = payloadStr.find('[', arrPos);
+        size_t arrEnd   = payloadStr.find(']', arrStart != std::string::npos ? arrStart : 0);
+        if (arrStart != std::string::npos && arrEnd != std::string::npos) {
+            std::string arr = payloadStr.substr(arrStart + 1, arrEnd - arrStart - 1);
+            size_t p = 0;
+            while (p < arr.size()) {
+                while (p < arr.size() && (arr[p]==' '||arr[p]=='\t'||arr[p]==',')) p++;
+                if (p >= arr.size() || arr[p] != '"') { p++; continue; }
+                p++;
+                std::string path;
+                while (p < arr.size() && arr[p] != '"') {
+                    if (arr[p]=='\\' && p+1 < arr.size()) { p++; path += arr[p++]; }
+                    else path += arr[p++];
+                }
+                if (p < arr.size()) p++;
+                if (!path.empty()) keepPaths.push_back(path);
+            }
+        }
+    }
+
+    int removed = m_sampleCache.PurgeStaleRoots(keepPaths);
+    std::string resp = "{" + json_string("removed") + ":" + std::to_string(removed) + "}";
+    SendResponse(clientId, id, true, resp);
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { dirCacheStore, persistDirCache } from '../utils/dirCacheStore';
 import type { Track, DirEntry, MatrixData, ClipSlot, SampleTagData } from '../hooks/useReaper';
-import type { DirResult } from '../hooks/useSampleBrowser';
+import type { DirResult, ReaperLibrary } from '../hooks/useSampleBrowser';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
@@ -48,6 +48,8 @@ interface SampleBrowserProps {
   matrix?: MatrixData | null;
   getSampleTags?: () => Promise<SampleTagData | null>;
   setSampleTags?: (filePath: string, tags: string[]) => Promise<boolean>;
+  getReaperLibraries?: () => Promise<ReaperLibrary[]>;
+  getReaperLibraryFiles?: (file: string) => Promise<string[]>;
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -64,6 +66,8 @@ export function SampleBrowser({
   matrix,
   getSampleTags,
   setSampleTags,
+  getReaperLibraries,
+  getReaperLibraryFiles,
 }: SampleBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>(
     () => {
@@ -110,6 +114,13 @@ export function SampleBrowser({
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [editingTagPath, setEditingTagPath] = useState<string | null>(null);
   const [tagEditInput, setTagEditInput] = useState('');
+  const [globalTagFilter, setGlobalTagFilter] = useState<string | null>(null);
+
+  // REAPER library state
+  const [reaperLibraries, setReaperLibraries] = useState<ReaperLibrary[]>([]);
+  const [activeLibrary, setActiveLibrary] = useState<ReaperLibrary | null>(null);
+  const [libraryFiles, setLibraryFiles] = useState<string[] | null>(null);
+  const [libraryLoading, setLibraryLoading] = useState(false);
 
   // Frontend directory cache: module-level singleton shared with App.tsx
   const dirCache = useRef(dirCacheStore);
@@ -134,13 +145,43 @@ export function SampleBrowser({
     getSampleTags().then((data) => { if (data) setTagData(data); });
   }, [getSampleTags]);
 
+  // Load REAPER libraries on mount
+  useEffect(() => {
+    if (!getReaperLibraries) return;
+    getReaperLibraries().then(setReaperLibraries);
+  }, [getReaperLibraries]);
+
   const loadDirectory = useCallback(async (path: string, offset = 0) => {
+    // Serve from persistent localStorage cache when available (survives REAPER restarts)
+    if (offset === 0) {
+      const cached = dirCache.current.get(path);
+      if (cached) {
+        setError(null);
+        setEntries(cached.entries);
+        setDirTotal(cached.total);
+        setDirOffset(cached.offset);
+        if (cached.path && cached.path !== path) setCurrentPath(cached.path);
+        setLoading(false);
+        return;
+      }
+    }
     try {
       const result = await getDirectory(path, offset, dirLimit);
       setError(null);
       setEntries(result.entries);
       setDirTotal(result.total);
       setDirOffset(result.offset);
+      // Keep currentPath in sync with the canonical path the backend resolved,
+      // so subdirectory navigation never builds paths with wrong case or mixed separators.
+      if (result.path && result.path !== path) setCurrentPath(result.path);
+      // Persist to localStorage cache. Key by both the canonical path (result.path) and
+      // the original request path so symlink paths and real paths both hit cache.
+      if (offset === 0) {
+        const cacheKey = result.path || path;
+        dirCache.current.set(cacheKey, result);
+        if (path !== cacheKey) dirCache.current.set(path, result);
+        persistDirCache();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load directory');
       setEntries([]);
@@ -347,6 +388,29 @@ export function SampleBrowser({
     return Array.from(tagSet).sort();
   }, [tagData, filteredEntries, currentPath]);
 
+  // All unique tags across ALL indexed files (for home-screen global tag browser)
+  const allGlobalTags = useMemo(() => {
+    if (!tagData) return [];
+    const tagSet = new Set<string>();
+    Object.values(tagData.sampleTags).forEach((tags) => tags.forEach((t) => tagSet.add(t)));
+    return Array.from(tagSet).sort();
+  }, [tagData]);
+
+  // Files matching the active global tag filter, across all folders
+  const globalTagFiles = useMemo(() => {
+    if (!globalTagFilter || !tagData) return [];
+    return Object.entries(tagData.sampleTags)
+      .filter(([, tags]) => tags.includes(globalTagFilter))
+      .map(([filePath, tags]) => {
+        const lastSep = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
+        return {
+          entry: { name: filePath.substring(lastSep + 1), type: 'file' } as DirEntry,
+          basePath: filePath.substring(0, lastSep),
+          tags,
+        };
+      });
+  }, [globalTagFilter, tagData]);
+
   // Audio file extensions
   const isAudioFile = (name: string): boolean => {
     const ext = name.split('.').pop()?.toLowerCase();
@@ -480,6 +544,24 @@ export function SampleBrowser({
             >
               ← Roots
             </button>
+          )}
+          {(globalTagFilter || activeLibrary) && !currentPath && (
+            <button
+              onClick={() => { setGlobalTagFilter(null); setActiveLibrary(null); setLibraryFiles(null); }}
+              className="text-[11px] text-[var(--accent-orange)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0 px-2 py-1"
+            >
+              ← Home
+            </button>
+          )}
+          {globalTagFilter && !currentPath && (
+            <span className="text-[11px] font-mono text-[var(--text-primary)] truncate flex-1">
+              # {globalTagFilter}
+            </span>
+          )}
+          {activeLibrary && !currentPath && (
+            <span className="text-[11px] font-mono text-[var(--text-primary)] truncate flex-1">
+              {activeLibrary.name}
+            </span>
           )}
           {editingRoot ? (
             <div className="flex items-center gap-2 flex-1">
@@ -651,26 +733,146 @@ export function SampleBrowser({
               <p className="text-sm">No sample directories configured</p>
               <p className="text-xs">Go to Settings to add one.</p>
             </div>
+          ) : globalTagFilter ? (
+            /* Global tag filter results */
+            globalTagFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
+                <div className="text-4xl">🏷️</div>
+                <p className="text-sm">No files tagged &quot;{globalTagFilter}&quot;</p>
+              </div>
+            ) : (
+              <div className="px-3 py-2 space-y-1">
+                {globalTagFiles.map(({ entry, basePath, tags }) => (
+                  <FileRow
+                    key={basePath + '/' + entry.name}
+                    entry={entry}
+                    isAudio={isAudioFile(entry.name)}
+                    isSending={sending === basePath + '/' + entry.name}
+                    isSent={sentFiles.has(basePath + '/' + entry.name)}
+                    canSend={selectedTrack !== null}
+                    isSelected={selectedFile === basePath + '/' + entry.name}
+                    tags={tags}
+                    onSend={() => handleSendToTrack(entry, basePath)}
+                    onSelect={() => handleFileClick(entry, basePath)}
+                    onLongPress={(x, y) => handleLongPress(entry, basePath, x, y)}
+                  />
+                ))}
+              </div>
+            )
+          ) : activeLibrary ? (
+            /* REAPER library files view */
+            libraryLoading ? (
+              <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3">
+                <div className="text-4xl animate-pulse">🎵</div>
+                <p className="text-sm">Loading library...</p>
+              </div>
+            ) : (libraryFiles ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
+                <div className="text-4xl">📂</div>
+                <p className="text-sm">No files in this library</p>
+              </div>
+            ) : (
+              <div className="px-3 py-2 space-y-1">
+                {(libraryFiles ?? []).map((filePath) => {
+                  const lastSep = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
+                  const name = filePath.substring(lastSep + 1);
+                  const basePath = filePath.substring(0, lastSep);
+                  const entry: DirEntry = { name, type: 'file' };
+                  const tags = tagData?.sampleTags[filePath] ?? tagData?.sampleTags[filePath.replace(/\\/g, '/')] ?? [];
+                  return (
+                    <FileRow
+                      key={filePath}
+                      entry={entry}
+                      isAudio={isAudioFile(name)}
+                      isSending={sending === filePath}
+                      isSent={sentFiles.has(filePath)}
+                      canSend={selectedTrack !== null}
+                      isSelected={selectedFile === filePath}
+                      tags={tags}
+                      onSend={() => handleSendToTrack(entry, basePath)}
+                      onSelect={() => handleFileClick(entry, basePath)}
+                      onLongPress={(x, y) => handleLongPress(entry, basePath, x, y)}
+                    />
+                  );
+                })}
+              </div>
+            )
           ) : (
-            <div className="p-4 space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-3">
-                Sample Directories
-              </h3>
-              {samplePaths.map((root) => (
-                <button
-                  key={root}
-                  onClick={() => handleSelectRoot(root)}
-                  className="w-full flex items-center gap-3 px-3 py-3
-                    bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
-                    active:brightness-95 transition-colors duration-100 text-left"
-                >
-                  <span className="text-lg flex-shrink-0">📁</span>
-                  <span className="text-sm font-mono truncate flex-1">{root}</span>
-                  <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0">
-                    tap to browse →
-                  </span>
-                </button>
-              ))}
+            /* Normal home screen: tags + libraries + directory list */
+            <div className="p-4 space-y-4">
+              {allGlobalTags.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
+                    Tags
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allGlobalTags.map((tag) => {
+                      const color = getTagColor(tag);
+                      return (
+                        <button
+                          key={tag}
+                          onClick={() => setGlobalTagFilter(tag)}
+                          className={`px-2.5 py-1.5 text-[11px] font-medium ${color.bg} ${color.text} active:brightness-95 transition-colors`}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {reaperLibraries.length > 0 && (
+                <div>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
+                    Libraries
+                  </h3>
+                  <div className="space-y-1.5">
+                    {reaperLibraries.map((lib) => (
+                      <button
+                        key={lib.file}
+                        onClick={async () => {
+                          if (!getReaperLibraryFiles) return;
+                          setActiveLibrary(lib);
+                          setLibraryFiles(null);
+                          setLibraryLoading(true);
+                          const files = await getReaperLibraryFiles(lib.file);
+                          setLibraryFiles(files);
+                          setLibraryLoading(false);
+                        }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5
+                          bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
+                          active:brightness-95 transition-colors duration-100 text-left"
+                      >
+                        <span className="text-base flex-shrink-0">🎵</span>
+                        <span className="text-sm truncate flex-1">{lib.name}</span>
+                        <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0">→</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
+                  Directories
+                </h3>
+                <div className="space-y-2">
+                  {samplePaths.map((root) => (
+                    <button
+                      key={root}
+                      onClick={() => handleSelectRoot(root)}
+                      className="w-full flex items-center gap-3 px-3 py-3
+                        bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
+                        active:brightness-95 transition-colors duration-100 text-left"
+                    >
+                      <span className="text-lg flex-shrink-0">📁</span>
+                      <span className="text-sm font-mono truncate flex-1">{root}</span>
+                      <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0">
+                        tap to browse →
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )
         ) : loading ? (

@@ -76,6 +76,9 @@
 #define REAPERAPI_WANT_GetSetMediaItemTakeInfo
 #define REAPERAPI_WANT_GetMediaFileMetadata
 #define REAPERAPI_WANT_PCM_Source_GetPeaks
+#define REAPERAPI_WANT_InsertTrackAtIndex
+#define REAPERAPI_WANT_DeleteTrack
+#define REAPERAPI_WANT_SetOnlyTrackSelected
 
 // CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
 // Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.
@@ -145,6 +148,32 @@ static bool                  g_playtimeWasAvailable = false; // Track Playtime a
 
 // MIDI feedback listener for Playtime 2 clip launcher (Issue #91)
 static midi_Input*           g_midiInput  = nullptr;
+
+// Helper: find the UserPlugins directory (where the DLL lives)
+static std::string FindPluginDir()
+{
+#ifdef _WIN32
+    HMODULE hm = nullptr;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCSTR)&FindPluginDir, &hm)) {
+        char path[MAX_PATH] = {0};
+        GetModuleFileNameA(hm, path, MAX_PATH);
+        std::string spath(path);
+        size_t sep = spath.find_last_of("\\");
+        if (sep != std::string::npos)
+            return spath.substr(0, sep);
+    }
+#else
+    Dl_info info;
+    if (dladdr((void*)&FindPluginDir, &info)) {
+        std::string spath(info.dli_fname);
+        size_t sep = spath.find_last_of("/");
+        if (sep != std::string::npos)
+            return spath.substr(0, sep);
+    }
+#endif
+    return ".";
+}
 
 // Helper: find the frontend dist directory relative to this extension's location
 static bool FindFrontendDist(std::string& outPath)
@@ -472,6 +501,7 @@ static bool InitializeCoreServices()
         return true; // already initialized
 
     g_cmdHandler = new CommandHandler(&g_wsServer);
+    g_cmdHandler->SetConfigDir(FindPluginDir());
 
     ReaperAPI api;
     api.CountTracks                 = CountTracks;
@@ -526,6 +556,11 @@ static bool InitializeCoreServices()
     api.GetSetMediaItemTakeInfo     = GetSetMediaItemTakeInfo;
     api.GetMediaFileMetadata        = GetMediaFileMetadata;
     api.PCM_Source_GetPeaks         = PCM_Source_GetPeaks;
+    api.InsertTrackAtIndex          = InsertTrackAtIndex;
+    api.DeleteTrack                 = DeleteTrack;
+    api.SetOnlyTrackSelected        = SetOnlyTrackSelected;
+    api.SetMediaItemInfo_Value      = SetMediaItemInfo_Value;
+    api.GetMediaItemInfo_Value      = GetMediaItemInfo_Value;
     g_cmdHandler->SetApi(api);
 
     // Pre-cache FX list at startup, before any WebSocket client

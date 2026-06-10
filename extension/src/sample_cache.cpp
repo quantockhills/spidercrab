@@ -45,67 +45,68 @@ bool SampleCache::IsAudioExtension(const std::string& ext)
 
 void SampleCache::BeginScan(const std::string& rootPath, ProgressCallback progressCb)
 {
-    std::lock_guard<std::mutex> lock(m_mutex);
-
-    // Cancel any existing scan
-    if (m_scanState) {
-        m_scanState->cancelled = true;
+    // Cancel any existing scan (brief lock)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (m_scanState)
+            m_scanState->cancelled = true;
     }
 
     const std::string canonRoot = canonicalizePath(rootPath);
 
+    // Do the full recursive walk WITHOUT holding the mutex.
+    // On network/cloud drives (Proton Drive, OneDrive, etc.) this can take minutes;
+    // holding the mutex would block every concurrent getDirectory request and
+    // stall REAPER's Run() callback.
     auto state = std::make_unique<ScanState>();
     state->rootPath = canonRoot;
-    state->progressCb = std::move(progressCb);
-    state->counting = true;
+    state->progressCb = progressCb;
+    state->counting = false;
     state->totalFiles = 0;
     state->scannedFiles = 0;
 
-    m_scanState = std::move(state);
+    try {
+        if (fs::exists(canonRoot) && fs::is_directory(canonRoot)) {
+            for (const auto& entry : fs::recursive_directory_iterator(canonRoot)) {
+                if (state->cancelled) break;
 
-    // Begin counting phase: walk directory and count total files immediately.
-    // This first pass is fast (directory_iterator with no file_size).
-    // We also collect all directory paths so we can populate the cache in phase 2.
-    if (m_scanState) {
-        try {
-            if (fs::exists(canonRoot) && fs::is_directory(canonRoot)) {
-                for (const auto& entry : fs::recursive_directory_iterator(canonRoot)) {
-                    if (m_scanState->cancelled)
-                        break;
-
-                    std::string name = entry.path().filename().string();
-                    if (entry.is_regular_file()) {
-                        std::string ext;
-                        size_t dotPos = name.rfind('.');
-                        if (dotPos != std::string::npos) {
-                            ext = name.substr(dotPos);
-                            if (IsAudioExtension(ext)) {
-                                m_scanState->totalFiles++;
-                                m_scanState->allFiles.push_back(entry.path().string());
-                            }
-                        }
-                    } else if (entry.is_directory()) {
-                        m_scanState->allDirectories.push_back(entry.path().string());
+                std::string name = entry.path().filename().u8string();
+                if (entry.is_regular_file()) {
+                    std::string ext;
+                    size_t dotPos = name.rfind('.');
+                    if (dotPos != std::string::npos) {
+                        ext = name.substr(dotPos);
+                        if (IsAudioExtension(ext))
+                            state->allFiles.push_back(entry.path().string());
                     }
+                } else if (entry.is_directory()) {
+                    state->allDirectories.push_back(entry.path().string());
                 }
             }
-        } catch (const fs::filesystem_error&) {
-            // Graceful degradation: 0 files, path likely doesn't exist
         }
-
-        m_scanState->counting = false;
-        m_scanState->totalFiles = static_cast<int>(m_scanState->allFiles.size());
-
-        // Add the root directory itself as a directory entry (if it exists)
-        if (fs::exists(canonRoot) && fs::is_directory(canonRoot)) {
-            m_scanState->allDirectories.push_back(canonRoot);
-        }
-
-        // Call progress callback with initial state
-        if (m_scanState->progressCb) {
-            m_scanState->progressCb(0, m_scanState->totalFiles);
-        }
+    } catch (const fs::filesystem_error&) {
+        // Graceful degradation: empty result, path likely inaccessible
     }
+
+    state->totalFiles = static_cast<int>(state->allFiles.size());
+
+    // Add the root directory itself
+    {
+        std::error_code ec;
+        if (fs::exists(canonRoot, ec) && fs::is_directory(canonRoot, ec))
+            state->allDirectories.push_back(canonRoot);
+    }
+
+    const int totalFiles = state->totalFiles;
+
+    // Store state (brief lock)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!state->cancelled)
+            m_scanState = std::move(state);
+    }
+
+    if (progressCb) progressCb(0, totalFiles);
 }
 
 bool SampleCache::ScanNextBatch()
@@ -128,7 +129,7 @@ bool SampleCache::ScanNextBatch()
 
         // Get the parent directory path
         std::string parentDir = p.parent_path().string();
-        std::string fileName = p.filename().string();
+        std::string fileName = p.filename().u8string();
 
         // Add entry to the parent directory's cache
         Entry entry;
@@ -165,7 +166,7 @@ bool SampleCache::ScanNextBatch()
         const std::string& dirPath = m_scanState->allDirectories[m_scanState->currentDirIdx];
         fs::path p(dirPath);
         std::string parentDir = p.parent_path().string();
-        std::string dirName = p.filename().string();
+        std::string dirName = p.filename().u8string();
 
         // Don't add the root dir as an entry in its own parent
         if (!dirName.empty() && !parentDir.empty()) {
@@ -345,4 +346,39 @@ void SampleCache::ClearRoot(const std::string& rootPath)
     }
 
     m_indexedRoots.erase(rootPath);
+}
+
+void SampleCache::SetDirectory(const std::string& path, const std::vector<Entry>& entries)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    const std::string canon = canonicalizePath(path);
+    m_directoryCache[canon] = entries;
+}
+
+int SampleCache::PurgeStaleRoots(const std::vector<std::string>& keepRoots)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    std::vector<std::string> toRemove;
+    for (auto& [root, indexed] : m_indexedRoots) {
+        bool keep = false;
+        for (auto& k : keepRoots) {
+            if (root == k) { keep = true; break; }
+        }
+        if (!keep) toRemove.push_back(root);
+    }
+
+    for (auto& root : toRemove) {
+        for (auto it = m_directoryCache.begin(); it != m_directoryCache.end(); ) {
+            if (it->first.size() >= root.size() &&
+                it->first.compare(0, root.size(), root) == 0) {
+                it = m_directoryCache.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        m_indexedRoots.erase(root);
+    }
+
+    return (int)toRemove.size();
 }
