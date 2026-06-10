@@ -11,6 +11,7 @@ set(SDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../docs/reaper-sdk/sdk")
 
 # ---- Include paths ----
 include_directories(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${SDK_DIR}
     ${WDL_DIR}
     ${WDL_DIR}/WDL
@@ -40,6 +41,14 @@ set(EXTENSION_SOURCES
     src/sample_cache.cpp
     src/sha1_utils.cpp
     src/MiniBpm.cpp
+    src/handlers/track_handlers.cpp
+    src/handlers/fx_handlers.cpp
+    src/handlers/fxchain_handlers.cpp
+    src/handlers/sample_handlers.cpp
+    src/handlers/transport_handlers.cpp
+    src/handlers/matrix_handlers.cpp
+    src/handlers/playtime_handlers.cpp
+    src/handlers/settings_handlers.cpp
     ${WDL_SOURCES}
 )
 
@@ -51,6 +60,15 @@ set(TEST_SOURCES
     src/fxchain_cache.cpp
     src/sample_cache.cpp
     src/sha1_utils.cpp
+    src/MiniBpm.cpp
+    src/handlers/track_handlers.cpp
+    src/handlers/fx_handlers.cpp
+    src/handlers/fxchain_handlers.cpp
+    src/handlers/sample_handlers.cpp
+    src/handlers/transport_handlers.cpp
+    src/handlers/matrix_handlers.cpp
+    src/handlers/playtime_handlers.cpp
+    src/handlers/settings_handlers.cpp
     ${WDL_SOURCES}
     test/test_main.cpp
     test/test_command_handler.cpp

@@ -1,0 +1,721 @@
+#include "command_handler.h"
+#include "command_handler_helpers.h"
+#include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <vector>
+
+// ============================================================
+
+void CommandHandler::HandleFxChainGetDirectory(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string path = parser.getString("path");
+    if (path.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"path\\\" parameter\"}");
+        return;
+    }
+
+    std::string chains = "[";
+    std::string dirs   = "[";
+    bool firstChain = true;
+    bool firstDir   = true;
+
+    try {
+        for (const auto& entry : fs::directory_iterator(path)) {
+            if (entry.is_directory()) {
+                std::string dname = entry.path().filename().string();
+                if (!firstDir) dirs += ",";
+                firstDir = false;
+                dirs += json_string(dname);
+            } else if (entry.is_regular_file()) {
+                std::string name = entry.path().filename().string();
+                std::string ext;
+                size_t dotPos = name.rfind('.');
+                if (dotPos == std::string::npos) continue;
+                ext = name.substr(dotPos);
+                std::string lowerExt;
+                for (char c : ext) lowerExt += tolower((unsigned char)c);
+                if (lowerExt != ".rfxchain") continue;
+
+                if (!firstChain) chains += ",";
+                firstChain = false;
+                uintmax_t fileSize = fs::file_size(entry.path());
+                chains += "{";
+                chains += json_string("name") + ":" + json_string(name) + ",";
+                chains += json_string("size") + ":" + std::to_string(fileSize);
+                chains += "}";
+            }
+        }
+    } catch (const fs::filesystem_error& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    chains += "]";
+    dirs   += "]";
+
+    std::string payload = "{";
+    payload += json_string("path")   + ":" + json_string(path) + ",";
+    payload += json_string("chains") + ":" + chains + ",";
+    payload += json_string("dirs")   + ":" + dirs;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleFxChainSave(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string filePath    = parser.getString("filePath");
+
+    if (trackIdxStr.empty() || filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'filePath' parameter\"}");
+        return;
+    }
+
+    int         trackIdx = atoi(trackIdxStr.c_str());
+    MediaTrack* track    = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    std::vector<char> chunkBuf(4 * 1024 * 1024, 0);
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf.data(), (int)chunkBuf.size(), false);
+    if (!gotChunk || chunkBuf[0] == 0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Failed to get track state chunk\"}");
+        return;
+    }
+
+    std::string chunk(chunkBuf.data());
+    std::string fxChain = extractFxChainFromChunk(chunk);
+    if (fxChain.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"No FX chain found on track\"}");
+        return;
+    }
+
+    try {
+        fs::path parentDir = fs::path(filePath).parent_path();
+        if (!parentDir.empty() && !fs::exists(parentDir)) {
+            fs::create_directories(parentDir);
+        }
+
+        FILE* f = fopen(filePath.c_str(), "w");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("Failed to open file for writing: " + filePath) + "}");
+            return;
+        }
+        fwrite(fxChain.c_str(), 1, fxChain.size(), f);
+        fclose(f);
+
+        SendResponse(clientId, id, true,
+            "{\"saved\":true,\"filePath\":" + json_string(filePath) + "}");
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+    }
+}
+
+void CommandHandler::HandleFxChainLoad(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk || !m_api.GetTrack) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string filePath    = parser.getString("filePath");
+    std::string modeStr     = parser.getString("mode");
+
+    if (trackIdxStr.empty() || filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'filePath' parameter\"}");
+        return;
+    }
+
+    int         trackIdx = atoi(trackIdxStr.c_str());
+    MediaTrack* track    = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int oldFxCount = 0;
+    if (m_api.TrackFX_GetCount) {
+        oldFxCount = m_api.TrackFX_GetCount(track);
+    }
+
+    std::string fxChain;
+    try {
+        FILE* f = fopen(filePath.c_str(), "r");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("File not found: " + filePath) + "}");
+            return;
+        }
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            fxChain.append(buf, nread);
+        }
+        fclose(f);
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    if (fxChain.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Empty FX chain file\"}");
+        return;
+    }
+
+    const int CHUNK_SIZE = 4 * 1024 * 1024;
+    std::vector<char> chunkBuf(CHUNK_SIZE, 0);
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf.data(), CHUNK_SIZE, false);
+    if (!gotChunk || chunkBuf[0] == 0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Failed to get track state chunk\"}");
+        return;
+    }
+
+    std::string currentChunk(chunkBuf.data());
+    std::string newChunk;
+
+    bool append = (modeStr == "append");
+
+    std::string loadedFxChain;
+    std::string extracted = extractFxChainFromChunk(fxChain);
+    if (!extracted.empty()) {
+        loadedFxChain = extracted;
+    } else {
+        loadedFxChain = "<FXCHAIN\n" + fxChain;
+        if (loadedFxChain.back() != '\n') loadedFxChain += '\n';
+        loadedFxChain += '>';
+    }
+
+    if (append) {
+        std::string currentFxChain = extractFxChainFromChunk(currentChunk);
+        if (!currentFxChain.empty()) {
+            size_t currentClose = currentFxChain.rfind('\n');
+            if (currentClose != std::string::npos && currentClose > 0) {
+                size_t trim = currentClose;
+                while (trim > 0 && (currentFxChain[trim-1] == ' ' || currentFxChain[trim-1] == '\t' || currentFxChain[trim-1] == '\n' || currentFxChain[trim-1] == '\r'))
+                    trim--;
+                size_t lastLineStart = currentFxChain.rfind('\n', currentClose - 1);
+                if (lastLineStart == std::string::npos) lastLineStart = 0;
+                std::string lastLine = currentFxChain.substr(lastLineStart, currentClose - lastLineStart);
+                size_t first = lastLine.find_first_not_of(" \t\n\r");
+                if (first != std::string::npos && lastLine[first] == '>') {
+                    currentClose = lastLineStart;
+                }
+            }
+
+            size_t loadedStart = loadedFxChain.find("<ITEM");
+            if (loadedStart != std::string::npos && currentClose != std::string::npos) {
+                std::string merged = currentFxChain.substr(0, currentClose);
+                merged += loadedFxChain.substr(loadedStart);
+                newChunk = replaceFxChainInChunk(currentChunk, merged);
+            } else {
+                newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+            }
+        } else {
+            newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+        }
+    } else {
+        newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+    }
+
+    bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
+    if (ok) {
+        if (m_api.TrackFX_GetCount) {
+            int newFxCount = m_api.TrackFX_GetCount(track);
+            ChainSource cs;
+            cs.filePath = filePath;
+            if (append) {
+                cs.fxStartIdx = oldFxCount;
+                cs.fxEndIdx = newFxCount;
+            } else {
+                cs.fxStartIdx = 0;
+                cs.fxEndIdx = newFxCount;
+            }
+            if (!append || m_trackChainSources.find(trackIdx) == m_trackChainSources.end()) {
+                m_trackChainSources[trackIdx] = {cs};
+            } else {
+                m_trackChainSources[trackIdx].push_back(cs);
+            }
+        }
+
+        SendResponse(clientId, id, true,
+            "{\"loaded\":true,\"filePath\":" + json_string(filePath) + ",\"append\":"
+                + (append ? "true" : "false") + "}");
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to set track state chunk\"}");
+    }
+}
+
+void CommandHandler::HandleFxChainGetInfo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string filePath = parser.getString("filePath");
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'filePath' parameter\"}");
+        return;
+    }
+
+    std::string content;
+    try {
+        FILE* f = fopen(filePath.c_str(), "r");
+        if (!f) {
+            SendResponse(clientId, id, false,
+                "{\"error\":" + json_string("File not found: " + filePath) + "}");
+            return;
+        }
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            content.append(buf, nread);
+        }
+        fclose(f);
+    } catch (const std::exception& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
+    }
+
+    int fxCount = 0;
+    std::string fxNames = "[";
+    size_t pos = 0;
+    bool first = true;
+
+    auto findNextPluginTag = [&](size_t from) -> size_t {
+        size_t vstPos  = content.find("<VST ", from);
+        size_t vst3Pos = content.find("<VST3", from);
+        size_t jsPos   = content.find("<JS ", from);
+        size_t auPos   = content.find("<AU ", from);
+        size_t best = std::string::npos;
+        if (vstPos != std::string::npos)  best = vstPos;
+        if (vst3Pos != std::string::npos && (best == std::string::npos || vst3Pos < best)) best = vst3Pos;
+        if (jsPos != std::string::npos && (best == std::string::npos || jsPos < best)) best = jsPos;
+        if (auPos != std::string::npos && (best == std::string::npos || auPos < best)) best = auPos;
+        return best;
+    };
+
+    pos = findNextPluginTag(0);
+    while (pos != std::string::npos) {
+        fxCount++;
+
+        size_t quote1 = content.find('"', pos);
+        if (quote1 != std::string::npos) {
+            size_t quote2 = content.find('"', quote1 + 1);
+            if (quote2 != std::string::npos) {
+                std::string fxName = content.substr(quote1 + 1, quote2 - quote1 - 1);
+                if (!first) fxNames += ",";
+                first = false;
+                fxNames += json_string(fxName);
+            }
+        }
+
+        size_t tagClose = content.find(">", pos);
+        if (tagClose == std::string::npos) break;
+        pos = findNextPluginTag(tagClose + 1);
+    }
+    fxNames += "]";
+
+    uintmax_t fileSize = 0;
+    try {
+        fileSize = fs::file_size(filePath);
+    } catch (...) {
+        fileSize = 0;
+    }
+
+    std::string payload = "{";
+    payload += json_string("filePath") + ":" + json_string(filePath) + ",";
+    payload += json_string("fxCount") + ":" + std::to_string(fxCount) + ",";
+    payload += json_string("fxNames") + ":" + fxNames + ",";
+    payload += json_string("fileSize") + ":" + std::to_string(fileSize);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleFxChainSearchRecursive(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string query    = parser.getString("query");
+    std::string rootPath = parser.getString("rootPath");
+
+    if (rootPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing \\\"rootPath\\\" parameter\"}");
+        return;
+    }
+
+    if (m_fxChainCache.IsIndexed() && m_fxChainCache.RootPath() == rootPath) {
+        auto result = m_fxChainCache.Search(query, 0, 0);
+        std::string results = "[";
+        for (size_t i = 0; i < result.results.size(); i++) {
+            if (i > 0) results += ",";
+            results += "{";
+            results += json_string("filePath") + ":" + json_string(result.results[i].filePath) + ",";
+            results += json_string("name") + ":" + json_string(result.results[i].name) + ",";
+            results += json_string("size") + ":" + std::to_string(result.results[i].size);
+            results += "}";
+        }
+        results += "]";
+
+        std::string payload = "{";
+        payload += json_string("results") + ":" + results;
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+        return;
+    }
+
+    std::string lowerQuery;
+    for (char c : query) lowerQuery += tolower((unsigned char)c);
+
+    std::string results = "[";
+    bool first = true;
+
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
+            if (!entry.is_regular_file()) continue;
+
+            std::string name = entry.path().filename().string();
+            std::string ext;
+            size_t dotPos = name.rfind('.');
+            if (dotPos == std::string::npos) continue;
+            ext = name.substr(dotPos);
+            std::string lowerExt;
+            for (char c : ext) lowerExt += tolower((unsigned char)c);
+            if (lowerExt != ".rfxchain") continue;
+
+            if (!lowerQuery.empty()) {
+                std::string lowerName;
+                for (char c : name) lowerName += tolower((unsigned char)c);
+                std::string relPath = entry.path().lexically_relative(rootPath).string();
+                std::string lowerRelPath;
+                for (char c : relPath) lowerRelPath += tolower((unsigned char)c);
+                if (lowerName.find(lowerQuery) == std::string::npos &&
+                    lowerRelPath.find(lowerQuery) == std::string::npos) continue;
+            }
+
+            if (!first) results += ",";
+            first = false;
+
+            uintmax_t fileSize = 0;
+            std::error_code ec;
+            fileSize = fs::file_size(entry.path(), ec);
+            results += "{";
+            results += json_string("filePath") + ":" + json_string(entry.path().string()) + ",";
+            results += json_string("name") + ":" + json_string(name) + ",";
+            results += json_string("size") + ":" + std::to_string(fileSize);
+            results += "}";
+        }
+    } catch (const fs::filesystem_error&) {
+        results = "[";
+        first = true;
+    }
+
+    results += "]";
+
+    std::string payload = "{";
+    payload += json_string("results") + ":" + results;
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleFxChainSearchCached(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string query     = parser.getString("query");
+    std::string rootPath  = parser.getString("rootPath");
+    std::string offsetStr = parser.getString("offset");
+    std::string limitStr  = parser.getString("limit");
+
+    int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
+    int limit  = limitStr.empty()  ? 16 : atoi(limitStr.c_str());
+
+    if (!rootPath.empty() && rootPath != m_fxChainCache.RootPath()) {
+        m_fxChainCache.BuildIndex(rootPath);
+    }
+
+    if (!m_fxChainCache.IsIndexed() && !rootPath.empty()) {
+        m_fxChainCache.BuildIndex(rootPath);
+    }
+
+    auto result = m_fxChainCache.Search(query, offset, limit);
+
+    std::string resultsJson = "[";
+    for (size_t i = 0; i < result.results.size(); i++) {
+        if (i > 0) resultsJson += ",";
+        resultsJson += "{";
+        resultsJson += json_string("filePath") + ":" + json_string(result.results[i].filePath) + ",";
+        resultsJson += json_string("name") + ":" + json_string(result.results[i].name) + ",";
+        resultsJson += json_string("size") + ":" + std::to_string(result.results[i].size);
+        resultsJson += "}";
+    }
+    resultsJson += "]";
+
+    std::string payload = "{";
+    payload += json_string("results") + ":" + resultsJson + ",";
+    payload += json_string("total") + ":" + std::to_string(result.total) + ",";
+    payload += json_string("offset") + ":" + std::to_string(offset) + ",";
+    payload += json_string("limit") + ":" + std::to_string(limit);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleFxChainRefreshCache(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rootPath = parser.getString("rootPath");
+
+    if (rootPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'rootPath' parameter\"}");
+        return;
+    }
+
+    int count = m_fxChainCache.BuildIndex(rootPath);
+
+    std::string payload = "{";
+    payload += json_string("refreshed") + ":true,";
+    payload += json_string("count") + ":" + std::to_string(count);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::ShiftChainSourceIndices(
+    std::vector<ChainSource>& sources, int beforeIndex, int delta)
+{
+    for (auto& cs : sources) {
+        if (cs.fxStartIdx >= beforeIndex) {
+            cs.fxStartIdx += delta;
+            cs.fxEndIdx += delta;
+        } else if (cs.fxEndIdx > beforeIndex) {
+            cs.fxEndIdx += delta;
+        }
+    }
+}
+
+bool CommandHandler::doLoadChain(int trackIdx, const std::string& filePath, const std::string& direction)
+{
+    if (!m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk || !m_api.GetTrack) {
+        return false;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) return false;
+
+    std::string targetPath = filePath;
+
+    if (!direction.empty() && direction != "none") {
+        fs::path currentDir = fs::path(filePath).parent_path();
+        if (!fs::exists(currentDir)) return false;
+
+        std::vector<std::string> chainFiles;
+        try {
+            for (const auto& entry : fs::directory_iterator(currentDir)) {
+                if (!entry.is_regular_file()) continue;
+                std::string name = entry.path().filename().string();
+                std::string ext;
+                size_t dotPos = name.rfind('.');
+                if (dotPos == std::string::npos) continue;
+                ext = name.substr(dotPos);
+                std::string lowerExt;
+                for (char c : ext) lowerExt += tolower((unsigned char)c);
+                if (lowerExt != ".rfxchain") continue;
+                chainFiles.push_back(entry.path().string());
+            }
+        } catch (...) {
+            return false;
+        }
+
+        if (chainFiles.empty()) return false;
+        std::sort(chainFiles.begin(), chainFiles.end());
+
+        int currentIdx = -1;
+        for (size_t i = 0; i < chainFiles.size(); i++) {
+            if (chainFiles[i] == filePath) {
+                currentIdx = (int)i;
+                break;
+            }
+        }
+        if (currentIdx < 0) return false;
+
+        if (direction == "next") {
+            int nextIdx = (currentIdx + 1) % (int)chainFiles.size();
+            targetPath = chainFiles[nextIdx];
+        } else if (direction == "prev") {
+            int prevIdx = (currentIdx - 1 + (int)chainFiles.size()) % (int)chainFiles.size();
+            targetPath = chainFiles[prevIdx];
+        } else {
+            return false;
+        }
+    }
+
+    std::string fxChain;
+    try {
+        FILE* f = fopen(targetPath.c_str(), "r");
+        if (!f) return false;
+        char buf[4096];
+        size_t nread;
+        while ((nread = fread(buf, 1, sizeof(buf), f)) > 0) {
+            fxChain.append(buf, nread);
+        }
+        fclose(f);
+    } catch (...) {
+        return false;
+    }
+
+    if (fxChain.empty()) return false;
+
+    const int CHUNK_SIZE = 4 * 1024 * 1024;
+    std::vector<char> chunkBuf(CHUNK_SIZE, 0);
+    bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf.data(), CHUNK_SIZE, false);
+    if (!gotChunk || chunkBuf[0] == 0) return false;
+
+    std::string currentChunk(chunkBuf.data());
+
+    std::string loadedFxChain;
+    std::string extracted = extractFxChainFromChunk(fxChain);
+    if (!extracted.empty()) {
+        loadedFxChain = extracted;
+    } else {
+        loadedFxChain = "<FXCHAIN\n" + fxChain;
+        if (loadedFxChain.back() != '\n') loadedFxChain += '\n';
+        loadedFxChain += '>';
+    }
+
+    std::string newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+    bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
+
+    if (ok && m_api.TrackFX_GetCount) {
+        int newFxCount = m_api.TrackFX_GetCount(track);
+        ChainSource cs;
+        cs.filePath = targetPath;
+        cs.fxStartIdx = 0;
+        cs.fxEndIdx = newFxCount;
+        m_trackChainSources[trackIdx] = {cs};
+    }
+
+    return ok;
+}
+
+void CommandHandler::HandleFxChainCycle(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrack || !m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string direction   = parser.getString("direction");
+    std::string chainPath   = parser.getString("chainPath");
+
+    if (trackIdxStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' parameter\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+
+    std::string currentPath;
+    auto it = m_trackChainSources.find(trackIdx);
+    if (it != m_trackChainSources.end() && !it->second.empty()) {
+        currentPath = it->second[0].filePath;
+    }
+    if (currentPath.empty() && !chainPath.empty()) {
+        currentPath = chainPath;
+    }
+
+    if (currentPath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"No chain loaded on this track\"}");
+        return;
+    }
+
+    std::string directionArg = direction;
+    if (chainPath.empty() && !direction.empty() && currentPath.empty()) {
+        directionArg.clear();
+    }
+
+    bool ok = doLoadChain(trackIdx, currentPath, directionArg);
+    if (ok) {
+        std::string fxList = "[]";
+        MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+        if (track && m_api.TrackFX_GetCount && m_api.TrackFX_GetFXName) {
+            int fxCount = m_api.TrackFX_GetCount(track);
+            fxList = "[";
+            for (int i = 0; i < fxCount; i++) {
+                if (i > 0) fxList += ",";
+                char name[512] = {0};
+                m_api.TrackFX_GetFXName(track, i, name, sizeof(name));
+                fxList += "{";
+                fxList += json_string("index") + ":" + std::to_string(i) + ",";
+                fxList += json_string("name") + ":" + json_string(name);
+                std::string cp;
+                auto cit = m_trackChainSources.find(trackIdx);
+                if (cit != m_trackChainSources.end()) {
+                    for (const auto& cs : cit->second) {
+                        if (i >= cs.fxStartIdx && i < cs.fxEndIdx) {
+                            cp = cs.filePath;
+                            break;
+                        }
+                    }
+                }
+                if (!cp.empty()) {
+                    fxList += "," + json_string("chainPath") + ":" + json_string(cp);
+                }
+                fxList += "}";
+            }
+            fxList += "]";
+        }
+
+        SendResponse(clientId, id, true,
+            "{\"cycled\":true,\"trackIdx\":" + std::to_string(trackIdx)
+            + ",\"direction\":" + json_string(direction)
+            + ",\"fx\":" + fxList + "}");
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to cycle chain\"}");
+    }
+}

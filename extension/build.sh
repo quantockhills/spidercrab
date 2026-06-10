@@ -108,7 +108,8 @@ else
     LINK_FLAGS="-shared -lpthread -ldl"
 fi
 
-INCLUDES="-I$PROJECT_DIR/docs/reaper-sdk/sdk"
+INCLUDES="-I$SCRIPT_DIR/src"
+INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/reaper-sdk/sdk"
 INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL"
 INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL"
 INCLUDES="$INCLUDES -I$PROJECT_DIR/docs/WDL/WDL/jnetlib"
@@ -122,6 +123,16 @@ SRC="$SRC $SCRIPT_DIR/src/fx_tags.cpp"
 SRC="$SRC $SCRIPT_DIR/src/fxchain_cache.cpp"
 SRC="$SRC $SCRIPT_DIR/src/sample_cache.cpp"
 SRC="$SRC $SCRIPT_DIR/src/sha1_utils.cpp"
+
+# Domain-specific handler files (split from command_handler.cpp)
+SRC="$SRC $SCRIPT_DIR/src/handlers/track_handlers.cpp"
+SRC="$SRC $SCRIPT_DIR/src/handlers/fx_handlers.cpp"
+SRC="$SRC $SCRIPT_DIR/src/handlers/fxchain_handlers.cpp"
+SRC="$SRC $SCRIPT_DIR/src/handlers/sample_handlers.cpp"
+SRC="$SRC $SCRIPT_DIR/src/handlers/transport_handlers.cpp"
+SRC="$SRC $SCRIPT_DIR/src/handlers/matrix_handlers.cpp"
+SRC="$SRC $SCRIPT_DIR/src/handlers/playtime_handlers.cpp"
+SRC="$SRC $SCRIPT_DIR/src/handlers/settings_handlers.cpp"
 
 WDL_DIR="$PROJECT_DIR/docs/WDL/WDL"
 SRC="$SRC $WDL_DIR/jnetlib/listen.cpp"
