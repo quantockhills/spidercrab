@@ -4697,9 +4697,17 @@ void CommandHandler::HandlePlaytimeLaunch(
 // ============================================================
 
 static std::string getReaperAppDataPath() {
+#ifdef _WIN32
     char buf[MAX_PATH] = {0};
     GetEnvironmentVariableA("APPDATA", buf, MAX_PATH);
     return std::string(buf) + "\\REAPER";
+#else
+    const char* home = getenv("HOME");
+    if (home) {
+        return std::string(home) + "/.REAPER";
+    }
+    return "/tmp/reaper-data";
+#endif
 }
 
 void CommandHandler::HandleSampleReaperLibraries(
