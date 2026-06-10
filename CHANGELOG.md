@@ -1,4 +1,16 @@
 
+## v0.2.5-alpha — 2026-06-10
+
+### Features
+- **Audio reverse toggle on Playtime slots** — `matrix/setSlotReverse` now calls REAPER's `B_REVERSETAKES` to actually reverse the audio clip, not just the UI flag (Issue #75 / #120):
+  - Column→track, row→media item lookup via REAPER API
+  - Toggle on/off preserves REAPER take state
+  - 4 C++ unit tests covering toggle, validation, and field preservation
+
+### Fixes
+- **Linux build compatibility** — `GetEnvironmentVariableA` wrapped in `#ifdef _WIN32` (Issue #117)
+- **MiniBpm.cpp** added to test build target to fix linker errors
+
 ## v0.2.4-alpha — 2026-06-07
 
 ### Features
