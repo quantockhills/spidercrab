@@ -285,9 +285,8 @@ void CommandHandler::HandleSampleGetAudioInfo(
     int sampleRate = m_api.GetMediaSourceSampleRate(source);
     int channels = m_api.GetMediaSourceNumChannels(source);
     double bpm = detectBpmFromFile(source,
-        m_api.GetSetMediaItemTakeInfo,
-        m_api.GetMediaFileMetadata,
-        m_api.PCM_Source_GetPeaks);
+        m_api.GetMediaSourceSampleRate,
+        m_api.GetMediaSourceNumChannels);
 
     delete source;
 
