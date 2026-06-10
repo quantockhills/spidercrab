@@ -33,10 +33,11 @@ No Node.js, no separate server process, no cloud. Works on your local network.
 ## 📱 How to use it
 
 ### 1. Install the extension
-Download the latest release for your OS from the [releases page](https://github.com/quantockhills/spidercrab/releases/tag/v0.2.2-alpha):
+Download the latest release for your OS from the [releases page](https://github.com/quantockhills/spidercrab/releases):
 
-- **Windows** → `spidercrab.dll` into `REAPER/UserPlugins/`
-- **Linux** → `spidercrab.so` into `REAPER/UserPlugins/`
+- **Windows** → `reaper_spidercrab.dll` into `REAPER/UserPlugins/`
+- **Linux** → `reaper_spidercrab.so` into `REAPER/UserPlugins/`
+- **macOS** → `reaper_spidercrab.dylib` into `REAPER/UserPlugins/`
 
 Then copy the **`frontend/`** folder into the same directory (next to the .dll/.so).
 
@@ -52,18 +53,21 @@ That's it. No configuration needed.
 
 | Area | What you can do |
 |------|----------------|
-| **Tracks** | See all tracks, mute/solo/arm, adjust volume and pan |
-| **FX** | Browse all installed plugins, search by name, filter by VST3/VST2/JSFX/CLAP |
-| **Parameters** | Touch sliders for every FX parameter with real-time updates |
-| **FX Chains** | Browse, save, and load `.RfxChain` files from your iPad |
-| **Tags** | Label FX, chains, and samples with custom tags; filter by tag across all folders |
-| **Sample browser** | Browse local sample libraries with persistent cache, audio preview, and tag filtering |
-| **Sample → track** | Send a sample to any track with one tap |
-| **Sample → Playtime** | Send a sample to a Playtime 2 slot with automatic tempo matching and bar-snapping |
-| **REAPER libraries** | Browse Media Explorer databases directly inside spidercrab |
-| **Transport** | Play/Stop from iPad |
-| **Dark mode** | Toggle between light and dark themes |
-| **FX presets** | Browse and apply presets from the param view |
+| **Tracks** | See all tracks, mute/solo/arm, record mode (audio/MIDI), volume, pan |
+| **FX** | Browse all installed plugins, search, filter by format, **tag** with colored badges |
+| **Parameters** | Touch sliders for every FX parameter with real-time updates, presets |
+| **FX Chains** | Browse, save, load `.RfxChain` files with **cached in-memory search** |
+| **Inline FX search** | Long-press on a track card to search and add FX or chains |
+| **Tags** | Label FX, chains, and samples with custom tags; filter by tag |
+| **FX reorder** | Drag-and-drop to reorder FX on a track |
+| **FX bypass/delete** | Tap to bypass, long-press to delete |
+| **Sample browser** | Multi-root, persistent cache, audio preview, waveform, tags |
+| **Sample → track** | Send sample to any track with one tap |
+| **Sample → Playtime** | Send sample to Playtime slot with **MiniBPM tempo matching** |
+| **Playtime grid** | Full clip launcher — launch/stop clips, scenes, record, clip names |
+| **Track controls on grid** | Mute/solo/arm/volume per Playtime column, Go to Track nav |
+| **Transport** | Play, Stop, Record |
+| **Everforest Light** | Warm pastel theme — no dark mode, no pure black/white |
 
 ## 🎵 Playtime 2 Clip Launcher
 
@@ -172,9 +176,13 @@ cd frontend && npm run dev   # Frontend dev server
 
 ## 📸 Screenshots
 
-See the [screenshots](screenshots/) folder for more, including:
-- Unified FX + chain search ([issue #96](screenshots/issue96/))
-- Tag badges and editor ([issue #97](screenshots/issue97/))
+The full feature set has been captured throughout development in [`gui_testing/`](gui_testing/). For organized per-issue galleries, see the [GitHub screenshots folder](https://github.com/quantockhills/spidercrab/tree/master/screenshots) including:
+- Unified FX + chain search
+- Tag badges and editor
+- Sample browser with waveform preview
+- Playtime grid with clip names
+- Track controls per column
+- And more
 
 ## License
 
