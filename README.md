@@ -7,12 +7,12 @@
 <div align="center">
   <table>
     <tr>
-      <td><img src="docs/screenshots/ss-playtime-grid.png" width="240" alt="Playtime clip grid with names" /></td>
-      <td><img src="docs/screenshots/ss-fx-search.png" width="240" alt="FX browser with inline search" /></td>
+      <td><img src="docs/screenshots/ss-playtime.png" width="320" alt="Playtime 2 clip grid with clip names" /></td>
+      <td><img src="docs/screenshots/ss-fx.png" width="320" alt="FX browser with inline search and add" /></td>
     </tr>
     <tr>
-      <td><img src="docs/screenshots/ss-waveform.png" width="240" alt="Sample browser with waveform preview" /></td>
-      <td><img src="docs/screenshots/ss-sample-sent.png" width="240" alt="Sample sent to Playtime slot" /></td>
+      <td><img src="docs/screenshots/ss-waveform.png" width="320" alt="Sample browser with waveform preview playing" /></td>
+      <td><img src="docs/screenshots/ss-tracks.png" width="320" alt="Track controls per Playtime column" /></td>
     </tr>
   </table>
 </div>
