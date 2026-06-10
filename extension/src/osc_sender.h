@@ -248,6 +248,14 @@ public:
         return buildMessageWithFloat(addr, 1.0f);
     }
 
+    // Build a "clear slot" message: /playtime/slot/<col>/<row>/clear  float=1.0
+    std::vector<uint8_t> buildClearSlotMessage(int col, int row) const
+    {
+        std::string addr = "/playtime/slot/" + std::to_string(col) + "/"
+            + std::to_string(row) + "/clear";
+        return buildMessageWithFloat(addr, 1.0f);
+    }
+
     // Build a "trigger scene" message: /playtime/scene/<row>/trigger  float=1.0
     std::vector<uint8_t> buildTriggerSceneMessage(int row) const
     {
@@ -321,6 +329,12 @@ public:
     bool sendImportSlot(int col, int row)
     {
         return sendPacket(buildImportSlotMessage(col, row));
+    }
+
+    // Clear a slot: sends /playtime/slot/<col>/<row>/clear
+    bool sendClearSlot(int col, int row)
+    {
+        return sendPacket(buildClearSlotMessage(col, row));
     }
 
 private:

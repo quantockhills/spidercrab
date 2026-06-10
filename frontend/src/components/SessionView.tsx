@@ -20,6 +20,8 @@ interface SessionViewProps {
   onRecordSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
   /** Toggle reverse on a clip slot (Issue #75) */
   onSetSlotReverse?: (column: number, row: number, reversed: boolean) => Promise<ClipSlot | null>;
+  /** Clear/delete a clip from a slot (Issue #119) */
+  onClearSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
   /** Track arm toggle (Issue #110) */
   onToggleArm?: (trackIdx: number) => void;
   /** Track mute toggle (Issue #110) */
@@ -169,6 +171,13 @@ export function SessionView({
     // Refresh matrix after reverse toggle
     getMatrix();
   }, [onSetSlotReverse, getMatrix]);
+
+  const handleClearSlot = useCallback(async (col: number, row: number) => {
+    if (!onClearSlot) return;
+    await onClearSlot(col, row);
+    // Refresh matrix after clearing
+    getMatrix();
+  }, [onClearSlot, getMatrix]);
 
   const handleLaunchPlaytime = useCallback(async () => {
     if (!onLaunchPlaytime) return;
@@ -527,6 +536,15 @@ export function SessionView({
                         aria-label={`Reverse slot ${col + 1},${row + 1}`}
                       >
                         {slot?.reversed ? '◄' : '↻'}
+                      </button>
+                    )}
+                    {state !== 'empty' && onClearSlot && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleClearSlot(col, row); }}
+                        className="absolute top-0.5 left-0.5 w-4 h-4 flex items-center justify-center rounded text-[9px] font-bold leading-none transition-all active:scale-90 bg-black/20 text-[var(--text-secondary)] hover:bg-black/40 hover:text-[var(--accent-red)]"
+                        aria-label={`Clear slot ${col + 1},${row + 1}`}
+                      >
+                        ✖
                       </button>
                     )}
                     {state === 'playing' && <span className="absolute bottom-0.5 right-0.5 text-[8px] opacity-70">▶</span>}

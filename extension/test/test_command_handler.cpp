@@ -5769,6 +5769,123 @@ TEST(MatrixTest, SetSlotReversePreservesSlotName)
 }
 
 // ============================================================
+// Matrix clearSlot tests (Issue #119)
+// ============================================================
+
+TEST(MatrixTest, ClearSlotResetsToEmpty)
+{
+    // Test that matrix/clearSlot resets a non-empty slot to empty
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // First set a slot to non-empty state
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotState","payload":{"column":1,"row":2,"state":"stopped"},"id":"preset1"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Now clear the slot
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/clearSlot","payload":{"column":1,"row":2},"id":"clear1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"state\":\"empty\""), std::string::npos)
+        << "ClearSlot response should have state:empty";
+    EXPECT_NE(responses[0].find("\"clipType\":\"none\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":1"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":2"), std::string::npos);
+
+    // Verify via getSlot
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":1,"row":2},"id":"clear1b"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"empty\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"reversed\":false"), std::string::npos);
+}
+
+TEST(MatrixTest, ClearSlotIdempotent)
+{
+    // Test that clearing an already-empty slot returns success
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Clear an empty slot (slot 0,0 starts empty by default)
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/clearSlot","payload":{"column":0,"row":0},"id":"clear_empty"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"state\":\"empty\""), std::string::npos);
+}
+
+TEST(MatrixTest, ClearSlotValidatesRange)
+{
+    // Test that invalid column/row returns error
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Column out of range
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/clearSlot","payload":{"column":99,"row":0},"id":"clear_bad"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+    EXPECT_NE(responses[0].find("Column or row out of range"), std::string::npos);
+
+    // Missing params
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/clearSlot","payload":{},"id":"clear_bad2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
+}
+
+TEST(MatrixTest, ClearSlotPreservesOtherSlots)
+{
+    // Test that clearing one slot doesn't affect neighboring slots
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    // Set two slots to non-empty
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotState","payload":{"column":0,"row":0,"state":"stopped"},"id":"s1"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/setSlotState","payload":{"column":2,"row":3,"state":"playing"},"id":"s2"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Clear slot (0,0)
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/clearSlot","payload":{"column":0,"row":0},"id":"cl"})");
+    ASSERT_EQ(responses.size(), 1u);
+
+    // Verify slot (2,3) still has its state
+    responses.clear();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":2,"row":3},"id":"get1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
+    EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
+}
+
+// ============================================================
 // Sample audio info command tests (Issue #106)
 // ============================================================
 

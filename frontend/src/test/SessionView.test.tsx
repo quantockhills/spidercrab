@@ -936,4 +936,49 @@ describe('SessionView', () => {
       expect(navBtn.textContent).toBe('↗');
     });
   });
+
+  // ── clearSlot tests (Issue #119) ──
+
+  it('shows clear button on non-empty slots', async () => {
+    const matrix = makePartialMatrix();
+    const onClearSlot = vi.fn().mockResolvedValue({
+      column: 0, row: 0, state: 'empty', color: '', name: '', clipType: 'none', reversed: false,
+    });
+
+    renderSessionView({ matrix, onClearSlot });
+
+    await waitFor(() => {
+      // Non-empty slots (0,0) should have clear buttons
+      expect(screen.getByLabelText('Clear slot 1,1')).toBeDefined();
+    });
+  });
+
+  it('does not show clear button on empty slots', async () => {
+    const matrix = makeEmptyMatrix();
+    const onClearSlot = vi.fn().mockResolvedValue({
+      column: 0, row: 0, state: 'empty', color: '', name: '', clipType: 'none', reversed: false,
+    });
+
+    renderSessionView({ matrix, onClearSlot });
+
+    await waitFor(() => {
+      // Empty slots should not have clear buttons
+      expect(screen.queryByLabelText('Clear slot')).toBeNull();
+    });
+  });
+
+  it('calls onClearSlot when clear button is clicked', async () => {
+    const matrix = makePartialMatrix();
+    const onClearSlot = vi.fn().mockResolvedValue({
+      column: 0, row: 0, state: 'empty', color: '', name: '', clipType: 'none', reversed: false,
+    });
+
+    renderSessionView({ matrix, onClearSlot });
+
+    await waitFor(() => {
+      const clearBtn = screen.getByLabelText('Clear slot 1,1');
+      fireEvent.click(clearBtn);
+      expect(onClearSlot).toHaveBeenCalledWith(0, 0);
+    });
+  });
 });

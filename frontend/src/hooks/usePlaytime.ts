@@ -110,6 +110,20 @@ export function usePlaytime() {
     [],
   );
 
+  // Issue #119: Clear/delete a clip from a slot
+  const clearSlot = useCallback(async (column: number, row: number): Promise<ClipSlot | null> => {
+    try {
+      const resp = await send('matrix/clearSlot', { column, row });
+      const slot = (resp.payload as unknown as ClipSlot) ?? null;
+      if (slot) {
+        updateMatrixSlot(column, row, slot);
+      }
+      return slot;
+    } catch {
+      return null;
+    }
+  }, [send, updateMatrixSlot]);
+
   // Issue #75: Toggle reverse on a clip slot
   const setSlotReverse = useCallback(async (column: number, row: number, reversed: boolean): Promise<ClipSlot | null> => {
     try {
@@ -165,6 +179,7 @@ export function usePlaytime() {
     recordSlot,
     pollState,
     setSlotReverse,
+    clearSlot,
     launchPlaytime,
     checkPlaytimeAvailable,
   };

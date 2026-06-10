@@ -350,6 +350,7 @@ private:
     void HandleMatrixRecordSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixPollState(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixSetSlotReverse(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixClearSlot(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — step sequencer (Issue #63)
     void HandleSequencerGetAll(int clientId, const std::string& id, const std::string& params);

@@ -298,6 +298,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["matrix/recordSlot"]       = &CommandHandler::HandleMatrixRecordSlot;
     m_commandMap["matrix/pollState"]        = &CommandHandler::HandleMatrixPollState;
     m_commandMap["matrix/setSlotReverse"]    = &CommandHandler::HandleMatrixSetSlotReverse;
+    m_commandMap["matrix/clearSlot"]       = &CommandHandler::HandleMatrixClearSlot;
     m_commandMap["sequencer/getAll"]        = &CommandHandler::HandleSequencerGetAll;
     m_commandMap["sequencer/toggleStep"]    = &CommandHandler::HandleSequencerToggleStep;
     m_commandMap["sequencer/setStep"]       = &CommandHandler::HandleSequencerSetStep;
@@ -2000,6 +2001,91 @@ void CommandHandler::HandleMatrixSetSlotReverse(
     SlotState current = m_playtimeState.getSlot(col, row);
     current.reversed = reversed;
     m_playtimeState.setSlot(col, row, current);
+
+    // Broadcast slot state change event
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// ============================================================
+// HandleMatrixClearSlot — Clear/delete a clip from a Playtime slot (Issue #119)
+// ============================================================
+
+void CommandHandler::HandleMatrixClearSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Check if slot is already empty — idempotent
+    SlotState current = m_playtimeState.getSlot(col, row);
+    if (current.state == "empty" && current.clipType == "none") {
+        // Already empty — just return success
+        SendResponse(clientId, id, true, current.toJson());
+        return;
+    }
+
+    // Delete the REAPER media item from the track/slot
+    // Playtime columns map to REAPER tracks by index; slot rows map to
+    // media items on that track ordered by position.
+    if (m_api.CountTracks && m_api.GetTrack &&
+        m_api.CountTrackMediaItems && m_api.GetTrackMediaItem &&
+        m_api.DeleteTrackMediaItem) {
+        int numTracks = m_api.CountTracks(nullptr);
+        if (col >= 0 && col < numTracks) {
+            MediaTrack* track = m_api.GetTrack(nullptr, col);
+            if (track) {
+                int itemCount = m_api.CountTrackMediaItems(track);
+                if (row >= 0 && row < itemCount) {
+                    MediaItem* item = m_api.GetTrackMediaItem(track, row);
+                    if (item) {
+                        bool deleted = m_api.DeleteTrackMediaItem(track, item);
+                        fprintf(stderr,
+                            "[spidercrab] Clear slot %d,%d: item %p %s\n",
+                            col, row, (void*)item,
+                            deleted ? "deleted" : "delete failed");
+                        if (deleted) {
+                            m_api.UpdateArrange();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Notify Playtime via OSC that the slot has been cleared
+    m_oscSender.sendClearSlot(col, row);
+
+    // Reset the slot state to empty
+    SlotState emptySlot;
+    emptySlot.column   = col;
+    emptySlot.row      = row;
+    emptySlot.state    = "empty";
+    emptySlot.color    = "";
+    emptySlot.name     = "";
+    emptySlot.clipType = "none";
+    emptySlot.reversed = false;
+    m_playtimeState.setSlot(col, row, emptySlot);
 
     // Broadcast slot state change event
     SlotState updated = m_playtimeState.getSlot(col, row);

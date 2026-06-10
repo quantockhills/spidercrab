@@ -487,4 +487,60 @@ describe('usePlaytime', () => {
     const slot = await promise;
     expect(slot).toBeNull();
   });
+
+  // ── clearSlot tests (Issue #119) ──
+
+  it('clearSlot sends matrix/clearSlot command', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.clearSlot(2, 4);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+    expect(sentMsg.command).toBe('matrix/clearSlot');
+    expect(sentMsg.column).toBe(2);
+    expect(sentMsg.row).toBe(4);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: true,
+        payload: { column: 2, row: 4, state: 'empty', color: '', name: '', clipType: 'none', reversed: false },
+      }));
+    });
+
+    const slot = await promise;
+    expect(slot).not.toBeNull();
+    expect(slot!.state).toBe('empty');
+    expect(slot!.column).toBe(2);
+    expect(slot!.row).toBe(4);
+  });
+
+  it('clearSlot returns null on failure', async () => {
+    const { result } = renderHook(() => usePlaytime(), { wrapper: Wrapper });
+
+    await vi.waitFor(() => expect(MockWebSocket.lastInstance).not.toBeNull());
+    const ws = MockWebSocket.lastInstance!;
+
+    const promise = result.current.clearSlot(0, 0);
+    await vi.waitFor(() => expect(ws.sentMessages.length).toBeGreaterThan(0));
+
+    const sentMsg = JSON.parse(ws.sentMessages[0]);
+
+    act(() => {
+      ws.simulateMessage(JSON.stringify({
+        type: 'response',
+        id: sentMsg.id,
+        success: false,
+        error: 'Invalid slot',
+      }));
+    });
+
+    const slot = await promise;
+    expect(slot).toBeNull();
+  });
 });
