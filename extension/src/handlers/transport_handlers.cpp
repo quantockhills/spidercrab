@@ -5,51 +5,69 @@ void CommandHandler::HandleGetTransport(
     int clientId, const std::string& id, const std::string& params)
 {
     (void)params;
-    if (!m_api.GetPlayState) {
-        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
-        return;
+    bool playing   = false;
+    bool recording = false;
+    if (m_api.GetPlayState) {
+        int state = m_api.GetPlayState();
+        playing   = (state & 1) != 0;
+        recording = (state & 4) != 0;
     }
-    int state = m_api.GetPlayState();
-    bool playing  = (state & 1) != 0;
-    bool paused   = (state & 2) != 0;
-    bool recording = (state & 4) != 0;
-    std::string payload = "{";
-    payload += json_string("playing") + ":" + (playing ? "true" : "false") + ",";
-    payload += json_string("paused") + ":" + (paused ? "true" : "false") + ",";
-    payload += json_string("recording") + ":" + (recording ? "true" : "false");
-    payload += "}";
-    SendResponse(clientId, id, true, payload);
+    SendResponse(clientId, id, true,
+        "{\"playing\":" + std::string(playing ? "true" : "false")
+        + ",\"paused\":false,\"recording\":" + std::string(recording ? "true" : "false") + "}");
 }
 
 void CommandHandler::HandlePlay(int clientId, const std::string& id, const std::string& params)
 {
     (void)params;
-    if (!m_api.CSurf_OnPlay) {
-        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
-        return;
+    if (m_api.CSurf_OnPlay) {
+        m_api.CSurf_OnPlay();
+        SendResponse(clientId, id, true, "{\"playing\":true}");
+    } else if (m_api.Main_OnCommand) {
+        m_api.Main_OnCommand(1007, 0); // 1007 = Transport: Play (fallback)
+        SendResponse(clientId, id, true, "{\"playing\":true}");
+    } else {
+        SendResponse(clientId, id, false, "{\"error\":\"Transport API not loaded\"}");
     }
-    m_api.CSurf_OnPlay();
-    SendResponse(clientId, id, true, "{\"playing\":true}");
 }
 
 void CommandHandler::HandleStop(int clientId, const std::string& id, const std::string& params)
 {
     (void)params;
-    if (!m_api.CSurf_OnStop) {
-        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
-        return;
+    if (m_api.CSurf_OnStop) {
+        m_api.CSurf_OnStop();
+        SendResponse(clientId, id, true, "{\"stopped\":true}");
+    } else if (m_api.Main_OnCommand) {
+        m_api.Main_OnCommand(1016, 0); // 1016 = Transport: Stop (fallback)
+        SendResponse(clientId, id, true, "{\"stopped\":true}");
+    } else {
+        SendResponse(clientId, id, false, "{\"error\":\"Transport API not loaded\"}");
     }
-    m_api.CSurf_OnStop();
-    SendResponse(clientId, id, true, "{\"stopped\":true}");
 }
 
 void CommandHandler::HandleRecord(int clientId, const std::string& id, const std::string& params)
 {
     (void)params;
-    if (!m_api.CSurf_OnRecord) {
-        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
-        return;
+    if (m_api.CSurf_OnRecord) {
+        m_api.CSurf_OnRecord();
+        // Read actual state after toggling; assume true if GetPlayState unavailable
+        bool recording = true;
+        if (m_api.GetPlayState) {
+            int state = m_api.GetPlayState();
+            recording = (state & 4) != 0;
+        }
+        SendResponse(clientId, id, true,
+            "{\"recording\":" + std::string(recording ? "true" : "false") + "}");
+    } else if (m_api.Main_OnCommand) {
+        m_api.Main_OnCommand(1013, 0); // 1013 = Transport: Record (fallback)
+        bool recording = true;
+        if (m_api.GetPlayState) {
+            int state = m_api.GetPlayState();
+            recording = (state & 4) != 0;
+        }
+        SendResponse(clientId, id, true,
+            "{\"recording\":" + std::string(recording ? "true" : "false") + "}");
+    } else {
+        SendResponse(clientId, id, false, "{\"error\":\"Transport API not loaded\"}");
     }
-    m_api.CSurf_OnRecord();
-    SendResponse(clientId, id, true, "{\"recording\":true}");
 }

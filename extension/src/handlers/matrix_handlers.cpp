@@ -7,15 +7,21 @@ void CommandHandler::HandleMatrixGetAll(
 {
     (void)params;
 
-    int columns = m_playtimeState.columns();
-    int rows    = m_playtimeState.rows();
+    int      columns = m_playtimeState.columns();
+    int      rows    = m_playtimeState.rows();
 
+    // When Playtime is available, attempt to find the instance
+    // and auto-create one if none exists. Playtime 2 C API has no
+    // clip-triggering functions — matrix commands must work via MIDI notes.
     if (isPlaytimeAvailable()) {
         int instance = m_playtimeState.findPlaytimeInstance();
         if (instance >= 0) {
             fprintf(stderr,
                 "[reaper-ipad] matrix/getAll: Playtime instance %d found\n", instance);
         } else {
+            // Auto-create a Playtime matrix if none exists in the project.
+            // HB_CreateClipMatrix creates a new clip matrix in the given
+            // Helgobox instance. We first find any Helgobox instance.
             fprintf(stderr,
                 "[reaper-ipad] matrix/getAll: No Playtime instance found, attempting auto-create...\n");
             int hgInstance = -1;
@@ -88,6 +94,7 @@ void CommandHandler::HandleMatrixTriggerSlot(
         return;
     }
 
+    // Send OSC to ReaLearn — real state will come back via OSC feedback on port 9000
     m_oscSender.sendTriggerSlot(col, row);
 
     SlotState current = m_playtimeState.getSlot(col, row);
@@ -117,6 +124,8 @@ void CommandHandler::HandleMatrixTriggerScene(
 
     int cols = m_playtimeState.columns();
 
+    // Toggle all slots in the row: set to "playing"
+    // (or "stopped" if already playing)
     for (int c = 0; c < cols; c++) {
         SlotState current = m_playtimeState.getSlot(c, row);
         std::string newState;
@@ -127,16 +136,20 @@ void CommandHandler::HandleMatrixTriggerScene(
         }
         m_playtimeState.setSlotState(c, row, newState);
 
+        // Send MIDI note for each slot
         if (m_playtimeMidi.isAvailable()) {
             m_playtimeMidi.triggerSlotViaMidi(c, row);
         }
 
+        // Send OSC message for each slot (Issue #98)
         m_oscSender.sendTriggerSlot(c, row);
 
+        // Broadcast event for each changed slot
         SlotState updated = m_playtimeState.getSlot(c, row);
         BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
     }
 
+    // Build response: return all slots in the scene row
     std::string sceneSlots = "[";
     for (int c = 0; c < cols; c++) {
         if (c > 0) sceneSlots += ",";
@@ -178,6 +191,7 @@ void CommandHandler::HandleMatrixSetSlotState(
         return;
     }
 
+    // Validate state string
     if (state != "playing" && state != "recording" && state != "stopped" && state != "empty") {
         SendResponse(clientId, id, false,
             "{\"error\":\"Invalid state. Must be one of: playing, recording, stopped, empty\"}");
@@ -186,6 +200,7 @@ void CommandHandler::HandleMatrixSetSlotState(
 
     m_playtimeState.setSlotState(col, row, state);
 
+    // Broadcast slot state change event to all clients
     SlotState updated = m_playtimeState.getSlot(col, row);
     BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
 
@@ -220,17 +235,24 @@ void CommandHandler::HandleMatrixRecordSlot(
     std::string newState;
 
     if (current.state == "playing") {
+        // Can't record on a playing slot
         SendResponse(clientId, id, false,
             "{\"error\":\"Cannot record on a playing clip. Stop the clip first.\"}");
         return;
     } else if (current.state == "recording") {
+        // Stop recording → stopped (clip saved)
         newState = "stopped";
     } else {
+        // empty or stopped → start recording
         newState = "recording";
     }
 
     m_playtimeState.setSlotState(col, row, newState);
 
+    // Send MIDI note for recording if MIDI output is available
+    // Use channel 1 (distinct from trigger channel 0) so Playtime 2
+    // can distinguish between clip trigger and record actions via
+    // its MIDI input mapping.
     if (m_playtimeMidi.isAvailable()) {
         int note = m_playtimeMidi.baseNote() + (row * 8) + col;
         if (note <= 127) {
@@ -238,8 +260,10 @@ void CommandHandler::HandleMatrixRecordSlot(
         }
     }
 
+    // Send OSC message for ReaLearn integration (Issue #98)
     m_oscSender.sendRecordSlot(col, row);
 
+    // Broadcast event to all clients
     SlotState updated = m_playtimeState.getSlot(col, row);
     BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
 
@@ -262,6 +286,7 @@ void CommandHandler::HandleMatrixPollState(
         }
     }
 
+    // If Playtime is available but no instance found, try to auto-create
     if (playtimeAvail && instanceId < 0) {
         int hgInstance = -1;
         if (g_playtimeApi.HB_FindFirstHelgoboxInstanceInProject) {
@@ -292,6 +317,8 @@ void CommandHandler::HandleMatrixSetSlotReverse(
     JsonParser parser(payloadStr);
     std::string colStr = parser.getString("column");
     std::string rowStr = parser.getString("row");
+    // The reversed value can be a JSON boolean (true/false) or a string.
+    // Our simple parser returns empty for JSON booleans, so check the raw params.
     std::string revStr = parser.getString("reversed");
 
     if (colStr.empty() || rowStr.empty()) {
@@ -310,15 +337,19 @@ void CommandHandler::HandleMatrixSetSlotReverse(
         return;
     }
 
+    // Determine reversed value from param (handles both string "true"/"false"
+    // and raw JSON boolean by checking the raw payload string)
     bool reversed = (revStr == "true");
     if (revStr.empty()) {
         reversed = (payloadStr.find("\"reversed\":true") != std::string::npos);
     }
 
+    // Update the slot's reversed flag
     SlotState current = m_playtimeState.getSlot(col, row);
     current.reversed = reversed;
     m_playtimeState.setSlot(col, row, current);
 
+    // Broadcast slot state change event
     SlotState updated = m_playtimeState.getSlot(col, row);
     BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
 
@@ -493,6 +524,7 @@ void CommandHandler::HandleSequencerConvertToClip(
 {
     (void)params;
 
+    // Check that required MIDI item APIs are available
     if (!m_api.CreateNewMIDIItemInProj || !m_api.MIDI_InsertNote ||
         !m_api.SetMediaItemInfo_Value || !m_api.GetMediaItemInfo_Value ||
         !m_api.GetTrack || !m_api.CountTracks) {
@@ -501,21 +533,25 @@ void CommandHandler::HandleSequencerConvertToClip(
         return;
     }
 
+    // Collect all active steps from the sequencer state
     int seqLength = m_sequencerState.length();
     int cols = m_sequencerState.columns();
 
+    // First pass: check if there are any active steps at all
     bool hasActiveSteps = false;
     for (int c = 0; c < std::min(seqLength, cols) && !hasActiveSteps; c++) {
         std::vector<StepData> colSteps = m_sequencerState.getActiveStepsAtColumn(c);
         if (!colSteps.empty()) hasActiveSteps = true;
     }
 
+    // Edge case: empty pattern
     if (!hasActiveSteps) {
         SendResponse(clientId, id, false,
             "{\"error\":\"No active steps to convert\",\"emptyPattern\":true}");
         return;
     }
 
+    // Determine target track: use first track as default
     int numTracks = m_api.CountTracks(nullptr);
     if (numTracks < 1) {
         SendResponse(clientId, id, false,
@@ -525,11 +561,13 @@ void CommandHandler::HandleSequencerConvertToClip(
     int trackIdx = 0;
     MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
 
-    const double stepDuration = 0.25;
-    double itemStart = 0.0;
+    // Calculate item length in seconds (1/8th note per step at 120 BPM defaults)
+    const double stepDuration = 0.25; // 1/8th note at 120 BPM in seconds
+    double itemStart = 0.0;           // Start at beginning of project
     double itemEnd = itemStart + (seqLength * stepDuration);
 
-    bool qnMode = false;
+    // Create the MIDI item
+    bool qnMode = false; // time in seconds (not quarter notes)
     MediaItem* item = m_api.CreateNewMIDIItemInProj(track, itemStart, itemEnd, &qnMode);
     if (!item) {
         SendResponse(clientId, id, false,
@@ -537,8 +575,10 @@ void CommandHandler::HandleSequencerConvertToClip(
         return;
     }
 
+    // Get the active take from the newly created item
     MediaItem_Take* take = m_api.GetActiveTake(item);
     if (!take) {
+        // If CreateNewMIDIItemInProj didn't create a take, try AddTakeToMediaItem
         if (m_api.AddTakeToMediaItem) {
             take = m_api.AddTakeToMediaItem(item);
         }
@@ -549,10 +589,13 @@ void CommandHandler::HandleSequencerConvertToClip(
         }
     }
 
+    // REAPER default PPQ is 960 ticks per quarter note
+    // 1/8th note = 480 PPQ ticks
     const double ppqPerStep = 480.0;
 
+    // Insert MIDI notes for each active step
     int noteCount = 0;
-    bool noSort = true;
+    bool noSort = true; // batch insert, sort at end
 
     for (int c = 0; c < std::min(seqLength, cols); c++) {
         std::vector<StepData> colSteps = m_sequencerState.getActiveStepsAtColumn(c);
@@ -565,17 +608,20 @@ void CommandHandler::HandleSequencerConvertToClip(
         }
     }
 
+    // Set the item length to cover the full pattern
     double currentLen = m_api.GetMediaItemInfo_Value(item, "D_LENGTH");
     double desiredLen = seqLength * stepDuration;
     if (desiredLen > currentLen) {
         m_api.SetMediaItemInfo_Value(item, "D_LENGTH", desiredLen);
     }
 
+    // Count items on the target track for identification
     int trackItemCount = 0;
     if (m_api.CountTrackMediaItems) {
         trackItemCount = m_api.CountTrackMediaItems(track);
     }
 
+    // Build success response
     std::string payload = "{";
     payload += json_string("success") + ":true,";
     payload += json_string("trackIdx") + ":" + std::to_string(trackIdx) + ",";

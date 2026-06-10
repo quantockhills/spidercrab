@@ -4,312 +4,391 @@
 void CommandHandler::HandleGetTrackFX(
     int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.TrackFX_GetCount || !m_api.TrackFX_GetFXName) {
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_GetFXName) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    std::string payloadStr = extractPayload(params);
+
+    // Extract track index from params
+        std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     int         trackIdx    = atoi(trackIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    MediaTrack* track       = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
-    int fxCount = m_api.TrackFX_GetCount(track);
-    std::string fxList = "[";
-    for (int i = 0; i < fxCount; i++) {
-        if (i > 0) fxList += ",";
-        char name[512] = {0};
-        m_api.TrackFX_GetFXName(track, i, name, sizeof(name));
-        fxList += "{";
-        fxList += json_string("index") + ":" + std::to_string(i) + ",";
-        fxList += json_string("name") + ":" + json_string(name);
-        // Determine if this FX belongs to a chain group
-        std::string chainPath;
-        auto cit = m_trackChainSources.find(trackIdx);
-        if (cit != m_trackChainSources.end()) {
-            for (const auto& cs : cit->second) {
-                if (i >= cs.fxStartIdx && i < cs.fxEndIdx) {
-                    chainPath = cs.filePath;
-                    break;
-                }
+
+    int         fxCount = m_api.TrackFX_GetCount(track);
+    std::string fxList  = "[";
+
+    // Build a chainPath lookup: fxIdx -> chainPath (or empty if not in a chain group)
+    std::map<int, std::string> fxChainPath;
+    auto it = m_trackChainSources.find(trackIdx);
+    if (it != m_trackChainSources.end()) {
+        for (const auto& cs : it->second) {
+            for (int i = cs.fxStartIdx; i < cs.fxEndIdx && i < fxCount; i++) {
+                fxChainPath[i] = cs.filePath;
             }
         }
-        if (!chainPath.empty()) {
-            fxList += "," + json_string("chainPath") + ":" + json_string(chainPath);
+    }
+
+    for (int i = 0; i < fxCount; i++) {
+        if (i > 0)
+            fxList += ",";
+        char name[512] = { 0 };
+        m_api.TrackFX_GetFXName(track, i, name, sizeof(name));
+
+        // Read bypass state
+        bool bypassed = false;
+        if (m_api.fxGetEnabled) {
+            bypassed = !m_api.fxGetEnabled(track, i);
+        }
+
+        fxList += "{";
+        fxList += json_string("index") + ":" + std::to_string(i) + ",";
+        fxList += json_string("name") + ":" + json_string(name) + ",";
+        fxList += json_string("bypassed") + ":" + (bypassed ? "true" : "false") + ",";
+        auto cpIt = fxChainPath.find(i);
+        if (cpIt != fxChainPath.end() && !cpIt->second.empty()) {
+            fxList += json_string("chainPath") + ":" + json_string(cpIt->second);
         } else {
-            fxList += "," + json_string("chainPath") + ":null";
+            fxList += json_string("chainPath") + ":null";
         }
         fxList += "}";
     }
     fxList += "]";
-    std::string payload = "{";
-    payload += json_string("fx") + ":" + fxList + ",";
-    payload += json_string("count") + ":" + std::to_string(fxCount);
-    payload += "}";
-    SendResponse(clientId, id, true, payload);
+
+    SendResponse(clientId, id, true,
+        "{\"trackIdx\":" + std::to_string(trackIdx) + ",\"fx\":" + fxList + "}");
 }
 
 void CommandHandler::HandleGetFXParams(
     int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.TrackFX_GetCount || !m_api.TrackFX_GetParamName ||
-        !m_api.TrackFX_GetParamEx || !m_api.TrackFX_GetFormattedParamValue) {
+    if (!m_api.TrackFX_GetNumParams || !m_api.TrackFX_GetParamEx || !m_api.TrackFX_GetParamName) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    std::string payloadStr = extractPayload(params);
+
+        std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
+    std::string offsetStr   = parser.getString("offset");
+    std::string limitStr    = parser.getString("limit");
     int         trackIdx    = atoi(trackIdxStr.c_str());
     int         fxIdx       = atoi(fxIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    int         offset      = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
+    int         limit       = limitStr.empty() ? 32 : atoi(limitStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
-    int paramCount = m_api.TrackFX_GetNumParams(track, fxIdx);
-    // If GetCount with fxIdx doesn't work (it returns track fx count), use GetNumParams
-    paramCount = m_api.TrackFX_GetNumParams(track, fxIdx);
-    std::string paramList = "[";
-    for (int i = 0; i < paramCount; i++) {
-        if (i > 0) paramList += ",";
-        char name[256] = {0};
-        m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
+
+    int         numParams  = m_api.TrackFX_GetNumParams(track, fxIdx);
+    int         endIdx     = std::min(numParams, offset + limit);
+    std::string paramsList = "[";
+    for (int i = offset; i < endIdx; i++) {
+        if (i > offset)
+            paramsList += ",";
         double minVal = 0, maxVal = 0, midVal = 0;
-        double normVal = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
-        char formattedBuf[256] = {0};
-        bool formattedOk = m_api.TrackFX_GetFormattedParamValue(track, fxIdx, i, formattedBuf, sizeof(formattedBuf));
-        double actualVal = minVal + normVal * (maxVal - minVal);
-        paramList += "{";
-        paramList += json_string("index") + ":" + std::to_string(i) + ",";
-        paramList += json_string("name") + ":" + json_string(name) + ",";
-        paramList += json_string("value") + ":" + std::to_string(actualVal) + ",";
-        paramList += json_string("min") + ":" + std::to_string(minVal) + ",";
-        paramList += json_string("max") + ":" + std::to_string(maxVal) + ",";
-        paramList += json_string("mid") + ":" + std::to_string(midVal) + ",";
-        paramList += json_string("normalized") + ":" + std::to_string(normVal) + ",";
-        paramList += json_string("formatted") + ":" + (formattedOk && formattedBuf[0] ? json_string(formattedBuf) : json_string(""));
-        paramList += "}";
+        double val       = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
+        // TrackFX_GetParamEx returns the normalized value (0.0-1.0) but fills
+        // minVal/maxVal with the actual display range (e.g. -150 to 0 for volume).
+        // Convert to the actual display value so the frontend doesn't need to.
+        double actualVal = minVal + val * (maxVal - minVal);
+        char   name[256] = { 0 };
+        m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
+
+        // Get the human-readable formatted value (e.g. "50.0%", "-6.0 dB")
+        // Falls back to empty/null if TrackFX_GetFormattedParamValue is
+        // unavailable or fails (Issue #73)
+        char formattedBuf[256] = { 0 };
+        bool formattedOk = false;
+        if (m_api.TrackFX_GetFormattedParamValue) {
+            formattedOk = m_api.TrackFX_GetFormattedParamValue(
+                track, fxIdx, i, formattedBuf, sizeof(formattedBuf));
+        }
+
+        paramsList += "{";
+        paramsList += json_string("index") + ":" + std::to_string(i) + ",";
+        paramsList += json_string("name") + ":" + json_string(name) + ",";
+        paramsList += json_string("value") + ":" + std::to_string(actualVal) + ",";
+        paramsList += json_string("min") + ":" + std::to_string(minVal) + ",";
+        paramsList += json_string("max") + ":" + std::to_string(maxVal) + ",";
+        paramsList += json_string("mid") + ":" + std::to_string(midVal) + ",";
+        paramsList += json_string("formatted") + ":" + (formattedOk && formattedBuf[0] ? json_string(formattedBuf) : json_string(""));
+        paramsList += "}";
     }
-    paramList += "]";
-    std::string payload = "{";
-    payload += json_string("params") + ":" + paramList + ",";
-    payload += json_string("count") + ":" + std::to_string(paramCount);
-    payload += "}";
-    SendResponse(clientId, id, true, payload);
+    paramsList += "]";
+    
+    // Auto-watch this FX for real-time param change events (Issue #52)
+    SetWatchedFX(trackIdx, fxIdx);
+
+    SendResponse(clientId, id, true,
+        "{\"trackIdx\":" + std::to_string(trackIdx) + ",\"fxIdx\":" + std::to_string(fxIdx)
+            + ",\"params\":" + paramsList
+            + ",\"total\":" + std::to_string(numParams)
+            + ",\"offset\":" + std::to_string(offset)
+            + ",\"limit\":" + std::to_string(limit) + "}");
 }
 
 void CommandHandler::HandleSetFXParam(
     int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.TrackFX_SetParam || !m_api.TrackFX_GetParamEx) {
+    if (!m_api.TrackFX_SetParam) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    std::string payloadStr = extractPayload(params);
+
+        std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
     std::string paramIdxStr = parser.getString("paramIdx");
     std::string valueStr    = parser.getString("value");
-    int         trackIdx    = atoi(trackIdxStr.c_str());
-    int         fxIdx       = atoi(fxIdxStr.c_str());
-    int         paramIdx    = atoi(paramIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+
+    int    trackIdx = atoi(trackIdxStr.c_str());
+    int    fxIdx    = atoi(fxIdxStr.c_str());
+    int    paramIdx = atoi(paramIdxStr.c_str());
+    double value    = atof(valueStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
+
+    // Get param range info for zero-range guard and readback
     double minVal = 0, maxVal = 0, midVal = 0;
-    double normalized = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
-    double targetVal = atof(valueStr.c_str());
-    // Convert from actual value to normalized (0-1) if value looks like an actual value
-    // Check: if value is between 0.0 and 1.0 and range is significantly larger, treat as normalized
-    double newNormalized;
+    if (m_api.TrackFX_GetParamEx) {
+        m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
+    }
+
+    // Guard against zero-range params (read-only sliders, Issue #73):
+    // Some JSFX params report minVal == maxVal. Skip the set entirely.
     double range = maxVal - minVal;
-    if (range > 1.0 && targetVal >= 0.0 && targetVal <= 1.0) {
-        // Probably already normalized
-        newNormalized = targetVal;
-        targetVal = minVal + targetVal * range;
-    } else {
-        // Clamp to range and normalize
-        if (targetVal < minVal) targetVal = minVal;
-        if (targetVal > maxVal) targetVal = maxVal;
-        if (range > 0.0)
-            newNormalized = (targetVal - minVal) / range;
-        else
-            newNormalized = 0.0;
-    }
-    m_lastSetParam = {trackIdx, fxIdx, paramIdx};
-    bool ok = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, newNormalized);
-    if (ok) {
+    if (range >= 0.0 && range < 1e-15) {
+        // Range is effectively zero — return current value.
+        double currentNorm = 0;
+        double readMin = 0, readMax = 0, readMid = 0;
+        if (m_api.TrackFX_GetParamEx) {
+            currentNorm = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &readMin, &readMax, &readMid);
+        }
+        double currentVal = readMin + currentNorm * (readMax - readMin);
         SendResponse(clientId, id, true,
-            "{\"value\":" + std::to_string(targetVal) + "}");
-    } else {
-        SendResponse(clientId, id, false, "{\"error\":\"Failed to set parameter\"}");
+            "{\"set\":true,"
+            "\"value\":" + std::to_string(currentVal) + "}");
+        return;
     }
+
+    // TrackFX_SetParam takes actual display values, NOT normalized 0-1 (Issue #73).
+    // The frontend sends actual display values (e.g. 5000 Hz, -12 dB), so
+    // we pass them directly to the API.
+    m_lastSetParam = {trackIdx, fxIdx, paramIdx};
+
+    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, value);
+
+    // Read back the actual value REAPER committed (fixes slider jumping due to
+    // normalization precision loss or stepped params)
+    double committedVal = value;
+    double actualMin = 0, actualMax = 0, actualMid = 0;
+    if (success && m_api.TrackFX_GetParamEx) {
+        double normVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &actualMin, &actualMax, &actualMid);
+        committedVal = actualMin + normVal * (actualMax - actualMin);
+    }
+
+    // Get the formatted value for the committed param (Issue #73)
+    char formattedBuf[256] = { 0 };
+    bool formattedOk = false;
+    if (success && m_api.TrackFX_GetFormattedParamValue) {
+        formattedOk = m_api.TrackFX_GetFormattedParamValue(
+            track, fxIdx, paramIdx, formattedBuf, sizeof(formattedBuf));
+    }
+
+    SendResponse(
+        clientId, id, success,
+        "{\"set\":" + std::string(success ? "true" : "false") + ","
+        "\"value\":" + std::to_string(committedVal) + ","
+        "\"formatted\":" + (formattedOk && formattedBuf[0] ? json_string(formattedBuf) : json_string("")) + "}");
 }
 
 void CommandHandler::HandleAddFX(int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.TrackFX_AddByName || !m_api.TrackFX_GetCount) {
+    if (!m_api.TrackFX_AddByName) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    std::string payloadStr = extractPayload(params);
+
+        std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxName      = parser.getString("fxName");
-    std::string recFxStr    = parser.getString("recFX");
-    int         trackIdx    = atoi(trackIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+
+    int         trackIdx = atoi(trackIdxStr.c_str());
+    MediaTrack* track    = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
-    bool recFX = (recFxStr == "true" || recFxStr == "1");
-    int fxIdx = m_api.TrackFX_AddByName(track, fxName.c_str(), recFX, 0);
-    if (fxIdx >= 0) {
-        int newFxCount = m_api.TrackFX_GetCount(track);
-        // Shift chain-source indices for FX added after this point
-        ShiftChainSourceIndices(m_trackChainSources[trackIdx], fxIdx, 1);
-        SendResponse(clientId, id, true,
-            "{\"fxIdx\":" + std::to_string(fxIdx) + ",\"fxCount\":" + std::to_string(newFxCount) + "}");
-    } else {
-        SendResponse(clientId, id, false, "{\"error\":\"FX not found\"}");
+
+    // instantiate=1 means: don't prompt, just add the FX
+    int fxIdx = m_api.TrackFX_AddByName(track, fxName.c_str(), false, 1);
+
+    // Update chain-source indices: new FX inserted at fxIdx
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end() && fxIdx >= 0) {
+        ShiftChainSourceIndices(sit->second, fxIdx, 1);
     }
+
+    SendResponse(clientId, id, fxIdx >= 0, "{\"fxIdx\":" + std::to_string(fxIdx) + "}");
 }
 
 void CommandHandler::HandleGetFxPreset(int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.TrackFX_GetPreset || !m_api.TrackFX_GetPresetIndex) {
+    if (!m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
+
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
     int         trackIdx    = atoi(trackIdxStr.c_str());
     int         fxIdx       = atoi(fxIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
-    int numberOfPresets = 0;
-    int currentIdx = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numberOfPresets);
-    char presetName[512] = {0};
-    bool hasPreset = m_api.TrackFX_GetPreset(track, fxIdx, presetName, sizeof(presetName));
+
+    int numPresets = 0;
+    int presetIdx  = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
+
+    std::string presetName;
+    if (presetIdx >= 0) {
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            presetName = nameBuf;
+        }
+    }
+
     std::string payload = "{";
-    payload += json_string("currentPreset") + ":" + json_string(hasPreset ? presetName : "") + ",";
-    payload += json_string("currentIdx") + ":" + std::to_string(currentIdx) + ",";
-    payload += json_string("numberOfPresets") + ":" + std::to_string(numberOfPresets);
+    payload += json_string("presetIndex") + ":" + std::to_string(presetIdx) + ",";
+    payload += json_string("presetName") + ":" + (presetName.empty() ? "null" : json_string(presetName)) + ",";
+    payload += json_string("numPresets") + ":" + std::to_string(numPresets);
     payload += "}";
+
     SendResponse(clientId, id, true, payload);
 }
 
 void CommandHandler::HandleSetFxPreset(int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.TrackFX_SetPreset || !m_api.TrackFX_SetPresetByIndex) {
+    if (!m_api.TrackFX_SetPresetByIndex || !m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
+
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
-    std::string trackIdxStr = parser.getString("trackIdx");
-    std::string fxIdxStr    = parser.getString("fxIdx");
-    std::string presetName  = parser.getString("presetName");
+    std::string trackIdxStr  = parser.getString("trackIdx");
+    std::string fxIdxStr     = parser.getString("fxIdx");
     std::string presetIdxStr = parser.getString("presetIdx");
-    int         trackIdx    = atoi(trackIdxStr.c_str());
-    int         fxIdx       = atoi(fxIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    int trackIdx  = atoi(trackIdxStr.c_str());
+    int fxIdx     = atoi(fxIdxStr.c_str());
+    int presetIdx = atoi(presetIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
-    bool ok = false;
-    if (!presetName.empty()) {
-        ok = m_api.TrackFX_SetPreset(track, fxIdx, presetName.c_str());
-    } else if (!presetIdxStr.empty()) {
-        int presetIdx = atoi(presetIdxStr.c_str());
-        ok = m_api.TrackFX_SetPresetByIndex(track, fxIdx, presetIdx);
-    } else {
-        SendResponse(clientId, id, false, "{\"error\":\"Missing 'presetName' or 'presetIdx'\"}");
-        return;
-    }
-    if (ok) {
-        SendResponse(clientId, id, true, "{\"presetSet\":true}");
-    } else {
+
+    bool success = m_api.TrackFX_SetPresetByIndex(track, fxIdx, presetIdx);
+    if (!success) {
         SendResponse(clientId, id, false, "{\"error\":\"Failed to set preset\"}");
-    }
-}
-
-void CommandHandler::HandleGetAllFxPresetNames(
-    int clientId, const std::string& id, const std::string& params)
-{
-    if (!m_api.GetTrack || !m_api.TrackFX_GetFXName || !m_api.TrackFX_GetPreset ||
-        !m_api.TrackFX_GetPresetIndex) {
-        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
 
-    std::string payloadStr = extractPayload(params);
-    JsonParser  parser(payloadStr);
-    std::string trackIdxStr = parser.getString("trackIdx");
-    std::string fxIdxStr    = parser.getString("fxIdx");
-    int         trackIdx    = atoi(trackIdxStr.c_str());
-    int         fxIdx       = atoi(fxIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
-    if (!track) {
-        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
-        return;
-    }
+    // Read back the committed state
+    int numPresets = 0;
+    int committedIdx = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
 
-    // First, get the current preset index and total count to verify the API works
-    int numberOfPresets = 0;
-    int currentIdx = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numberOfPresets);
-
-    // Read all preset names by iterating
-    std::string presetList = "[";
-
-    // Strategy: use GetPresetIndex first to see total count, then iterate
-    // REAPER's API doesn't provide a direct "get preset at index" that returns
-    // name. We iterate by setting each preset index and reading back the name.
-    int maxPresets = numberOfPresets > 0 ? numberOfPresets : 256;
-    int foundPresets = 0;
-    bool first = true;
-
-    for (int i = 0; i < maxPresets; i++) {
-        char name[512] = {0};
-        // Try setting preset by index and reading back the name
-        if (m_api.TrackFX_SetPresetByIndex(track, fxIdx, i)) {
-            if (m_api.TrackFX_GetPreset(track, fxIdx, name, sizeof(name)) && name[0]) {
-                if (!first) presetList += ",";
-                first = false;
-                presetList += json_string(name);
-                foundPresets++;
-            }
-        } else {
-            break; // No more presets
+    std::string presetName;
+    if (committedIdx >= 0) {
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            presetName = nameBuf;
         }
     }
 
-    // Restore the original preset
-    if (currentIdx >= 0) {
-        m_api.TrackFX_SetPresetByIndex(track, fxIdx, currentIdx);
+    std::string payload = "{";
+    payload += json_string("presetIndex") + ":" + std::to_string(committedIdx) + ",";
+    payload += json_string("presetName") + ":" + (presetName.empty() ? "null" : json_string(presetName)) + ",";
+    payload += json_string("numPresets") + ":" + std::to_string(numPresets);
+    payload += "}";
+
+    SendResponse(clientId, id, success, payload);
+}
+
+void CommandHandler::HandleGetAllFxPresetNames(int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_GetPresetIndex || !m_api.TrackFX_GetPreset || !m_api.TrackFX_SetPresetByIndex) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
     }
 
-    presetList += "]";
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string fxIdxStr    = parser.getString("fxIdx");
+    int         trackIdx    = atoi(trackIdxStr.c_str());
+    int         fxIdx       = atoi(fxIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int numPresets = 0;
+    int originalIdx = m_api.TrackFX_GetPresetIndex(track, fxIdx, &numPresets);
+
+    if (numPresets <= 0) {
+        std::string payload = "{";
+        payload += json_string("presetNames") + ":[],";
+        payload += json_string("currentIndex") + ":" + std::to_string(originalIdx);
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+        return;
+    }
+
+    // Enumerate all presets by index
+    std::string nameList = "[";
+    for (int i = 0; i < numPresets; i++) {
+        if (i > 0) nameList += ",";
+        m_api.TrackFX_SetPresetByIndex(track, fxIdx, i);
+        char nameBuf[512] = { 0 };
+        if (m_api.TrackFX_GetPreset(track, fxIdx, nameBuf, (int)sizeof(nameBuf))) {
+            nameList += json_string(nameBuf);
+        } else {
+            nameList += json_string("");
+        }
+    }
+    nameList += "]";
+
+    // Restore original preset (important for correctness)
+    m_api.TrackFX_SetPresetByIndex(track, fxIdx, originalIdx);
 
     std::string payload = "{";
-    payload += json_string("presets") + ":" + presetList + ",";
-    payload += json_string("count") + ":" + std::to_string(foundPresets) + ",";
-    payload += json_string("currentIdx") + ":" + std::to_string(currentIdx);
+    payload += json_string("presetNames") + ":" + nameList + ",";
+    payload += json_string("currentIndex") + ":" + std::to_string(originalIdx);
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
@@ -317,88 +396,182 @@ void CommandHandler::HandleGetAllFxPresetNames(
 
 void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.TrackFX_Delete) {
+    if (!m_api.TrackFX_Delete) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    std::string payloadStr = extractPayload(params);
+
+        std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
-    int         trackIdx    = atoi(trackIdxStr.c_str());
-    int         fxIdx       = atoi(fxIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+    int fxIdx    = atoi(fxIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
-    // Shift chain-source indices before deleting (indices shift down after delete)
-    ShiftChainSourceIndices(m_trackChainSources[trackIdx], fxIdx, -1);
-    bool ok = m_api.TrackFX_Delete(track, fxIdx);
-    if (ok) {
-        SendResponse(clientId, id, true, "{\"deleted\":true}");
-    } else {
-        SendResponse(clientId, id, false, "{\"error\":\"Failed to delete FX\"}");
+
+    bool success = m_api.TrackFX_Delete(track, fxIdx);
+
+    // Update chain-source indices: FX at fxIdx removed, shift down
+    if (success) {
+        auto sit = m_trackChainSources.find(trackIdx);
+        if (sit != m_trackChainSources.end()) {
+            ShiftChainSourceIndices(sit->second, fxIdx, -1);
+            // Clean up empty chain groups
+            sit->second.erase(
+                std::remove_if(sit->second.begin(), sit->second.end(),
+                    [](const ChainSource& cs) { return cs.fxStartIdx >= cs.fxEndIdx; }),
+                sit->second.end());
+            if (sit->second.empty()) {
+                m_trackChainSources.erase(sit);
+            }
+        }
     }
+
+    SendResponse(
+        clientId, id, success, "{\"deleted\":" + std::string(success ? "true" : "false") + "}");
 }
 
 void CommandHandler::HandleSetFXBypass(int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.fxGetEnabled || !m_api.fxSetEnabled) {
+    if (!m_api.fxGetEnabled || !m_api.fxSetEnabled) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
+
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string fxIdxStr    = parser.getString("fxIdx");
-    std::string bypassStr   = parser.getString("bypass");
-    int         trackIdx    = atoi(trackIdxStr.c_str());
-    int         fxIdx       = atoi(fxIdxStr.c_str());
-    MediaTrack* track       = m_api.GetTrack(nullptr, trackIdx);
+    std::string bypassedStr = parser.getString("bypassed");
+
+    if (trackIdxStr.empty() || fxIdxStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'fxIdx' parameter\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+    int fxIdx    = atoi(fxIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
-    bool bypass = (bypassStr == "true");
-    m_api.fxSetEnabled(track, fxIdx, !bypass);
-    bool isEnabled = m_api.fxGetEnabled(track, fxIdx);
+
+    // Handle both string "true"/"false" and unquoted JSON boolean true/false
+    // The JsonParser returns empty string for JSON boolean values, so we
+    // also check the raw payload string for boolean patterns.
+    bool bypassed = (bypassedStr == "true" || bypassedStr == "1");
+    if (bypassedStr.empty()) {
+        bypassed = (payloadStr.find("\"bypassed\":true") != std::string::npos);
+    }
+    // TrackFX_SetEnabled: true = enabled (not bypassed), false = disabled (bypassed)
+    m_api.fxSetEnabled(track, fxIdx, !bypassed);
+
+    // Read back the actual state to confirm
+    bool actualBypassed = !m_api.fxGetEnabled(track, fxIdx);
+
     SendResponse(clientId, id, true,
-        "{\"bypassed\":" + std::string(!isEnabled ? "true" : "false") + "}");
+        "{\"bypassed\":" + std::string(actualBypassed ? "true" : "false") + "}");
 }
 
 void CommandHandler::HandleReorderFX(int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.GetTrack || !m_api.TrackFX_CopyToTrack || !m_api.TrackFX_GetCount) {
+    if (!m_api.TrackFX_CopyToTrack || !m_api.TrackFX_Delete || !m_api.TrackFX_GetCount) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
+
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr  = parser.getString("trackIdx");
-    std::string fxIdxStr     = parser.getString("fxIdx");
-    std::string newIdxStr    = parser.getString("newIdx");
-    int         trackIdx     = atoi(trackIdxStr.c_str());
-    int         fxIdx        = atoi(fxIdxStr.c_str());
-    int         newIdx       = atoi(newIdxStr.c_str());
-    MediaTrack* track        = m_api.GetTrack(nullptr, trackIdx);
+    std::string fromIdxStr   = parser.getString("fromIndex");
+    std::string toIdxStr     = parser.getString("toIndex");
+
+    if (trackIdxStr.empty() || fromIdxStr.empty() || toIdxStr.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Missing required parameters\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+    int fromIdx  = atoi(fromIdxStr.c_str());
+    int toIdx    = atoi(toIdxStr.c_str());
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
     if (!track) {
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
+
     int fxCount = m_api.TrackFX_GetCount(track);
-    if (fxIdx < 0 || fxIdx >= fxCount || newIdx < 0 || newIdx >= fxCount) {
-        SendResponse(clientId, id, false, "{\"error\":\"Invalid FX index\"}");
+
+    // Validate indices
+    if (fromIdx < 0 || fromIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"fromIndex out of range: " + std::to_string(fromIdx) + " (0-" + std::to_string(fxCount - 1) + ")\"}");
         return;
     }
-    // Move FX within same track via copy-to-self + delete
-    if (fxIdx == newIdx) {
-        SendResponse(clientId, id, true, "{\"reordered\":true}");
+    if (toIdx < 0 || toIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"toIndex out of range: " + std::to_string(toIdx) + " (0-" + std::to_string(fxCount - 1) + ")\"}");
         return;
     }
-    // TrackFX_CopyToTrack supports intra-track moves
-    m_api.TrackFX_CopyToTrack(track, fxIdx, track, newIdx, true);
-    SendResponse(clientId, id, true, "{\"reordered\":true}");
+
+    // No-op if moving to same position
+    if (fromIdx == toIdx) {
+        SendResponse(clientId, id, true,
+            "{\"reordered\":true,\"trackIdx\":" + std::to_string(trackIdx)
+            + ",\"fromIndex\":" + std::to_string(fromIdx)
+            + ",\"toIndex\":" + std::to_string(toIdx) + "}");
+        return;
+    }
+
+    // Index shift logic:
+    // If toIdx < fromIdx: copy to toIdx first (shift right), then delete at fromIdx + 1
+    // If toIdx > fromIdx: copy to toIdx+1 first (shift right past original), then delete at fromIdx
+    int destCopyIdx = (toIdx > fromIdx) ? toIdx + 1 : toIdx;
+    m_api.TrackFX_CopyToTrack(track, fromIdx, track, destCopyIdx, false);
+
+    int deleteIdx;
+    if (toIdx < fromIdx) {
+        deleteIdx = fromIdx + 1;
+    } else {
+        deleteIdx = fromIdx;
+    }
+
+    m_api.TrackFX_Delete(track, deleteIdx);
+
+    // Update chain-source indices for the reorder
+    // Copy at destCopyIdx shifts subsequent indices by 1
+    // Delete at deleteIdx shifts subsequent indices by -1
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end()) {
+        // First: the copy inserts at destCopyIdx, shift everything after up
+        ShiftChainSourceIndices(sit->second, destCopyIdx, 1);
+        // Second: the delete at deleteIdx removes an element, shift after down
+        int adjustedDeleteIdx = (toIdx > fromIdx) ? fromIdx : (fromIdx + 1);
+        ShiftChainSourceIndices(sit->second, adjustedDeleteIdx, -1);
+        // Clean up empty chain groups
+        sit->second.erase(
+            std::remove_if(sit->second.begin(), sit->second.end(),
+                [](const ChainSource& cs) { return cs.fxStartIdx >= cs.fxEndIdx; }),
+            sit->second.end());
+        if (sit->second.empty()) {
+            m_trackChainSources.erase(sit);
+        }
+    }
+
+    SendResponse(clientId, id, true,
+        "{\"reordered\":true,\"trackIdx\":" + std::to_string(trackIdx)
+        + ",\"fromIndex\":" + std::to_string(fromIdx)
+        + ",\"toIndex\":" + std::to_string(toIdx) + "}");
 }
 
 void CommandHandler::HandleEnumerateFX(
@@ -409,15 +582,17 @@ void CommandHandler::HandleEnumerateFX(
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    if (m_fxCacheValid && !m_fxCache.empty()) {
-        SendResponse(clientId, id, true,
-            "{\"cached\":true,\"fx\":" + m_fxCache + "}");
+
+    // Return cached FX list if available (pre-cached or previously enumerated)
+    if (m_fxCacheValid) {
+        SendResponse(clientId, id, true, "{\"fx\":" + m_fxCache + "}");
         return;
     }
-    m_fxCache = RunFXEnumeration();
-    m_fxCacheValid = true;
-    SendResponse(clientId, id, true,
-        "{\"cached\":true,\"fx\":" + m_fxCache + "}");
+
+    // Shouldn't normally reach this if PreCacheFX() was called at startup,
+    // but handle gracefully — enumerate and cache now
+    std::string fxList = RunFXEnumeration();
+    SendResponse(clientId, id, true, "{\"fx\":" + fxList + "}");
 }
 
 void CommandHandler::HandleRefreshFxCache(
@@ -428,10 +603,10 @@ void CommandHandler::HandleRefreshFxCache(
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
-    m_fxCache = RunFXEnumeration();
-    m_fxCacheValid = true;
-    SendResponse(clientId, id, true,
-        "{\"refreshed\":true,\"fx\":" + m_fxCache + "}");
+
+    m_fxCacheValid = false;
+    std::string fxList = RunFXEnumeration();
+    SendResponse(clientId, id, true, "{\"fx\":" + fxList + "}");
 }
 
 void CommandHandler::HandleFxTagsGetAll(

@@ -12,6 +12,7 @@
 void CommandHandler::HandleFxChainGetDirectory(
     int clientId, const std::string& id, const std::string& params)
 {
+    // Extract "path" from payload
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string path = parser.getString("path");
@@ -110,6 +111,8 @@ void CommandHandler::HandleFxChainSave(
         return;
     }
 
+    // Write the FX chain to file
+    // Ensure parent directory exists
     try {
         fs::path parentDir = fs::path(filePath).parent_path();
         if (!parentDir.empty() && !fs::exists(parentDir)) {
@@ -145,7 +148,7 @@ void CommandHandler::HandleFxChainLoad(
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
     std::string filePath    = parser.getString("filePath");
-    std::string modeStr     = parser.getString("mode");
+    std::string modeStr     = parser.getString("mode"); // "replace" (default) or "append"
 
     if (trackIdxStr.empty() || filePath.empty()) {
         SendResponse(clientId, id, false,
@@ -160,11 +163,13 @@ void CommandHandler::HandleFxChainLoad(
         return;
     }
 
+    // Capture old FX count for chain-source tracking
     int oldFxCount = 0;
     if (m_api.TrackFX_GetCount) {
         oldFxCount = m_api.TrackFX_GetCount(track);
     }
 
+    // Read the .RfxChain file
     std::string fxChain;
     try {
         FILE* f = fopen(filePath.c_str(), "r");
@@ -190,7 +195,8 @@ void CommandHandler::HandleFxChainLoad(
         return;
     }
 
-    const int CHUNK_SIZE = 4 * 1024 * 1024;
+    // Get current track chunk — use heap buffer; 64KB is too small for tracks with plugins
+    const int CHUNK_SIZE = 4 * 1024 * 1024; // 4MB
     std::vector<char> chunkBuf(CHUNK_SIZE, 0);
     bool gotChunk = m_api.GetTrackStateChunk(track, chunkBuf.data(), CHUNK_SIZE, false);
     if (!gotChunk || chunkBuf[0] == 0) {
@@ -203,36 +209,53 @@ void CommandHandler::HandleFxChainLoad(
 
     bool append = (modeStr == "append");
 
+    // REAPER's native .RfxChain files contain just the raw body (no outer tag).
+    // The track chunk expects a full <FXCHAIN\n...\n> block.
+    // If the file already has a <FXCHAIN wrapper (e.g. saved by this app), extract it.
+    // Otherwise wrap the raw body.
     std::string loadedFxChain;
     std::string extracted = extractFxChainFromChunk(fxChain);
     if (!extracted.empty()) {
         loadedFxChain = extracted;
     } else {
+        // Raw body — wrap it so replaceFxChainInChunk can splice it correctly
         loadedFxChain = "<FXCHAIN\n" + fxChain;
         if (loadedFxChain.back() != '\n') loadedFxChain += '\n';
         loadedFxChain += '>';
     }
 
     if (append) {
+        // Append: load current FX chain, append new FX to it
         std::string currentFxChain = extractFxChainFromChunk(currentChunk);
         if (!currentFxChain.empty()) {
+            // Merge: take the opening <FXCHAIN...> from current, add the
+            // <ITEM> entries from loaded, find the closing > of FXCHAIN
+            // REAPER format: <FXCHAIN\n  ...\n  <ITEM ...>\n>
+            // The closing > is on its own line after all ITEMs
             size_t currentClose = currentFxChain.rfind('\n');
             if (currentClose != std::string::npos && currentClose > 0) {
+                // Trim trailing whitespace from the line before last
                 size_t trim = currentClose;
                 while (trim > 0 && (currentFxChain[trim-1] == ' ' || currentFxChain[trim-1] == '\t' || currentFxChain[trim-1] == '\n' || currentFxChain[trim-1] == '\r'))
                     trim--;
+                // The closing > is on the last line - everything before it is the FX list
+                // Check if the last non-empty line is just ">"
                 size_t lastLineStart = currentFxChain.rfind('\n', currentClose - 1);
                 if (lastLineStart == std::string::npos) lastLineStart = 0;
                 std::string lastLine = currentFxChain.substr(lastLineStart, currentClose - lastLineStart);
+                // Trim whitespace from last line
                 size_t first = lastLine.find_first_not_of(" \t\n\r");
                 if (first != std::string::npos && lastLine[first] == '>') {
+                    // The closing > is on its own line - use everything before it
                     currentClose = lastLineStart;
                 }
             }
-
+            
+            // Find ITEM entries in the loaded chain
             size_t loadedStart = loadedFxChain.find("<ITEM");
             if (loadedStart != std::string::npos && currentClose != std::string::npos) {
                 std::string merged = currentFxChain.substr(0, currentClose);
+                // Add the new ITEM entries (without the opening <FXCHAIN and closing >)
                 merged += loadedFxChain.substr(loadedStart);
                 newChunk = replaceFxChainInChunk(currentChunk, merged);
             } else {
@@ -242,11 +265,14 @@ void CommandHandler::HandleFxChainLoad(
             newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
         }
     } else {
+        // Replace: just swap the FXCHAIN section
         newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
     }
 
+    // Write the new track state chunk
     bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
     if (ok) {
+        // Record chain-source tracking
         if (m_api.TrackFX_GetCount) {
             int newFxCount = m_api.TrackFX_GetCount(track);
             ChainSource cs;
@@ -258,6 +284,8 @@ void CommandHandler::HandleFxChainLoad(
                 cs.fxStartIdx = 0;
                 cs.fxEndIdx = newFxCount;
             }
+            // Replace any existing chain source for this track (if replacing)
+            // or append a new one
             if (!append || m_trackChainSources.find(trackIdx) == m_trackChainSources.end()) {
                 m_trackChainSources[trackIdx] = {cs};
             } else {
@@ -287,6 +315,7 @@ void CommandHandler::HandleFxChainGetInfo(
         return;
     }
 
+    // Read the .RfxChain file
     std::string content;
     try {
         FILE* f = fopen(filePath.c_str(), "r");
@@ -307,11 +336,14 @@ void CommandHandler::HandleFxChainGetInfo(
         return;
     }
 
+    // Parse the FXCHAIN: count FX entries and extract names
+    // .RfxChain files use plugin-type tags like <VST, <VST3, <JS, <AU
     int fxCount = 0;
     std::string fxNames = "[";
     size_t pos = 0;
     bool first = true;
 
+    // Helper to find the next plugin tag, handling <VST vs <VST3 overlap
     auto findNextPluginTag = [&](size_t from) -> size_t {
         size_t vstPos  = content.find("<VST ", from);
         size_t vst3Pos = content.find("<VST3", from);
@@ -329,6 +361,7 @@ void CommandHandler::HandleFxChainGetInfo(
     while (pos != std::string::npos) {
         fxCount++;
 
+        // Extract plugin name from quoted string after tag: e.g. <VST "VST: ReaEQ (Cockos)"
         size_t quote1 = content.find('"', pos);
         if (quote1 != std::string::npos) {
             size_t quote2 = content.find('"', quote1 + 1);
@@ -340,12 +373,16 @@ void CommandHandler::HandleFxChainGetInfo(
             }
         }
 
+        // Move past the closing > of this plugin's opening tag
         size_t tagClose = content.find(">", pos);
         if (tagClose == std::string::npos) break;
+
+        // Find the next plugin tag
         pos = findNextPluginTag(tagClose + 1);
     }
     fxNames += "]";
 
+    // Get file info
     uintmax_t fileSize = 0;
     try {
         fileSize = fs::file_size(filePath);
@@ -377,6 +414,11 @@ void CommandHandler::HandleFxChainSearchRecursive(
         return;
     }
 
+    // --- Use cached search when available (zero IO) ---
+    // If the cache is indexed for this rootPath, query it instead of walking the
+    // filesystem. This is the preferred path — fxchain/searchCached should be
+    // used by new clients, but we keep searchRecursive working via cache for
+    // backward compatibility.
     if (m_fxChainCache.IsIndexed() && m_fxChainCache.RootPath() == rootPath) {
         auto result = m_fxChainCache.Search(query, 0, 0);
         std::string results = "[";
@@ -397,6 +439,10 @@ void CommandHandler::HandleFxChainSearchRecursive(
         return;
     }
 
+    // --- Fallback: legacy recursive directory scan ---
+    // Only reached when cache is unavailable (e.g., first call before startup
+    // cache is built, or rootPath changed).
+    // @deprecated in favor of fxchain/searchCached.
     std::string lowerQuery;
     for (char c : query) lowerQuery += tolower((unsigned char)c);
 
@@ -457,18 +503,20 @@ void CommandHandler::HandleFxChainSearchCached(
 {
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
-    std::string query     = parser.getString("query");
-    std::string rootPath  = parser.getString("rootPath");
+    std::string query    = parser.getString("query");
+    std::string rootPath = parser.getString("rootPath");
     std::string offsetStr = parser.getString("offset");
     std::string limitStr  = parser.getString("limit");
 
     int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
     int limit  = limitStr.empty()  ? 16 : atoi(limitStr.c_str());
 
+    // If rootPath changed from cached path, re-index silently
     if (!rootPath.empty() && rootPath != m_fxChainCache.RootPath()) {
         m_fxChainCache.BuildIndex(rootPath);
     }
 
+    // If cache isn't indexed yet, build it now
     if (!m_fxChainCache.IsIndexed() && !rootPath.empty()) {
         m_fxChainCache.BuildIndex(rootPath);
     }
@@ -647,8 +695,8 @@ void CommandHandler::HandleFxChainCycle(
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
     std::string trackIdxStr = parser.getString("trackIdx");
-    std::string direction   = parser.getString("direction");
-    std::string chainPath   = parser.getString("chainPath");
+    std::string direction   = parser.getString("direction"); // "next" or "prev"
+    std::string chainPath   = parser.getString("chainPath"); // optional: explicit path
 
     if (trackIdxStr.empty()) {
         SendResponse(clientId, id, false,
@@ -658,6 +706,7 @@ void CommandHandler::HandleFxChainCycle(
 
     int trackIdx = atoi(trackIdxStr.c_str());
 
+    // Determine the current chain path from chain-source tracking
     std::string currentPath;
     auto it = m_trackChainSources.find(trackIdx);
     if (it != m_trackChainSources.end() && !it->second.empty()) {
@@ -680,6 +729,7 @@ void CommandHandler::HandleFxChainCycle(
 
     bool ok = doLoadChain(trackIdx, currentPath, directionArg);
     if (ok) {
+        // Get updated FX list
         std::string fxList = "[]";
         MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
         if (track && m_api.TrackFX_GetCount && m_api.TrackFX_GetFXName) {
@@ -692,6 +742,7 @@ void CommandHandler::HandleFxChainCycle(
                 fxList += "{";
                 fxList += json_string("index") + ":" + std::to_string(i) + ",";
                 fxList += json_string("name") + ":" + json_string(name);
+                // Determine chain path for this FX
                 std::string cp;
                 auto cit = m_trackChainSources.find(trackIdx);
                 if (cit != m_trackChainSources.end()) {
@@ -704,16 +755,19 @@ void CommandHandler::HandleFxChainCycle(
                 }
                 if (!cp.empty()) {
                     fxList += "," + json_string("chainPath") + ":" + json_string(cp);
+                } else {
+                    fxList += "," + json_string("chainPath") + ":null";
                 }
                 fxList += "}";
             }
             fxList += "]";
         }
 
-        SendResponse(clientId, id, true,
-            "{\"cycled\":true,\"trackIdx\":" + std::to_string(trackIdx)
-            + ",\"direction\":" + json_string(direction)
-            + ",\"fx\":" + fxList + "}");
+        std::string payload = "{";
+        payload += json_string("cycled") + ":true,";
+        payload += json_string("fx") + ":" + fxList;
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
     } else {
         SendResponse(clientId, id, false,
             "{\"error\":\"Failed to cycle chain\"}");

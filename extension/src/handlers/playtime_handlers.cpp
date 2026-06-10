@@ -6,6 +6,7 @@ void CommandHandler::HandlePlaytimeIsAvailable(
 {
     bool available = isPlaytimeAvailable();
 
+    // Build version info
     std::string versionInfo = "unknown";
     if (g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject) {
         versionInfo = "HB_FindFirstPlaytimeHelgoboxInstanceInProject: yes";
@@ -37,6 +38,7 @@ void CommandHandler::HandlePlaytimeLaunch(
     bool launched = false;
     std::string message;
 
+    // Try the named REAPER action first — simplest and most reliable
     if (m_api.NamedCommandLookup && m_api.Main_OnCommand) {
         int cmdId = m_api.NamedCommandLookup("_HB_SHOW_HIDE_PLAYTIME");
         if (cmdId > 0) {
@@ -48,36 +50,42 @@ void CommandHandler::HandlePlaytimeLaunch(
     }
 
     if (!launched) {
+    // Attempt to launch/show Playtime 2 by calling HB_ShowOrHidePlaytime
+    // on the first available Helgobox/Playtime instance.
+
+    if (isPlaytimeAvailable()) {
+        // Find the first Playtime/Helgobox instance in the current project
+        int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
+        if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
+            g_playtimeApi.HB_ShowOrHidePlaytime(instance);
+            launched = true;
+            message = "Playtime 2 launched";
+            fprintf(stderr, "[reaper-ipad] Playtime 2 launched (instance %d)\n", instance);
+        } else {
+            message = "Playtime instance not found or HB_ShowOrHidePlaytime unavailable";
+            fprintf(stderr, "[reaper-ipad] Playtime launch failed: instance=%d, HB_ShowOrHidePlaytime=%p\n",
+                instance, (void*)g_playtimeApi.HB_ShowOrHidePlaytime);
+        }
+    } else {
+        // Retry resolution in case Helgobox registered after our startup
+        retryPlaytimeApi();
         if (isPlaytimeAvailable()) {
+            // Retry succeeded — try to launch
             int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
             if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
                 g_playtimeApi.HB_ShowOrHidePlaytime(instance);
                 launched = true;
-                message = "Playtime 2 launched";
-                fprintf(stderr, "[reaper-ipad] Playtime 2 launched (instance %d)\n", instance);
+                message = "Playtime 2 launched (after retry)";
+                fprintf(stderr, "[reaper-ipad] Playtime 2 launched after retry (instance %d)\n", instance);
             } else {
-                message = "Playtime instance not found or HB_ShowOrHidePlaytime unavailable";
-                fprintf(stderr, "[reaper-ipad] Playtime launch failed: instance=%d, HB_ShowOrHidePlaytime=%p\n",
-                    instance, (void*)g_playtimeApi.HB_ShowOrHidePlaytime);
+                message = "Playtime API available but instance or ShowOrHide function not ready";
             }
         } else {
-            retryPlaytimeApi();
-            if (isPlaytimeAvailable()) {
-                int instance = g_playtimeApi.HB_FindFirstPlaytimeHelgoboxInstanceInProject(nullptr);
-                if (instance >= 0 && g_playtimeApi.HB_ShowOrHidePlaytime) {
-                    g_playtimeApi.HB_ShowOrHidePlaytime(instance);
-                    launched = true;
-                    message = "Playtime 2 launched (after retry)";
-                    fprintf(stderr, "[reaper-ipad] Playtime 2 launched after retry (instance %d)\n", instance);
-                } else {
-                    message = "Playtime API available but instance or ShowOrHide function not ready";
-                }
-            } else {
-                message = "Playtime 2 API not available — Helgobox may not be loaded";
-                fprintf(stderr, "[reaper-ipad] Playtime 2 not available: cannot launch\n");
-            }
+            message = "Playtime 2 API not available \u2014 Helgobox may not be loaded";
+            fprintf(stderr, "[reaper-ipad] Playtime 2 not available: cannot launch\n");
         }
     }
+    } // end if (!launched)
 
     std::string payload = "{";
     payload += json_string("launched") + ":" + (launched ? "true" : "false") + ",";

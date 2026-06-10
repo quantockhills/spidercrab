@@ -585,21 +585,9 @@ static inline double detectBpmFromFile(PCM_source* src,
     int (*getMediaSourceSampleRate)(PCM_source*),
     int (*getMediaSourceNumChannels)(PCM_source*))
 {
-    // BPM detection via PCM_Source_GetPeaks (REAPER's peak API).
-    // Reads onset energy from the first ~4 seconds of the file and
-    // uses autocorrelation to find the dominant tempo.
-    //
-    // Note: The PCM_source::GetSamples() virtual method has an
-    // unstable API across REAPER SDK versions, so we use the
-    // stable GetPeaks API instead for cross-platform safety.
-    if (!src || !getMediaSourceSampleRate || !getMediaSourceNumChannels)
-        return 0.0;
-
+    (void)src;
     (void)getMediaSourceSampleRate;
     (void)getMediaSourceNumChannels;
-
-    // For now, return 0 (unknown). The full MiniBPM integration
-    // via PCM_Source_GetPeaks can be added in a follow-up.
     return 0.0;
 }
 
