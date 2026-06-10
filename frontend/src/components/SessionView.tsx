@@ -59,6 +59,7 @@ export function SessionView({
   onCheckPlaytimeAvailable,
   onRecordSlot,
   onSetSlotReverse,
+  onClearSlot,
   onToggleArm,
   onToggleMute,
   onToggleSolo,
