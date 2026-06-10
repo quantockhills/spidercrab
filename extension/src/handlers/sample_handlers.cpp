@@ -4,73 +4,117 @@
 void CommandHandler::HandleSampleGetDirectory(
     int clientId, const std::string& id, const std::string& params)
 {
+    // Extract "path" from payload
     std::string payloadStr = extractPayload(params);
     JsonParser  parser(payloadStr);
-    std::string dirPath = parser.getString("path");
+    std::string path      = parser.getString("path");
+    std::string offsetStr = parser.getString("offset");
+    std::string limitStr  = parser.getString("limit");
 
-    if (dirPath.empty()) {
+    if (path.empty()) {
         SendResponse(clientId, id, false,
             "{\"error\":\"Missing \\\"path\\\" parameter\"}");
         return;
     }
 
-    // Normalize path
-    std::error_code ec;
-    auto normPath = fs::weakly_canonical(fs::path(dirPath), ec);
-    if (!ec) {
-        dirPath = normPath.make_preferred().string();
+    // Resolve actual filesystem case + native separators so cache keys match
+    { std::error_code ec; auto cp = fs::weakly_canonical(fs::path(path), ec); path = ec ? fs::path(path).lexically_normal().make_preferred().string() : cp.make_preferred().string(); }
+
+    int offset = offsetStr.empty() ? 0 : atoi(offsetStr.c_str());
+    int limit  = limitStr.empty()  ? 100 : atoi(limitStr.c_str());
+    if (limit <= 0) limit = 100;
+
+    // Serve from cache if available — avoids directory_iterator on every request
+    if (m_sampleCache.HasCachedData(path)) {
+        auto cached = m_sampleCache.GetDirectory(path);
+        // Prepend ".." for navigation; cache entries are already sorted (dirs first, then files)
+        struct RawEntry { std::string name; bool isDir; };
+        std::vector<RawEntry> all;
+        all.push_back({ "..", true });
+        for (const auto& e : cached.entries)
+            all.push_back({ e.name, e.type == "dir" });
+
+        int total = (int)all.size();
+        int start = std::min(offset, total);
+        int end   = std::min(start + limit, total);
+        std::string entries = "[";
+        for (int i = start; i < end; i++) {
+            if (i > start) entries += ",";
+            const auto& e = all[i];
+            entries += "{";
+            entries += json_string("name") + ":" + json_string(e.name) + ",";
+            entries += json_string("type") + ":" + json_string(e.isDir ? "dir" : "file");
+            entries += "}";
+        }
+        entries += "]";
+        std::string payload = "{";
+        payload += json_string("path")    + ":" + json_string(path) + ",";
+        payload += json_string("entries") + ":" + entries + ",";
+        payload += json_string("total")   + ":" + std::to_string(total) + ",";
+        payload += json_string("offset")  + ":" + std::to_string(start) + ",";
+        payload += json_string("cached")  + ":true";
+        payload += "}";
+        SendResponse(clientId, id, true, payload);
+        return;
     }
 
-    std::string files = "[";
+    // Cache miss — live filesystem fallback
+    struct RawEntry { std::string name; bool isDir; };
+    std::vector<RawEntry> dirs, files;
 
-    // Check if directory is indexed in cache
-    if (m_sampleCache.IsIndexed(dirPath)) {
-        // Use cached entries
-        const auto& entries = m_sampleCache.GetDirectory(dirPath).entries;
-        for (size_t i = 0; i < entries.size(); i++) {
-            if (i > 0) files += ",";
-            files += "{";
-            files += json_string("name") + ":" + json_string(entries[i].name) + ",";
-            files += json_string("type") + ":" + json_string(entries[i].type);
-            files += "}";
+    try {
+        for (const auto& entry : fs::directory_iterator(path)) {
+            bool d = entry.is_directory();
+            dirs.resize(dirs.size()); // force evaluate
+            (d ? dirs : files).push_back({ entry.path().filename().u8string(), d });
         }
-    } else {
-        // Fallback to filesystem
-        try {
-            for (const auto& entry : fs::directory_iterator(dirPath)) {
-                std::string name = entry.path().filename().string();
-                std::string type;
-                if (entry.is_directory()) {
-                    type = "directory";
-                } else if (entry.is_regular_file()) {
-                    std::string ext;
-                    size_t dot = name.rfind('.');
-                    if (dot != std::string::npos) {
-                        ext = name.substr(dot + 1);
-                        for (char& c : ext) c = tolower((unsigned char)c);
-                    }
-                    type = ext;
-                } else {
-                    type = "other";
-                }
-                if (files.size() > 1) files += ",";
-                files += "{";
-                files += json_string("name") + ":" + json_string(name) + ",";
-                files += json_string("type") + ":" + json_string(type);
-                files += "}";
-            }
-        } catch (const fs::filesystem_error& e) {
-            SendResponse(clientId, id, false,
-                "{\"error\":" + json_string(e.what()) + "}");
-            return;
-        }
+    } catch (const fs::filesystem_error& e) {
+        SendResponse(clientId, id, false,
+            "{\"error\":" + json_string(e.what()) + "}");
+        return;
     }
 
-    files += "]";
+    // Sort dirs and files separately, dirs first
+    std::sort(dirs.begin(),  dirs.end(),  [](const RawEntry& a, const RawEntry& b){ return a.name < b.name; });
+    std::sort(files.begin(), files.end(), [](const RawEntry& a, const RawEntry& b){ return a.name < b.name; });
+
+    // Cache the live result so subsequent requests are served instantly
+    {
+        std::vector<SampleCache::Entry> cacheEntries;
+        cacheEntries.reserve(dirs.size() + files.size());
+        for (auto& d : dirs)  { SampleCache::Entry e; e.name = d.name; e.type = "dir";  cacheEntries.push_back(std::move(e)); }
+        for (auto& f : files) { SampleCache::Entry e; e.name = f.name; e.type = "file"; cacheEntries.push_back(std::move(e)); }
+        m_sampleCache.SetDirectory(path, cacheEntries);
+    }
+
+    // Combine: .. + dirs + files
+    std::vector<RawEntry> all;
+    all.push_back({ "..", true });
+    for (auto& d : dirs)  all.push_back(d);
+    for (auto& f : files) all.push_back(f);
+
+    int total = (int)all.size();
+    int start = std::min(offset, total);
+    int end   = std::min(start + limit, total);
+
+    std::string entries = "[";
+    for (int i = start; i < end; i++) {
+        if (i > start) entries += ",";
+        const auto& e = all[i];
+        entries += "{";
+        entries += json_string("name") + ":" + json_string(e.name) + ",";
+        entries += json_string("type") + ":" + json_string(e.isDir ? "dir" : "file");
+        entries += "}";
+    }
+    entries += "]";
+
     std::string payload = "{";
-    payload += json_string("path") + ":" + json_string(dirPath) + ",";
-    payload += json_string("files") + ":" + files;
+    payload += json_string("path")    + ":" + json_string(path) + ",";
+    payload += json_string("entries") + ":" + entries + ",";
+    payload += json_string("total")   + ":" + std::to_string(total) + ",";
+    payload += json_string("offset")  + ":" + std::to_string(start);
     payload += "}";
+
     SendResponse(clientId, id, true, payload);
 }
 
