@@ -1,4 +1,28 @@
 
+## v0.2.5-alpha — 2026-06-10
+
+### Features
+- **Persistent frontend sample cache** — background scans sample directories and caches results per-folder with progress bar (Issue #107):
+  - `SampleCache` class indexes files on disk, persists to localStorage
+  - Iterative loading shows progress per directory
+  - Cache survives page refreshes
+- **Sample tags** — tag samples with custom labels, persist across sessions (Issue #108)
+- **Playtime launch button** — button in Settings to launch Playtime 2 from the frontend
+- **System track sort** — tracks sorted by system track index, not display order
+- **MiniBPM tempo matching** — automatically detects BPM of samples on insert to Playtime slot (Issue #108)
+- **Clip names on Playtime grid** — clip names shown prominently in SessionView cells (Issue #109)
+- **Track controls on Playtime columns** — arm/mute/solo/record-mode per column header (Issue #110)
+- **Go to track nav** — navigate from Playtime column to Track view (Issue #111)
+
+### Fixes
+- **Sample browser timeouts** — fixed pagination and directory listing timeouts for large sample dirs
+- **Snap clips to bars** — inserted clips now snap to bar boundaries
+- **Untrack dev/AI-only files** — workspace config files properly gitignored
+- **C++ test suite**: 307/307 tests passing
+- **Frontend test suite**: 388/388 tests passing
+
+---
+
 ## v0.2.4-alpha — 2026-06-07
 
 ### Features
