@@ -542,7 +542,7 @@ function AppInner() {
         )}
 
         {activeTab === 'settings' && (
-          <div className="p-6 text-[var(--text-secondary)] space-y-4 overflow-y-auto h-full">
+          <div className="p-6 text-[var(--text-secondary)] space-y-4 overflow-y-auto h-full max-h-full">
             <h2 className="text-sm font-semibold uppercase tracking-wider">Settings</h2>
             <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
               <div className="flex items-center justify-between">
