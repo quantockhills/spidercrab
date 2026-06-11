@@ -869,8 +869,10 @@ function FxCard({
   // Long-press delete confirmation state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapTimeRef = useRef(0);
 
-  // Long-press (500ms) → delete confirm; quick release → bypass toggle or confirm delete.
+  // Long-press (500ms) → delete confirm; quick double-tap → bypass toggle;
+  // quick tap during delete confirm → confirm delete.
   // Using pointer events instead of onClick because draggable={true} suppresses click
   // events on Firefox and other browsers after a hold gesture.
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
@@ -891,7 +893,14 @@ function FxCard({
         if (onDeleteFx) onDeleteFx(trackIdx, fx.index);
         setShowDeleteConfirm(false);
       } else {
-        if (onToggleBypass) onToggleBypass(trackIdx, fx.index, fx.bypassed ?? false);
+        // Toggle bypass only on a quick double-tap (two taps within 300ms)
+        const now = Date.now();
+        if (now - lastTapTimeRef.current < 300) {
+          lastTapTimeRef.current = 0;
+          if (onToggleBypass) onToggleBypass(trackIdx, fx.index, fx.bypassed ?? false);
+        } else {
+          lastTapTimeRef.current = now;
+        }
       }
     }
   }, [showDeleteConfirm, onDeleteFx, onToggleBypass, trackIdx, fx.index, fx.bypassed]);
@@ -1034,6 +1043,8 @@ function FxCard({
             bg-[var(--bg-tertiary)] ring-1 ring-[var(--border)]
             text-[9px] text-[var(--text-secondary)] cursor-pointer
             hover:bg-[var(--bg-secondary)] active:brightness-95 z-10"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
           onClick={handleExpandClick}
           title="Show parameters"
         >
@@ -1186,7 +1197,21 @@ function InlineFxDrawer({
     setParams((prev) =>
       prev.map((p) => (p.index === paramIdx ? { ...p, value } : p)),
     );
-    await setFxParam(trackIdx, fxIdx, paramIdx, value);
+    const resp = await setFxParam(trackIdx, fxIdx, paramIdx, value);
+    // Apply the committed value + fresh formatted string from the server
+    // (display prefers `formatted`, which otherwise goes stale)
+    if (resp?.payload?.value !== undefined) {
+      setParams((prev) =>
+        prev.map((p) => {
+          if (p.index !== paramIdx) return p;
+          const update: Partial<typeof p> = { value: resp.payload.value as number };
+          if (resp.payload.formatted !== undefined) {
+            update.formatted = resp.payload.formatted as string;
+          }
+          return { ...p, ...update };
+        }),
+      );
+    }
   }, [trackIdx, fxIdx, setFxParam]);
 
   // Pin/unpin handlers
