@@ -270,6 +270,50 @@ void CommandHandler::HandleMatrixRecordSlot(
     SendResponse(clientId, id, true, updated.toJson());
 }
 
+void CommandHandler::HandleMatrixClearSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    SlotState current = m_playtimeState.getSlot(col, row);
+    if (current.state == "recording") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Cannot delete a recording clip. Stop recording first.\"}");
+        return;
+    }
+
+    // Send OSC clear message -> ReaLearn triggers Playtime's ClearSlot action
+    m_oscSender.sendClearSlot(col, row);
+
+    // Optimistically mark the slot empty (also clears name/clipType/reversed)
+    m_playtimeState.setSlotState(col, row, "empty");
+
+    // Broadcast event to all clients
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
 void CommandHandler::HandleMatrixPollState(
     int clientId, const std::string& id, const std::string& params)
 {

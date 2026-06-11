@@ -348,6 +348,7 @@ private:
     void HandleMatrixTriggerScene(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixSetSlotState(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixRecordSlot(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixClearSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixPollState(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixSetSlotReverse(int clientId, const std::string& id, const std::string& params);
 
