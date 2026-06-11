@@ -30,7 +30,7 @@ if [ "$TARGET" = "windows" ]; then
     CXXFLAGS="$CXXFLAGS /I$XWIN/crt/include /I$XWIN/sdk/include/ucrt"
     CXXFLAGS="$CXXFLAGS /I$XWIN/sdk/include/shared /I$XWIN/sdk/include/um"
     # Force winsock2.h before windows.h for SOCKET type
-    CXXFLAGS="$CXXFLAGS -FI/tmp/force_winsock.h"
+    CXXFLAGS="$CXXFLAGS -FI/tmp/force_winsock.h -DNOMINMAX"
     SYSROOT_FLAGS=""
 elif [ "$TARGET" = "macos" ]; then
     echo "=== macOS BUILD (.dylib) ==="
@@ -122,6 +122,8 @@ SRC="$SRC $SCRIPT_DIR/src/fx_tags.cpp"
 SRC="$SRC $SCRIPT_DIR/src/fxchain_cache.cpp"
 SRC="$SRC $SCRIPT_DIR/src/sample_cache.cpp"
 SRC="$SRC $SCRIPT_DIR/src/sha1_utils.cpp"
+SRC="$SRC $SCRIPT_DIR/src/sample_tags.cpp"
+SRC="$SRC $SCRIPT_DIR/src/MiniBpm.cpp"
 
 WDL_DIR="$PROJECT_DIR/docs/WDL/WDL"
 SRC="$SRC $WDL_DIR/jnetlib/listen.cpp"

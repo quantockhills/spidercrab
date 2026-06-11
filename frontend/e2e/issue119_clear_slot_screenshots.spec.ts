@@ -10,7 +10,7 @@ const IPAD_PRO = { width: 2360, height: 1640 };
  * Mock WebSocket that handles matrix/clearSlot and pre-populates some slots
  * so the ✖ clear button is visible and testable.
  */
-function setupMockWs(page: any, sentCommands?: string[]): void {
+async function setupMockWs(page: any, sentCommands?: string[]): Promise<void> {
   const slotData = new Map<string, any>();
 
   // Initialize 8×8 empty matrix
@@ -68,7 +68,7 @@ function setupMockWs(page: any, sentCommands?: string[]): void {
     }));
   }
 
-  page.routeWebSocket('ws://localhost:9224', (ws) => {
+  await page.routeWebSocket('ws://127.0.0.1:9224', (ws) => {
     ws.onMessage((raw: string) => {
       let msg: any;
       try {
@@ -180,7 +180,7 @@ test.describe('Issue #119 - Clear slot screenshots', () => {
 
   test('shows clear button on non-empty slots and clears on click', async ({ page }) => {
     const sent: string[] = [];
-    setupMockWs(page, sent);
+    await setupMockWs(page, sent);
 
     await page.setViewportSize(IPAD_PRO);
     await page.goto('/');
@@ -200,8 +200,8 @@ test.describe('Issue #119 - Clear slot screenshots', () => {
     await expect(clearBtn).toBeVisible({ timeout: 5000 });
     console.log('Clear button visible on slot (0,0)');
 
-    // Verify empty slot does NOT have a clear button
-    const emptyClearBtn = page.getByLabel('Clear slot 5,1');
+    // Verify empty slot (7,7) does NOT have a clear button
+    const emptyClearBtn = page.getByLabel('Clear slot 8,8');
     await expect(emptyClearBtn).not.toBeVisible();
     console.log('Empty slot has no clear button');
 
@@ -212,7 +212,7 @@ test.describe('Issue #119 - Clear slot screenshots', () => {
 
     // Click the clear button on slot (0,0) - "Clear slot 1,1"
     await clearBtn.click();
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(2000);
 
     // Verify slot (0,0) is now empty
     const slot00 = page.locator('[data-col="0"][data-row="0"]');

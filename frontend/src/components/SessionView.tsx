@@ -522,6 +522,9 @@ export function SessionView({
                       active:brightness-90
                     `}
                     aria-label={`Slot ${col + 1},${row + 1}`}
+                    data-col={col}
+                    data-row={row}
+                    data-state={state}
                   >
                     {clipType === 'midi' && <span className="text-[10px] opacity-50">♪</span>}
                     {clipType === 'audio' && <span className="text-[10px] opacity-50">🔊</span>}

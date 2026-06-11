@@ -931,7 +931,7 @@ void CommandHandler::HandleDeleteFX(int clientId, const std::string& id, const s
 
 void CommandHandler::HandleSetFXBypass(int clientId, const std::string& id, const std::string& params)
 {
-    if (!m_api.fxGetEnabled || !m_api.fxSetEnabled) {
+    if (!m_api.fxSetEnabled) {
         SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
         return;
     }
@@ -957,21 +957,27 @@ void CommandHandler::HandleSetFXBypass(int clientId, const std::string& id, cons
         return;
     }
 
-    // Handle both string "true"/"false" and unquoted JSON boolean true/false
-    // The JsonParser returns empty string for JSON boolean values, so we
-    // also check the raw payload string for boolean patterns.
-    bool bypassed = (bypassedStr == "true" || bypassedStr == "1");
-    if (bypassedStr.empty()) {
+    // Parse bypassed value: handle both string "true"/"false" and JSON boolean true/false
+    bool bypassed = false;
+    if (bypassedStr == "true" || bypassedStr == "1") {
+        bypassed = true;
+    } else if (bypassedStr == "false" || bypassedStr == "0") {
+        bypassed = false;
+    } else {
+        // JsonParser returns empty string for unquoted JSON booleans (true/false)
+        // Check the raw payload for the boolean literal
         bypassed = (payloadStr.find("\"bypassed\":true") != std::string::npos);
     }
     // TrackFX_SetEnabled: true = enabled (not bypassed), false = disabled (bypassed)
     m_api.fxSetEnabled(track, fxIdx, !bypassed);
 
-    // Read back the actual state to confirm
-    bool actualBypassed = !m_api.fxGetEnabled(track, fxIdx);
+    // Return the requested state directly (avoid readback that can crash on re-enable)
+    // The frontend will receive the state it just requested; if REAPER fails to apply
+    // it, the next track/getFx call will show the actual state.
+
 
     SendResponse(clientId, id, true,
-        "{\"bypassed\":" + std::string(actualBypassed ? "true" : "false") + "}");
+        "{\"bypassed\":" + std::string(bypassed ? "true" : "false") + "}");
 }
 
 void CommandHandler::HandleReorderFX(int clientId, const std::string& id, const std::string& params)

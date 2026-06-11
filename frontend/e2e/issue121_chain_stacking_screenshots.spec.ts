@@ -69,6 +69,9 @@ function makeMockWsHandler() {
         case 'fxchain/save':
           responsePayload = { success: true };
           break;
+        case 'fx/tags/getAll':
+          responsePayload = { fxTags: {}, chainTags: {} };
+          break;
       }
 
       // Defer ws.send() to avoid re-entrancy issues in Playwright's WebSocketRoute
