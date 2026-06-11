@@ -1,4 +1,33 @@
 
+## v0.3.0-alpha — 2026-06-11
+
+### Highlights
+- **Codebase refactor** — `command_handler.cpp` split into domain-specific handler files (`track_handlers.cpp`, `fx_handlers.cpp`, `sample_handlers.cpp`, `matrix_handlers.cpp`, `playtime_handlers.cpp`, `transport_handlers.cpp`, `settings_handlers.cpp`, `fxchain_handlers.cpp`)
+- **Crash fixes** — resolved FX un-bypass crash (dereferencing `CSURF_EXT_SETFXENABLED` parm3), exit crash dump (double teardown guard), rewritten handler bugs
+- **MiniBPM restored** — tempo detection via `breakfastquay::MiniBPM` properly ported to refactored structure
+- **All handler functions restored** from working originals (replaced buggy auto-rewritten implementations)
+
+### Features
+- **Two-up sample cards** — sample browser now shows 2-column grid layout
+- **Configurable tab bar position** — move tab bar to top or bottom
+- **Delete Playtime clips** — long-press a clip in the session grid to delete it
+- **Media browser UX cleanup** — remembers last browsed directory, side-by-side grid + preview layout, less chrome
+- **FX card double-tap bypass** — double-tap on FX card toggles bypass with live param value display in drawer
+
+### Fixes
+- **Crash on FX un-bypass** — removed invalid `parm3` dereference in `CSURF_EXT_SETFXENABLED` handler (Issue #121)
+- **Exit crash dump** — guarded against double teardown when both `CloseNoReset()` and entry-point unload run cleanup
+- **MiniBPM tempo detection** — restored proper `breakfastquay::MiniBPM` integration for sample-to-slot import (was stubbed to 0 in refactor)
+- **Handler function restoration** — all 52 rewritten handler functions replaced with working originals from master (fixes BPM detection, sample directory, clamp macros, and more)
+- **Scrollbar on Settings page** — overflow content no longer hidden
+- **Window build compatibility** — `std::max` wrapped in parens for MSVC
+- **Missing source files** — `sample_tags.cpp`, `MiniBpm.cpp` added to build.sh
+
+### Infrastructure
+- **Codebase refactor** — `command_handler.cpp` slimmed from ~3000 lines to 515 lines; domain logic extracted into 8 handler files
+- **Updated docs** — README screenshots at proper iPad Air M3 resolution, ARCHITECTURE.md with Playtime/OSC/sample cache, UI.md rewritten for 5-tab app
+- **Removed stale tracked artifacts** from git history
+
 ## v0.2.5-alpha — 2026-06-10
 
 ### Features
