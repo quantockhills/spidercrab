@@ -145,6 +145,7 @@ static reaper_plugin_info_t* g_pluginInfo = nullptr;
 static int                   g_port       = 9224; // default port (matching reamo convention)
 static int                   g_httpPort   = 5173;
 static bool                  g_playtimeWasAvailable = false; // Track Playtime availability across Run() polls
+static bool                  g_shuttingDown = false; // Guard against double-teardown on exit
 
 // MIDI feedback listener for Playtime 2 clip launcher (Issue #91)
 static midi_Input*           g_midiInput  = nullptr;
@@ -346,7 +347,7 @@ public:
 
     }
 
-    void CloseNoReset() override { g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }
+    void CloseNoReset() override { g_shuttingDown = true; g_wsServer.Stop(); g_httpServer.removeListenPort(g_httpPort); }
 
     // Optional: handle FX param changes from Reaper so we can push
     // updates to connected clients
@@ -719,6 +720,8 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
     
     if (!rec) {
         DebugLog("Plugin unload");
+        if (g_shuttingDown) { DebugLog("Skipping duplicate teardown"); return 0; }
+        g_shuttingDown = true;
         g_wsServer.Stop();
         g_httpServer.removeListenPort(g_httpPort);
         JNL::close_socketlib();
