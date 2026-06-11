@@ -286,9 +286,8 @@ void CommandHandler::HandleSampleSendToSlot(
                 // Fall back to audio analysis via MiniBPM
                 if (sampleBpm <= 0.0) {
                     sampleBpm = detectBpmFromFile(src,
-                        (void* (*)(MediaItem_Take*, const char*, void*))nullptr,
-                        m_api.GetMediaFileMetadata,
-                        m_api.PCM_Source_GetPeaks);
+                        m_api.GetMediaSourceSampleRate,
+                        m_api.GetMediaSourceNumChannels);
                 }
             }
             if (sampleBpm > 0.0 && projectBpm > 0.0) {
