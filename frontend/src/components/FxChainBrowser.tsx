@@ -278,7 +278,7 @@ export function FxChainBrowser({
           </span>
         )}
         <button
-          onClick={() => handleLoad(filePath, 'replace')}
+          onClick={() => handleLoad(filePath, 'append')}
           disabled={selectedTrack === null || isLoading}
           className={`shrink-0 px-3 py-1.5 text-xs font-medium min-h-[44px] transition-all active:brightness-95 ${
             selectedTrack === null ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/50 cursor-not-allowed'
@@ -286,14 +286,16 @@ export function FxChainBrowser({
             : isLoading ? 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
             : 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'}`}
         >
-          {isLoaded ? '✓' : isLoading ? '…' : 'Load'}
+          {isLoaded ? '✓' : isLoading ? '…' : 'Stack'}
         </button>
         <button
-          onClick={() => handleLoad(filePath, 'append')}
+          onClick={() => handleLoad(filePath, 'replace')}
           disabled={selectedTrack === null || isLoading}
-          className="shrink-0 px-2 py-1.5 text-[10px] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] min-h-[44px] hover:text-[var(--text-primary)] transition-colors"
-          title="Append"
-        >+</button>
+          className={`shrink-0 px-2 py-1.5 text-[10px] bg-[var(--bg-tertiary)] text-[var(--text-secondary)] min-h-[44px] hover:text-[var(--text-primary)] transition-colors ${
+            isLoading ? '' : 'hover:bg-[var(--accent-red)]/20 hover:text-[var(--accent-red)]'
+          }`}
+          title="Replace"
+        >Replace</button>
       </div>
     );
   }

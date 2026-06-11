@@ -539,7 +539,7 @@ function AppInner() {
               const result = await fxChainSearchCached(query, fxChainPath, 0, 50);
               return result.results.map(r => ({ filePath: r.filePath, name: r.name }));
             }}
-            loadChain={(trackIdx: number, filePath: string) => fxChainLoad(trackIdx, filePath)}
+            loadChain={(trackIdx: number, filePath: string) => fxChainLoad(trackIdx, filePath, 'append')}
           />
         )}
 

@@ -122,7 +122,7 @@ describe('FxChainBrowser', () => {
     });
   });
 
-  it('calls fxChainLoad when Load button clicked', async () => {
+  it('calls fxChainLoad with append mode when Stack button clicked', async () => {
     const mockLoad = vi.fn().mockResolvedValue(true);
     const props = createDefaultProps({
       tracks: createMockTracks(),
@@ -134,17 +134,17 @@ describe('FxChainBrowser', () => {
 
 
     await screen.findByText('my_comp.RfxChain');
-    await screen.findAllByText('Load');
+    await screen.findAllByText('Stack');
 
-    const loadButtons = screen.getAllByText('Load');
-    fireEvent.click(loadButtons[0]);
+    const stackButtons = screen.getAllByText('Stack');
+    fireEvent.click(stackButtons[0]);
 
     await waitFor(() => {
-      expect(mockLoad).toHaveBeenCalledWith(0, expect.stringContaining('my_comp.RfxChain'), 'replace');
+      expect(mockLoad).toHaveBeenCalledWith(0, expect.stringContaining('my_comp.RfxChain'), 'append');
     });
   });
 
-  it('calls fxChainLoad with append mode when + button clicked', async () => {
+  it('calls fxChainLoad with replace mode when Replace button clicked', async () => {
     const mockLoad = vi.fn().mockResolvedValue(true);
     const props = createDefaultProps({
       tracks: createMockTracks(),
@@ -160,11 +160,11 @@ describe('FxChainBrowser', () => {
     });
 
 
-    const appendButtons = screen.getAllByTitle('Append');
-    fireEvent.click(appendButtons[0]);
+    const replaceButtons = screen.getAllByTitle('Replace');
+    fireEvent.click(replaceButtons[0]);
 
     await waitFor(() => {
-      expect(mockLoad).toHaveBeenCalledWith(0, expect.stringContaining('my_comp.RfxChain'), 'append');
+      expect(mockLoad).toHaveBeenCalledWith(0, expect.stringContaining('my_comp.RfxChain'), 'replace');
     });
   });
 
@@ -218,7 +218,7 @@ describe('FxChainBrowser', () => {
     });
   });
 
-  it('disables Load buttons when no track is selected', async () => {
+  it('disables action buttons when no track is selected', async () => {
     const props = createDefaultProps({
       tracks: createMockTracks(),
       selectedTrack: null,
@@ -228,9 +228,17 @@ describe('FxChainBrowser', () => {
 
 
     await waitFor(() => {
-      const loadButtons = screen.getAllByText('Load');
-      loadButtons.forEach((btn) => {
-        expect(btn.closest('button')).toBeDisabled();
+      const stackButtons = screen.getAllByText('Stack');
+      stackButtons.forEach((btn) => {
+        const button = btn.tagName === 'BUTTON' ? btn : btn.closest('button');
+        expect(button).not.toBeNull();
+        expect(button).toHaveAttribute('disabled');
+      });
+      const replaceButtons = screen.getAllByTitle('Replace');
+      replaceButtons.forEach((btn) => {
+        const button = btn.tagName === 'BUTTON' ? btn : btn.closest('button');
+        expect(button).not.toBeNull();
+        expect(button).toHaveAttribute('disabled');
       });
     });
   });

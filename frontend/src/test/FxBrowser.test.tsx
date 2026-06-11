@@ -379,7 +379,7 @@ describe('FxBrowser', () => {
     if (chainButton) fireEvent.click(chainButton);
 
     await waitFor(() => {
-      expect(fxChainLoad).toHaveBeenCalledWith(0, '/chains/MyComp.RfxChain', 'replace');
+      expect(fxChainLoad).toHaveBeenCalledWith(0, '/chains/MyComp.RfxChain', 'append');
     });
   });
 

@@ -298,7 +298,7 @@ export function FxBrowser({
       if (selectedTrack === null || !fxChainLoad) return;
       setChainLoadingFile(filePath);
       try {
-        await fxChainLoad(selectedTrack, filePath, 'replace');
+        await fxChainLoad(selectedTrack, filePath, 'append');
       } catch (err) {
         console.error('Failed to load FX chain:', err);
       } finally {
