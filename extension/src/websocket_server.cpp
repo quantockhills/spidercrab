@@ -32,14 +32,16 @@ void WebSocketServer::Stop()
 {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
-    // Close all clients
+    // Close all client connections. Empty(true) below deletes the Client
+    // objects themselves — deleting them here too double-frees every
+    // connected client and corrupts the heap (crash dump on REAPER exit).
     for (int i = m_clients.GetSize() - 1; i >= 0; i--) {
         Client* c = m_clients.Get(i);
         if (c->conn) {
             c->conn->close(1);
             delete c->conn;
+            c->conn = nullptr;
         }
-        delete c;
     }
     m_clients.Empty(true);
 
