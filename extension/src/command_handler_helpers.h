@@ -512,6 +512,60 @@ static inline std::string replaceFxChainInChunk(const std::string& chunk, const 
 }
 
 // ============================================================
+// FXCHAIN entry helpers
+// ============================================================
+// A track's <FXCHAIN ...> block contains chain-level header lines
+// (WNDRECT, SHOW, LASTSEL, DOCKED) followed by one entry per FX.
+// Each FX entry begins at a depth-0 line starting with "BYPASS",
+// so FX entries map 1:1 onto TrackFX indices.
+
+// Extract the inner content of an <FXCHAIN ...> block (between the
+// opening "<FXCHAIN..." line and the final closing '>').
+static inline std::string fxChainInner(const std::string& chainBlock)
+{
+    size_t hdrEnd    = chainBlock.find('\n');
+    size_t lastClose = chainBlock.rfind('>');
+    if (hdrEnd == std::string::npos || lastClose == std::string::npos || lastClose <= hdrEnd)
+        return "";
+    return chainBlock.substr(hdrEnd + 1, lastClose - hdrEnd - 1);
+}
+
+// Split FXCHAIN inner content into chain-level header lines and per-FX
+// entries (entry i corresponds to FX index i).
+static inline void splitFxChainEntries(const std::string& inner,
+    std::string* headerOut, std::vector<std::string>* entriesOut)
+{
+    int  depth   = 0;
+    bool inEntry = false;
+    std::string current;
+    size_t pos = 0;
+    while (pos < inner.size()) {
+        size_t eol = inner.find('\n', pos);
+        std::string line = (eol == std::string::npos)
+            ? inner.substr(pos)
+            : inner.substr(pos, eol - pos + 1);
+        pos = (eol == std::string::npos) ? inner.size() : eol + 1;
+
+        size_t fc = line.find_first_not_of(" \t\r");
+        char   c0 = (fc == std::string::npos) ? 0 : line[fc];
+
+        if (depth == 0 && c0 == 'B' && line.compare(fc, 6, "BYPASS") == 0) {
+            // New FX entry boundary
+            if (inEntry) entriesOut->push_back(current);
+            else         *headerOut = current;
+            current.clear();
+            inEntry = true;
+        }
+        if (c0 == '<') depth++;
+        else if (c0 == '>' && depth > 0) depth--;
+
+        current += line;
+    }
+    if (inEntry) entriesOut->push_back(current);
+    else         *headerOut = current;
+}
+
+// ============================================================
 // MIDI event builder (Issue #90)
 // ============================================================
 static inline MIDI_event_t BuildMidiEvent(const std::string& eventType, int channel,

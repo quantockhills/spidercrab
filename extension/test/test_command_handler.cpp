@@ -4063,35 +4063,33 @@ TEST(FxChainTest, LoadChainReplacesTrackFx)
     fs::create_directories(testDir);
     fs::path chainPath = testDir / "chain.RfxChain";
 
-    // Create an FX chain file
+    // Create an FX chain file (realistic .RfxChain body: BYPASS + <VST> per FX)
     std::string fxChainContent =
-        "<FXCHAIN\n"
-        "  SHOW 0\n"
-        "  LASTSEL 0\n"
-        "  DOCKED 0\n"
-        "  <ITEM\n"
-        "    NAME \"LoadedFX\"\n"
-        "    VST \"VST3: LoadedFX (Test)\" LoadedFX 0 0\n"
-        "  >\n"
-        "  <ITEM\n"
-        "    NAME \"AnotherFX\"\n"
-        "    VST \"VST3: AnotherFX (Test)\" AnotherFX 0 0\n"
-        "  >\n"
-        ">";
+        "BYPASS 0 0 0\n"
+        "<VST \"VST3: LoadedFX (Test)\" LoadedFX.vst3 0 \"\" 1234{0}\"\"\n"
+        "  AAAA\n"
+        ">\n"
+        "WAK 0 0\n"
+        "BYPASS 0 0 0\n"
+        "<VST \"VST3: AnotherFX (Test)\" AnotherFX.vst3 0 \"\" 5678{0}\"\"\n"
+        "  BBBB\n"
+        ">\n"
+        "WAK 0 0\n";
 
     std::ofstream f(chainPath);
     f << fxChainContent;
     f.close();
 
-    // Track with existing FX (ReaEQ only)
+    // Track with existing FX (ReaEQ only) — realistic FXCHAIN format
     g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
         "  <FXCHAIN\n"
         "    SHOW 0\n"
         "    LASTSEL 0\n"
-        "    <ITEM\n"
-        "      NAME \"ReaEQ\"\n"
-        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
+        "    BYPASS 0 0 0\n"
+        "    <VST \"VST3: ReaEQ (Cockos)\" ReaEQ.vst3 0 \"\" 1111{0}\"\"\n"
+        "      CCCC\n"
         "    >\n"
+        "    WAK 0 0\n"
         "  >\n"
         ">";
 
@@ -4103,7 +4101,9 @@ TEST(FxChainTest, LoadChainReplacesTrackFx)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"("},"id":"fc6"})";
+    // mode:"replace" — append is the default now; use generic_string so the
+    // path survives JSON escaping
+    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.generic_string() + R"(","mode":"replace"},"id":"fc6"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -4125,14 +4125,13 @@ TEST(FxChainTest, LoadChainAppendAddsToExisting)
     fs::create_directories(testDir);
     fs::path chainPath = testDir / "add.RfxChain";
 
-    // Append chain: additional FX
+    // Append chain: one additional FX (realistic .RfxChain body)
     std::string appendChain =
-        "<FXCHAIN\n"
-        "  <ITEM\n"
-        "    NAME \"AddedFX\"\n"
-        "    VST \"VST3: AddedFX (Test)\" AddedFX 0 0\n"
-        "  >\n"
-        ">";
+        "BYPASS 0 0 0\n"
+        "<VST \"VST3: AddedFX (Test)\" AddedFX.vst3 0 \"\" 2222{0}\"\"\n"
+        "  DDDD\n"
+        ">\n"
+        "WAK 0 0\n";
 
     std::ofstream f(chainPath);
     f << appendChain;
@@ -4142,10 +4141,11 @@ TEST(FxChainTest, LoadChainAppendAddsToExisting)
     g_mockChunk = "<TRACK\n  NAME \"Test\"\n"
         "  <FXCHAIN\n"
         "    SHOW 0\n"
-        "    <ITEM\n"
-        "      NAME \"ReaEQ\"\n"
-        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0 0\n"
+        "    BYPASS 0 0 0\n"
+        "    <VST \"VST3: ReaEQ (Cockos)\" ReaEQ.vst3 0 \"\" 1111{0}\"\"\n"
+        "      CCCC\n"
         "    >\n"
+        "    WAK 0 0\n"
         "  >\n"
         ">";
 
@@ -4157,16 +4157,20 @@ TEST(FxChainTest, LoadChainAppendAddsToExisting)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.string() + R"(","mode":"append"},"id":"fc7"})";
+    // No mode given — append is the default
+    std::string cmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":0,"filePath":")" + chainPath.generic_string() + R"("},"id":"fc7"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"loaded\":true"), std::string::npos);
     EXPECT_NE(responses[0].find("\"append\":true"), std::string::npos);
 
-    // Both original and appended FX should be in chunk
-    EXPECT_NE(g_mockChunk.find("ReaEQ"), std::string::npos) << "Original FX should remain";
-    EXPECT_NE(g_mockChunk.find("AddedFX"), std::string::npos) << "Appended FX should be added";
+    // Both original and appended FX should be in chunk, original first
+    size_t posOriginal = g_mockChunk.find("ReaEQ");
+    size_t posAdded    = g_mockChunk.find("AddedFX");
+    EXPECT_NE(posOriginal, std::string::npos) << "Original FX should remain";
+    EXPECT_NE(posAdded, std::string::npos) << "Appended FX should be added";
+    EXPECT_LT(posOriginal, posAdded) << "Appended FX should come after existing FX";
 
     fs::remove_all(testDir);
 }
