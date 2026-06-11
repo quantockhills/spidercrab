@@ -33,6 +33,7 @@ interface TrackOverviewProps {
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
   onOpenFx?: (trackIdx: number) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
+  onReorderChain?: (trackIdx: number, fromStart: number, fromEnd: number, toIndex: number) => Promise<boolean>;
   // Chain cycle support (Issue #95)
   fxChainCycle?: (trackIdx: number, direction: 'next' | 'prev', chainPath?: string) => Promise<{success: boolean; fx?: FxInfo[]}>;
   // Inline FX search props (Issue #102)
@@ -174,6 +175,7 @@ export function TrackOverview({
   onSelectFx,
   onOpenFx,
   onReorderFx,
+  onReorderChain,
   getFxParams,
   setFxParam,
   getFxPreset,
@@ -208,7 +210,7 @@ export function TrackOverview({
   const [dragSourceFxIdx, setDragSourceFxIdx] = useState<number | null>(null);
   const [dropVisualIdx, setDropVisualIdx] = useState<number | null>(null);
   const [fxRefreshVersion, setFxRefreshVersion] = useState(0);
-  const dragDataRef = useRef<{trackIdx: number; fxIdx: number} | null>(null);
+  const dragDataRef = useRef<{trackIdx: number; fxIdx: number; chainStart?: number; chainEnd?: number} | null>(null);
   const dropTargetRef = useRef<{dropIndex: number} | null>(null);
 
   const handleRecord = useCallback(async () => {
@@ -228,6 +230,14 @@ export function TrackOverview({
     if (ok) setFxRefreshVersion(v => v + 1);
     return ok;
   }, [onReorderFx]);
+
+  // Wrapper for chain-group reorder that refreshes the FX list after the move
+  const handleReorderChain = useCallback(async (trackIdx: number, fromStart: number, fromEnd: number, toIndex: number): Promise<boolean> => {
+    if (!onReorderChain) return false;
+    const ok = await onReorderChain(trackIdx, fromStart, fromEnd, toIndex);
+    if (ok) setFxRefreshVersion(v => v + 1);
+    return ok;
+  }, [onReorderChain]);
 
   const handleDeleteFx = useCallback(async (trackIdx: number, fxIdx: number): Promise<boolean> => {
     if (!onDeleteFx) return false;
@@ -382,15 +392,6 @@ export function TrackOverview({
           >
             {collapsed ? 'Expand' : 'Collapse'}
           </button>
-          {onAddTrack && (
-            <button
-              onClick={onAddTrack}
-              className="px-2 py-1 bg-[var(--accent-dim)] text-[var(--accent-orange)] text-xs active:brightness-95 transition-colors"
-              title="Add new track"
-            >
-              + Track
-            </button>
-          )}
           <button
             onClick={() => onRefresh()}
             className="p-2 hover:bg-[var(--bg-tertiary)] active:brightness-95 transition-colors text-sm"
@@ -466,6 +467,7 @@ export function TrackOverview({
                   setExpandedFx={setExpandedFx}
                   setChainCycler={setChainCycler}
                   onReorderFx={handleReorderFx}
+                  onReorderChain={handleReorderChain}
                   onOpenInlineSearch={enumerateFx && addFx ? handleOpenInlineSearch : undefined}
                   onToggleBypass={onToggleBypass ? handleToggleBypass : undefined}
                   onDeleteFx={onDeleteFx ? handleDeleteFx : undefined}
@@ -543,7 +545,7 @@ interface FxGridProps {
   dragActiveTrack: number | null;
   dragSourceFxIdx: number | null;
   dropVisualIdx: number | null;
-  dragDataRef: React.MutableRefObject<{trackIdx: number; fxIdx: number} | null>;
+  dragDataRef: React.MutableRefObject<{trackIdx: number; fxIdx: number; chainStart?: number; chainEnd?: number} | null>;
   dropTargetRef: React.MutableRefObject<{dropIndex: number} | null>;
   expandedFx: {trackIdx: number; fxIdx: number; fxName: string} | null;
   setDragActiveTrack: (v: number | null) => void;
@@ -551,6 +553,7 @@ interface FxGridProps {
   setDropVisualIdx: React.Dispatch<React.SetStateAction<number | null>>;
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   setChainCycler: (v: {trackIdx: number; chainPath: string; chainName: string; fxCount: number} | null) => void;
+  onReorderChain?: (trackIdx: number, fromStart: number, fromEnd: number, toIndex: number) => Promise<boolean>;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
   onOpenInlineSearch?: (trackIdx: number) => void;
   onToggleBypass?: (trackIdx: number, fxIdx: number, currentBypassed: boolean) => Promise<boolean>;
@@ -579,6 +582,7 @@ function FxGrid({
   setExpandedFx,
   setChainCycler,
   onReorderFx,
+  onReorderChain,
   onOpenInlineSearch,
   onToggleBypass,
   onDeleteFx,
@@ -646,7 +650,9 @@ function FxGrid({
         }
         const target = dropTargetRef.current;
         const toIndex = target?.dropIndex ?? fxList.length;
-        if (dragData.fxIdx !== toIndex) {
+        if (dragData.chainStart != null && dragData.chainEnd != null) {
+          onReorderChain?.(trackIdx, dragData.chainStart, dragData.chainEnd, toIndex);
+        } else if (dragData.fxIdx !== toIndex) {
           onReorderFx(trackIdx, dragData.fxIdx, toIndex);
         }
         dragDataRef.current = null;
@@ -660,10 +666,29 @@ function FxGrid({
         if (group.chainPath) {
           // Green box for chain group
           const displayName = chainDisplayName(group.chainPath);
+          const chainStart = group.fx[0].index;
+          const chainEnd = group.fx[group.fx.length - 1].index + 1;
           return (
             <div
-              key={`chain-${group.chainPath}`}
-              className="w-full"
+              key={`chain-${group.chainPath}-${chainStart}`}
+              className="max-w-full cursor-grab"
+              draggable={true}
+              onDragStart={(e) => {
+                e.dataTransfer.setData('text/plain', `chain:${trackIdx}:${chainStart}-${chainEnd}`);
+                e.dataTransfer.effectAllowed = 'move';
+                dragDataRef.current = { trackIdx, fxIdx: chainStart, chainStart, chainEnd };
+                setDragActiveTrack(trackIdx);
+                setDragSourceFxIdx(null);
+                setExpandedFx(null);
+                cancelLongPress();
+              }}
+              onDragEnd={() => {
+                dragDataRef.current = null;
+                dropTargetRef.current = null;
+                setDragActiveTrack(null);
+                setDragSourceFxIdx(null);
+                setDropVisualIdx(null);
+              }}
             >
               {/* Green box header */}
               <div
@@ -696,6 +721,7 @@ function FxGrid({
                     setDropVisualIdx={setDropVisualIdx}
                     setExpandedFx={setExpandedFx}
                     onReorderFx={onReorderFx}
+                    onReorderChain={onReorderChain}
                     onToggleBypass={onToggleBypass}
                     onDeleteFx={onDeleteFx}
                   />
@@ -721,6 +747,7 @@ function FxGrid({
               setDropVisualIdx={setDropVisualIdx}
               setExpandedFx={setExpandedFx}
               onReorderFx={onReorderFx}
+              onReorderChain={onReorderChain}
               onToggleBypass={onToggleBypass}
               onDeleteFx={onDeleteFx}
             />
@@ -766,7 +793,9 @@ function FxGrid({
               return;
             }
             const toIndex = fxList.length;
-            if (dragData.fxIdx !== toIndex) {
+            if (dragData.chainStart != null && dragData.chainEnd != null) {
+              onReorderChain?.(trackIdx, dragData.chainStart, dragData.chainEnd, toIndex);
+            } else if (dragData.fxIdx !== toIndex) {
               onReorderFx(trackIdx, dragData.fxIdx, toIndex);
             }
             dragDataRef.current = null;
@@ -833,7 +862,7 @@ interface FxCardProps {
   dragActiveTrack: number | null;
   dragSourceFxIdx: number | null;
   dropVisualIdx: number | null;
-  dragDataRef: React.MutableRefObject<{trackIdx: number; fxIdx: number} | null>;
+  dragDataRef: React.MutableRefObject<{trackIdx: number; fxIdx: number; chainStart?: number; chainEnd?: number} | null>;
   dropTargetRef: React.MutableRefObject<{dropIndex: number} | null>;
   expandedFx: {trackIdx: number; fxIdx: number; fxName: string} | null;
   setDragActiveTrack: (v: number | null) => void;
@@ -841,6 +870,7 @@ interface FxCardProps {
   setDropVisualIdx: React.Dispatch<React.SetStateAction<number | null>>;
   setExpandedFx: (v: {trackIdx: number; fxIdx: number; fxName: string} | null) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
+  onReorderChain?: (trackIdx: number, fromStart: number, fromEnd: number, toIndex: number) => Promise<boolean>;
   onToggleBypass?: (trackIdx: number, fxIdx: number, currentBypassed: boolean) => Promise<boolean>;
   onDeleteFx?: (trackIdx: number, fxIdx: number) => Promise<boolean>;
 }
@@ -859,6 +889,7 @@ function FxCard({
   setDropVisualIdx,
   setExpandedFx,
   onReorderFx,
+  onReorderChain,
   onToggleBypass,
   onDeleteFx,
 }: FxCardProps) {
@@ -991,7 +1022,9 @@ function FxCard({
         }
         const target = dropTargetRef.current;
         const targetDropIndex = target?.dropIndex ?? fx.index;
-        if (dragData.fxIdx !== targetDropIndex) {
+        if (dragData.chainStart != null && dragData.chainEnd != null) {
+          onReorderChain?.(trackIdx, dragData.chainStart, dragData.chainEnd, targetDropIndex);
+        } else if (dragData.fxIdx !== targetDropIndex) {
           onReorderFx(trackIdx, dragData.fxIdx, targetDropIndex);
         }
         dragDataRef.current = null;
