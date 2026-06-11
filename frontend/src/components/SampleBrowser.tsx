@@ -735,7 +735,7 @@ export function SampleBrowser({
                 <p className="text-sm">No files tagged &quot;{globalTagFilter}&quot;</p>
               </div>
             ) : (
-              <div className="px-3 py-2 space-y-1">
+              <div className="px-3 py-2 grid grid-cols-2 gap-1">
                 {globalTagFiles.map(({ entry, basePath, tags }) => (
                   <FileRow
                     key={basePath + '/' + entry.name}
@@ -766,7 +766,7 @@ export function SampleBrowser({
                 <p className="text-sm">No files in this library</p>
               </div>
             ) : (
-              <div className="px-3 py-2 space-y-1">
+              <div className="px-3 py-2 grid grid-cols-2 gap-1">
                 {(libraryFiles ?? []).map((filePath) => {
                   const lastSep = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
                   const name = filePath.substring(lastSep + 1);
@@ -906,7 +906,8 @@ export function SampleBrowser({
                 onNavigate={handleNavigate}
               />
             ))}
-            {/* Files */}
+            {/* Files — two cards per row */}
+            <div className="grid grid-cols-2 gap-1">
             {files.map((entry) => {
               const fullPath = currentPath + '/' + entry.name;
               const fileTags = tagData?.sampleTags[fullPath] ?? [];
@@ -932,6 +933,7 @@ export function SampleBrowser({
                 />
               );
             })}
+            </div>
             {/* Pagination */}
             {dirTotal > dirLimit && (
               <div className="flex items-center justify-between px-2 py-2 mt-1 border-t border-[var(--border)]">
