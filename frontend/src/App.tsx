@@ -77,6 +77,7 @@ function AppInner() {
     triggerSlot,
     triggerScene,
     recordSlot,
+    clearSlot,
     sequencer,
     getSequencer,
     toggleStep,
@@ -338,33 +339,6 @@ function AppInner() {
 
   return (
     <div className="h-dvh bg-[var(--bg-primary)] flex flex-col text-[var(--text-primary)] overflow-hidden">
-      {/* ── Status Bar ── */}
-      <header className="sticky top-0 z-10 bg-[var(--bg-secondary)] border-b border-[var(--border)] px-4 py-2.5 safe-area-top">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <h1 className="text-base font-semibold">Utpaladeva</h1>
-            <span className="text-[10px] text-[var(--text-secondary)] hidden sm:inline">
-              Reaper Remote
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-[var(--text-secondary)] hidden xs:inline">
-              {connected ? 'Connected' : 'Disconnected'}
-            </span>
-            <div
-              className={`w-2 h-2 transition-colors ${
-                connected ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'
-              }`}
-            />
-            {activeTab === 'tracks' && tracks.length > 0 && (
-              <span className="text-[11px] text-[var(--text-secondary)] ml-1">
-                {tracks.length} trk
-              </span>
-            )}
-          </div>
-        </div>
-      </header>
-
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-hidden min-h-0">
         <ErrorBoundary>
@@ -377,7 +351,6 @@ function AppInner() {
               getDirectory={getDirectory}
               sendSampleToTrack={sendSampleToTrack}
               sendCommand={sendCommand}
-              onBack={() => setActiveTab('tracks')}
               samplePaths={samplePaths}
               sendToSlot={sendSampleToSlot}
               matrix={matrix}
@@ -430,6 +403,7 @@ function AppInner() {
                   onLaunchPlaytime={launchPlaytime}
                   onCheckPlaytimeAvailable={checkPlaytimeAvailable}
                   onRecordSlot={recordSlot}
+                  onClearSlot={clearSlot}
                   onToggleArm={handleToggleArm}
                   onToggleMute={handleToggleMute}
                   onToggleSolo={handleToggleSolo}
@@ -792,7 +766,14 @@ function AppInner() {
       </main>
 
       {/* ── Tab Bar ── */}
-      <nav className="sticky bottom-0 z-10 bg-[var(--bg-secondary)] border-t border-[var(--border)] safe-area-bottom">
+      <nav className="sticky bottom-0 z-10 bg-[var(--bg-secondary)] border-t border-[var(--border)] safe-area-bottom relative">
+        {/* Connection indicator (header bar was removed) */}
+        <div
+          className={`absolute top-2 right-2 w-2 h-2 transition-colors ${
+            connected ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'
+          }`}
+          title={connected ? 'Connected' : 'Disconnected'}
+        />
         <div className="flex">
           {TABS.map((tab) => (
             <button
