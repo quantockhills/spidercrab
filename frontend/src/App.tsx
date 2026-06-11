@@ -66,6 +66,7 @@ function AppInner() {
     fxChainGetDirectory,
     fxChainSave,
     fxChainLoad,
+    fxChainReorder,
     fxChainGetInfo,
     fxChainSearchRecursive,
     fxChainSearchCached,
@@ -79,6 +80,9 @@ function AppInner() {
     triggerScene,
     recordSlot,
     clearSlot,
+    samplerFromSlot,
+    samplerFromPath,
+    samplerSetReverse,
     sequencer,
     getSequencer,
     toggleStep,
@@ -398,6 +402,7 @@ function AppInner() {
               sendSampleToTrack={sendSampleToTrack}
               sendCommand={sendCommand}
               samplePaths={samplePaths}
+              sendToSampler={samplerFromPath}
               sendToSlot={sendSampleToSlot}
               matrix={matrix}
               getSampleTags={getSampleTags}
@@ -450,6 +455,10 @@ function AppInner() {
                   onCheckPlaytimeAvailable={checkPlaytimeAvailable}
                   onRecordSlot={recordSlot}
                   onClearSlot={clearSlot}
+                  onAddToSampler={samplerFromSlot}
+                  onSamplerSetReverse={samplerSetReverse}
+                  getFxParams={getFxParams}
+                  setFxParamValue={setFxParam}
                   onToggleArm={handleToggleArm}
                   onToggleMute={handleToggleMute}
                   onToggleSolo={handleToggleSolo}
@@ -544,6 +553,7 @@ function AppInner() {
             onDeleteFx={deleteFx}
             onOpenFx={handleOpenFx}
             onReorderFx={reorderFx}
+            onReorderChain={fxChainReorder}
             getFxParams={getFxParams}
             setFxParam={setFxParam}
             getFxPreset={getFxPreset}

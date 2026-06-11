@@ -43,6 +43,7 @@ interface SampleBrowserProps {
   sendSampleToTrack: (path: string, trackIdx: number) => Promise<boolean>;
   sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>;
   sendToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
+  sendToSampler?: (path: string) => Promise<{trackIdx: number; fxIdx: number; name: string} | null>;
   samplePaths?: string[];
   matrix?: MatrixData | null;
   getSampleTags?: () => Promise<SampleTagData | null>;
@@ -61,6 +62,7 @@ export function SampleBrowser({
   sendCommand,
   samplePaths,
   sendToSlot,
+  sendToSampler,
   matrix,
   getSampleTags,
   setSampleTags,
@@ -484,6 +486,27 @@ export function SampleBrowser({
       });
     }
 
+    if (isAudio && sendToSampler) {
+      items.push({
+        label: 'Send to Sampler (RS5K)',
+        icon: '🎹',
+        action: () => {
+          sendToSampler(fullPath).then((info) => {
+            if (info) {
+              setSentFiles((prev) => new Set(prev).add(entry.name));
+              setTimeout(() => {
+                setSentFiles((prev) => {
+                  const next = new Set(prev);
+                  next.delete(entry.name);
+                  return next;
+                });
+              }, 2000);
+            }
+          }).catch(console.error);
+        },
+      });
+    }
+
     items.push({
       label: 'Start Drag to Slot',
       icon: '↗️',
@@ -505,7 +528,7 @@ export function SampleBrowser({
     });
 
     return items;
-  }, [selectedTrack, sendSampleToTrack]);
+  }, [selectedTrack, sendSampleToTrack, sendToSampler, startDrag]);
 
   const handleCloseFileInfo = useCallback(() => {
     setFileInfo(null);

@@ -11,6 +11,8 @@ export interface ClipSlot {
   name: string;
   clipType: 'none' | 'audio' | 'midi';
   reversed?: boolean;
+  /** True when the backend knows the clip's source media file */
+  hasSource?: boolean;
 }
 
 export interface MatrixData {
@@ -154,6 +156,40 @@ export function usePlaytime() {
     }
   }, [send, updateMatrixSlot]);
 
+  /** Bounce a Playtime slot's source sample to a new RS5K sampler track */
+  const samplerFromSlot = useCallback(async (column: number, row: number): Promise<{trackIdx: number; fxIdx: number; name: string} | null> => {
+    try {
+      const resp = await send('sampler/create', { column, row });
+      if (!resp.success) return null;
+      const p = resp.payload as Record<string, unknown>;
+      return { trackIdx: p.trackIdx as number, fxIdx: p.fxIdx as number, name: p.name as string };
+    } catch {
+      return null;
+    }
+  }, [send]);
+
+  /** Bounce an arbitrary sample file to a new RS5K sampler track */
+  const samplerFromPath = useCallback(async (path: string): Promise<{trackIdx: number; fxIdx: number; name: string} | null> => {
+    try {
+      const resp = await send('sampler/create', { path });
+      if (!resp.success) return null;
+      const p = resp.payload as Record<string, unknown>;
+      return { trackIdx: p.trackIdx as number, fxIdx: p.fxIdx as number, name: p.name as string };
+    } catch {
+      return null;
+    }
+  }, [send]);
+
+  /** Toggle reverse on an RS5K sampler (renders a reversed copy server-side) */
+  const samplerSetReverse = useCallback(async (trackIdx: number, fxIdx: number, reversed: boolean): Promise<boolean> => {
+    try {
+      const resp = await send('sampler/setReverse', { trackIdx, fxIdx, reversed }, 60000);
+      return resp.success;
+    } catch {
+      return false;
+    }
+  }, [send]);
+
   // Issue #43: Real-time state polling
   const pollState = useCallback(async (): Promise<PlaytimeState> => {
     try {
@@ -178,6 +214,9 @@ export function usePlaytime() {
     updateMatrixSlot,
     recordSlot,
     clearSlot,
+    samplerFromSlot,
+    samplerFromPath,
+    samplerSetReverse,
     pollState,
     setSlotReverse,
     launchPlaytime,

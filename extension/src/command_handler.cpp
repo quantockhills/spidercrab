@@ -85,6 +85,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fxchain/searchCached"]    = &CommandHandler::HandleFxChainSearchCached;
     m_commandMap["fxchain/refreshCache"]    = &CommandHandler::HandleFxChainRefreshCache;
     m_commandMap["fx/reorder"]              = &CommandHandler::HandleReorderFX;
+    m_commandMap["fxchain/reorder"]         = &CommandHandler::HandleFxChainReorder;
     m_commandMap["fx/getPreset"]            = &CommandHandler::HandleGetFxPreset;
     m_commandMap["fx/setPreset"]            = &CommandHandler::HandleSetFxPreset;
     m_commandMap["fx/getAllPresetNames"]    = &CommandHandler::HandleGetAllFxPresetNames;
@@ -99,6 +100,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/reaper/libraries"]      = &CommandHandler::HandleSampleReaperLibraries;
     m_commandMap["sample/reaper/library/files"]  = &CommandHandler::HandleSampleReaperLibraryFiles;
     m_commandMap["sample/purgeStaleCache"]       = &CommandHandler::HandleSamplePurgeStaleCache;
+    m_commandMap["sampler/create"]               = &CommandHandler::HandleSamplerCreate;
+    m_commandMap["sampler/setReverse"]           = &CommandHandler::HandleSamplerSetReverse;
 }
 
 CommandHandler::~CommandHandler() { }

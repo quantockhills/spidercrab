@@ -32,6 +32,8 @@
 #define REAPERAPI_WANT_TrackFX_GetPreset
 #define REAPERAPI_WANT_TrackFX_SetPreset
 #define REAPERAPI_WANT_TrackFX_SetPresetByIndex
+#define REAPERAPI_WANT_TrackFX_SetNamedConfigParm
+#define REAPERAPI_WANT_TrackFX_GetNamedConfigParm
 #define REAPERAPI_WANT_EnumInstalledFX
 #define REAPERAPI_WANT_Main_OnCommand
 #define REAPERAPI_WANT_CSurf_OnPlay
@@ -533,6 +535,10 @@ static bool InitializeCoreServices()
     api.TrackFX_GetPreset          = TrackFX_GetPreset;
     api.TrackFX_SetPreset           = TrackFX_SetPreset;
     api.TrackFX_SetPresetByIndex   = TrackFX_SetPresetByIndex;
+    api.TrackFX_SetNamedConfigParm = TrackFX_SetNamedConfigParm;
+    api.TrackFX_GetNamedConfigParm = TrackFX_GetNamedConfigParm;
+    api.GetProjExtState = GetProjExtState;
+    api.SetProjExtState = SetProjExtState;
     api.EnumInstalledFX             = EnumInstalledFX;
     api.GetTrackStateChunk          = GetTrackStateChunk;
     api.SetTrackStateChunk          = SetTrackStateChunk;
