@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "reaper_plugin.h"
+#include "MiniBpm.h"
 #undef min
 #undef max
 
@@ -581,83 +582,59 @@ static inline MIDI_event_t BuildMidiEvent(const std::string& eventType, int chan
 // ============================================================
 // BPM detection helper (for sample import)
 // ============================================================
-// Full BPM detection via PCM_Source_GetPeaks (REAPER's peak API).
-// Reads onset energy from first ~4 seconds of audio and uses
-// autocorrelation to find dominant tempo.
-static inline double detectBpmFromFile(PCM_source* src,
-    void* (*getMediaItemTakeInfo)(MediaItem_Take*, const char*, void*),
-    int (*getMediaFileMetadata)(PCM_source*, const char*, char*, int),
-    int (*pcmSourceGetPeaks)(PCM_source*, double, double, int, int, int, double*))
-{
-    if (!src) return 0.0;
-
-    // Try to read BPM from media file metadata (REAPER caches this)
-    if (getMediaFileMetadata) {
-        char buf[4096] = {0};
-        int ret = getMediaFileMetadata(src, "BPM", buf, sizeof(buf));
-        if (ret > 0 && buf[0]) {
-            char* end = nullptr;
-            double bpm = strtod(buf, &end);
-            if (end != buf && bpm > 0.0 && bpm < 1000.0) {
-                return bpm;
-            }
-        }
-    }
-
-    if (!pcmSourceGetPeaks) return 0.0;
-
-    const double analysisDuration = 4.0;
-    const double peakRate = 100.0;
-    int numChannels = 1;
-    int numSamples = (int)(analysisDuration * peakRate);
-    std::vector<double> peaks(numSamples * numChannels, 0.0);
-    int got = pcmSourceGetPeaks(src, peakRate, 0.0, numChannels, numSamples, 0, peaks.data());
-    if (got <= 0) return 0.0;
-
-    std::vector<double> energy(numSamples, 0.0);
-    for (int i = 0; i < numSamples; i++) {
-        double sum = 0.0;
-        for (int ch = 0; ch < numChannels; ch++)
-            sum += peaks[i * numChannels + ch] * peaks[i * numChannels + ch];
-        energy[i] = sum;
-    }
-
-    std::vector<double> onset(numSamples - 1, 0.0);
-    for (size_t i = 0; i < onset.size(); i++)
-        onset[i] = energy[i + 1] > energy[i] ? energy[i + 1] - energy[i] : 0.0;
-
-    const int minLag = (int)(peakRate / 240.0);
-    const int maxLag = (int)(peakRate / 40.0);
-    if ((int)onset.size() <= maxLag) return 0.0;
-
-    double bestLag = 0, bestCorr = 0;
-    for (int lag = minLag; lag <= maxLag; lag++) {
-        double corr = 0.0;
-        for (size_t i = 0; i + lag < onset.size(); i++)
-            corr += onset[i] * onset[i + lag];
-        double norm = (double)(onset.size() - lag);
-        if (norm > 0) corr /= norm;
-        if (corr > bestCorr) { bestCorr = corr; bestLag = (double)lag; }
-    }
-
-    if (bestLag > 0 && bestCorr > 0.001) {
-        double bpm = 60.0 * peakRate / bestLag;
-        if (bpm >= 40.0 && bpm <= 240.0) return bpm;
-    }
-    return 0.0;
-}
-
-// Simple overload — wraps the full version.
+// Reads up to 30s of audio via PCM_source::GetSamples and runs
+// MiniBPM (breakfastquay) tempo estimation on the mono mixdown.
 static inline double detectBpmFromFile(PCM_source* src,
     int (*getMediaSourceSampleRate)(PCM_source*),
     int (*getMediaSourceNumChannels)(PCM_source*))
 {
-    (void)getMediaSourceSampleRate;
-    (void)getMediaSourceNumChannels;
-    return detectBpmFromFile(src,
-        (void* (*)(MediaItem_Take*, const char*, void*))nullptr,
-        (int (*)(PCM_source*, const char*, char*, int))nullptr,
-        (int (*)(PCM_source*, double, double, int, int, int, double*))nullptr);
+    if (!src || !getMediaSourceSampleRate || !getMediaSourceNumChannels)
+        return 0.0;
+
+    int sampleRate = getMediaSourceSampleRate(src);
+    int channels   = getMediaSourceNumChannels(src);
+    if (sampleRate <= 0 || channels <= 0) return 0.0;
+
+    // Read up to 30s of audio
+    const int maxSecs  = 30;
+    const int hopSize  = 4096;
+    int totalSamples   = sampleRate * maxSecs;
+
+    std::vector<float>      mono(totalSamples, 0.0f);
+    std::vector<ReaSample>  buf((size_t)channels * hopSize, 0.0);
+
+    PCM_source_transfer_t block = {};
+    block.samplerate = (double)sampleRate;
+    block.nch        = channels;
+    block.length     = hopSize;
+    block.samples    = buf.data();
+    block.time_s     = 0.0;
+
+    int written = 0;
+    while (written < totalSamples) {
+        block.length     = std::min(hopSize, totalSamples - written);
+        block.samples_out = 0;
+        src->GetSamples(&block);
+        int got = block.samples_out;
+        if (got <= 0) break;
+        // Mix down to mono
+        for (int i = 0; i < got; i++) {
+            float sum = 0.0f;
+            for (int c = 0; c < channels; c++)
+                sum += (float)buf[(size_t)i * channels + c];
+            mono[written + i] = sum / (float)channels;
+        }
+        written += got;
+        block.time_s += (double)got / (double)sampleRate;
+    }
+
+    double result = 0.0;
+    if (written >= sampleRate) {
+        breakfastquay::MiniBPM bpm((float)sampleRate);
+        bpm.setBPMRange(60.0, 200.0);
+        result = bpm.estimateTempoOfSamples(mono.data(), written);
+    }
+    return result;
 }
 
 // ============================================================
