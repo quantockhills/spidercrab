@@ -57,8 +57,17 @@ export function useFxChains() {
   );
 
   const fxChainLoad = useCallback(
-    async (trackIdx: number, filePath: string, mode: 'replace' | 'append' = 'replace'): Promise<boolean> => {
+    async (trackIdx: number, filePath: string, mode: 'replace' | 'append' = 'append'): Promise<boolean> => {
       const resp = await send('fxchain/load', { trackIdx, filePath, mode });
+      return resp.success;
+    },
+    [send],
+  );
+
+  /** Move a contiguous block of FX (a chain group) to a new position */
+  const fxChainReorder = useCallback(
+    async (trackIdx: number, fromStart: number, fromEnd: number, toIndex: number): Promise<boolean> => {
+      const resp = await send('fxchain/reorder', { trackIdx, fromStart, fromEnd, toIndex });
       return resp.success;
     },
     [send],
@@ -103,5 +112,5 @@ export function useFxChains() {
     [send],
   );
 
-  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo, fxChainSearchRecursive, fxChainSearchCached, fxChainRefreshCache };
+  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainReorder, fxChainGetInfo, fxChainSearchRecursive, fxChainSearchCached, fxChainRefreshCache };
 }

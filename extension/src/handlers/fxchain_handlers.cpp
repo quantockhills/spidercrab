@@ -207,7 +207,10 @@ void CommandHandler::HandleFxChainLoad(
     std::string currentChunk(chunkBuf.data());
     std::string newChunk;
 
-    bool append = (modeStr == "append");
+    // Append by default: loading a chain adds its FX after whatever is on
+    // the track (other chains or standalone FX). Pass mode:"replace" to
+    // wipe the track's FX chain first.
+    bool append = (modeStr != "replace");
 
     // REAPER's native .RfxChain files contain just the raw body (no outer tag).
     // The track chunk expects a full <FXCHAIN\n...\n> block.
@@ -225,43 +228,24 @@ void CommandHandler::HandleFxChainLoad(
     }
 
     if (append) {
-        // Append: load current FX chain, append new FX to it
+        // Append: merge at the FX-entry level — keep the current chain's
+        // header + entries, then add the loaded file's entries after them.
         std::string currentFxChain = extractFxChainFromChunk(currentChunk);
         if (!currentFxChain.empty()) {
-            // Merge: take the opening <FXCHAIN...> from current, add the
-            // <ITEM> entries from loaded, find the closing > of FXCHAIN
-            // REAPER format: <FXCHAIN\n  ...\n  <ITEM ...>\n>
-            // The closing > is on its own line after all ITEMs
-            size_t currentClose = currentFxChain.rfind('\n');
-            if (currentClose != std::string::npos && currentClose > 0) {
-                // Trim trailing whitespace from the line before last
-                size_t trim = currentClose;
-                while (trim > 0 && (currentFxChain[trim-1] == ' ' || currentFxChain[trim-1] == '\t' || currentFxChain[trim-1] == '\n' || currentFxChain[trim-1] == '\r'))
-                    trim--;
-                // The closing > is on the last line - everything before it is the FX list
-                // Check if the last non-empty line is just ">"
-                size_t lastLineStart = currentFxChain.rfind('\n', currentClose - 1);
-                if (lastLineStart == std::string::npos) lastLineStart = 0;
-                std::string lastLine = currentFxChain.substr(lastLineStart, currentClose - lastLineStart);
-                // Trim whitespace from last line
-                size_t first = lastLine.find_first_not_of(" \t\n\r");
-                if (first != std::string::npos && lastLine[first] == '>') {
-                    // The closing > is on its own line - use everything before it
-                    currentClose = lastLineStart;
-                }
-            }
-            
-            // Find ITEM entries in the loaded chain
-            size_t loadedStart = loadedFxChain.find("<ITEM");
-            if (loadedStart != std::string::npos && currentClose != std::string::npos) {
-                std::string merged = currentFxChain.substr(0, currentClose);
-                // Add the new ITEM entries (without the opening <FXCHAIN and closing >)
-                merged += loadedFxChain.substr(loadedStart);
-                newChunk = replaceFxChainInChunk(currentChunk, merged);
-            } else {
-                newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
-            }
+            std::string curFirstLine = currentFxChain.substr(0, currentFxChain.find('\n') + 1);
+            std::string curHeader, newHeader;
+            std::vector<std::string> curEntries, newEntries;
+            splitFxChainEntries(fxChainInner(currentFxChain), &curHeader, &curEntries);
+            splitFxChainEntries(fxChainInner(loadedFxChain), &newHeader, &newEntries);
+
+            std::string merged = curFirstLine + curHeader;
+            for (const auto& e : curEntries) merged += e;
+            for (const auto& e : newEntries) merged += e;
+            if (merged.empty() || merged.back() != '\n') merged += '\n';
+            merged += '>';
+            newChunk = replaceFxChainInChunk(currentChunk, merged);
         } else {
+            // Track has no FX yet — appending == inserting the chain
             newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
         }
     } else {
@@ -580,6 +564,110 @@ void CommandHandler::ShiftChainSourceIndices(
     }
 }
 
+void CommandHandler::HandleFxChainReorder(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_CopyToTrack || !m_api.TrackFX_Delete || !m_api.TrackFX_GetCount) {
+        SendResponse(clientId, id, false, "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr  = parser.getString("trackIdx");
+    std::string fromStartStr = parser.getString("fromStart");
+    std::string fromEndStr   = parser.getString("fromEnd");
+    std::string toIdxStr     = parser.getString("toIndex");
+
+    if (trackIdxStr.empty() || fromStartStr.empty() || fromEndStr.empty() || toIdxStr.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Missing required parameters\"}");
+        return;
+    }
+
+    int trackIdx  = atoi(trackIdxStr.c_str());
+    int fromStart = atoi(fromStartStr.c_str());
+    int fromEnd   = atoi(fromEndStr.c_str());  // exclusive
+    int toIndex   = atoi(toIdxStr.c_str());    // insertion point (pre-move indices)
+
+    MediaTrack* track = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int fxCount  = m_api.TrackFX_GetCount(track);
+    int blockLen = fromEnd - fromStart;
+    if (fromStart < 0 || fromEnd > fxCount || blockLen <= 0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid block range\"}");
+        return;
+    }
+    if (toIndex < 0) toIndex = 0;
+    if (toIndex > fxCount) toIndex = fxCount;
+
+    // Snap the insertion point out of the middle of other chain groups so
+    // every group stays contiguous after the move.
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end()) {
+        for (const ChainSource& g : sit->second) {
+            if (g.fxStartIdx == fromStart && g.fxEndIdx == fromEnd) continue;
+            if (toIndex > g.fxStartIdx && toIndex < g.fxEndIdx) {
+                toIndex = (toIndex - g.fxStartIdx < g.fxEndIdx - toIndex)
+                    ? g.fxStartIdx : g.fxEndIdx;
+                break;
+            }
+        }
+    }
+
+    // Dropping onto/inside the block itself is a no-op
+    if (toIndex >= fromStart && toIndex <= fromEnd) {
+        SendResponse(clientId, id, true, "{\"reordered\":true}");
+        return;
+    }
+
+    // Move the block one FX at a time. is_move=true relocates the existing
+    // plugin instance within the chain (same path as dragging in REAPER's
+    // FX window). Do NOT use copy+delete here: cloning and destroying
+    // instances in rapid succession crashes some plugins (e.g.
+    // DecentSampler) mid-move.
+    if (toIndex > fromEnd) {
+        // Moving right: move the block's first FX to just before the
+        // insertion point, blockLen times.
+        for (int i = 0; i < blockLen; i++) {
+            m_api.TrackFX_CopyToTrack(track, fromStart, track, toIndex - 1, true);
+        }
+    } else {
+        // Moving left: place each FX of the block at toIndex + i.
+        for (int i = 0; i < blockLen; i++) {
+            m_api.TrackFX_CopyToTrack(track, fromStart + i, track, toIndex + i, true);
+        }
+    }
+
+    // Update chain-source bookkeeping
+    if (sit != m_trackChainSources.end()) {
+        int newStart = (toIndex > fromEnd) ? (toIndex - blockLen) : toIndex;
+        for (ChainSource& g : sit->second) {
+            if (g.fxStartIdx == fromStart && g.fxEndIdx == fromEnd) {
+                g.fxStartIdx = newStart;
+                g.fxEndIdx   = newStart + blockLen;
+            } else if (toIndex > fromEnd) {
+                if (g.fxStartIdx >= fromEnd && g.fxEndIdx <= toIndex) {
+                    g.fxStartIdx -= blockLen;
+                    g.fxEndIdx   -= blockLen;
+                }
+            } else {
+                if (g.fxStartIdx >= toIndex && g.fxEndIdx <= fromStart) {
+                    g.fxStartIdx += blockLen;
+                    g.fxEndIdx   += blockLen;
+                }
+            }
+        }
+    }
+
+    SendResponse(clientId, id, true,
+        "{\"reordered\":true,\"trackIdx\":" + std::to_string(trackIdx)
+        + ",\"toIndex\":" + std::to_string(toIndex) + "}");
+}
+
 bool CommandHandler::doLoadChain(int trackIdx, const std::string& filePath, const std::string& direction)
 {
     if (!m_api.GetTrackStateChunk || !m_api.SetTrackStateChunk || !m_api.GetTrack) {
@@ -669,16 +757,68 @@ bool CommandHandler::doLoadChain(int trackIdx, const std::string& filePath, cons
         loadedFxChain += '>';
     }
 
-    std::string newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+    // Find which chain group on this track is being cycled (by file path)
+    // so we replace only that group's FX and leave other FX/chains intact.
+    int groupIdx = -1;
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end()) {
+        for (size_t i = 0; i < sit->second.size(); i++) {
+            if (sit->second[i].filePath == filePath) { groupIdx = (int)i; break; }
+        }
+    }
+
+    std::string currentFxChain = extractFxChainFromChunk(currentChunk);
+    std::string newChunk;
+    int replaceStart = 0, replaceEnd = 0, newEntryCount = 0;
+
+    if (groupIdx >= 0 && !currentFxChain.empty()) {
+        std::string curFirstLine = currentFxChain.substr(0, currentFxChain.find('\n') + 1);
+        std::string curHeader, newHeader;
+        std::vector<std::string> curEntries, newEntries;
+        splitFxChainEntries(fxChainInner(currentFxChain), &curHeader, &curEntries);
+        splitFxChainEntries(fxChainInner(loadedFxChain), &newHeader, &newEntries);
+
+        const ChainSource& g = sit->second[groupIdx];
+        replaceStart  = std::min((int)curEntries.size(), std::max(0, g.fxStartIdx));
+        replaceEnd    = std::min((int)curEntries.size(), std::max(replaceStart, g.fxEndIdx));
+        newEntryCount = (int)newEntries.size();
+
+        std::string merged = curFirstLine + curHeader;
+        for (int i = 0; i < replaceStart; i++) merged += curEntries[i];
+        for (const auto& e : newEntries) merged += e;
+        for (int i = replaceEnd; i < (int)curEntries.size(); i++) merged += curEntries[i];
+        if (merged.empty() || merged.back() != '\n') merged += '\n';
+        merged += '>';
+        newChunk = replaceFxChainInChunk(currentChunk, merged);
+    } else {
+        // No tracked group for this path — legacy behavior: replace the
+        // whole FX chain section.
+        newChunk = replaceFxChainInChunk(currentChunk, loadedFxChain);
+    }
+
     bool ok = m_api.SetTrackStateChunk(track, newChunk.c_str(), false);
 
     if (ok && m_api.TrackFX_GetCount) {
         int newFxCount = m_api.TrackFX_GetCount(track);
-        ChainSource cs;
-        cs.filePath = targetPath;
-        cs.fxStartIdx = 0;
-        cs.fxEndIdx = newFxCount;
-        m_trackChainSources[trackIdx] = {cs};
+        if (groupIdx >= 0) {
+            int delta = newEntryCount - (replaceEnd - replaceStart);
+            std::vector<ChainSource>& groups = sit->second;
+            groups[groupIdx].filePath = targetPath;
+            groups[groupIdx].fxEndIdx = groups[groupIdx].fxStartIdx + newEntryCount;
+            for (size_t i = 0; i < groups.size(); i++) {
+                if ((int)i == groupIdx) continue;
+                if (groups[i].fxStartIdx >= replaceEnd) {
+                    groups[i].fxStartIdx += delta;
+                    groups[i].fxEndIdx   += delta;
+                }
+            }
+        } else {
+            ChainSource cs;
+            cs.filePath = targetPath;
+            cs.fxStartIdx = 0;
+            cs.fxEndIdx = newFxCount;
+            m_trackChainSources[trackIdx] = {cs};
+        }
     }
 
     return ok;
@@ -706,14 +846,14 @@ void CommandHandler::HandleFxChainCycle(
 
     int trackIdx = atoi(trackIdxStr.c_str());
 
-    // Determine the current chain path from chain-source tracking
-    std::string currentPath;
-    auto it = m_trackChainSources.find(trackIdx);
-    if (it != m_trackChainSources.end() && !it->second.empty()) {
-        currentPath = it->second[0].filePath;
-    }
-    if (currentPath.empty() && !chainPath.empty()) {
-        currentPath = chainPath;
+    // Determine the current chain path. An explicit chainPath wins —
+    // with multiple chains on a track it identifies which one to cycle.
+    std::string currentPath = chainPath;
+    if (currentPath.empty()) {
+        auto it = m_trackChainSources.find(trackIdx);
+        if (it != m_trackChainSources.end() && !it->second.empty()) {
+            currentPath = it->second[0].filePath;
+        }
     }
 
     if (currentPath.empty()) {
