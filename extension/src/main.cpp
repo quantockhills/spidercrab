@@ -451,8 +451,9 @@ public:
             // FX bypass state changed
             MediaTrack* track = (MediaTrack*)parm1;
             int fxIdx  = parm2 ? *(int*)parm2 : 0;
-            int en     = parm3 ? *(int*)parm3 : 1;
-            bool enabled = (en != 0);
+            // parm3 is the enabled flag itself (0 = bypassed, !0 = enabled),
+            // not a pointer to one — see CSURF_EXT_SETFXENABLED in reaper_plugin.h
+            bool enabled = (parm3 != nullptr);
             if (track) {
                 int trackIdx = CSurf_TrackToID(track, false) - 1;
                 if (trackIdx >= 0) {
