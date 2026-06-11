@@ -34,6 +34,8 @@ describe('SampleBrowser', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Browser location is persisted to sessionStorage; clear so tests are isolated
+    sessionStorage.clear();
     mockGetDirectory.mockResolvedValue({ entries: createMockEntries(), total: createMockEntries().length, offset: 0, path: '/samples' });
     mockSendSampleToTrack.mockResolvedValue(true);
     mockSendCommand.mockResolvedValue({ payload: {} });
@@ -237,25 +239,6 @@ describe('SampleBrowser', () => {
     await waitFor(() => {
       expect(screen.getByText(/no results matching/i)).toBeDefined();
     });
-  });
-
-  it('calls onBack when back button is clicked', async () => {
-    const onBack = vi.fn();
-    render(
-      <SampleBrowser
-        tracks={[]}
-        selectedTrack={null}
-        getDirectory={mockGetDirectory}
-        sendSampleToTrack={mockSendSampleToTrack}
-        sendCommand={mockSendCommand}
-        onBack={onBack}
-      />
-    );
-
-    const backButton = screen.getByText('← Back');
-    fireEvent.click(backButton);
-
-    expect(onBack).toHaveBeenCalledTimes(1);
   });
 
   it('shows retry button on error and can reload', async () => {

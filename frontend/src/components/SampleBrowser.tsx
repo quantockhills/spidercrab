@@ -42,7 +42,6 @@ interface SampleBrowserProps {
   getDirectory: (path: string, offset?: number, limit?: number) => Promise<DirResult>;
   sendSampleToTrack: (path: string, trackIdx: number) => Promise<boolean>;
   sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>;
-  onBack: () => void;
   sendToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
   samplePaths?: string[];
   matrix?: MatrixData | null;
@@ -60,7 +59,6 @@ export function SampleBrowser({
   getDirectory,
   sendSampleToTrack,
   sendCommand,
-  onBack,
   samplePaths,
   sendToSlot,
   matrix,
@@ -71,12 +69,17 @@ export function SampleBrowser({
 }: SampleBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>(
     () => {
+      // Restore last-visited directory so switching tabs doesn't reset the browser
+      const saved = sessionStorage.getItem('sampleBrowserCurrentPath');
+      if (saved !== null) return saved;
       // If samplePaths is provided (even empty), start with empty (show root selector)
       if (samplePaths !== undefined) return '';
       return localStorage.getItem('sampleBrowserRootPath') || '/tmp';
     }
   );
-  const [currentRoot, setCurrentRoot] = useState<string | null>(null);
+  const [currentRoot, setCurrentRoot] = useState<string | null>(
+    () => sessionStorage.getItem('sampleBrowserCurrentRoot')
+  );
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [dirTotal, setDirTotal] = useState(0);
   const [dirOffset, setDirOffset] = useState(0);
@@ -196,6 +199,13 @@ export function SampleBrowser({
       localStorage.setItem('sampleBrowserRootPath', currentPath);
     }
   }, [currentPath]);
+
+  // Persist browsing location (session-scoped) so tab switches don't reset the browser
+  useEffect(() => {
+    sessionStorage.setItem('sampleBrowserCurrentPath', currentPath);
+    if (currentRoot) sessionStorage.setItem('sampleBrowserCurrentRoot', currentRoot);
+    else sessionStorage.removeItem('sampleBrowserCurrentRoot');
+  }, [currentPath, currentRoot]);
 
   // Cross-root search effect: when at root selector with a search query,
   // fetch directories from ALL configured roots and merge results client-side (Issue #101)
@@ -507,31 +517,15 @@ export function SampleBrowser({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors active:brightness-95"
-            aria-label="Back to tracks"
-          >
-            ← Back
-          </button>
-          <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
-            Media Browser
-          </h2>
-        </div>
-        {selectedTrackName && (
-          <span className="text-xs text-[var(--text-secondary)]">
-            Target: <span className="text-[var(--text-primary)]">{selectedTrackName}</span>
-          </span>
-        )}
-      </div>
-
       {/* Path breadcrumb + Search */}
       <div className="px-4 py-2.5 border-b border-[var(--border)] space-y-2">
         {/* Current path / Root indicator (Issue #101) */}
         <div className="flex items-center gap-2">
+          {selectedTrackName && (
+            <span className="text-xs text-[var(--text-secondary)] order-last ml-auto flex-shrink-0">
+              Target: <span className="text-[var(--text-primary)]">{selectedTrackName}</span>
+            </span>
+          )}
           {currentRoot && (
             <button
               onClick={() => {
@@ -964,19 +958,6 @@ export function SampleBrowser({
         )}
       </div>
 
-      {/* Mini Playtime grid in Session mode (Issue #108) */}
-      {sessionMode === 'session' && matrix && sendToSlot && (
-        <MiniPlaytimeGrid
-          matrix={matrix}
-          selectedFile={selectedFile}
-          onSendToSlot={(col, row) => {
-            if (selectedFile) {
-              sendToSlot(selectedFile, col, row);
-            }
-          }}
-        />
-      )}
-
       {/* Context menu (Issue #28) */}
       {contextMenu && (
         <ContextMenu
@@ -992,9 +973,23 @@ export function SampleBrowser({
         <FileInfoModal info={fileInfo} onClose={handleCloseFileInfo} />
       )}
 
-      {/* Audio preview panel */}
-      {selectedFile && (
-        <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
+      {/* Bottom panel: session grid (left) + audio preview (right), side by side
+          so enlarging the grid never hides the waveform (Issue: grid overlap) */}
+      {((sessionMode === 'session' && matrix && sendToSlot) || selectedFile) && (
+        <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)] flex items-stretch">
+          {sessionMode === 'session' && matrix && sendToSlot && (
+            <MiniPlaytimeGrid
+              matrix={matrix}
+              selectedFile={selectedFile}
+              onSendToSlot={(col, row) => {
+                if (selectedFile) {
+                  sendToSlot(selectedFile, col, row);
+                }
+              }}
+            />
+          )}
+          {selectedFile && (
+          <div className="flex-1 min-w-0">
           <div className="px-4 py-2 flex items-center justify-between">
             <span className="text-xs font-medium text-[var(--text-primary)] truncate flex-1">
               🎵 {selectedFile.split('/').pop()}
@@ -1067,6 +1062,8 @@ export function SampleBrowser({
                 <span>{formatTime(audioPreview.duration)}</span>
               </div>
             </div>
+          )}
+          </div>
           )}
         </div>
       )}
@@ -1602,7 +1599,7 @@ function MiniPlaytimeGrid({ matrix, selectedFile, onSendToSlot }: MiniPlaytimeGr
   }, [matrix]);
 
   return (
-    <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)]">
+    <div className="w-1/2 flex-shrink-0 border-r border-[var(--border)]">
       <div className="px-3 py-2 text-[10px] text-[var(--text-secondary)] font-medium uppercase tracking-wider">
         Send to Session Grid
       </div>
@@ -1611,9 +1608,7 @@ function MiniPlaytimeGrid({ matrix, selectedFile, onSendToSlot }: MiniPlaytimeGr
           className="grid gap-[2px]"
           style={{
             gridTemplateColumns: `repeat(${columns}, 1fr)`,
-            gridTemplateRows: `repeat(${rows}, 1fr)`,
-            aspectRatio: `${columns} / ${rows}`,
-            maxHeight: '220px',
+            gridAutoRows: '40px',
           }}
         >
           {Array.from({ length: columns * rows }).map((_, i) => {
