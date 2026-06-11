@@ -344,6 +344,13 @@ void CommandHandler::HandleSampleSendToSlot(
     // Step 3: Send OSC import message -> ReaLearn triggers FillSlotWithSelectedItem
     m_oscSender.sendImportSlot(col, row);
 
+    // Remember where this clip came from so it can be bounced to a sampler
+    // later — persisted into the project so it survives REAPER restarts.
+    m_playtimeState.setSlotSource(col, row, filePath);
+    if (m_api.SetProjExtState)
+        m_api.SetProjExtState(nullptr, "SPIDERCRAB", "slotSources",
+            m_playtimeState.serializeSources().c_str());
+
     // Step 4: Respond immediately so the UI feels instant, then clean up the
     // temp item after ~5 Run() ticks (~165ms) — enough time for ReaLearn to
     // receive the OSC and fire FillSlotWithSelectedItem before we delete it.
@@ -889,4 +896,270 @@ void CommandHandler::HandleSamplePurgeStaleCache(
     int removed = m_sampleCache.PurgeStaleRoots(keepPaths);
     std::string resp = "{" + json_string("removed") + ":" + std::to_string(removed) + "}";
     SendResponse(clientId, id, true, resp);
+}
+
+// ============================================================
+// Sampler: bounce a sample / Playtime clip to ReaSamplOmatic5000
+// ============================================================
+
+// Create a new track with RS5K loaded with the given sample, armed for
+// MIDI input with monitoring on. RS5K's default mode pitch-tracks the
+// played key chromatically (original pitch at C4), so the sample is
+// immediately playable.
+void CommandHandler::HandleSamplerCreate(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.InsertTrackAtIndex || !m_api.GetTrack || !m_api.CountTracks ||
+        !m_api.TrackFX_AddByName || !m_api.TrackFX_SetNamedConfigParm ||
+        !m_api.GetSetMediaTrackInfo) {
+        SendResponse(clientId, id, false, "{\"error\":\"Required API functions not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    // JsonParser consumes as it scans — a missing key exhausts it, so use a
+    // fresh parser per key ("path" is absent in slot mode and vice versa).
+    std::string filePath = JsonParser(payloadStr).getString("path");
+    std::string colStr   = JsonParser(payloadStr).getString("column");
+    std::string rowStr   = JsonParser(payloadStr).getString("row");
+
+    // Either an explicit path, or a Playtime slot we imported earlier
+    if (filePath.empty() && !colStr.empty() && !rowStr.empty()) {
+        SlotState slot = m_playtimeState.getSlot(atoi(colStr.c_str()), atoi(rowStr.c_str()));
+        filePath = slot.sourcePath;
+        if (filePath.empty()) {
+            SendResponse(clientId, id, false,
+                "{\"error\":\"No known source file for this clip (recorded clips are not supported yet)\"}");
+            return;
+        }
+    }
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'path' or 'column'/'row' parameter\"}");
+        return;
+    }
+    if (!fs::exists(filePath)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"File not found: " + json_escape(filePath) + "\"}");
+        return;
+    }
+
+    // Create the sampler track at the end of the project
+    int numTracks = m_api.CountTracks(nullptr);
+    m_api.InsertTrackAtIndex(numTracks, false);
+    MediaTrack* track = m_api.GetTrack(nullptr, numTracks);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Could not create sampler track\"}");
+        return;
+    }
+
+    // Name it after the sample
+    std::string fileName = filePath;
+    {
+        size_t slashPos = fileName.find_last_of("/\\");
+        if (slashPos != std::string::npos) fileName = fileName.substr(slashPos + 1);
+        size_t dotPos = fileName.rfind('.');
+        if (dotPos != std::string::npos) fileName = fileName.substr(0, dotPos);
+    }
+    std::string trackName = "S: " + fileName;
+    if (m_api.GetSetMediaTrackInfo_String) {
+        m_api.GetSetMediaTrackInfo_String(track, "P_NAME",
+            const_cast<char*>(trackName.c_str()), true);
+    }
+
+    // Add RS5K and load the sample
+    int fxIdx = m_api.TrackFX_AddByName(track, "ReaSamplOmatic5000", false, 1);
+    if (fxIdx < 0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Could not add ReaSamplOmatic5000\"}");
+        return;
+    }
+    m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "FILE0", filePath.c_str());
+    m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "DONE", "");
+    // Mode 2 = "Note (Semitone shifted)" so played keys pitch the sample
+    // chromatically (RS5K defaults to "Sample (ignores MIDI note)")
+    m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "MODE", "2");
+
+    // Arm for MIDI: record-arm, input = all MIDI devices/channels, monitoring on
+    int armOn = 1;
+    m_api.GetSetMediaTrackInfo(track, "I_RECARM", &armOn);
+    int recMon = 1;
+    m_api.GetSetMediaTrackInfo(track, "I_RECMON", &recMon);
+    int midiInput = 4096 + 63 * 32; // MIDI: all devices, all channels
+    m_api.GetSetMediaTrackInfo(track, "I_RECINPUT", &midiInput);
+
+    if (m_api.UpdateArrange) m_api.UpdateArrange();
+
+    SendResponse(clientId, id, true,
+        "{\"trackIdx\":" + std::to_string(numTracks)
+        + ",\"fxIdx\":" + std::to_string(fxIdx)
+        + ",\"name\":" + json_string(trackName)
+        + ",\"path\":" + json_string(filePath) + "}");
+}
+
+// Write a float32 WAV file. Returns false on IO failure.
+static bool writeFloatWav(const std::string& path, const std::vector<float>& interleaved,
+    int channels, int sampleRate)
+{
+    FILE* f = fopen(path.c_str(), "wb");
+    if (!f) return false;
+
+    uint32_t dataBytes  = (uint32_t)(interleaved.size() * sizeof(float));
+    uint32_t byteRate   = (uint32_t)sampleRate * channels * sizeof(float);
+    uint16_t blockAlign = (uint16_t)(channels * sizeof(float));
+    uint32_t riffSize   = 36 + dataBytes;
+    uint16_t fmtFloat   = 3; // IEEE float
+    uint16_t bits       = 32;
+    uint16_t nch        = (uint16_t)channels;
+    uint32_t srate      = (uint32_t)sampleRate;
+    uint32_t fmtSize    = 16;
+
+    bool ok = true;
+    ok = ok && fwrite("RIFF", 1, 4, f) == 4;
+    ok = ok && fwrite(&riffSize, 4, 1, f) == 1;
+    ok = ok && fwrite("WAVE", 1, 4, f) == 4;
+    ok = ok && fwrite("fmt ", 1, 4, f) == 4;
+    ok = ok && fwrite(&fmtSize, 4, 1, f) == 1;
+    ok = ok && fwrite(&fmtFloat, 2, 1, f) == 1;
+    ok = ok && fwrite(&nch, 2, 1, f) == 1;
+    ok = ok && fwrite(&srate, 4, 1, f) == 1;
+    ok = ok && fwrite(&byteRate, 4, 1, f) == 1;
+    ok = ok && fwrite(&blockAlign, 2, 1, f) == 1;
+    ok = ok && fwrite(&bits, 2, 1, f) == 1;
+    ok = ok && fwrite("data", 1, 4, f) == 4;
+    ok = ok && fwrite(&dataBytes, 4, 1, f) == 1;
+    ok = ok && fwrite(interleaved.data(), 1, dataBytes, f) == dataBytes;
+    fclose(f);
+    return ok;
+}
+
+// Toggle reverse on an RS5K instance. RS5K has no native reverse, so we
+// render a reversed copy of the source file next to it (cached) and swap
+// FILE0 between the original and the "-spidercrab-rev.wav" copy.
+void CommandHandler::HandleSamplerSetReverse(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_GetNamedConfigParm || !m_api.TrackFX_SetNamedConfigParm ||
+        !m_api.GetTrack || !m_api.PCM_Source_CreateFromFile ||
+        !m_api.GetMediaSourceSampleRate || !m_api.GetMediaSourceNumChannels ||
+        !m_api.GetMediaSourceLength) {
+        SendResponse(clientId, id, false, "{\"error\":\"Required API functions not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string fxIdxStr    = parser.getString("fxIdx");
+    std::string reversedStr = parser.getString("reversed");
+
+    if (trackIdxStr.empty() || fxIdxStr.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"Missing 'trackIdx' or 'fxIdx' parameter\"}");
+        return;
+    }
+    int  trackIdx = atoi(trackIdxStr.c_str());
+    int  fxIdx    = atoi(fxIdxStr.c_str());
+    bool reversed = (reversedStr == "true" || reversedStr == "1");
+    if (reversedStr.empty())
+        reversed = (payloadStr.find("\"reversed\":true") != std::string::npos);
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    char fileBuf[2048] = {0};
+    if (!m_api.TrackFX_GetNamedConfigParm(track, fxIdx, "FILE0", fileBuf, sizeof(fileBuf))
+        || !fileBuf[0]) {
+        SendResponse(clientId, id, false, "{\"error\":\"Sampler has no sample loaded\"}");
+        return;
+    }
+
+    const std::string revTag = "-spidercrab-rev";
+    std::string current(fileBuf);
+
+    // Derive the forward (original) path from whichever file is loaded.
+    // Reversed copies are named "<stem>__<origext>-spidercrab-rev.wav".
+    std::string forward = current;
+    size_t tagPos = forward.find(revTag);
+    if (tagPos != std::string::npos) {
+        forward = forward.substr(0, tagPos);
+        size_t extSep = forward.rfind("__");
+        if (extSep != std::string::npos) {
+            std::string origExt = forward.substr(extSep + 2);
+            forward = forward.substr(0, extSep) + "." + origExt;
+        }
+    }
+
+    std::string target = forward;
+    if (reversed) {
+        std::string stem = forward, origExt = "wav";
+        size_t dot = forward.rfind('.');
+        if (dot != std::string::npos) {
+            stem    = forward.substr(0, dot);
+            origExt = forward.substr(dot + 1);
+        }
+        target = stem + "__" + origExt + revTag + ".wav";
+
+        if (!fs::exists(target)) {
+            // Render the reversed copy
+            PCM_source* src = m_api.PCM_Source_CreateFromFile(forward.c_str());
+            if (!src) {
+                SendResponse(clientId, id, false, "{\"error\":\"Could not open source file\"}");
+                return;
+            }
+            int    srate = m_api.GetMediaSourceSampleRate(src);
+            int    nch   = m_api.GetMediaSourceNumChannels(src);
+            bool   isQN  = false;
+            double len   = m_api.GetMediaSourceLength(src, &isQN);
+            // Cap render length at 10 minutes to bound memory
+            if (srate <= 0 || nch <= 0 || len <= 0 || len > 600.0) {
+                delete src;
+                SendResponse(clientId, id, false,
+                    "{\"error\":\"Unsupported source (too long or unreadable)\"}");
+                return;
+            }
+
+            int totalFrames = (int)(len * srate + 0.5);
+            std::vector<float>     out((size_t)totalFrames * nch, 0.0f);
+            const int hop = 65536;
+            std::vector<ReaSample> buf((size_t)nch * hop, 0.0);
+
+            PCM_source_transfer_t block = {};
+            block.samplerate = (double)srate;
+            block.nch        = nch;
+            block.samples    = buf.data();
+            block.time_s     = 0.0;
+
+            int readFrames = 0;
+            while (readFrames < totalFrames) {
+                block.length      = (totalFrames - readFrames) < hop ? (totalFrames - readFrames) : hop;
+                block.samples_out = 0;
+                src->GetSamples(&block);
+                int got = block.samples_out;
+                if (got <= 0) break;
+                for (int i = 0; i < got; i++) {
+                    // Write each frame into its mirrored position
+                    int dstFrame = totalFrames - 1 - (readFrames + i);
+                    for (int c = 0; c < nch; c++)
+                        out[(size_t)dstFrame * nch + c] = (float)buf[(size_t)i * nch + c];
+                }
+                readFrames   += got;
+                block.time_s += (double)got / (double)srate;
+            }
+            delete src;
+
+            if (readFrames <= 0 || !writeFloatWav(target, out, nch, srate)) {
+                SendResponse(clientId, id, false, "{\"error\":\"Failed to render reversed file\"}");
+                return;
+            }
+        }
+    }
+
+    m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "FILE0", target.c_str());
+    m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "DONE", "");
+
+    SendResponse(clientId, id, true,
+        "{\"reversed\":" + std::string(reversed ? "true" : "false")
+        + ",\"file\":" + json_string(target) + "}");
 }

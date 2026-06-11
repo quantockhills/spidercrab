@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { MatrixData, ClipSlot, Track } from '../hooks/useReaper';
+import type { MatrixData, ClipSlot, Track, FxParam } from '../hooks/useReaper';
 
 interface SessionViewProps {
   matrix: MatrixData | null;
@@ -20,6 +20,14 @@ interface SessionViewProps {
   onRecordSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
   /** Delete the clip in a slot (long-press → confirm) */
   onClearSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
+  /** Bounce a slot's source sample to a new RS5K sampler track */
+  onAddToSampler?: (column: number, row: number) => Promise<{trackIdx: number; fxIdx: number; name: string} | null>;
+  /** Toggle reverse on an RS5K sampler */
+  onSamplerSetReverse?: (trackIdx: number, fxIdx: number, reversed: boolean) => Promise<boolean>;
+  /** Fetch FX params (for the sampler panel's loop toggle) */
+  getFxParams?: (trackIdx: number, fxIdx: number, offset?: number, limit?: number) => Promise<{params: FxParam[]; total: number; offset: number; limit: number}>;
+  /** Set an FX param (for the sampler panel's loop toggle) */
+  setFxParamValue?: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<unknown>;
   /** Toggle reverse on a clip slot (Issue #75) */
   onSetSlotReverse?: (column: number, row: number, reversed: boolean) => Promise<ClipSlot | null>;
   /** Track arm toggle (Issue #110) */
@@ -59,6 +67,10 @@ export function SessionView({
   onCheckPlaytimeAvailable,
   onRecordSlot,
   onClearSlot,
+  onAddToSampler,
+  onSamplerSetReverse,
+  getFxParams,
+  setFxParamValue,
   onSetSlotReverse,
   onToggleArm,
   onToggleMute,
@@ -141,6 +153,10 @@ export function SessionView({
   // Long-press (500ms) on a non-empty slot → delete confirm; quick tap on the
   // confirming slot → delete. Same gesture as deleting FX cards.
   const [deleteConfirm, setDeleteConfirm] = useState<{col: number; row: number} | null>(null);
+  // Last sampler track created from a clip (shows the Sampler button)
+  const [sampler, setSampler] = useState<{trackIdx: number; fxIdx: number; name: string} | null>(null);
+  const [samplerPanelOpen, setSamplerPanelOpen] = useState(false);
+  const [samplerBusy, setSamplerBusy] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -183,12 +199,10 @@ export function SessionView({
     clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = null;
     if (deleteConfirm && deleteConfirm.col === col && deleteConfirm.row === row) {
-      // Tap while confirming = confirm delete
-      setDeleteConfirm(null);
-      onClearSlot?.(col, row).then(() => getMatrix());
-    } else {
-      handleSlotTap(col, row);
+      // Action sheet open for this slot — its buttons handle the tap
+      return;
     }
+    handleSlotTap(col, row);
   }, [deleteConfirm, onClearSlot, getMatrix, handleSlotTap]);
 
   const cancelSlotLongPress = useCallback(() => {
@@ -197,6 +211,20 @@ export function SessionView({
       longPressTimerRef.current = null;
     }
   }, []);
+
+  const handleAddToSampler = useCallback(async (col: number, row: number) => {
+    if (!onAddToSampler) return;
+    setSamplerBusy(true);
+    try {
+      const info = await onAddToSampler(col, row);
+      if (info) {
+        setSampler(info);
+        setSamplerPanelOpen(true);
+      }
+    } finally {
+      setSamplerBusy(false);
+    }
+  }, [onAddToSampler]);
 
   const handleSceneLaunch = useCallback(async (row: number) => {
     setActiveScene(row);
@@ -412,6 +440,22 @@ export function SessionView({
           ●
         </button>
         <div className="flex-1" />
+        {sampler && (
+          <button
+            onClick={() => setSamplerPanelOpen(true)}
+            disabled={samplerBusy}
+            className="flex items-center gap-1.5 px-3 h-8 rounded text-xs font-semibold
+              bg-[var(--accent-green)]/20 text-[var(--accent-green)] hover:brightness-110
+              active:brightness-90 transition-all disabled:opacity-50 max-w-[160px]"
+            title="Open sampler controls"
+            aria-label="Sampler controls"
+          >
+            🎛 <span className="truncate">{sampler.name}</span>
+          </button>
+        )}
+        {samplerBusy && !sampler && (
+          <span className="text-[10px] text-[var(--text-secondary)] animate-pulse px-2">Creating sampler…</span>
+        )}
         {onLaunchPlaytime && (
           <button
             onClick={handleLaunchPlaytime}
@@ -571,9 +615,29 @@ export function SessionView({
                     aria-label={`Slot ${col + 1},${row + 1}`}
                   >
                     {isConfirmingDelete ? (
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-[10px] font-semibold text-[var(--accent-red)]">Delete?</span>
-                        <span className="text-sm text-[var(--accent-red)]">✕</span>
+                      <div
+                        className="flex items-center justify-center gap-1"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerUp={(e) => e.stopPropagation()}
+                      >
+                        {slot?.hasSource && onAddToSampler && (
+                          <button
+                            onClick={() => { setDeleteConfirm(null); handleAddToSampler(col, row); }}
+                            className="w-8 h-8 flex items-center justify-center rounded bg-[var(--accent-green)]/25 text-sm active:brightness-90"
+                            aria-label={`Send slot ${col + 1},${row + 1} to sampler`}
+                            title="Bounce to RS5K sampler"
+                          >
+                            🎹
+                          </button>
+                        )}
+                        <button
+                          onClick={() => { setDeleteConfirm(null); onClearSlot?.(col, row).then(() => getMatrix()); }}
+                          className="w-8 h-8 flex items-center justify-center rounded bg-[var(--accent-red)]/25 text-sm text-[var(--accent-red)] active:brightness-90"
+                          aria-label={`Delete slot ${col + 1},${row + 1}`}
+                          title="Delete clip"
+                        >
+                          ✕
+                        </button>
                       </div>
                     ) : (
                       <>
@@ -622,6 +686,115 @@ export function SessionView({
           ))}
         </div>
       </div>
+
+      {/* Sampler controls panel */}
+      {samplerPanelOpen && sampler && (
+        <SamplerPanel
+          sampler={sampler}
+          getFxParams={getFxParams}
+          setFxParamValue={setFxParamValue}
+          onSetReverse={onSamplerSetReverse}
+          onClose={() => setSamplerPanelOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// ── Sampler Panel — minimal RS5K controls (loop / reverse) ──────
+
+interface SamplerPanelProps {
+  sampler: {trackIdx: number; fxIdx: number; name: string};
+  getFxParams?: (trackIdx: number, fxIdx: number, offset?: number, limit?: number) => Promise<{params: FxParam[]; total: number; offset: number; limit: number}>;
+  setFxParamValue?: (trackIdx: number, fxIdx: number, paramIdx: number, value: number) => Promise<unknown>;
+  onSetReverse?: (trackIdx: number, fxIdx: number, reversed: boolean) => Promise<boolean>;
+  onClose: () => void;
+}
+
+function SamplerPanel({ sampler, getFxParams, setFxParamValue, onSetReverse, onClose }: SamplerPanelProps) {
+  const [params, setParams] = useState<FxParam[]>([]);
+  const [reversed, setReversed] = useState(false);
+  const [reverseBusy, setReverseBusy] = useState(false);
+
+  useEffect(() => {
+    if (!getFxParams) return;
+    getFxParams(sampler.trackIdx, sampler.fxIdx, 0, 32)
+      .then((r) => setParams(r.params))
+      .catch(() => setParams([]));
+  }, [getFxParams, sampler.trackIdx, sampler.fxIdx]);
+
+  // RS5K toggles discovered by name so we don't depend on param indices
+  const findParam = (needle: string) =>
+    params.find((p) => p.name.toLowerCase().includes(needle)) ?? null;
+  const loopParam = findParam('loop');
+  const obeyParam = findParam('obey');
+
+  const toggleParam = useCallback(async (param: FxParam) => {
+    if (!setFxParamValue) return;
+    const isOn = param.value > (param.min + param.max) / 2;
+    const next = isOn ? param.min : param.max;
+    await setFxParamValue(sampler.trackIdx, sampler.fxIdx, param.index, next);
+    setParams((prev) => prev.map((p) => (p.index === param.index ? { ...p, value: next } : p)));
+  }, [setFxParamValue, sampler.trackIdx, sampler.fxIdx]);
+
+  const toggleReverse = useCallback(async () => {
+    if (!onSetReverse || reverseBusy) return;
+    setReverseBusy(true);
+    try {
+      const ok = await onSetReverse(sampler.trackIdx, sampler.fxIdx, !reversed);
+      if (ok) setReversed(!reversed);
+    } finally {
+      setReverseBusy(false);
+    }
+  }, [onSetReverse, reverseBusy, reversed, sampler.trackIdx, sampler.fxIdx]);
+
+  const toggleButton = (label: string, on: boolean, onClick: () => void, busy = false) => (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className={`px-4 py-2.5 text-sm font-medium transition-all active:brightness-90 disabled:opacity-50 ${
+        on
+          ? 'bg-[var(--accent-green)]/25 text-[var(--accent-green)] ring-1 ring-[var(--accent-green)]/40'
+          : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+      }`}
+    >
+      {busy ? '…' : label}
+    </button>
+  );
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-30 bg-black/40" onPointerDown={onClose} />
+      {/* Bottom sheet */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--bg-secondary)] border-t border-[var(--border)] p-4 space-y-3 safe-area-bottom">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold truncate">🎛 {sampler.name}</h3>
+          <button
+            onClick={onClose}
+            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1"
+            aria-label="Close sampler panel"
+          >
+            ✕
+          </button>
+        </div>
+        <p className="text-[11px] text-[var(--text-secondary)]">
+          MIDI-armed — play any key to pitch the sample (original at C4).
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {loopParam && toggleButton(
+            'Loop',
+            loopParam.value > (loopParam.min + loopParam.max) / 2,
+            () => toggleParam(loopParam),
+          )}
+          {obeyParam && toggleButton(
+            'Obey note-offs',
+            obeyParam.value > (obeyParam.min + obeyParam.max) / 2,
+            () => toggleParam(obeyParam),
+          )}
+          {onSetReverse && toggleButton('↔ Reverse', reversed, toggleReverse, reverseBusy)}
+        </div>
+      </div>
+    </>
   );
 }

@@ -64,6 +64,8 @@ struct ReaperAPI {
     bool (*TrackFX_GetPreset)(MediaTrack* track, int fx, char* presetnameOut, int presetnameOut_sz) = nullptr;
     bool (*TrackFX_SetPreset)(MediaTrack* track, int fx, const char* presetname)      = nullptr;
     bool (*TrackFX_SetPresetByIndex)(MediaTrack* track, int fx, int idx)              = nullptr;
+    bool (*TrackFX_SetNamedConfigParm)(MediaTrack* track, int fx, const char* parmname, const char* value) = nullptr;
+    bool (*TrackFX_GetNamedConfigParm)(MediaTrack* track, int fx, const char* parmname, char* bufOut, int bufOut_sz) = nullptr;
 
     // Transport
     void (*Main_OnCommand)(int command, int flag) = nullptr;
@@ -120,6 +122,10 @@ struct ReaperAPI {
     void (*InsertTrackAtIndex)(int idx, bool wantDefaults) = nullptr;
     void (*DeleteTrack)(MediaTrack* tr) = nullptr;
     void (*SetOnlyTrackSelected)(MediaTrack* track) = nullptr;
+
+    // Project ext state (persist slot source paths across sessions)
+    int (*GetProjExtState)(ReaProject* proj, const char* extname, const char* key, char* valOutNeedBig, int valOutNeedBig_sz) = nullptr;
+    int (*SetProjExtState)(ReaProject* proj, const char* extname, const char* key, const char* value) = nullptr;
 };
 
 class CommandHandler {
@@ -304,6 +310,8 @@ private:
     void HandleSampleReaperLibraries(int clientId, const std::string& id, const std::string& params);
     void HandleSampleReaperLibraryFiles(int clientId, const std::string& id, const std::string& params);
     void HandleSamplePurgeStaleCache(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerCreate(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerSetReverse(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);
@@ -312,6 +320,7 @@ private:
     void HandleFxChainGetInfo(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainSearchRecursive(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainCycle(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainReorder(int clientId, const std::string& id, const std::string& params);
 
     // Internal: load a chain file onto a track, replacing only chain-group FX
     // Returns true on success, false on failure.

@@ -7,6 +7,14 @@ void CommandHandler::HandleMatrixGetAll(
 {
     (void)params;
 
+    // Restore persisted slot source paths (survives REAPER restarts and
+    // follows the project). Saved on every sendToSlot/clearSlot.
+    if (m_api.GetProjExtState) {
+        std::vector<char> srcBuf(65536, 0);
+        if (m_api.GetProjExtState(nullptr, "SPIDERCRAB", "slotSources", srcBuf.data(), (int)srcBuf.size()) > 0)
+            m_playtimeState.loadSources(srcBuf.data());
+    }
+
     int      columns = m_playtimeState.columns();
     int      rows    = m_playtimeState.rows();
 
@@ -306,6 +314,9 @@ void CommandHandler::HandleMatrixClearSlot(
 
     // Optimistically mark the slot empty (also clears name/clipType/reversed)
     m_playtimeState.setSlotState(col, row, "empty");
+    if (m_api.SetProjExtState)
+        m_api.SetProjExtState(nullptr, "SPIDERCRAB", "slotSources",
+            m_playtimeState.serializeSources().c_str());
 
     // Broadcast event to all clients
     SlotState updated = m_playtimeState.getSlot(col, row);
