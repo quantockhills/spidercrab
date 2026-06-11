@@ -14,6 +14,7 @@ import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
 import type { DirResult, ReaperLibrary } from './hooks/useSampleBrowser';
 
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
+type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'media',   label: 'Media',   icon: '📂' },
@@ -95,6 +96,15 @@ function AppInner() {
   const { preference, isDark, setTheme } = useTheme();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
+
+  // Tab bar placement (Settings): top / bottom / left / right
+  const [navPosition, setNavPosition] = useState<NavPosition>(() => {
+    const saved = localStorage.getItem('navPosition');
+    return (saved === 'top' || saved === 'bottom' || saved === 'left' || saved === 'right') ? saved : 'bottom';
+  });
+  useEffect(() => {
+    localStorage.setItem('navPosition', navPosition);
+  }, [navPosition]);
   const [sessionMode, setSessionMode] = useState<'session' | 'sequencer'>('session');
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
 
@@ -337,10 +347,46 @@ function AppInner() {
     setFxChainView(false);
   }, []);
 
+  const navVertical = navPosition === 'left' || navPosition === 'right';
+  const navBorder = { bottom: 'border-t', top: 'border-b', left: 'border-r', right: 'border-l' }[navPosition];
+
+  const navBar = (
+    <nav className={`z-10 flex-shrink-0 bg-[var(--bg-secondary)] ${navBorder} border-[var(--border)] relative ${navPosition === 'bottom' ? 'safe-area-bottom' : ''}`}>
+      {/* Connection indicator */}
+      <div
+        className={`absolute w-2 h-2 transition-colors ${navVertical ? 'top-2 left-1/2 -translate-x-1/2' : 'top-2 right-2'} ${
+          connected ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'
+        }`}
+        title={connected ? 'Connected' : 'Disconnected'}
+      />
+      <div className={navVertical ? 'flex flex-col w-16 pt-6 gap-1' : 'flex'}>
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`
+              flex flex-col items-center justify-center gap-0.5
+              text-[10px] transition-colors
+              ${navVertical ? 'w-full py-3' : 'flex-1 py-2 min-h-[52px]'}
+              ${activeTab === tab.id
+                ? 'text-[var(--accent-orange)]'
+                : 'text-[var(--text-secondary)]'
+              }
+            `}
+          >
+            <span className="text-lg leading-none">{tab.icon}</span>
+            <span className="font-medium">{tab.label}</span>
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+
   return (
-    <div className="h-dvh bg-[var(--bg-primary)] flex flex-col text-[var(--text-primary)] overflow-hidden">
+    <div className={`h-dvh bg-[var(--bg-primary)] flex ${navVertical ? 'flex-row' : 'flex-col'} text-[var(--text-primary)] overflow-hidden`}>
+      {(navPosition === 'top' || navPosition === 'left') && navBar}
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-hidden min-h-0">
+      <main className="flex-1 overflow-hidden min-h-0 min-w-0">
         <ErrorBoundary>
         {activeTab === 'media' && (
           <div className="flex flex-col h-full min-h-0">
@@ -610,6 +656,26 @@ function AppInner() {
               </p>
             </div>
 
+            {/* Tab bar position */}
+            <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Tab Bar Position</h3>
+              <div className="flex gap-2">
+                {(['top', 'bottom', 'left', 'right'] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setNavPosition(p)}
+                    className={`flex-1 py-2.5 text-sm transition-colors active:brightness-95 ${
+                      navPosition === p
+                        ? 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+                        : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                    }`}
+                  >
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* FX Chain path setting */}
             <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider">FX Chains</h3>
@@ -765,38 +831,10 @@ function AppInner() {
         </ErrorBoundary>
       </main>
 
-      {/* ── Tab Bar ── */}
-      <nav className="sticky bottom-0 z-10 bg-[var(--bg-secondary)] border-t border-[var(--border)] safe-area-bottom relative">
-        {/* Connection indicator (header bar was removed) */}
-        <div
-          className={`absolute top-2 right-2 w-2 h-2 transition-colors ${
-            connected ? 'bg-[var(--accent-green)]' : 'bg-[var(--accent-red)]'
-          }`}
-          title={connected ? 'Connected' : 'Disconnected'}
-        />
-        <div className="flex">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`
-                flex-1 flex flex-col items-center justify-center py-2 gap-0.5
-                text-[10px] transition-colors min-h-[52px]
-                ${activeTab === tab.id
-                  ? 'text-[var(--accent-orange)]'
-                  : 'text-[var(--text-secondary)]'
-                }
-              `}
-            >
-              <span className="text-lg leading-none">{tab.icon}</span>
-              <span className="font-medium">{tab.label}</span>
-            </button>
-          ))}
-        </div>
-      </nav>
+      {(navPosition === 'bottom' || navPosition === 'right') && navBar}
 
       {/* Bottom safe area for iPhone notch/home indicator */}
-      <div className="h-[env(safe-area-inset-bottom)]" />
+      {navPosition === 'bottom' && <div className="h-[env(safe-area-inset-bottom)]" />}
     </div>
   );
 }
