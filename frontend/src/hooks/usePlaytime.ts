@@ -140,6 +140,20 @@ export function usePlaytime() {
     }
   }, [send, updateMatrixSlot]);
 
+  // Delete the clip in a slot (long-press → confirm in SessionView)
+  const clearSlot = useCallback(async (column: number, row: number): Promise<ClipSlot | null> => {
+    try {
+      const resp = await send('matrix/clearSlot', { column, row });
+      const slot = (resp.payload as unknown as ClipSlot) ?? null;
+      if (slot) {
+        updateMatrixSlot(column, row, { state: slot.state, name: slot.name, clipType: slot.clipType, reversed: slot.reversed });
+      }
+      return slot;
+    } catch {
+      return null;
+    }
+  }, [send, updateMatrixSlot]);
+
   // Issue #43: Real-time state polling
   const pollState = useCallback(async (): Promise<PlaytimeState> => {
     try {
@@ -163,6 +177,7 @@ export function usePlaytime() {
     setSlotState,
     updateMatrixSlot,
     recordSlot,
+    clearSlot,
     pollState,
     setSlotReverse,
     launchPlaytime,

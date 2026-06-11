@@ -89,6 +89,31 @@ for col = 0, COLS - 1 do
     end
 end
 
+-- Slot clear mappings: /playtime/slot/COL/ROW/clear (delete clip)
+for col = 0, COLS - 1 do
+    for row = 0, ROWS - 1 do
+        table.insert(mappings, {
+            name = string.format("Clear %d/%d", col + 1, row + 1),
+            source = {
+                kind = "Osc",
+                address = string.format("/playtime/slot/%d/%d/clear", col, row),
+                argument = { index = 0, kind = "Float" },
+                feedback_behavior = "Normal",
+            },
+            glue = { absolute_mode = "Normal" },
+            target = {
+                kind = "PlaytimeSlotManagementAction",
+                slot = {
+                    address = "ByIndex",
+                    column_index = col,
+                    row_index = row,
+                },
+                action = "ClearSlot",
+            },
+        })
+    end
+end
+
 -- Scene trigger mappings: /playtime/scene/ROW/trigger
 for row = 0, ROWS - 1 do
     table.insert(mappings, {

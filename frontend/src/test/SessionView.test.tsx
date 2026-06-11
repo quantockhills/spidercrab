@@ -100,7 +100,8 @@ describe('SessionView', () => {
 
     await waitFor(() => {
       const slot = screen.getByLabelText('Slot 1,1');
-      fireEvent.click(slot);
+      fireEvent.pointerDown(slot);
+      fireEvent.pointerUp(slot);
       expect(onTriggerSlot).toHaveBeenCalledWith(0, 0);
     });
   });
@@ -135,7 +136,8 @@ describe('SessionView', () => {
     });
 
     const slot = screen.getByLabelText('Slot 1,1');
-    fireEvent.click(slot);
+    fireEvent.pointerDown(slot);
+    fireEvent.pointerUp(slot);
 
     // Verify triggerSlot was called with correct coordinates
     await waitFor(() => {

@@ -18,6 +18,8 @@ interface SessionViewProps {
   onCheckPlaytimeAvailable?: () => Promise<{available: boolean}>;
   /** Record into a clip slot (Issue #43) */
   onRecordSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
+  /** Delete the clip in a slot (long-press → confirm) */
+  onClearSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
   /** Toggle reverse on a clip slot (Issue #75) */
   onSetSlotReverse?: (column: number, row: number, reversed: boolean) => Promise<ClipSlot | null>;
   /** Track arm toggle (Issue #110) */
@@ -56,6 +58,7 @@ export function SessionView({
   onLaunchPlaytime,
   onCheckPlaytimeAvailable,
   onRecordSlot,
+  onClearSlot,
   onSetSlotReverse,
   onToggleArm,
   onToggleMute,
@@ -135,6 +138,17 @@ export function SessionView({
     }
   }, [onRecord]);
 
+  // Long-press (500ms) on a non-empty slot → delete confirm; quick tap on the
+  // confirming slot → delete. Same gesture as deleting FX cards.
+  const [deleteConfirm, setDeleteConfirm] = useState<{col: number; row: number} | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    };
+  }, []);
+
   const handleSlotTap = useCallback(async (col: number, row: number) => {
     // Issue #43: Audio recording workflow
     // When transport recording is active and slot is empty/stopped, start recording.
@@ -153,6 +167,36 @@ export function SessionView({
     // the matrix prop never updates and the grid stays unchanged.
     getMatrix();
   }, [triggerSlot, getMatrix, recording, matrix, onRecordSlot]);
+
+  const handleSlotPointerDown = useCallback((col: number, row: number, state: ClipSlot['state']) => {
+    longPressTimerRef.current = setTimeout(() => {
+      // Long-press: offer delete only for slots that hold a clip
+      if (state !== 'empty' && onClearSlot) {
+        setDeleteConfirm({ col, row });
+      }
+      longPressTimerRef.current = null;
+    }, 500);
+  }, [onClearSlot]);
+
+  const handleSlotPointerUp = useCallback((col: number, row: number) => {
+    if (!longPressTimerRef.current) return; // long-press already fired
+    clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+    if (deleteConfirm && deleteConfirm.col === col && deleteConfirm.row === row) {
+      // Tap while confirming = confirm delete
+      setDeleteConfirm(null);
+      onClearSlot?.(col, row).then(() => getMatrix());
+    } else {
+      handleSlotTap(col, row);
+    }
+  }, [deleteConfirm, onClearSlot, getMatrix, handleSlotTap]);
+
+  const cancelSlotLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
 
   const handleSceneLaunch = useCallback(async (row: number) => {
     setActiveScene(row);
@@ -489,6 +533,13 @@ export function SessionView({
 
       {/* Grid area */}
       <div className="flex-1 overflow-y-auto p-3">
+        {/* Tap-outside overlay cancels a pending delete confirm */}
+        {deleteConfirm && (
+          <div
+            className="fixed inset-0 z-10"
+            onPointerDown={() => setDeleteConfirm(null)}
+          />
+        )}
         <div className="flex flex-col gap-px">
           {Array.from({ length: rows }, (_, row) => (
             <div key={row} className="flex gap-px">
@@ -497,22 +548,35 @@ export function SessionView({
                 const state = slot?.state ?? 'empty';
                 const name = slot?.name ?? '';
                 const clipType = slot?.clipType ?? 'none';
+                const isConfirmingDelete = deleteConfirm?.col === col && deleteConfirm?.row === row;
                 return (
                   <button
                     key={col}
-                    onClick={() => handleSlotTap(col, row)}
+                    onPointerDown={() => handleSlotPointerDown(col, row, state)}
+                    onPointerUp={() => handleSlotPointerUp(col, row)}
+                    onPointerLeave={cancelSlotLongPress}
+                    onPointerCancel={cancelSlotLongPress}
+                    onContextMenu={(e) => e.preventDefault()}
                     className={`
                       relative flex-1 flex flex-col items-center justify-center
                       aspect-square min-h-[44px]
-                      transition-all duration-75 cursor-pointer overflow-hidden
-                      ${state === 'empty' ? 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]' : ''}
-                      ${state === 'stopped' ? 'bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)]/30 text-[var(--text-primary)]' : ''}
-                      ${state === 'playing' ? 'bg-[var(--accent-green)] text-black hover:brightness-110' : ''}
-                      ${state === 'recording' ? 'bg-[var(--accent-red)] text-black animate-pulse hover:brightness-110' : ''}
+                      transition-all duration-75 cursor-pointer overflow-hidden select-none
+                      ${isConfirmingDelete ? 'z-20 ring-2 ring-[var(--accent-red)] bg-[var(--accent-red)]/15' : ''}
+                      ${!isConfirmingDelete && state === 'empty' ? 'bg-[var(--bg-tertiary)] hover:bg-[var(--bg-secondary)]' : ''}
+                      ${!isConfirmingDelete && state === 'stopped' ? 'bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)]/30 text-[var(--text-primary)]' : ''}
+                      ${!isConfirmingDelete && state === 'playing' ? 'bg-[var(--accent-green)] text-black hover:brightness-110' : ''}
+                      ${!isConfirmingDelete && state === 'recording' ? 'bg-[var(--accent-red)] text-black animate-pulse hover:brightness-110' : ''}
                       active:brightness-90
                     `}
                     aria-label={`Slot ${col + 1},${row + 1}`}
                   >
+                    {isConfirmingDelete ? (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-[10px] font-semibold text-[var(--accent-red)]">Delete?</span>
+                        <span className="text-sm text-[var(--accent-red)]">✕</span>
+                      </div>
+                    ) : (
+                      <>
                     {clipType === 'midi' && <span className="text-[10px] opacity-50">♪</span>}
                     {clipType === 'audio' && <span className="text-[10px] opacity-50">🔊</span>}
                     {name && (
@@ -522,6 +586,8 @@ export function SessionView({
                     )}
                     {state !== 'empty' && onSetSlotReverse && (
                       <button
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onPointerUp={(e) => e.stopPropagation()}
                         onClick={(e) => { e.stopPropagation(); handleReverseToggle(col, row, slot?.reversed ?? false); }}
                         className={`absolute top-0.5 right-0.5 w-4 h-4 flex items-center justify-center rounded text-[9px] font-bold leading-none transition-all active:scale-90 ${slot?.reversed ? 'bg-[var(--accent-orange)] text-black' : 'bg-black/20 text-[var(--text-secondary)] hover:bg-black/40'}`}
                         aria-label={`Reverse slot ${col + 1},${row + 1}`}
@@ -532,6 +598,8 @@ export function SessionView({
                     {state === 'playing' && <span className="absolute bottom-0.5 right-0.5 text-[8px] opacity-70">▶</span>}
                     {state === 'recording' && <span className="absolute bottom-0.5 right-0.5 text-[8px] text-[var(--accent-red)] opacity-80">●</span>}
                     {slot?.reversed && state !== 'empty' && <span className="absolute top-0.5 left-0.5 text-[7px] font-bold text-[var(--accent-orange)] opacity-90">R</span>}
+                      </>
+                    )}
                   </button>
                 );
               })}
