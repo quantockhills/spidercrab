@@ -769,7 +769,7 @@ describe('App — Settings tab', () => {
       ],
       total: 2,
       offset: 0,
-      limit: 16,
+      limit: 50,
     });
 
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
@@ -839,10 +839,14 @@ describe('App — Settings tab', () => {
       expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
     });
 
-    // fxChainSearchCached should have been called via searchChains callback
+    // Type a query to trigger searchChains callback
+    const searchInput = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(searchInput, { target: { value: 'Vocal' } });
+
+    // fxChainSearchCached should have been called via searchChains callback (after debounce)
     await waitFor(() => {
       expect(mockSearchCached).toHaveBeenCalledOnce();
-    });
+    }, { timeout: 2000 });
 
     // Chain results should be visible
     await waitFor(() => {

@@ -618,14 +618,14 @@ describe('FxChainBrowser', () => {
 
   it('shows Next button when cached search has more results than page size', async () => {
     const mockSearchCached = vi.fn().mockResolvedValue({
-      results: Array.from({ length: 16 }, (_, i) => ({
+      results: Array.from({ length: 100 }, (_, i) => ({
         filePath: `/deep/chain_${i}.RfxChain`,
         name: `chain_${i}.RfxChain`,
         size: 256,
       })),
-      total: 42,
+      total: 200,
       offset: 0,
-      limit: 16,
+      limit: 100,
     });
 
     const props = createDefaultProps({
@@ -649,13 +649,13 @@ describe('FxChainBrowser', () => {
   });
 
   it('loads next page of cached results when Next is clicked', async () => {
-    const page1Results = Array.from({ length: 16 }, (_, i) => ({
+    const page1Results = Array.from({ length: 100 }, (_, i) => ({
       filePath: `/deep/page1_${i}.RfxChain`,
       name: `page1_${i}.RfxChain`,
       size: 100,
     }));
 
-    const page2Results = Array.from({ length: 16 }, (_, i) => ({
+    const page2Results = Array.from({ length: 50 }, (_, i) => ({
       filePath: `/deep/page2_${i}.RfxChain`,
       name: `page2_${i}.RfxChain`,
       size: 200,
@@ -664,15 +664,15 @@ describe('FxChainBrowser', () => {
     const mockSearchCached = vi.fn()
       .mockResolvedValueOnce({
         results: page1Results,
-        total: 32,
+        total: 150,
         offset: 0,
-        limit: 16,
+        limit: 100,
       })
       .mockResolvedValueOnce({
         results: page2Results,
-        total: 32,
-        offset: 16,
-        limit: 16,
+        total: 150,
+        offset: 100,
+        limit: 100,
       });
 
     const props = createDefaultProps({
@@ -703,9 +703,9 @@ describe('FxChainBrowser', () => {
       expect(screen.getByText('page2_0.RfxChain')).toBeDefined();
     });
 
-    // Next should no longer show the chevron (wait for second page load — total 32, nextStart 16+16=32 equals total, so hasNextSearchPage is false)
+    // Next should no longer show the chevron (wait for second page load — total 150, nextStart 100+50=150 equals total, so hasNextSearchPage is false)
     await waitFor(() => {
-      expect(screen.getByText('16–32 of 32')).toBeDefined();
+      expect(screen.getByText('101–150 of 150')).toBeDefined();
     });
   });
 
@@ -736,6 +736,6 @@ describe('FxChainBrowser', () => {
       expect(screen.getByText('found.RfxChain')).toBeDefined();
     }, { timeout: 2000 });
 
-    expect(mockSearchCached).toHaveBeenCalledWith('found', expect.any(String), 0, 16);
+    expect(mockSearchCached).toHaveBeenCalledWith('found', expect.any(String), 0, 100);
   });
 });
