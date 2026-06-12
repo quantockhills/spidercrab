@@ -731,7 +731,7 @@ describe('SampleBrowser', () => {
       );
 
       // Should show the root selector heading
-      expect(screen.getByText('Sample Directories')).toBeDefined();
+      expect(screen.getByText('Directories')).toBeDefined();
 
       // Should show each configured root
       expect(screen.getByText('/samples/drums')).toBeDefined();
@@ -1111,7 +1111,7 @@ describe('SampleBrowser', () => {
       );
 
       // Should show root selector initially
-      expect(screen.getByText('Sample Directories')).toBeDefined();
+      expect(screen.getByText('Directories')).toBeDefined();
 
       // Type a search query that should match files across multiple roots
       const searchInput = screen.getByPlaceholderText('Filter files...');
@@ -1259,7 +1259,7 @@ describe('SampleBrowser', () => {
 
       // Should return to root selector view
       await waitFor(() => {
-        expect(screen.getByText('Sample Directories')).toBeDefined();
+        expect(screen.getByText('Directories')).toBeDefined();
       });
     });
 
