@@ -420,13 +420,16 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Click the ReaEQ card — should toggle bypass
-    fireEvent.click(screen.getByText('ReaEQ'));
+    // Tap the ReaEQ card via pointer events — should toggle bypass
+    const card = screen.getByText('ReaEQ').closest('[draggable="true"]');
+    expect(card).not.toBeNull();
+    fireEvent.pointerDown(card!);
+    fireEvent.pointerUp(card!);
 
     await waitFor(() => {
       expect(onToggleBypass).toHaveBeenCalledOnce();
     });
-    expect(onToggleBypass).toHaveBeenCalledWith(0, 0);
+    expect(onToggleBypass).toHaveBeenCalledWith(0, 0, false);
   });
 
   it('opens inline drawer when expand arrow is clicked', async () => {
@@ -947,13 +950,16 @@ describe('TrackOverview — FX bypass and delete', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Tap the FX card
-    fireEvent.click(screen.getByText('ReaEQ'));
+    // Tap the FX card via pointer events
+    const card = screen.getByText('ReaEQ').closest('[draggable="true"]');
+    expect(card).not.toBeNull();
+    fireEvent.pointerDown(card!);
+    fireEvent.pointerUp(card!);
 
     await waitFor(() => {
       expect(onToggleBypass).toHaveBeenCalledOnce();
     });
-    expect(onToggleBypass).toHaveBeenCalledWith(0, 0);
+    expect(onToggleBypass).toHaveBeenCalledWith(0, 0, false);
   });
 
   it('shows dimmed styling for bypassed FX', async () => {
@@ -1039,8 +1045,9 @@ describe('TrackOverview — FX bypass and delete', () => {
     }, { timeout: 1000 });
     fireEvent.pointerUp(card!);
 
-    // Tap the card again to confirm delete
-    fireEvent.click(screen.getByText('Delete?'));
+    // Tap the card again via pointer events to confirm delete
+    fireEvent.pointerDown(card!);
+    fireEvent.pointerUp(card!);
 
     await waitFor(() => {
       expect(onDeleteFx).toHaveBeenCalledOnce();
@@ -1744,9 +1751,19 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
 
     await longPressAddFx();
 
-    // Both should have been called
+    // enumerateFx should be called on mount
     expect(enumerateFx).toHaveBeenCalledOnce();
-    expect(searchChains).toHaveBeenCalledOnce();
+    // searchChains is only called when user types a non-empty query (debounced 300ms)
+    expect(searchChains).not.toHaveBeenCalled();
+
+    // Type a query to trigger chain search
+    const input = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(input, { target: { value: 'vocal' } });
+
+    await waitFor(() => {
+      expect(searchChains).toHaveBeenCalledOnce();
+    });
+    expect(searchChains).toHaveBeenCalledWith('vocal');
   });
 
   it('shows chain results with a 📦 icon in search results', async () => {
@@ -1757,6 +1774,10 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
     });
 
     await longPressAddFx();
+
+    // Type a query to trigger chain search — 'rea' matches both FX (ReaEQ/ReaComp) and all chains (returned by mock)
+    const input = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(input, { target: { value: 'rea' } });
 
     // Chain results should be visible with 📦 indicator
     await waitFor(() => {
@@ -1783,6 +1804,10 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
     });
 
     await longPressAddFx();
+
+    // Type a query to trigger chain search
+    const input = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(input, { target: { value: 'vocal' } });
 
     // Wait for chain results to appear
     await waitFor(() => {
@@ -1811,6 +1836,16 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
 
     await longPressAddFx();
 
+    // Type a query to trigger chain search (results include chains + fx)
+    const input = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(input, { target: { value: 'rea' } });
+
+    await waitFor(() => {
+      // Wait for results to populate
+      const results = screen.queryAllByTestId('inline-fx-result');
+      expect(results.length).toBeGreaterThan(0);
+    });
+
     // Click a regular FX result (ReaComp)
     const fxBtn = screen.getAllByTestId('inline-fx-result').find(
       el => el.textContent?.includes('ReaComp')
@@ -1834,18 +1869,18 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
 
     await longPressAddFx();
 
-    // Type 'vocal' — should filter chains but not affect FX
+    // Type 'vocal' — chains (returned by mock) show both; FX filtered client-side
     const input = screen.getByTestId('inline-fx-search-input');
     fireEvent.change(input, { target: { value: 'vocal' } });
 
     await waitFor(() => {
-      // Chain results should be filtered
+      // Chain results should appear (mock returns all chains irrespective of query)
       const results = screen.queryAllByTestId('inline-fx-result');
-      // Only Vocal Chain should remain
       const chainResults = results.filter(r => r.querySelector('[data-testid="inline-fx-chain-icon"]'));
-      expect(chainResults.length).toBe(1);
+      expect(chainResults.length).toBe(2);
       expect(chainResults[0].textContent).toContain('Vocal Chain');
-      // Regular FX results should be filtered out (none match 'vocal')
+      expect(chainResults[1].textContent).toContain('Master Bus');
+      // Regular FX results should be filtered out (none match 'vocal' on client)
       const fxResults = results.filter(r => !r.querySelector('[data-testid="inline-fx-chain-icon"]'));
       expect(fxResults.length).toBe(0);
     });
@@ -1903,6 +1938,10 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
     });
 
     await longPressAddFx();
+
+    // Type a query to trigger chain search
+    const input = screen.getByTestId('inline-fx-search-input');
+    fireEvent.change(input, { target: { value: 'rea' } });
 
     await waitFor(() => {
       expect(screen.getByText('Vocal Chain')).toBeDefined();
