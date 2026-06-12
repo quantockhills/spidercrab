@@ -78,6 +78,7 @@ function AppInner() {
     triggerScene,
     recordSlot,
     clearSlot,
+    setSlotReverse,
     sequencer,
     getSequencer,
     toggleStep,
@@ -432,6 +433,7 @@ function AppInner() {
                   onCheckPlaytimeAvailable={checkPlaytimeAvailable}
                   onRecordSlot={recordSlot}
                   onClearSlot={clearSlot}
+                  onSetSlotReverse={setSlotReverse}
                   onToggleArm={handleToggleArm}
                   onToggleMute={handleToggleMute}
                   onToggleSolo={handleToggleSolo}
