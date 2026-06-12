@@ -382,13 +382,19 @@ describe('FxChainBrowser', () => {
     });
   });
 
-  it('calls fxChainSearchRecursive on search (debounced)', async () => {
-    const mockSearch = vi.fn().mockResolvedValue({ query: 'comp', results: [] });
+  it('calls fxChainSearchCached on search (debounced)', async () => {
+    const mockCached = vi.fn().mockResolvedValue({
+      results: [],
+      total: 0,
+      offset: 0,
+      limit: 100,
+    });
     const props = createDefaultProps({
       tracks: [],
       selectedTrack: null,
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
-      fxChainSearchRecursive: mockSearch,
+      fxChainSearchCached: mockCached,
+      fxChainSearchRecursive: undefined,
     });
     render(<FxChainBrowser {...props} />);
 
@@ -400,7 +406,7 @@ describe('FxChainBrowser', () => {
     fireEvent.change(searchInput, { target: { value: 'comp' } });
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('comp', expect.any(String));
+      expect(mockCached).toHaveBeenCalledWith('comp', expect.any(String), 0, 100);
     }, { timeout: 2000 });
   });
 
@@ -410,12 +416,17 @@ describe('FxChainBrowser', () => {
       name: 'secret_comp.RfxChain',
       size: 256,
     };
-    const mockSearch = vi.fn().mockResolvedValue({ query: 'comp', results: [remoteResult] });
+    const mockCached = vi.fn().mockResolvedValue({
+      results: [remoteResult],
+      total: 1,
+      offset: 0,
+      limit: 100,
+    });
     const props = createDefaultProps({
       tracks: [],
       selectedTrack: null,
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
-      fxChainSearchRecursive: mockSearch,
+      fxChainSearchCached: mockCached,
     });
     render(<FxChainBrowser {...props} />);
 
@@ -432,12 +443,12 @@ describe('FxChainBrowser', () => {
   });
 
   it('shows searching indicator while remote search is in flight', async () => {
-    const mockSearch = vi.fn().mockImplementation(() => new Promise(() => {}));
+    const mockCached = vi.fn().mockImplementation(() => new Promise(() => {}));
     const props = createDefaultProps({
       tracks: [],
       selectedTrack: null,
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
-      fxChainSearchRecursive: mockSearch,
+      fxChainSearchCached: mockCached,
     });
     render(<FxChainBrowser {...props} />);
 
@@ -454,15 +465,17 @@ describe('FxChainBrowser', () => {
   });
 
   it('resets remote search results when search is cleared', async () => {
-    const mockSearch = vi.fn().mockResolvedValue({
-      query: 'comp',
+    const mockCached = vi.fn().mockResolvedValue({
       results: [{ filePath: '/deep/secret.RfxChain', name: 'secret.RfxChain', size: 256 }],
+      total: 1,
+      offset: 0,
+      limit: 100,
     });
     const props = createDefaultProps({
       tracks: [],
       selectedTrack: null,
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
-      fxChainSearchRecursive: mockSearch,
+      fxChainSearchCached: mockCached,
     });
     render(<FxChainBrowser {...props} />);
 
@@ -631,7 +644,7 @@ describe('FxChainBrowser', () => {
     fireEvent.change(searchInput, { target: { value: 'chain' } });
 
     await waitFor(() => {
-      expect(screen.getByText('Next (26 more)')).toBeDefined();
+      expect(screen.getByText('Next →')).toBeDefined();
     }, { timeout: 2000 });
   });
 
@@ -679,19 +692,21 @@ describe('FxChainBrowser', () => {
 
     // Wait for first page to load
     await waitFor(() => {
-      expect(screen.getByText('Next (16 more)')).toBeDefined();
+      expect(screen.getByText('Next →')).toBeDefined();
     }, { timeout: 2000 });
 
     // Click Next
-    fireEvent.click(screen.getByText('Next (16 more)'));
+    fireEvent.click(screen.getByText('Next →'));
 
     // Should load second page and show merged results
     await waitFor(() => {
       expect(screen.getByText('page2_0.RfxChain')).toBeDefined();
     });
 
-    // Next button should disappear since all 32 results loaded
-    expect(screen.queryByText(/Next/)).toBeNull();
+    // Next should no longer show the chevron (wait for second page load — total 32, nextStart 16+16=32 equals total, so hasNextSearchPage is false)
+    await waitFor(() => {
+      expect(screen.getByText('16–32 of 32')).toBeDefined();
+    });
   });
 
   it('uses cached search when fxChainSearchCached is provided', async () => {
