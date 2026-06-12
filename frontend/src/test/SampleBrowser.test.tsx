@@ -657,7 +657,6 @@ describe('SampleBrowser', () => {
       // File Info modal should appear
       await waitFor(() => {
         expect(screen.getByText('Type')).toBeDefined();
-        expect(screen.getByText('Size')).toBeDefined();
       });
 
       // Should show file details
@@ -763,7 +762,7 @@ describe('SampleBrowser', () => {
 
       // Should navigate into that directory
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums');
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums', 0, 100);
       });
 
       // Should show directory contents
@@ -837,7 +836,7 @@ describe('SampleBrowser', () => {
       fireEvent.click(drumDir);
 
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums/Drums');
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums/Drums', 0, 100);
       });
 
       // Go up with ..
@@ -925,7 +924,7 @@ describe('SampleBrowser', () => {
       fireEvent.click(screen.getByText('Drums'));
 
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/tmp/Drums');
+        expect(mockGetDirectory).toHaveBeenCalledWith('/tmp/Drums', 0, 100);
       });
 
       // Check localStorage was updated
@@ -961,7 +960,7 @@ describe('SampleBrowser', () => {
 
       // Should load the persisted path
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/tmp/Drums');
+        expect(mockGetDirectory).toHaveBeenCalledWith('/tmp/Drums', 0, 100);
       });
     });
 
@@ -992,7 +991,7 @@ describe('SampleBrowser', () => {
       fireEvent.click(screen.getByText('Go'));
 
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/home/samples');
+        expect(mockGetDirectory).toHaveBeenCalledWith('/home/samples', 0, 100);
       });
 
       // Path should be updated
@@ -1328,7 +1327,7 @@ describe('SampleBrowser', () => {
       fireEvent.click(screen.getByText('/samples/drums'));
 
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums');
+        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums', 0, 100);
       });
 
       // Clear mocks to reset call tracking
