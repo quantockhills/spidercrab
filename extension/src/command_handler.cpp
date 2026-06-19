@@ -334,6 +334,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sampler/trim/setEnd"]    = &CommandHandler::HandleSamplerSetTrimEnd;
     m_commandMap["sampler/vel/getInfo"]    = &CommandHandler::HandleSamplerGetVelInfo;
     m_commandMap["sampler/vel/set"]        = &CommandHandler::HandleSamplerSetVel;
+    m_commandMap["sampler/loadFile"]        = &CommandHandler::HandleSamplerLoadFile;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -5310,21 +5311,77 @@ void CommandHandler::HandleSamplerSetVel(
     resp += "}";
     SendResponse(clientId, id, success, resp);
 }
+
+// ============================================================
+// Sampler: load file from Media Browser (Issue #126)
+// ============================================================
+
+void CommandHandler::HandleSamplerLoadFile(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    int trackIdx = atoi(parser.getString("trackIdx").c_str());
+    int fxIdx    = atoi(parser.getString("fxIdx").c_str());
+    std::string filePath = parser.getString("filePath");
+
+    if (!m_api.CountTracks || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track API not loaded\"}");
+        return;
+    }
+
+    int numTracks = m_api.CountTracks(nullptr);
+    if (trackIdx < 0 || trackIdx >= numTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track not found\"}");
+        return;
+    }
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing filePath parameter\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_SetNamedConfigParm) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"FX API not loaded\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
     if (fxIdx < 0 || fxIdx >= fxCount) {
         SendResponse(clientId, id, false,
             "{\"error\":\"Invalid FX index\"}");
         return;
     }
 
-    // Set PLAYOFFE to the given offset value
-    std::string val = std::to_string(offset);
-    bool ok = m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "PLAYOFFE", val.c_str());
+    // Swap FILE0 on the RS5K instance using SetNamedConfigParm
+    bool ok = m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "FILE0", filePath.c_str());
 
     if (ok) {
-        std::string resp = "{" + json_string("offset") + ":" + std::to_string(offset) + "}";
+        // Extract just the filename from the path for the response
+        std::string displayName = filePath;
+        size_t sep = displayName.find_last_of("/\\");
+        if (sep != std::string::npos) {
+            displayName = displayName.substr(sep + 1);
+        }
+
+        std::string resp = "{"
+            + json_string("filePath") + ":" + json_string(filePath) + ","
+            + json_string("fileName") + ":" + json_string(displayName)
+            + "}";
         SendResponse(clientId, id, true, resp);
     } else {
         SendResponse(clientId, id, false,
-            "{\"error\":\"Failed to set end offset\"}");
+            "{\"error\":\"Failed to load file into RS5K\"}");
     }
 }

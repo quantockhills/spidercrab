@@ -313,6 +313,7 @@ private:
     void HandleSamplerSetTrimEnd(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerGetVelInfo(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerSetVel(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerLoadFile(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSampler, type SamplerTrimInfo, type SamplerVelInfo } from '../hooks/useSampler';
+import { useReaperClient } from '../hooks/useReaperClient';
 
 // ── Props ──────────────────────────────────────────────
 
@@ -20,7 +21,15 @@ export default function SamplerPanel({
   fxName,
   onBack,
 }: SamplerPanelProps) {
-  const { getTrimInfo, setTrimStart, setTrimEnd, getVelocityInfo, setVelocity } = useSampler();
+  const { getTrimInfo, setTrimStart, setTrimEnd, getVelocityInfo, setVelocity, loadFile } = useSampler();
+  const { send } = useReaperClient();
+
+  // File browser state
+  const [showFileBrowser, setShowFileBrowser] = useState(false);
+  const [browsePath, setBrowsePath] = useState('');
+  const [browseEntries, setBrowseEntries] = useState<{ name: string; type: string }[]>([]);
+  const [browseLoading, setBrowseLoading] = useState(false);
+  const [loadedFileName, setLoadedFileName] = useState<string | null>(null);
 
   const [trimInfo, setTrimInfo] = useState<SamplerTrimInfo | null>(null);
   const [velInfo, setVelInfo] = useState<SamplerVelInfo | null>(null);
@@ -113,6 +122,46 @@ export default function SamplerPanel({
   // Debounce velocity commit
   const commitVelRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── File browser helpers ──────────────────────────────
+
+  const loadDirectory = useCallback(async (path: string) => {
+    setBrowseLoading(true);
+    try {
+      const resp = await send('sample/getDirectory', { path, limit: 200 });
+      if (resp.success) {
+        const p = resp.payload as Record<string, unknown>;
+        setBrowsePath(p.path as string);
+        setBrowseEntries(p.entries as { name: string; type: string }[]);
+      }
+    } catch {
+      // ignore
+    }
+    setBrowseLoading(false);
+  }, [send]);
+
+  const handleBrowseOpen = useCallback(() => {
+    setShowFileBrowser(true);
+    // Start from a known root — use user home or media root
+    loadDirectory('/');
+  }, [loadDirectory]);
+
+  const handleBrowseEntryClick = useCallback(async (entry: { name: string; type: string }) => {
+    if (entry.type === 'dir') {
+      const newPath = entry.name === '..'
+        ? browsePath.substring(0, browsePath.lastIndexOf('/', browsePath.length - 2) + 1) || '/'
+        : browsePath + (browsePath.endsWith('/') ? '' : '/') + entry.name;
+      await loadDirectory(newPath);
+    } else {
+      // File selected — call sampler/loadFile
+      const fullPath = browsePath + (browsePath.endsWith('/') ? '' : '/') + entry.name;
+      const ok = await loadFile(trackIdx, fxIdx, fullPath);
+      if (ok) {
+        setLoadedFileName(entry.name);
+        setShowFileBrowser(false);
+      }
+    }
+  }, [browsePath, trackIdx, fxIdx, loadFile, loadDirectory]);
+
   // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
@@ -179,7 +228,7 @@ export default function SamplerPanel({
     name.replace(/^(VST3?i?:\s*|CLAPi?:\s*|AUi?:\s*|DX:\s*|JS:\s*)/, '');
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       {/* Header */}
       <div className="flex items-center px-4 py-3 border-b border-[var(--border)]">
         <button
@@ -197,6 +246,13 @@ export default function SamplerPanel({
             Track: {trackName || `Track ${trackIdx + 1}`}
           </p>
         </div>
+        <button
+          onClick={handleBrowseOpen}
+          className="text-xs px-3 py-1.5 bg-[var(--bg-tertiary)] hover:bg-[var(--text-secondary)]/20 transition-colors border border-[var(--border)]"
+          aria-label="Browse"
+        >
+          Browse
+        </button>
       </div>
 
       {/* Trim Controls */}
@@ -390,9 +446,85 @@ export default function SamplerPanel({
                 </p>
               </div>
             )}
+
+            {/* Loaded file name indicator */}
+            {loadedFileName && (
+              <div className="bg-[var(--bg-tertiary)] p-3 space-y-1">
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Loaded file: <span className="text-[var(--text-primary)] font-medium">{loadedFileName}</span>
+                </p>
+              </div>
+            )}
           </>
         )}
       </div>
+
+      {/* ── File Browser Overlay ──────────────────────────────── */}
+      {showFileBrowser && (
+        <div
+          className="absolute inset-0 bg-[var(--bg-primary)] z-50 flex flex-col"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          }}
+        >
+          {/* Browser header */}
+          <div className="flex items-center px-4 py-3 border-b border-[var(--border)]">
+            <button
+              onClick={() => setShowFileBrowser(false)}
+              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors mr-3"
+              aria-label="Cancel"
+            >
+              ← Cancel
+            </button>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold truncate">
+                {browsePath}
+              </h2>
+            </div>
+          </div>
+
+          {/* File listing */}
+          <div className="flex-1 overflow-y-auto">
+            {browseLoading ? (
+              <div className="flex items-center justify-center h-full text-sm text-[var(--text-secondary)]">
+                Loading...
+              </div>
+            ) : browseEntries.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-sm text-[var(--text-secondary)]">
+                No files found
+              </div>
+            ) : (
+              <div className="py-1">
+                {browseEntries.map((entry) => (
+                  <button
+                    key={entry.name}
+                    onClick={() => handleBrowseEntryClick(entry)}
+                    className={`w-full flex items-center px-4 py-2 text-sm transition-colors hover:bg-[var(--bg-tertiary)] ${
+                      entry.type === 'dir'
+                        ? 'text-[var(--text-primary)]'
+                        : 'text-[var(--text-secondary)]'
+                    }`}
+                  >
+                    <span className="mr-3 flex-shrink-0">
+                      {entry.type === 'dir' ? '📁' : '🎵'}
+                    </span>
+                    <span className="truncate">{entry.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom bar */}
+          <div className="border-t border-[var(--border)] px-4 py-2 text-[10px] text-[var(--text-secondary)]">
+            Click a file to load it into the sampler
+          </div>
+        </div>
+      )}
     </div>
   );
 }

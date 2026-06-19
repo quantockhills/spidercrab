@@ -98,11 +98,24 @@ export function useSampler() {
     [send],
   );
 
+  const loadFile = useCallback(
+    async (trackIdx: number, fxIdx: number, filePath: string): Promise<boolean> => {
+      try {
+        const resp = await send('sampler/loadFile', { trackIdx, fxIdx, filePath }, 10000);
+        return resp.success;
+      } catch {
+        return false;
+      }
+    },
+    [send],
+  );
+
   return {
     getTrimInfo,
     setTrimStart,
     setTrimEnd,
     getVelocityInfo,
     setVelocity,
+    loadFile,
   };
 }
