@@ -79,6 +79,8 @@
 #define REAPERAPI_WANT_InsertTrackAtIndex
 #define REAPERAPI_WANT_DeleteTrack
 #define REAPERAPI_WANT_SetOnlyTrackSelected
+#define REAPERAPI_WANT_TrackFX_GetNamedConfigParm
+#define REAPERAPI_WANT_TrackFX_SetNamedConfigParm
 
 // CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
 // Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.
@@ -559,6 +561,8 @@ static bool InitializeCoreServices()
     api.InsertTrackAtIndex          = InsertTrackAtIndex;
     api.DeleteTrack                 = DeleteTrack;
     api.SetOnlyTrackSelected        = SetOnlyTrackSelected;
+    api.TrackFX_GetNamedConfigParm  = TrackFX_GetNamedConfigParm;
+    api.TrackFX_SetNamedConfigParm  = TrackFX_SetNamedConfigParm;
     api.SetMediaItemInfo_Value      = SetMediaItemInfo_Value;
     api.GetMediaItemInfo_Value      = GetMediaItemInfo_Value;
     g_cmdHandler->SetApi(api);

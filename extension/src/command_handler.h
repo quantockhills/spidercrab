@@ -120,6 +120,10 @@ struct ReaperAPI {
     void (*InsertTrackAtIndex)(int idx, bool wantDefaults) = nullptr;
     void (*DeleteTrack)(MediaTrack* tr) = nullptr;
     void (*SetOnlyTrackSelected)(MediaTrack* track) = nullptr;
+
+    // RS5K sampler named config (Issue #124 — sample trim)
+    bool (*TrackFX_GetNamedConfigParm)(MediaTrack* track, int fx, const char* parmname, char* bufOutNeedBig, int bufOutNeedBig_sz) = nullptr;
+    bool (*TrackFX_SetNamedConfigParm)(MediaTrack* track, int fx, const char* parmname, const char* value) = nullptr;
 };
 
 class CommandHandler {
@@ -304,6 +308,9 @@ private:
     void HandleSampleReaperLibraries(int clientId, const std::string& id, const std::string& params);
     void HandleSampleReaperLibraryFiles(int clientId, const std::string& id, const std::string& params);
     void HandleSamplePurgeStaleCache(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerGetTrimInfo(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerSetTrimStart(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerSetTrimEnd(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

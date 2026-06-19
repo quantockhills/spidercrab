@@ -33,3 +33,7 @@ export type { UseReaperOptions } from './useReaper';
 
 // ── Theme ──
 export { useTheme } from './useTheme';
+
+// ── Sampler ──
+export { useSampler } from './useSampler';
+export type { SamplerTrimInfo } from './useSampler';

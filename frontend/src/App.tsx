@@ -8,6 +8,7 @@ import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
+import SamplerPanel from './components/SamplerPanel';
 import ErrorBoundary from './components/ErrorBoundary';
 import SampleIndexProgressBar from './components/SampleIndexProgressBar';
 import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
@@ -201,6 +202,14 @@ function AppInner() {
     localStorage.setItem('fxChainPath', fxChainPath);
   }, [fxChainPath]);
 
+  // Sampler panel navigation state (Issue #124)
+  const [samplerView, setSamplerView] = useState<{
+    trackIdx: number;
+    trackName: string;
+    fxIdx: number;
+    fxName: string;
+  } | null>(null);
+
   // Param control navigation state
   const [paramView, setParamView] = useState<{
     trackIdx: number;
@@ -292,13 +301,23 @@ function AppInner() {
   const handleSelectFx = useCallback(
     (trackIdx: number, fxIdx: number, fxName: string) => {
       const track = tracks.find((t) => t.index === trackIdx);
-      setParamView({
-        trackIdx,
-        trackName: track?.name || `Track ${trackIdx + 1}`,
-        fxIdx,
-        fxName,
-      });
-      // Switch to FX tab so ParamControl appears (Issue #65)
+      const isSampler = fxName.includes('RS5K') || fxName.includes('ReaSamplOmatic');
+      if (isSampler) {
+        setSamplerView({
+          trackIdx,
+          trackName: track?.name || `Track ${trackIdx + 1}`,
+          fxIdx,
+          fxName,
+        });
+      } else {
+        setParamView({
+          trackIdx,
+          trackName: track?.name || `Track ${trackIdx + 1}`,
+          fxIdx,
+          fxName,
+        });
+      }
+      // Switch to FX tab so panel appears (Issue #65)
       setActiveTab('fx');
     },
     [tracks],
@@ -320,6 +339,23 @@ function AppInner() {
     },
     [selectTrack],
   );
+
+  const handleOpenSampler = useCallback(
+    (trackIdx: number, fxIdx: number, fxName: string) => {
+      const track = tracks.find((t) => t.index === trackIdx);
+      setSamplerView({
+        trackIdx,
+        trackName: track?.name || `Track ${trackIdx + 1}`,
+        fxIdx,
+        fxName,
+      });
+    },
+    [tracks],
+  );
+
+  const handleBackFromSampler = useCallback(() => {
+    setSamplerView(null);
+  }, []);
 
   const handleBackFromParam = useCallback(() => {
     setParamView(null);
@@ -457,7 +493,16 @@ function AppInner() {
           </div>
         )}
 
-        {activeTab === 'fx' && (paramView ? (
+        {activeTab === 'fx' && (samplerView ? (
+          <SamplerPanel
+            key={`sampler-${samplerView.trackIdx}-${samplerView.fxIdx}`}
+            trackIdx={samplerView.trackIdx}
+            trackName={samplerView.trackName}
+            fxIdx={samplerView.fxIdx}
+            fxName={samplerView.fxName}
+            onBack={handleBackFromSampler}
+          />
+        ) : paramView ? (
           <ParamControl
             key={`${paramView.trackIdx}-${paramView.fxIdx}`}
             trackIdx={paramView.trackIdx}

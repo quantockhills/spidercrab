@@ -329,6 +329,9 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/reaper/libraries"]      = &CommandHandler::HandleSampleReaperLibraries;
     m_commandMap["sample/reaper/library/files"]  = &CommandHandler::HandleSampleReaperLibraryFiles;
     m_commandMap["sample/purgeStaleCache"]       = &CommandHandler::HandleSamplePurgeStaleCache;
+    m_commandMap["sampler/trim/getInfo"]   = &CommandHandler::HandleSamplerGetTrimInfo;
+    m_commandMap["sampler/trim/setStart"]  = &CommandHandler::HandleSamplerSetTrimStart;
+    m_commandMap["sampler/trim/setEnd"]    = &CommandHandler::HandleSamplerSetTrimEnd;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -4953,4 +4956,172 @@ void CommandHandler::HandleSamplePurgeStaleCache(
     int removed = m_sampleCache.PurgeStaleRoots(keepPaths);
     std::string resp = "{" + json_string("removed") + ":" + std::to_string(removed) + "}";
     SendResponse(clientId, id, true, resp);
+}
+
+// ============================================================
+// Sampler: RS5K trim controls — start/end offset (Issue #124)
+// ============================================================
+
+void CommandHandler::HandleSamplerGetTrimInfo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    int trackIdx = atoi(parser.getString("trackIdx").c_str());
+    int fxIdx    = atoi(parser.getString("fxIdx").c_str());
+
+    if (!m_api.CountTracks || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track API not loaded\"}");
+        return;
+    }
+
+    int numTracks = m_api.CountTracks(nullptr);
+    if (trackIdx < 0 || trackIdx >= numTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track not found\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_GetNamedConfigParm) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"FX API not loaded\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+    if (fxIdx < 0 || fxIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid FX index\"}");
+        return;
+    }
+
+    // Query PLAYOFFS (start offset) and PLAYOFFE (end offset)
+    char startBuf[256] = {0};
+    char endBuf[256]   = {0};
+    m_api.TrackFX_GetNamedConfigParm(track, fxIdx, "PLAYOFFS", startBuf, sizeof(startBuf));
+    m_api.TrackFX_GetNamedConfigParm(track, fxIdx, "PLAYOFFE", endBuf, sizeof(endBuf));
+
+    std::string resp = "{"
+        + json_string("startOffset") + ":" + json_string(startBuf) + ","
+        + json_string("endOffset") + ":" + json_string(endBuf)
+        + "}";
+    SendResponse(clientId, id, true, resp);
+}
+
+void CommandHandler::HandleSamplerSetTrimStart(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    int trackIdx    = atoi(parser.getString("trackIdx").c_str());
+    int fxIdx       = atoi(parser.getString("fxIdx").c_str());
+    double offset   = atof(parser.getString("offset").c_str());
+
+    if (!m_api.CountTracks || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track API not loaded\"}");
+        return;
+    }
+
+    int numTracks = m_api.CountTracks(nullptr);
+    if (trackIdx < 0 || trackIdx >= numTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track not found\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_SetNamedConfigParm) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"FX API not loaded\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+    if (fxIdx < 0 || fxIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid FX index\"}");
+        return;
+    }
+
+    // Set PLAYOFFS to the given offset value
+    std::string val = std::to_string(offset);
+    bool ok = m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "PLAYOFFS", val.c_str());
+
+    if (ok) {
+        std::string resp = "{" + json_string("offset") + ":" + std::to_string(offset) + "}";
+        SendResponse(clientId, id, true, resp);
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to set start offset\"}");
+    }
+}
+
+void CommandHandler::HandleSamplerSetTrimEnd(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    int trackIdx    = atoi(parser.getString("trackIdx").c_str());
+    int fxIdx       = atoi(parser.getString("fxIdx").c_str());
+    double offset   = atof(parser.getString("offset").c_str());
+
+    if (!m_api.CountTracks || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track API not loaded\"}");
+        return;
+    }
+
+    int numTracks = m_api.CountTracks(nullptr);
+    if (trackIdx < 0 || trackIdx >= numTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track not found\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_SetNamedConfigParm) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"FX API not loaded\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+    if (fxIdx < 0 || fxIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid FX index\"}");
+        return;
+    }
+
+    // Set PLAYOFFE to the given offset value
+    std::string val = std::to_string(offset);
+    bool ok = m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "PLAYOFFE", val.c_str());
+
+    if (ok) {
+        std::string resp = "{" + json_string("offset") + ":" + std::to_string(offset) + "}";
+        SendResponse(clientId, id, true, resp);
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to set end offset\"}");
+    }
 }
