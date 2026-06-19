@@ -8,6 +8,15 @@ export interface SamplerTrimInfo {
   endOffset: string;
 }
 
+export interface SamplerVelInfo {
+  paramIdx: number;
+  name: string;
+  value: number;
+  min: number;
+  max: number;
+  formatted: string;
+}
+
 // ── Hook ──────────────────────────────────────────────
 
 export function useSampler() {
@@ -56,9 +65,44 @@ export function useSampler() {
     [send],
   );
 
+  const getVelocityInfo = useCallback(
+    async (trackIdx: number, fxIdx: number): Promise<SamplerVelInfo | null> => {
+      try {
+        const resp = await send('sampler/vel/getInfo', { trackIdx, fxIdx }, 10000);
+        if (!resp.success) return null;
+        const p = resp.payload as PayloadMap;
+        return {
+          paramIdx: p.paramIdx as number,
+          name: p.name as string,
+          value: p.value as number,
+          min: p.min as number,
+          max: p.max as number,
+          formatted: p.formatted as string,
+        };
+      } catch {
+        return null;
+      }
+    },
+    [send],
+  );
+
+  const setVelocity = useCallback(
+    async (trackIdx: number, fxIdx: number, value: number): Promise<boolean> => {
+      try {
+        const resp = await send('sampler/vel/set', { trackIdx, fxIdx, value }, 10000);
+        return resp.success;
+      } catch {
+        return false;
+      }
+    },
+    [send],
+  );
+
   return {
     getTrimInfo,
     setTrimStart,
     setTrimEnd,
+    getVelocityInfo,
+    setVelocity,
   };
 }

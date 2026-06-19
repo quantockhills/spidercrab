@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSampler, type SamplerTrimInfo } from '../hooks/useSampler';
+import { useSampler, type SamplerTrimInfo, type SamplerVelInfo } from '../hooks/useSampler';
 
 // ── Props ──────────────────────────────────────────────
 
@@ -20,9 +20,10 @@ export default function SamplerPanel({
   fxName,
   onBack,
 }: SamplerPanelProps) {
-  const { getTrimInfo, setTrimStart, setTrimEnd } = useSampler();
+  const { getTrimInfo, setTrimStart, setTrimEnd, getVelocityInfo, setVelocity } = useSampler();
 
   const [trimInfo, setTrimInfo] = useState<SamplerTrimInfo | null>(null);
+  const [velInfo, setVelInfo] = useState<SamplerVelInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,30 +36,52 @@ export default function SamplerPanel({
 
   const MAX_BEATS = 64; // Reasonable cap for trim range
 
+  // Velocity sensitivity slider state
+  const [velValue, setVelValue] = useState(0);
+  const [draggingVel, setDraggingVel] = useState(false);
+  const velTrackRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    getTrimInfo(trackIdx, fxIdx).then((info) => {
+
+    const loadData = async () => {
+      const [trim, vel] = await Promise.all([
+        getTrimInfo(trackIdx, fxIdx),
+        getVelocityInfo(trackIdx, fxIdx),
+      ]);
       if (cancelled) return;
-      if (info) {
-        setTrimInfo(info);
+      if (trim) {
+        setTrimInfo(trim);
         // Parse start/end offset values from strings
-        const startBeats = parseFloat(info.startOffset) || 0;
-        const endBeats = parseFloat(info.endOffset) || MAX_BEATS;
+        const startBeats = parseFloat(trim.startOffset) || 0;
+        const endBeats = parseFloat(trim.endOffset) || MAX_BEATS;
         // Clamp and normalize to percentage for sliders
         setStartVal(Math.round((startBeats / MAX_BEATS) * 100));
         setEndVal(Math.round((endBeats / MAX_BEATS) * 100));
       }
+      if (vel) {
+        setVelInfo(vel);
+        // Normalize vel value to percentage for slider
+        const range = vel.max - vel.min;
+        if (range > 0) {
+          setVelValue(Math.round(((vel.value - vel.min) / range) * 100));
+        } else {
+          setVelValue(0);
+        }
+      }
       setLoading(false);
-    }).catch(() => {
+    };
+
+    loadData().catch(() => {
       if (!cancelled) {
-        setError('Failed to load trim info');
+        setError('Failed to load sampler data');
         setLoading(false);
       }
     });
     return () => { cancelled = true; };
-  }, [trackIdx, fxIdx, getTrimInfo]);
+  }, [trackIdx, fxIdx, getTrimInfo, getVelocityInfo]);
 
   // Debounce trim start commit
   const commitStartRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,11 +110,15 @@ export default function SamplerPanel({
     }, 200);
   }, [startVal, trackIdx, fxIdx, setTrimEnd]);
 
+  // Debounce velocity commit
+  const commitVelRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Cleanup debounce on unmount
   useEffect(() => {
     return () => {
       if (commitStartRef.current) clearTimeout(commitStartRef.current);
       if (commitEndRef.current) clearTimeout(commitEndRef.current);
+      if (commitVelRef.current) clearTimeout(commitVelRef.current);
     };
   }, []);
 
@@ -288,6 +315,66 @@ export default function SamplerPanel({
                 <div
                   className="absolute top-1 bottom-1 w-1 bg-[var(--accent-blue)]/80"
                   style={{ left: `calc(${endVal}% - 2px)` }}
+                />
+              </div>
+            </div>
+
+            {/* Velocity Sensitivity Slider */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-[var(--text-primary)]">Velocity Sensitivity</span>
+                <span className="text-[11px] text-[var(--text-secondary)] tabular-nums">
+                  {velInfo?.formatted || (velInfo ? Math.round((velValue / 100) * (velInfo.max - velInfo.min) + velInfo.min) + '%' : '')}
+                </span>
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)]">
+                Controls how the sample responds to how hard you hit a MIDI key.
+              </p>
+              <div
+                ref={velTrackRef}
+                className={`relative h-8 cursor-pointer select-none transition-shadow ${
+                  draggingVel ? 'ring-2 ring-[var(--accent-orange)]/60' : 'ring-1 ring-[var(--border)]'
+                } bg-[var(--bg-tertiary)]`}
+                onPointerDown={(e: React.PointerEvent) => {
+                  e.preventDefault();
+                  setDraggingVel(true);
+                  const slider = velTrackRef.current;
+                  if (!slider) return;
+                  const rect = slider.getBoundingClientRect();
+
+                  const move = (ev: PointerEvent) => {
+                    const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
+                    const pct = Math.round((x / rect.width) * 100);
+                    setVelValue(pct);
+                    if (velInfo) {
+                      const range = velInfo.max - velInfo.min;
+                      const val = velInfo.min + (pct / 100) * range;
+                      if (commitVelRef.current) clearTimeout(commitVelRef.current);
+                      commitVelRef.current = setTimeout(() => {
+                        setVelocity(trackIdx, fxIdx, val);
+                      }, 200);
+                    }
+                  };
+
+                  const up = () => {
+                    setDraggingVel(false);
+                    window.removeEventListener('pointermove', move);
+                    window.removeEventListener('pointerup', up);
+                  };
+
+                  window.addEventListener('pointermove', move);
+                  window.addEventListener('pointerup', up);
+                }}
+              >
+                {/* Fill from left to vel position */}
+                <div
+                  className="absolute inset-y-0 left-0 bg-gradient-to-r from-transparent to-[var(--accent-orange)]/40"
+                  style={{ width: `${velValue}%` }}
+                />
+                {/* Knob */}
+                <div
+                  className="absolute top-1 bottom-1 w-1 bg-[var(--accent-orange)]/80"
+                  style={{ left: `calc(${velValue}% - 2px)` }}
                 />
               </div>
             </div>

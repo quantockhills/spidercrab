@@ -332,6 +332,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sampler/trim/getInfo"]   = &CommandHandler::HandleSamplerGetTrimInfo;
     m_commandMap["sampler/trim/setStart"]  = &CommandHandler::HandleSamplerSetTrimStart;
     m_commandMap["sampler/trim/setEnd"]    = &CommandHandler::HandleSamplerSetTrimEnd;
+    m_commandMap["sampler/vel/getInfo"]    = &CommandHandler::HandleSamplerGetVelInfo;
+    m_commandMap["sampler/vel/set"]        = &CommandHandler::HandleSamplerSetVel;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -5107,6 +5109,207 @@ void CommandHandler::HandleSamplerSetTrimEnd(
     }
 
     int fxCount = m_api.TrackFX_GetCount(track);
+
+    if (fxIdx < 0 || fxIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid FX index\"}");
+        return;
+    }
+
+    // Set PLAYOFFE to the given offset value
+    std::string val = std::to_string(offset);
+    bool ok = m_api.TrackFX_SetNamedConfigParm(track, fxIdx, "PLAYOFFE", val.c_str());
+
+    if (ok) {
+        std::string resp = "{" + json_string("offset") + ":" + std::to_string(offset) + "}";
+        SendResponse(clientId, id, true, resp);
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to set end offset\"}");
+    }
+}
+
+// ============================================================
+// Sampler: velocity sensitivity control (Issue #127)
+// ============================================================
+
+void CommandHandler::HandleSamplerGetVelInfo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    int trackIdx = atoi(parser.getString("trackIdx").c_str());
+    int fxIdx    = atoi(parser.getString("fxIdx").c_str());
+
+    if (!m_api.CountTracks || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track API not loaded\"}");
+        return;
+    }
+
+    int numTracks = m_api.CountTracks(nullptr);
+    if (trackIdx < 0 || trackIdx >= numTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track not found\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_GetNumParams || !m_api.TrackFX_GetParamName) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"FX API not loaded\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+    if (fxIdx < 0 || fxIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid FX index\"}");
+        return;
+    }
+
+    int numParams = m_api.TrackFX_GetNumParams(track, fxIdx);
+    bool found = false;
+    int paramIdx = -1;
+    double value = 0.0;
+    double minVal = 0.0, maxVal = 0.0;
+    char paramName[256] = {0};
+
+    for (int i = 0; i < numParams; i++) {
+        char name[256] = {0};
+        m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
+        // Case-insensitive search for "Vel sens"
+        std::string nameStr(name);
+        std::string lower;
+        lower.reserve(nameStr.size());
+        for (char c : nameStr) lower += (char)tolower((unsigned char)c);
+        if (lower.find("vel sens") != std::string::npos ||
+            lower.find("velocity") != std::string::npos) {
+            found = true;
+            paramIdx = i;
+            double midVal = 0;
+            value = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
+            // GetParamEx returns normalized; convert to display value
+            value = minVal + value * (maxVal - minVal);
+            snprintf(paramName, sizeof(paramName), "%s", name);
+            break;
+        }
+    }
+
+    if (!found) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Velocity sensitivity param not found on this FX\"}");
+        return;
+    }
+
+    // Get formatted value
+    char formattedBuf[256] = {0};
+    bool formattedOk = false;
+    if (m_api.TrackFX_GetFormattedParamValue) {
+        formattedOk = m_api.TrackFX_GetFormattedParamValue(
+            track, fxIdx, paramIdx, formattedBuf, sizeof(formattedBuf));
+    }
+
+    std::string resp = "{";
+    resp += json_string("paramIdx") + ":" + std::to_string(paramIdx) + ",";
+    resp += json_string("name") + ":" + json_string(paramName) + ",";
+    resp += json_string("value") + ":" + std::to_string(value) + ",";
+    resp += json_string("min") + ":" + std::to_string(minVal) + ",";
+    resp += json_string("max") + ":" + std::to_string(maxVal) + ",";
+    resp += json_string("formatted") + ":" + (formattedOk && formattedBuf[0] ? json_string(formattedBuf) : json_string(""));
+    resp += "}";
+    SendResponse(clientId, id, true, resp);
+}
+
+void CommandHandler::HandleSamplerSetVel(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    int trackIdx    = atoi(parser.getString("trackIdx").c_str());
+    int fxIdx       = atoi(parser.getString("fxIdx").c_str());
+    double value    = atof(parser.getString("value").c_str());
+
+    if (!m_api.CountTracks || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track API not loaded\"}");
+        return;
+    }
+
+    int numTracks = m_api.CountTracks(nullptr);
+    if (trackIdx < 0 || trackIdx >= numTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track not found\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_GetNumParams || !m_api.TrackFX_GetParamName || !m_api.TrackFX_SetParam) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"FX API not loaded\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+    if (fxIdx < 0 || fxIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid FX index\"}");
+        return;
+    }
+
+    // Scan for the velocity sensitivity param first
+    int numParams = m_api.TrackFX_GetNumParams(track, fxIdx);
+    int paramIdx = -1;
+    for (int i = 0; i < numParams; i++) {
+        char name[256] = {0};
+        m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
+        std::string nameStr(name);
+        std::string lower;
+        lower.reserve(nameStr.size());
+        for (char c : nameStr) lower += (char)tolower((unsigned char)c);
+        if (lower.find("vel sens") != std::string::npos ||
+            lower.find("velocity") != std::string::npos) {
+            paramIdx = i;
+            break;
+        }
+    }
+
+    if (paramIdx < 0) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Velocity sensitivity param not found on this FX\"}");
+        return;
+    }
+
+    // TrackFX_SetParam takes actual display values
+    m_lastSetParam = {trackIdx, fxIdx, paramIdx};
+    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, value);
+
+    // Read back the committed value
+    double committedVal = value;
+    double actualMin = 0, actualMax = 0, actualMid = 0;
+    if (success && m_api.TrackFX_GetParamEx) {
+        double normVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &actualMin, &actualMax, &actualMid);
+        committedVal = actualMin + normVal * (actualMax - actualMin);
+    }
+
+    std::string resp = "{";
+    resp += json_string("set") + ":" + (success ? "true" : "false") + ",";
+    resp += json_string("value") + ":" + std::to_string(committedVal);
+    resp += "}";
+    SendResponse(clientId, id, success, resp);
+}
     if (fxIdx < 0 || fxIdx >= fxCount) {
         SendResponse(clientId, id, false,
             "{\"error\":\"Invalid FX index\"}");
