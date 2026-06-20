@@ -335,6 +335,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sampler/vel/getInfo"]    = &CommandHandler::HandleSamplerGetVelInfo;
     m_commandMap["sampler/vel/set"]        = &CommandHandler::HandleSamplerSetVel;
     m_commandMap["sampler/loadFile"]        = &CommandHandler::HandleSamplerLoadFile;
+    m_commandMap["sampler/adsr/getInfo"]    = &CommandHandler::HandleSamplerGetAdsrInfo;
+    m_commandMap["sampler/adsr/setParam"]   = &CommandHandler::HandleSamplerSetAdsrParam;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -5384,4 +5386,164 @@ void CommandHandler::HandleSamplerLoadFile(
         SendResponse(clientId, id, false,
             "{\"error\":\"Failed to load file into RS5K\"}");
     }
+}
+
+// ============================================================
+// Sampler: RS5K ADSR envelope controls (Issue #125)
+// ============================================================
+
+void CommandHandler::HandleSamplerGetAdsrInfo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    int trackIdx = atoi(parser.getString("trackIdx").c_str());
+    int fxIdx    = atoi(parser.getString("fxIdx").c_str());
+
+    if (!m_api.CountTracks || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track API not loaded\"}");
+        return;
+    }
+
+    int numTracks = m_api.CountTracks(nullptr);
+    if (trackIdx < 0 || trackIdx >= numTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track not found\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_GetNumParams || !m_api.TrackFX_GetParamName) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"FX API not loaded\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+    if (fxIdx < 0 || fxIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid FX index\"}");
+        return;
+    }
+
+    // ADSR param keywords to search for
+    static const char* adsrKeywords[4] = {"attack", "decay", "sustain", "release"};
+    static const char* adsrNames[4]    = {"Attack", "Decay", "Sustain", "Release"};
+
+    int numParams = m_api.TrackFX_GetNumParams(track, fxIdx);
+    std::string adsrResults = "[";
+    bool first = true;
+
+    for (int p = 0; p < 4; p++) {
+        int foundIdx = -1;
+        double value = 0.0, minVal = 0.0, maxVal = 0.0, midVal = 0.0;
+        char paramName[256] = {0};
+
+        for (int i = 0; i < numParams; i++) {
+            char name[256] = {0};
+            m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
+            std::string nameStr(name);
+            std::string lower;
+            lower.reserve(nameStr.size());
+            for (char c : nameStr) lower += (char)tolower((unsigned char)c);
+            if (lower.find(adsrKeywords[p]) != std::string::npos) {
+                foundIdx = i;
+                value = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
+                value = minVal + value * (maxVal - minVal);
+                snprintf(paramName, sizeof(paramName), "%s", name);
+                break;
+            }
+        }
+
+        if (foundIdx < 0) continue;
+
+        char formattedBuf[256] = {0};
+        bool formattedOk = false;
+        if (m_api.TrackFX_GetFormattedParamValue) {
+            formattedOk = m_api.TrackFX_GetFormattedParamValue(
+                track, fxIdx, foundIdx, formattedBuf, sizeof(formattedBuf));
+        }
+
+        if (!first) adsrResults += ",";
+        first = false;
+        adsrResults += "{";
+        adsrResults += json_string("name") + ":" + json_string(adsrNames[p]) + ",";
+        adsrResults += json_string("paramIdx") + ":" + std::to_string(foundIdx) + ",";
+        adsrResults += json_string("value") + ":" + std::to_string(value) + ",";
+        adsrResults += json_string("min") + ":" + std::to_string(minVal) + ",";
+        adsrResults += json_string("max") + ":" + std::to_string(maxVal) + ",";
+        adsrResults += json_string("formatted") + ":" + (formattedOk && formattedBuf[0] ? json_string(formattedBuf) : json_string(""));
+        adsrResults += "}";
+    }
+
+    adsrResults += "]";
+    SendResponse(clientId, id, true, adsrResults);
+}
+
+void CommandHandler::HandleSamplerSetAdsrParam(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    int trackIdx    = atoi(parser.getString("trackIdx").c_str());
+    int fxIdx       = atoi(parser.getString("fxIdx").c_str());
+    int paramIdx    = atoi(parser.getString("paramIdx").c_str());
+    double value    = atof(parser.getString("value").c_str());
+
+    if (!m_api.CountTracks || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track API not loaded\"}");
+        return;
+    }
+
+    int numTracks = m_api.CountTracks(nullptr);
+    if (trackIdx < 0 || trackIdx >= numTracks) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Track not found\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_GetCount || !m_api.TrackFX_SetParam) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"FX API not loaded\"}");
+        return;
+    }
+
+    int fxCount = m_api.TrackFX_GetCount(track);
+    if (fxIdx < 0 || fxIdx >= fxCount) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid FX index\"}");
+        return;
+    }
+
+    // TrackFX_SetParam takes actual display values
+    m_lastSetParam = {trackIdx, fxIdx, paramIdx};
+    bool success = m_api.TrackFX_SetParam(track, fxIdx, paramIdx, value);
+
+    double committedVal = value;
+    double actualMin = 0, actualMax = 0, actualMid = 0;
+    if (success && m_api.TrackFX_GetParamEx) {
+        double normVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &actualMin, &actualMax, &actualMid);
+        committedVal = actualMin + normVal * (actualMax - actualMin);
+    }
+
+    std::string resp = "{";
+    resp += json_string("set") + ":" + (success ? "true" : "false") + ",";
+    resp += json_string("value") + ":" + std::to_string(committedVal);
+    resp += "}";
+    SendResponse(clientId, id, success, resp);
 }

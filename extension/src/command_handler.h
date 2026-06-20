@@ -314,6 +314,8 @@ private:
     void HandleSamplerGetVelInfo(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerSetVel(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerLoadFile(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerGetAdsrInfo(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerSetAdsrParam(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

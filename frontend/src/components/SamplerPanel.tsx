@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSampler, type SamplerTrimInfo, type SamplerVelInfo } from '../hooks/useSampler';
+import { useSampler, type SamplerTrimInfo, type SamplerVelInfo, type SamplerAdsrInfo } from '../hooks/useSampler';
 import { useReaperClient } from '../hooks/useReaperClient';
 
 // ── Props ──────────────────────────────────────────────
@@ -21,7 +21,7 @@ export default function SamplerPanel({
   fxName,
   onBack,
 }: SamplerPanelProps) {
-  const { getTrimInfo, setTrimStart, setTrimEnd, getVelocityInfo, setVelocity, loadFile } = useSampler();
+  const { getTrimInfo, setTrimStart, setTrimEnd, getVelocityInfo, setVelocity, getAdsrInfo, setAdsrParam, loadFile } = useSampler();
   const { send } = useReaperClient();
 
   // File browser state
@@ -50,15 +50,22 @@ export default function SamplerPanel({
   const [draggingVel, setDraggingVel] = useState(false);
   const velTrackRef = useRef<HTMLDivElement>(null);
 
+  // ADSR envelope state
+  const [adsrInfo, setAdsrInfo] = useState<SamplerAdsrInfo | null>(null);
+  const [adsrValues, setAdsrValues] = useState<Record<string, number>>({});
+  const [draggingAdsr, setDraggingAdsr] = useState<Record<string, boolean>>({});
+  const adsrTrackRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
 
     const loadData = async () => {
-      const [trim, vel] = await Promise.all([
+      const [trim, vel, adsr] = await Promise.all([
         getTrimInfo(trackIdx, fxIdx),
         getVelocityInfo(trackIdx, fxIdx),
+        getAdsrInfo(trackIdx, fxIdx),
       ]);
       if (cancelled) return;
       if (trim) {
@@ -69,6 +76,19 @@ export default function SamplerPanel({
         // Clamp and normalize to percentage for sliders
         setStartVal(Math.round((startBeats / MAX_BEATS) * 100));
         setEndVal(Math.round((endBeats / MAX_BEATS) * 100));
+      }
+      if (adsr && adsr.length > 0) {
+        setAdsrInfo(adsr);
+        const vals: Record<string, number> = {};
+        for (const p of adsr) {
+          const range = p.max - p.min;
+          if (range > 0) {
+            vals[p.name] = Math.round(((p.value - p.min) / range) * 100);
+          } else {
+            vals[p.name] = 0;
+          }
+        }
+        setAdsrValues(vals);
       }
       if (vel) {
         setVelInfo(vel);
@@ -122,6 +142,20 @@ export default function SamplerPanel({
   // Debounce velocity commit
   const commitVelRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ADSR debounce refs per param
+  const commitAdsrRefs = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
+
+  const handleAdsrChange = useCallback((name: string, pct: number, paramIdx: number, min: number, max: number) => {
+    const clamped = Math.max(0, Math.min(100, pct));
+    setAdsrValues(prev => ({ ...prev, [name]: clamped }));
+    const range = max - min;
+    const val = min + (clamped / 100) * range;
+    if (commitAdsrRefs.current[name]) clearTimeout(commitAdsrRefs.current[name]);
+    commitAdsrRefs.current[name] = setTimeout(() => {
+      setAdsrParam(trackIdx, fxIdx, paramIdx, val);
+    }, 200);
+  }, [trackIdx, fxIdx, setAdsrParam]);
+
   // ── File browser helpers ──────────────────────────────
 
   const loadDirectory = useCallback(async (path: string) => {
@@ -168,6 +202,9 @@ export default function SamplerPanel({
       if (commitStartRef.current) clearTimeout(commitStartRef.current);
       if (commitEndRef.current) clearTimeout(commitEndRef.current);
       if (commitVelRef.current) clearTimeout(commitVelRef.current);
+      for (const key of Object.keys(commitAdsrRefs.current)) {
+        if (commitAdsrRefs.current[key]) clearTimeout(commitAdsrRefs.current[key]);
+      }
     };
   }, []);
 
@@ -434,6 +471,72 @@ export default function SamplerPanel({
                 />
               </div>
             </div>
+
+            {/* ── ADSR Envelope Controls ──────────────────────────────── */}
+            {adsrInfo && adsrInfo.length > 0 && (
+              <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                  ADSR Envelope
+                </h3>
+                {adsrInfo.map((param) => {
+                  const name = param.name;
+                  const valPct = adsrValues[name] ?? 0;
+                  const isDragging = draggingAdsr[name] ?? false;
+
+                  const handlePointerDown = (e: React.PointerEvent) => {
+                    e.preventDefault();
+                    setDraggingAdsr(prev => ({ ...prev, [name]: true }));
+                    const slider = adsrTrackRefs.current[name];
+                    if (!slider) return;
+                    const rect = slider.getBoundingClientRect();
+
+                    const move = (ev: PointerEvent) => {
+                      const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
+                      const pct = Math.round((x / rect.width) * 100);
+                      handleAdsrChange(name, pct, param.paramIdx, param.min, param.max);
+                    };
+
+                    const up = () => {
+                      setDraggingAdsr(prev => ({ ...prev, [name]: false }));
+                      window.removeEventListener('pointermove', move);
+                      window.removeEventListener('pointerup', up);
+                    };
+
+                    window.addEventListener('pointermove', move);
+                    window.addEventListener('pointerup', up);
+                  };
+
+                  return (
+                    <div key={name} className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-[var(--text-primary)]">{name}</span>
+                        <span className="text-[11px] text-[var(--text-secondary)] tabular-nums">
+                          {param.formatted || Math.round(valPct) + '%'}
+                        </span>
+                      </div>
+                      <div
+                        ref={(el) => { adsrTrackRefs.current[name] = el; }}
+                        className={`relative h-8 cursor-pointer select-none transition-shadow ${
+                          isDragging ? 'ring-2 ring-[var(--accent-orange)]/60' : 'ring-1 ring-[var(--border)]'
+                        } bg-[var(--bg-secondary)]`}
+                        onPointerDown={handlePointerDown}
+                      >
+                        {/* Fill bar */}
+                        <div
+                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-transparent to-[var(--accent-orange)]/40"
+                          style={{ width: `${valPct}%` }}
+                        />
+                        {/* Knob */}
+                        <div
+                          className="absolute top-1 bottom-1 w-1 bg-[var(--accent-orange)]/80"
+                          style={{ left: `calc(${valPct}% - 2px)` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Raw values display */}
             {trimInfo && (

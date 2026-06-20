@@ -17,6 +17,17 @@ export interface SamplerVelInfo {
   formatted: string;
 }
 
+export interface SamplerAdsrParam {
+  name: string;       // "Attack", "Decay", "Sustain", "Release"
+  paramIdx: number;
+  value: number;
+  min: number;
+  max: number;
+  formatted: string;
+}
+
+export type SamplerAdsrInfo = SamplerAdsrParam[];
+
 // ── Hook ──────────────────────────────────────────────
 
 export function useSampler() {
@@ -98,6 +109,39 @@ export function useSampler() {
     [send],
   );
 
+  const getAdsrInfo = useCallback(
+    async (trackIdx: number, fxIdx: number): Promise<SamplerAdsrInfo | null> => {
+      try {
+        const resp = await send('sampler/adsr/getInfo', { trackIdx, fxIdx }, 10000);
+        if (!resp.success) return null;
+        const arr = resp.payload as unknown[];
+        return arr.map((item: Record<string, unknown>) => ({
+          name: item.name as string,
+          paramIdx: item.paramIdx as number,
+          value: item.value as number,
+          min: item.min as number,
+          max: item.max as number,
+          formatted: item.formatted as string,
+        }));
+      } catch {
+        return null;
+      }
+    },
+    [send],
+  );
+
+  const setAdsrParam = useCallback(
+    async (trackIdx: number, fxIdx: number, paramIdx: number, value: number): Promise<boolean> => {
+      try {
+        const resp = await send('sampler/adsr/setParam', { trackIdx, fxIdx, paramIdx, value }, 10000);
+        return resp.success;
+      } catch {
+        return false;
+      }
+    },
+    [send],
+  );
+
   const loadFile = useCallback(
     async (trackIdx: number, fxIdx: number, filePath: string): Promise<boolean> => {
       try {
@@ -116,6 +160,8 @@ export function useSampler() {
     setTrimEnd,
     getVelocityInfo,
     setVelocity,
+    getAdsrInfo,
+    setAdsrParam,
     loadFile,
   };
 }
