@@ -5792,6 +5792,9 @@ void CommandHandler::HandleSlicerApplyToRS5K(
                 snprintf(buf, sizeof(buf), "%.4f", slices[i].endTime);
                 self->m_api.TrackFX_SetNamedConfigParm(
                     targetTrack, fxIdx, "DEND", buf);
+                snprintf(buf, sizeof(buf), "%d", baseNote + i);
+                self->m_api.TrackFX_SetNamedConfigParm(
+                    targetTrack, fxIdx, "MIDI_NOTE", buf);
             }
             rs5kCount++;
         }
