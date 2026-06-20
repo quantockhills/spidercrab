@@ -9,6 +9,7 @@ import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
 import SamplerPanel from './components/SamplerPanel';
+import SlicerPanel from './components/SlicerPanel';
 import ErrorBoundary from './components/ErrorBoundary';
 import SampleIndexProgressBar from './components/SampleIndexProgressBar';
 import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
@@ -218,6 +219,17 @@ function AppInner() {
     fxName: string;
   } | null>(null);
 
+  // Slicer panel view state (Issue #123)
+  const [slicerView, setSlicerView] = useState(false);
+
+  const handleOpenSlicer = useCallback(() => {
+    setSlicerView(true);
+  }, []);
+
+  const handleBackFromSlicer = useCallback(() => {
+    setSlicerView(false);
+  }, []);
+
   // Refresh tracks on connect
   useEffect(() => {
     if (connected) {
@@ -406,9 +418,19 @@ function AppInner() {
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-hidden min-h-0">
         <ErrorBoundary>
-        {activeTab === 'media' && (
+        {activeTab === 'media' && (slicerView ? (
+          <SlicerPanel onBack={handleBackFromSlicer} />
+        ) : (
           <div className="flex flex-col h-full min-h-0">
             <SampleIndexProgressBar onEvent={onEvent} />
+            <div className="flex items-center gap-2 px-2 py-1 bg-gray-850 border-b border-gray-700">
+              <button
+                onClick={handleOpenSlicer}
+                className="text-xs bg-purple-700 hover:bg-purple-600 text-white px-3 py-1 rounded transition-colors"
+              >
+                🔪 Slicer
+              </button>
+            </div>
             <SampleBrowser
               tracks={tracks}
               selectedTrack={selectedTrack}

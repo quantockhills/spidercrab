@@ -10,6 +10,7 @@
 #include "sequencer_state.h"
 #include "fx_tags.h"
 #include "sample_tags.h"
+#include "slicer.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -316,6 +317,10 @@ private:
     void HandleSamplerLoadFile(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerGetAdsrInfo(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerSetAdsrParam(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — slicer (Issue #123)
+    void HandleSlicerDetect(int clientId, const std::string& id, const std::string& params);
+    void HandleSlicerApplyToRS5K(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — FX chain save/load (Issue #7)
     void HandleFxChainGetDirectory(int clientId, const std::string& id, const std::string& params);

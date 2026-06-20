@@ -37,3 +37,7 @@ export { useTheme } from './useTheme';
 // ── Sampler ──
 export { useSampler } from './useSampler';
 export type { SamplerTrimInfo } from './useSampler';
+
+// ── Slicer ──
+export { useSlicer } from './useSlicer';
+export type { SlicePoint, SlicerDetectResult, SlicerApplyResult } from './useSlicer';

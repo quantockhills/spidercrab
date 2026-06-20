@@ -337,6 +337,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sampler/loadFile"]        = &CommandHandler::HandleSamplerLoadFile;
     m_commandMap["sampler/adsr/getInfo"]    = &CommandHandler::HandleSamplerGetAdsrInfo;
     m_commandMap["sampler/adsr/setParam"]   = &CommandHandler::HandleSamplerSetAdsrParam;
+    m_commandMap["slicer/detect"]       = &CommandHandler::HandleSlicerDetect;
+    m_commandMap["slicer/applyToRS5K"]   = &CommandHandler::HandleSlicerApplyToRS5K;
 }
 CommandHandler::~CommandHandler() { }
 
@@ -5546,4 +5548,276 @@ void CommandHandler::HandleSamplerSetAdsrParam(
     resp += json_string("value") + ":" + std::to_string(committedVal);
     resp += "}";
     SendResponse(clientId, id, success, resp);
+}
+
+// ============================================================
+// Slicer: Transient-Based Sample Slicer (Issue #123)
+// ============================================================
+
+void CommandHandler::HandleSlicerDetect(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string filePath    = parser.getString("filePath");
+    std::string sensitivityStr = parser.getString("sensitivity");
+    double sensitivity = sensitivityStr.empty() ? 0.5 : atof(sensitivityStr.c_str());
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing filePath parameter\"}");
+        return;
+    }
+
+    if (!m_api.PCM_Source_CreateFromFile || !m_api.GetMediaSourceLength ||
+        !m_api.GetMediaSourceSampleRate || !m_api.GetMediaSourceNumChannels ||
+        !m_api.PCM_Source_GetPeaks)
+    {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Audio API not loaded\"}");
+        return;
+    }
+
+    std::string fp = filePath;
+    double sens = sensitivity;
+    int cid = clientId;
+    std::string rid = id;
+    auto self = this;
+
+    QueueMainThread([self, fp, sens, cid, rid]() {
+        PCM_source* source = self->m_api.PCM_Source_CreateFromFile(fp.c_str());
+        if (!source) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"Could not load audio file\"}");
+            return;
+        }
+
+        double length = self->m_api.GetMediaSourceLength(source, nullptr);
+        int sampleRate = self->m_api.GetMediaSourceSampleRate(source);
+        int numChannels = self->m_api.GetMediaSourceNumChannels(source);
+
+        if (length <= 0.0 || sampleRate <= 0 || numChannels <= 0) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"Invalid audio file properties\"}");
+            return;
+        }
+
+        double peakRate = static_cast<double>(sampleRate);
+        int numSamples = static_cast<int>(length * peakRate);
+        int maxSamples = 2000000;
+        if (numSamples > maxSamples) numSamples = maxSamples;
+
+        std::vector<double> peakBuf(static_cast<size_t>(numSamples) * numChannels, 0.0);
+        int samplesRead = self->m_api.PCM_Source_GetPeaks(
+            source, peakRate, 0.0, numChannels, numSamples, 0, peakBuf.data());
+
+        if (samplesRead <= 0) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"Could not read audio data\"}");
+            return;
+        }
+
+        size_t actualSamples = static_cast<size_t>(samplesRead) * numChannels;
+        std::vector<float> floatData(actualSamples);
+        for (size_t i = 0; i < actualSamples; ++i) {
+            floatData[i] = static_cast<float>(peakBuf[i]);
+        }
+
+        Slicer slicer;
+        std::vector<SlicePoint> slices = slicer.DetectTransients(
+            floatData.data(), actualSamples, sampleRate, numChannels, sens);
+
+        if (slices.empty()) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"No slices detected\"}");
+            return;
+        }
+
+        std::string resp = "{\"slices\":[";
+        for (size_t i = 0; i < slices.size(); ++i) {
+            if (i > 0) resp += ",";
+            resp += slices[i].ToJson();
+        }
+        resp += "]}";
+
+        self->SendResponse(cid, rid, true, resp);
+    });
+}
+
+void CommandHandler::HandleSlicerApplyToRS5K(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string filePath         = parser.getString("filePath");
+    std::string sensitivityStr   = parser.getString("sensitivity");
+    std::string trackIndexStr    = parser.getString("trackIdx");
+    double sensitivity = sensitivityStr.empty() ? 0.5 : atof(sensitivityStr.c_str());
+    int trackIdx = trackIndexStr.empty() ? -1 : atoi(trackIndexStr.c_str());
+
+    if (filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing filePath parameter\"}");
+        return;
+    }
+
+    if (!m_api.PCM_Source_CreateFromFile || !m_api.GetMediaSourceLength ||
+        !m_api.GetMediaSourceSampleRate || !m_api.GetMediaSourceNumChannels ||
+        !m_api.PCM_Source_GetPeaks || !m_api.CountTracks || !m_api.GetTrack ||
+        !m_api.TrackFX_AddByName || !m_api.TrackFX_SetNamedConfigParm ||
+        !m_api.InsertTrackAtIndex || !m_api.GetSetMediaTrackInfo ||
+        !m_api.TrackFX_GetCount)
+    {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Required API not loaded\"}");
+        return;
+    }
+
+    std::string fp = filePath;
+    double sens = sensitivity;
+    int tidx = trackIdx;
+    int cid = clientId;
+    std::string rid = id;
+    auto self = this;
+
+    QueueMainThread([self, fp, sens, tidx, cid, rid]() {
+        PCM_source* source = self->m_api.PCM_Source_CreateFromFile(fp.c_str());
+        if (!source) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"Could not load audio file\"}");
+            return;
+        }
+
+        double length = self->m_api.GetMediaSourceLength(source, nullptr);
+        int sampleRate = self->m_api.GetMediaSourceSampleRate(source);
+        int numChannels = self->m_api.GetMediaSourceNumChannels(source);
+
+        if (length <= 0.0 || sampleRate <= 0 || numChannels <= 0) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"Invalid audio file properties\"}");
+            return;
+        }
+
+        double peakRate = static_cast<double>(sampleRate);
+        int numSamples = static_cast<int>(length * peakRate);
+        int maxSamples = 2000000;
+        if (numSamples > maxSamples) numSamples = maxSamples;
+
+        std::vector<double> peakBuf(static_cast<size_t>(numSamples) * numChannels, 0.0);
+        int samplesRead = self->m_api.PCM_Source_GetPeaks(
+            source, peakRate, 0.0, numChannels, numSamples, 0, peakBuf.data());
+
+        if (samplesRead <= 0) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"Could not read audio data\"}");
+            return;
+        }
+
+        size_t actualSamples = static_cast<size_t>(samplesRead) * numChannels;
+        std::vector<float> floatData(actualSamples);
+        for (size_t i = 0; i < actualSamples; ++i) {
+            floatData[i] = static_cast<float>(peakBuf[i]);
+        }
+
+        Slicer slicer;
+        std::vector<SlicePoint> slices = slicer.DetectTransients(
+            floatData.data(), actualSamples, sampleRate, numChannels, sens);
+
+        if (slices.empty()) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"No slices detected\"}");
+            return;
+        }
+
+        MediaTrack* targetTrack = nullptr;
+        if (tidx >= 0) {
+            int numTracks = self->m_api.CountTracks(nullptr);
+            if (tidx < numTracks) {
+                targetTrack = self->m_api.GetTrack(nullptr, tidx);
+            }
+        }
+
+        if (!targetTrack) {
+            int numTracks = self->m_api.CountTracks(nullptr);
+            self->m_api.InsertTrackAtIndex(numTracks, true);
+            targetTrack = self->m_api.GetTrack(nullptr, numTracks);
+            if (!targetTrack) {
+                self->SendResponse(cid, rid, false,
+                    "{\"error\":\"Could not create track\"}");
+                return;
+            }
+        }
+
+        const char* rs5kName = "ReaSamplOmatic5000";
+        int baseNote = 36;
+        int maxSlices = 60;
+        int sliceCount = std::min(static_cast<int>(slices.size()), maxSlices);
+
+        int trackColor = 0x3366CC;
+        self->m_api.GetSetMediaTrackInfo(targetTrack, "I_CUSTOMCOLOR", &trackColor);
+
+        std::string trackName = "Slicer: ";
+        size_t sep = fp.find_last_of("/\\");
+        if (sep != std::string::npos) {
+            trackName += fp.substr(sep + 1);
+        } else {
+            trackName += fp;
+        }
+        size_t dot = trackName.find_last_of('.');
+        if (dot != std::string::npos && dot > 7) {
+            trackName = trackName.substr(0, dot);
+        }
+        auto trackNamePtr = const_cast<char*>(trackName.c_str());
+        self->m_api.GetSetMediaTrackInfo_String(targetTrack, "P_NAME", trackNamePtr, true);
+
+        int rs5kCount = 0;
+        for (int i = 0; i < sliceCount; ++i) {
+            int fxIdx = self->m_api.TrackFX_AddByName(
+                targetTrack, rs5kName, false, 0);
+
+            if (fxIdx < 0) {
+                fxIdx = self->m_api.TrackFX_AddByName(
+                    targetTrack, "VST: ReaSamplOmatic5000 (Cockos)", false, 0);
+            }
+            if (fxIdx < 0) continue;
+
+            bool loaded = self->m_api.TrackFX_SetNamedConfigParm(
+                targetTrack, fxIdx, "FILE0", fp.c_str());
+
+            if (loaded) {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%.4f", slices[i].startTime);
+                self->m_api.TrackFX_SetNamedConfigParm(
+                    targetTrack, fxIdx, "DSTART", buf);
+                snprintf(buf, sizeof(buf), "%.4f", slices[i].endTime);
+                self->m_api.TrackFX_SetNamedConfigParm(
+                    targetTrack, fxIdx, "DEND", buf);
+            }
+            rs5kCount++;
+        }
+
+        if (rs5kCount == 0) {
+            self->SendResponse(cid, rid, false,
+                "{\"error\":\"No RS5K instances could be created. Is ReaSamplOmatic5000 installed?\"}");
+            return;
+        }
+
+        int trackNum = 0;
+        int numTracks = self->m_api.CountTracks(nullptr);
+        for (int t = 0; t < numTracks; ++t) {
+            if (self->m_api.GetTrack(nullptr, t) == targetTrack) {
+                trackNum = t;
+                break;
+            }
+        }
+
+        std::string resp = "{";
+        resp += json_string("sliceCount") + ":" + std::to_string(rs5kCount) + ",";
+        resp += json_string("totalSlices") + ":" + std::to_string(static_cast<int>(slices.size())) + ",";
+        resp += json_string("trackIdx") + ":" + std::to_string(trackNum) + ",";
+        resp += json_string("baseNote") + ":" + std::to_string(baseNote);
+        resp += "}";
+
+        self->SendResponse(cid, rid, true, resp);
+    });
 }

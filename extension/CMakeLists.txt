@@ -40,6 +40,7 @@ set(EXTENSION_SOURCES
     src/sample_cache.cpp
     src/sha1_utils.cpp
     src/MiniBpm.cpp
+    src/slicer.cpp
     ${WDL_SOURCES}
 )
 
@@ -52,6 +53,7 @@ set(TEST_SOURCES
     src/sample_cache.cpp
     src/sha1_utils.cpp
     src/MiniBpm.cpp
+    src/slicer.cpp
     ${WDL_SOURCES}
     test/test_main.cpp
     test/test_command_handler.cpp
