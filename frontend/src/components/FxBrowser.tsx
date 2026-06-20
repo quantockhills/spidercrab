@@ -173,13 +173,13 @@ export function FxBrowser({
 
   // Get tags for a given FX ident
   const getTagsForIdent = useCallback((ident: string): string[] => {
-    if (!tagData) return [];
+    if (!tagData?.fxTags) return [];
     return tagData.fxTags[ident] || [];
   }, [tagData]);
 
   // Get tags for a chain file path
   const getTagsForChain = useCallback((filePath: string): string[] => {
-    if (!tagData) return [];
+    if (!tagData?.chainTags) return [];
     return tagData.chainTags[filePath] || [];
   }, [tagData]);
 
@@ -187,10 +187,10 @@ export function FxBrowser({
   const allUniqueTags = useMemo(() => {
     if (!tagData) return [] as string[];
     const tagSet = new Set<string>();
-    for (const tags of Object.values(tagData.fxTags)) {
+    for (const tags of Object.values(tagData.fxTags ?? {})) {
       for (const t of tags) tagSet.add(t);
     }
-    for (const tags of Object.values(tagData.chainTags)) {
+    for (const tags of Object.values(tagData.chainTags ?? {})) {
       for (const t of tags) tagSet.add(t);
     }
     return Array.from(tagSet).sort();
@@ -212,7 +212,7 @@ export function FxBrowser({
       );
     }
     // Tag filter: only show FX matching ANY selected tag (OR logic)
-    if (selectedTags.size > 0 && tagData) {
+    if (selectedTags.size > 0 && tagData?.fxTags) {
       filtered = filtered.filter((fx) => {
         const tags = tagData.fxTags[fx.ident];
         if (!tags || tags.length === 0) return false;
@@ -241,7 +241,7 @@ export function FxBrowser({
   // Filter chain results by tags
   const filteredChainResults = useMemo(() => {
     if (!chainResults) return chainResults;
-    if (selectedTags.size === 0 || !tagData) return chainResults;
+    if (selectedTags.size === 0 || !tagData?.chainTags) return chainResults;
     return chainResults.filter((chain) => {
       const tags = tagData.chainTags[chain.filePath];
       if (!tags || tags.length === 0) return false;
@@ -311,9 +311,9 @@ export function FxBrowser({
   // Tag editing handlers (Issue #97)
   const handleStartEditTags = useCallback((ident: string, target: TagTarget) => {
     let currentTags: string[] = [];
-    if (target === 'fx' && tagData) {
+    if (target === 'fx' && tagData?.fxTags) {
       currentTags = tagData.fxTags[ident] || [];
-    } else if (target === 'chain' && tagData) {
+    } else if (target === 'chain' && tagData?.chainTags) {
       currentTags = tagData.chainTags[ident] || [];
     }
     setEditingTagIdent(ident);
