@@ -93,6 +93,7 @@ function AppInner() {
     launchPlaytime,
     checkPlaytimeAvailable,
     convertToClip,
+    sendMidiCC,
   } = useReaper();
 
   const { preference, isDark, setTheme } = useTheme();
@@ -539,6 +540,7 @@ function AppInner() {
             getFxPreset={getFxPreset}
             setFxPreset={setFxPreset}
             getAllFxPresetNames={getAllFxPresetNames}
+            sendMidiCC={sendMidiCC}
           />
         ) : fxChainView ? (
           <FxChainBrowser

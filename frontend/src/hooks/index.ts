@@ -13,7 +13,7 @@ export { useTrackState } from './useTrackState';
 export type { Track } from './useTrackState';
 
 export { useFx } from './useFx';
-export type { FxInfo, EnumeratedFx, FxParam } from './useFx';
+export type { FxInfo, EnumeratedFx, FxParam, MidiCcMapping } from './useFx';
 
 export { useFxChains } from './useFxChains';
 export type { FxChainEntry, FxChainInfo } from './useFxChains';

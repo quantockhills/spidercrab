@@ -38,6 +38,14 @@ export interface FxPresetNames {
   currentIndex: number;
 }
 
+// ── MIDI CC mapping types (Issue #131) ───────────────────────
+
+export interface MidiCcMapping {
+  paramIdx: number;
+  cc: number;
+  name?: string;
+}
+
 // ── Tag types (Issue #97) ────────────────────────────────────
 
 export interface FxTagData {
@@ -143,6 +151,16 @@ export function useFx() {
     return resp.payload as unknown as FxPresetNames;
   }, [send]);
 
+  // ── MIDI CC mapping functions (Issue #131) ──
+
+  const sendMidiCC = useCallback(
+    async (channel: number, cc: number, value: number): Promise<{ sent: boolean }> => {
+      const resp = await send('midi/sendCC', { channel, controller: cc, value });
+      return resp.payload as { sent: boolean };
+    },
+    [send],
+  );
+
   // ── Tag functions (Issue #97) ──
 
   const getFxTags = useCallback(async (): Promise<FxTagData | null> => {
@@ -180,6 +198,7 @@ export function useFx() {
     getFxPreset,
     setFxPreset,
     getAllFxPresetNames,
+    sendMidiCC,
     getFxTags,
     setFxTags,
   };

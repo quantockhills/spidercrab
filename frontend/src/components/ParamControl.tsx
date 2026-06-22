@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
+import type { FxParam, FxPresetInfo, FxPresetNames, MidiCcMapping } from '../hooks/useReaper';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -18,6 +18,7 @@ interface ParamControlProps {
   getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
   setFxPreset?: (trackIdx: number, fxIdx: number, presetIdx: number) => Promise<FxPresetInfo | null>;
   getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
+  sendMidiCC?: (channel: number, cc: number, value: number) => Promise<{ sent: boolean }>;
 }
 
 // Clean FX name for display
@@ -40,6 +41,7 @@ export function ParamControl({
   getFxPreset,
   setFxPreset,
   getAllFxPresetNames,
+  sendMidiCC,
 }: ParamControlProps) {
   const [params, setParams] = useState<FxParam[]>([]);
   const [loading, setLoading] = useState(true);
@@ -80,6 +82,53 @@ export function ParamControl({
     });
   }, [trackIdx, fxIdx, getFxPresetRef]);
 
+  // ── MIDI CC mapping state (Issue #131) ──
+  const [midiCcMappings, setMidiCcMappings] = useState<Record<number, MidiCcMapping>>({});
+  const [midiCcEditorOpen, setMidiCcEditorOpen] = useState(false);
+  const [selectedParamIdx, setSelectedParamIdx] = useState<number | null>(null);
+
+  // Load MIDI CC mappings from localStorage
+  const getMappingKey = useCallback((paramIdx: number) => `${trackIdx}-${fxIdx}-${paramIdx}`, [trackIdx, fxIdx]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('spidercrab_midi_mappings');
+    if (stored) {
+      try {
+        const allMappings = JSON.parse(stored) as Record<string, MidiCcMapping>;
+        const relevantMappings: Record<number, MidiCcMapping> = {};
+        Object.entries(allMappings)
+          .filter(([key]) => key.startsWith(`${trackIdx}-${fxIdx}-`))
+          .forEach(([key, mapping]) => {
+            const paramIdx = parseInt(key.split('-')[2]);
+            relevantMappings[paramIdx] = mapping;
+          });
+        setMidiCcMappings(relevantMappings);
+      } catch { /* ignore */ }
+    }
+  }, [trackIdx, fxIdx]);
+
+  const saveMidiCcMapping = useCallback((paramIdx: number, cc: number, name?: string) => {
+    const stored = localStorage.getItem('spidercrab_midi_mappings');
+    const allMappings = stored ? JSON.parse(stored) as Record<string, MidiCcMapping> : {};
+    allMappings[getMappingKey(paramIdx)] = { paramIdx, cc, name };
+    localStorage.setItem('spidercrab_midi_mappings', JSON.stringify(allMappings));
+    setMidiCcMappings(prev => ({ ...prev, [paramIdx]: { paramIdx, cc, name } }));
+  }, [getMappingKey]);
+
+  const clearMidiCcMapping = useCallback((paramIdx: number) => {
+    const stored = localStorage.getItem('spidercrab_midi_mappings');
+    if (stored) {
+      const allMappings = JSON.parse(stored) as Record<string, MidiCcMapping>;
+      delete allMappings[getMappingKey(paramIdx)];
+      localStorage.setItem('spidercrab_midi_mappings', JSON.stringify(allMappings));
+    }
+    setMidiCcMappings(prev => {
+      const next = { ...prev };
+      delete next[paramIdx];
+      return next;
+    });
+  }, [getMappingKey]);
+
   // Filter presets based on search query
   const filteredPresets = presetNames && presetSearchQuery
     ? presetNames
@@ -107,7 +156,7 @@ export function ParamControl({
 
   useEffect(() => {
     // Schedule initial load — setLoading(true) inside loadParams is intentional
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     loadParams(0);
   }, [loadParams]);
 
@@ -259,6 +308,12 @@ export function ParamControl({
         prev.map((p) => (p.index === paramIdx ? { ...p, value } : p)),
       );
 
+      // If this param has a MIDI CC mapping, send it
+      const mapping = midiCcMappings[paramIdx];
+      if (sendMidiCC && mapping) {
+        await sendMidiCC(0, mapping.cc, Math.round((value / (params.find(p => p.index === paramIdx)?.max || 127)) * 127));
+      }
+
       const resp = await setFxParam(trackIdx, fxIdx, paramIdx, value);
       // If server returned a committed value, use it (authoritative)
       if (resp?.payload?.value !== undefined) {
@@ -274,7 +329,7 @@ export function ParamControl({
         );
       }
     },
-    [trackIdx, fxIdx, setFxParam],
+    [trackIdx, fxIdx, setFxParam, sendMidiCC, midiCcMappings],
   );
 
   const handleDelete = useCallback(async () => {
@@ -287,6 +342,28 @@ export function ParamControl({
       setDeleting(false);
     }
   }, [trackIdx, fxIdx, deleteFx, onBack]);
+
+  // MIDI CC editor handlers
+  const openMidiCcEditor = useCallback((paramIdx: number) => {
+    setSelectedParamIdx(paramIdx);
+    setMidiCcEditorOpen(true);
+  }, []);
+
+  const handleMidiCcSave = useCallback((cc: number, name?: string) => {
+    if (selectedParamIdx !== null) {
+      saveMidiCcMapping(selectedParamIdx, cc, name);
+    }
+    setMidiCcEditorOpen(false);
+    setSelectedParamIdx(null);
+  }, [selectedParamIdx, saveMidiCcMapping]);
+
+  const handleMidiCcClear = useCallback(() => {
+    if (selectedParamIdx !== null) {
+      clearMidiCcMapping(selectedParamIdx);
+    }
+    setMidiCcEditorOpen(false);
+    setSelectedParamIdx(null);
+  }, [selectedParamIdx, clearMidiCcMapping]);
 
   return (
     <div className="flex flex-col h-full">
@@ -384,7 +461,7 @@ export function ParamControl({
                       onChange={(e) => setPresetSearchQuery(e.target.value)}
                       placeholder="Search presets..."
                       className="w-full px-2 py-1 text-xs bg-[var(--bg-tertiary)] text-[var(--text-primary)]
-                        border border-[var(--border)] outline-none placeholder-[var(--text-tertiary)]"
+                        border border-[var(--border)] outline-none placeholder:[var(--text-tertiary)]"
                       autoFocus
                     />
                   </div>
@@ -476,15 +553,36 @@ export function ParamControl({
                 <ParamSlider
                   key={param.index}
                   param={param}
+                  mapping={midiCcMappings[param.index]}
                   onChange={(value) => handleParamChange(param.index, value)}
                   onDragStart={startDragging}
                   onDragEnd={finishDragging}
+                  onEditMapping={sendMidiCC ? openMidiCcEditor : undefined}
                 />
               ))}
             </div>
           </>
         )}
       </div>
+
+      {/* MIDI CC Editor Modal */}
+      {midiCcEditorOpen && selectedParamIdx !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setMidiCcEditorOpen(false)}>
+          <div className="bg-[var(--bg-primary)] border border-[var(--border)] p-6 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold mb-4">MIDI CC Mapping</h3>
+            <p className="text-xs text-[var(--text-secondary)] mb-4">
+              Map parameter "{params.find(p => p.index === selectedParamIdx)?.name || `Param ${selectedParamIdx}`}" to a MIDI CC message.
+            </p>
+            <MidiCcEditor
+              paramIdx={selectedParamIdx}
+              currentMapping={midiCcMappings[selectedParamIdx]}
+              onSave={handleMidiCcSave}
+              onClear={handleMidiCcClear}
+              onCancel={() => setMidiCcEditorOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -493,12 +591,14 @@ export function ParamControl({
 
 export interface ParamSliderProps {
   param: FxParam;
+  mapping?: MidiCcMapping;
   onChange: (value: number) => void;
   onDragStart: (paramIdx: number) => void;
   onDragEnd: () => void;
+  onEditMapping?: (paramIdx: number) => void;
 }
 
-export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSliderProps) {
+export function ParamSlider({ param, mapping, onChange, onDragStart, onDragEnd, onEditMapping }: ParamSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [localValue, setLocalValue] = useState(param.value);
@@ -573,9 +673,23 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
     <div className="space-y-1.5">
       {/* Label row */}
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-[var(--text-primary)] truncate">
+        <span className="text-xs font-medium text-[var(--text-primary)] truncate flex-1">
           {param.name || `Param ${param.index}`}
         </span>
+        {mapping && (
+          <span className="text-[11px] text-[var(--accent-blue)] bg-[var(--accent-blue)]/10 px-1.5 py-0.5 rounded ml-2">
+            CC{mapping.cc}
+          </span>
+        )}
+        {onEditMapping && (
+          <button
+            onClick={() => onEditMapping(param.index)}
+            className="ml-2 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            aria-label="Map to MIDI CC"
+          >
+            {mapping ? '✏️' : '🎹'}
+          </button>
+        )}
         <span className="text-[11px] text-[var(--text-secondary)] tabular-nums flex-shrink-0 ml-2">
           {displayValue}
         </span>
@@ -604,6 +718,81 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
           className="absolute top-1 bottom-1 w-1 bg-[var(--accent-orange)]/80 transition-[left] duration-50"
           style={{ left: `calc(${pct}% - 2px)` }}
         />
+      </div>
+    </div>
+  );
+}
+
+// ── MIDI CC Editor ───────────────────────────────────────────
+
+interface MidiCcEditorProps {
+  paramIdx: number;
+  currentMapping?: MidiCcMapping;
+  onSave: (cc: number, name?: string) => void;
+  onClear: () => void;
+  onCancel: () => void;
+}
+
+function MidiCcEditor({ paramIdx, currentMapping, onSave, onClear, onCancel }: MidiCcEditorProps) {
+  const [cc, setCc] = useState(currentMapping?.cc ?? 1);
+  const [name, setName] = useState(currentMapping?.name ?? '');
+
+  const handleSubmit = () => {
+    if (cc >= 0 && cc <= 127) {
+      onSave(cc, name || undefined);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="block text-xs text-[var(--text-secondary)] mb-1">
+          MIDI CC Number: {cc}
+        </label>
+        <input
+          type="range"
+          min="0"
+          max="127"
+          value={cc}
+          onChange={(e) => setCc(parseInt(e.target.value))}
+          className="w-full h-6 bg-[var(--bg-tertiary)] appearance-none cursor-pointer"
+        />
+        <div className="flex justify-between text-[10px] text-[var(--text-secondary)] mt-1">
+          <span>CC 0</span>
+          <span>CC 127</span>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs text-[var(--text-secondary)] mb-1">Name (optional)</label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g., Filter Cutoff"
+          className="w-full px-2 py-1 text-xs bg-[var(--bg-tertiary)] text-[var(--text-primary)]
+            border border-[var(--border)] outline-none placeholder:[var(--text-tertiary)]"
+        />
+      </div>
+
+      <div className="flex gap-2">
+        {currentMapping && (
+          <button
+            onClick={onClear}
+            className="flex-1 py-2 text-xs text-[var(--accent-red)] bg-[var(--accent-red)]/10 active:brightness-95"
+          >
+            Clear
+          </button>
+        )}
+        <button
+          onClick={handleSubmit}
+          disabled={cc < 0 || cc > 127}
+          className={`flex-1 py-2 text-xs text-[var(--accent-orange)] bg-[var(--accent-dim)] active:brightness-95 ${
+            cc < 0 || cc > 127 ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+        >
+          Save
+        </button>
       </div>
     </div>
   );
