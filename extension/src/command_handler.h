@@ -355,8 +355,9 @@ private:
     void HandleFxTagsGetAll(int clientId, const std::string& id, const std::string& params);
     void HandleFxTagsSet(int clientId, const std::string& id, const std::string& params);
 
-    // Command handlers — MIDI recording (Issue #90)
+    // Command handlers — MIDI (Issue #90)
     void HandleMidiEvent(int clientId, const std::string& id, const std::string& params);
+    void HandleSendMidiCC(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — Playtime 2 / clip matrix
     void HandleMatrixGetAll(int clientId, const std::string& id, const std::string& params);

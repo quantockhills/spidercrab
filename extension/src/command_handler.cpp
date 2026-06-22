@@ -320,6 +320,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fx/getAllPresetNames"]    = &CommandHandler::HandleGetAllFxPresetNames;
     m_commandMap["sequencer/convertToClip"] = &CommandHandler::HandleSequencerConvertToClip;
     m_commandMap["midi/event"]              = &CommandHandler::HandleMidiEvent;
+    m_commandMap["midi/sendCC"]           = &CommandHandler::HandleSendMidiCC;
     m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
     m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
     m_commandMap["fx/tags/getAll"]           = &CommandHandler::HandleFxTagsGetAll;
@@ -4259,6 +4260,62 @@ void CommandHandler::HandleMidiEvent(
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
+}
+
+// ============================================================
+// MIDI CC control for synth parameters (Issue #131)
+// ============================================================
+
+void CommandHandler::HandleSendMidiCC(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string channelStr = parser.getString("channel");
+    std::string ccStr      = parser.getString("controller");
+    std::string valueStr   = parser.getString("value");
+
+    // Support 'cc' as alias for 'controller'
+    if (ccStr.empty()) ccStr = parser.getString("cc");
+
+    if (channelStr.empty() || ccStr.empty() || valueStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing required parameters: channel, controller (cc), value\"}");
+        return;
+    }
+
+    int channel = atoi(channelStr.c_str());
+    int cc      = atoi(ccStr.c_str());
+    int value   = atoi(valueStr.c_str());
+
+    // Validate ranges
+    if (channel < 0 || channel > 15) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Channel must be 0-15\"}");
+        return;
+    }
+    if (cc < 0 || cc > 127) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"CC number must be 0-127\"}");
+        return;
+    }
+    if (value < 0 || value > 127) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Value must be 0-127\"}");
+        return;
+    }
+
+    // Send the MIDI CC message via PlaytimeMidi
+    if (m_playtimeMidi.isAvailable()) {
+        m_playtimeMidi.sendMidiCC(channel, cc, value);
+        SendResponse(clientId, id, true,
+            "{\"sent\":true,\"channel\":" + std::to_string(channel)
+            + ",\"cc\":" + std::to_string(cc)
+            + ",\"value\":" + std::to_string(value) + "}");
+    } else {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"MIDI output not available\"}");
+    }
 }
 
 // ============================================================

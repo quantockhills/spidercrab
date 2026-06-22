@@ -79,6 +79,46 @@ public:
         sendMidiNote(m_channel, note, 100);
     }
 
+    // ============================================================
+    // MIDI CC (Control Change) support for synth parameter control
+    // ============================================================
+
+    // Send a MIDI Control Change message (CC)
+    // CC format: status byte 0xB0-0xBF (channel), CC number (0-127), value (0-127)
+    // Maps to synth parameters for real-time tweaking from iPad.
+    void sendMidiCC(int channel, int ccNumber, int value)
+    {
+        if (!m_sendFunc) {
+            fprintf(stderr, "[reaper-ipad] playtime_midi: sendMidiCC skipped — no send function (nullptr)\n");
+            return;
+        }
+        if (ccNumber < 0 || ccNumber > 127) {
+            fprintf(stderr, "[reaper-ipad] playtime_midi: CC number %d out of range (0-127)\n", ccNumber);
+            return;
+        }
+        if (value < 0 || value > 127) {
+            fprintf(stderr, "[reaper-ipad] playtime_midi: CC value %d out of range (0-127)\n", value);
+            return;
+        }
+        int status = 0xB0 | (channel & 0x0F);
+        fprintf(stderr, "[reaper-ipad] playtime_midi: sending CC ch=%d cc=%d val=%d\n",
+                channel & 0x0F, ccNumber & 0x7F, value & 0x7F);
+        m_sendFunc(status, ccNumber & 0x7F, value & 0x7F);
+    }
+
+    // Convert a normalized 0.0-1.0 value to MIDI CC 0-127
+    // Used by frontend to map slider positions to CC values
+    static int normalizeToCC(double normalizedValue)
+    {
+        return (int)(normalizedValue * 127.0);
+    }
+
+    // Convert MIDI CC 0-127 to normalized 0.0-1.0 value
+    static double ccToNormalized(int ccValue)
+    {
+        return (ccValue >= 0 && ccValue <= 127) ? ccValue / 127.0 : 0.0;
+    }
+
 private:
     MidiSendFunc m_sendFunc;
     int          m_channel;
