@@ -762,15 +762,14 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
             g_port = p;
     }
 
-    // 1. Initialize core services (cmd handler, PreCacheFX, Playtime, MIDI, WS callback)
-    InitializeCoreServices();
-
-    // 2. Register the control surface type (appears in Reaper prefs)
-
+    // 1. Register the control surface type (appears in Reaper prefs)
+    // Note: InitializeCoreServices() and StartNetworkServers() are called
+    // by the control surface creation callback (g_csurfReg lambda) to ensure
+    // idempotent initialization. Calling them here would cause duplication.
     rec->Register("csurf", &g_csurfReg);
 
-    // 3. Create surface + start servers + register instance
-    StartNetworkServers();
+    // 2. Create surface + start servers + register instance
+    // This triggers the lambda in g_csurfReg which initializes everything.
     rec->Register("csurf_inst", g_surface);
 
     // 4. Save extstate for next launch
