@@ -447,7 +447,7 @@ function AppInner() {
               getReaperLibraryFiles={getReaperLibraryFiles}
             />
           </div>
-        )}
+        ))}
 
         {activeTab === 'clips' && (
           <div className="flex flex-col h-full min-h-0">
