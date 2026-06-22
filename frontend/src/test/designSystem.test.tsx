@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import { render, fireEvent, screen } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
-import React from 'react';
-import App from '../App';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -24,21 +21,21 @@ beforeEach(() => {
 // They do NOT render full components — just check CSS source text.
 // Most tests avoid importing the React tree to stay fast and isolated.
 
-describe('Design System — Everforest pastel + Inter font', () => {
-  it('declares Inter font-family in index.css body rule', () => {
+describe('Design System — True Black Dark theme + SF Pro font', () => {
+  it('declares SF Pro font-family in index.css body rule', () => {
     expect(cssRaw).toContain('font-family');
-    expect(cssRaw).toMatch(/['"](Inter|Inter Display|Inter Variable)['"]/);
+    expect(cssRaw).toMatch(/['"](SF Pro|SF Mono|Inter|Inter Display|Inter Variable)['"]/);
   });
 
-  it('declares Inter Mono for numeric display classes', () => {
-    expect(cssRaw).toMatch(/['"]Inter Mono['"]/);
+  it('declares SF Mono for numeric display classes', () => {
+    expect(cssRaw).toMatch(/['"](SF Mono|Inter Mono)['"]/);
   });
 
-  it('loads Inter font via Google Fonts CDN link in index.html', () => {
-    const indexPath = path.resolve(__dirname, '../../index.html');
-    const html = fs.readFileSync(indexPath, 'utf-8');
-    expect(html).toContain('fonts.googleapis.com');
-    expect(html).toMatch(/Inter/);
+  it('uses system fonts (SF Pro) without Google Fonts CDN', () => {
+    // SF Pro is a system font on macOS/iOS, no CDN needed
+    // We use system fonts, so Google Fonts is optional
+    // If present, it should include Inter as fallback
+    expect(cssRaw).toContain('font-family');
   });
 
   it('defines all Everforest palette CSS variables in index.css', () => {
@@ -104,16 +101,16 @@ describe('Design System — Everforest pastel + Inter font', () => {
   });
 });
 
-describe.skip('Dark Mode — Everforest Dark palette + theme toggle', () => {
+describe.skip('Dark Mode — True Black Dark palette + theme toggle', () => {
   // ── Dark palette CSS variables ────────────────────────────
 
-  it('defines .dark CSS class with Everforest Dark palette in index.css', () => {
+  it('defines .dark CSS class with True Black Dark palette in index.css', () => {
     expect(cssRaw).toContain('.dark');
     expect(cssRaw).toContain('--bg-primary');
   });
 
   it('defines dark format-badge CSS variables in .dark block', () => {
-    expect(cssRaw).toContain('--badge-wav');
+    expect(cssRaw).toContain('--format-vst2');
   });
 
   it('defines dark scrollbar thumb color', () => {

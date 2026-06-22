@@ -30,6 +30,7 @@
 }
 
 /* ── Smooth transitions for theme switching ── */
+
 *, *::before, *::after {
   transition-property: background-color, border-color, color, fill, stroke;
   transition-duration: 200ms;
@@ -40,7 +41,7 @@ body {
   margin: 0;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', Roboto, sans-serif;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   /* Prevent iOS bounce/overscroll */
@@ -50,14 +51,14 @@ body {
            env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
-/* Inter Semi-Bold for headings */
+/* SF Pro for headings (macOS/iOS native feel) */
 h1, h2, h3, h4, h5, h6, .font-semibold {
   font-weight: 600;
 }
 
-/* Inter Mono for numerical displays */
+/* Monospace for numerical displays */
 .font-mono, .tabular-nums {
-  font-family: 'Inter Mono', 'SF Mono', SFMono-Regular, ui-monospace, monospace;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   font-weight: 400;
 }
 
@@ -77,20 +78,21 @@ h1, h2, h3, h4, h5, h6, .font-semibold {
   background: #5A666A;
 }
 
-/* ── Everforest Dark palette ── */
+/* ── True Black Dark palette with Amber accent ── */
+/* Designed for iPad OLED screens - true black saves battery */
 .dark,
 [data-theme="dark"] {
-  --bg-primary: #2D353B;
-  --bg-secondary: #343F44;
-  --bg-tertiary: #3D484D;
-  --text-primary: #D3C6AA;
-  --text-secondary: #859289;
-  --accent-green: #A7C080;
-  --accent-red: #E67E80;
-  --accent-orange: #E69875;
-  --accent-yellow: #D4B96A;
-  --accent-blue: #7FBBB3;
-  --border: #475258;
+  --bg-primary: #000000;
+  --bg-secondary: #0a0a0a;
+  --bg-tertiary: #141414;
+  --text-primary: #e0e0e0;
+  --text-secondary: #888888;
+  --accent-green: #8aff8a;
+  --accent-red: #ff5f5f;
+  --accent-orange: #ff8c00;
+  --accent-yellow: #ffc145;
+  --accent-blue: #4da6ff;
+  --border: #1a1a1a;
   --accent-dim: color-mix(in srgb, var(--accent-orange) 35%, transparent);
   --format-vst2: #83C092;
   --format-clap: #A68DBA;

@@ -114,15 +114,18 @@ export function useSampler() {
       try {
         const resp = await send('sampler/adsr/getInfo', { trackIdx, fxIdx }, 10000);
         if (!resp.success) return null;
-        const arr = resp.payload as unknown[];
-        return arr.map((item: Record<string, unknown>) => ({
-          name: item.name as string,
-          paramIdx: item.paramIdx as number,
-          value: item.value as number,
-          min: item.min as number,
-          max: item.max as number,
-          formatted: item.formatted as string,
-        }));
+        const arr = resp.payload as unknown as unknown[];
+        return arr.map((item) => {
+          const p = item as Record<string, unknown>;
+          return {
+            name: p.name as string,
+            paramIdx: p.paramIdx as number,
+            value: p.value as number,
+            min: p.min as number,
+            max: p.max as number,
+            formatted: p.formatted as string,
+          };
+        });
       } catch {
         return null;
       }
