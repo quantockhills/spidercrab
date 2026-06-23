@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 import path from 'path';
 
-const G = path.resolve(__dirname, '../../screenshots/issue97');
-const SCREENSHOT_DIR = path.resolve(__dirname, '../../gui_testing');
+const G = path.resolve(import.meta.dirname!, '../../screenshots/issue97');
+const SCREENSHOT_DIR = path.resolve(import.meta.dirname!, '../../gui_testing');
 
 test.describe('Issue #97 - FX Tags', () => {
 
