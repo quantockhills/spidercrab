@@ -103,5 +103,14 @@ export function useFxChains() {
     [send],
   );
 
-  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo, fxChainSearchRecursive, fxChainSearchCached, fxChainRefreshCache };
+  /** List immediate subdirectories in a given path */
+  const fxChainListFolders = useCallback(
+    async (rootPath: string, folder?: string): Promise<{ folders: string[]; path: string }> => {
+      const resp = await send('fxchain/listFolders', { rootPath, folder });
+      return resp.payload as { folders: string[]; path: string };
+    },
+    [send],
+  );
+
+  return { fxChainGetDirectory, fxChainSave, fxChainLoad, fxChainGetInfo, fxChainSearchRecursive, fxChainSearchCached, fxChainRefreshCache, fxChainListFolders };
 }
