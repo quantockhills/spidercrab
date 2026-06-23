@@ -314,6 +314,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fxchain/cycle"]           = &CommandHandler::HandleFxChainCycle;
     m_commandMap["fxchain/searchCached"]    = &CommandHandler::HandleFxChainSearchCached;
     m_commandMap["fxchain/refreshCache"]    = &CommandHandler::HandleFxChainRefreshCache;
+    m_commandMap["fxchain/listFolders"]     = &CommandHandler::HandleFxChainListFolders;
     m_commandMap["fx/reorder"]              = &CommandHandler::HandleReorderFX;
     m_commandMap["fx/getPreset"]            = &CommandHandler::HandleGetFxPreset;
     m_commandMap["fx/setPreset"]            = &CommandHandler::HandleSetFxPreset;
@@ -1244,6 +1245,44 @@ void CommandHandler::HandleFxChainRefreshCache(
     std::string payload = "{";
     payload += json_string("refreshed") + ":true,";
     payload += json_string("count") + ":" + std::to_string(count);
+    payload += "}";
+
+    SendResponse(clientId, id, true, payload);
+}
+
+void CommandHandler::HandleFxChainListFolders(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string rootPath = parser.getString("rootPath");
+    std::string folder = parser.getString("folder");
+
+    // If rootPath changed from cached path, re-index silently
+    if (!rootPath.empty() && rootPath != m_fxChainCache.RootPath()) {
+        m_fxChainCache.BuildIndex(rootPath);
+    }
+
+    // If cache isn't indexed yet, build it now
+    if (!m_fxChainCache.IsIndexed() && !rootPath.empty()) {
+        m_fxChainCache.BuildIndex(rootPath);
+    }
+
+    // Determine the path to list
+    std::string listPath = folder.empty() ? rootPath : rootPath + "/" + folder;
+    
+    auto folders = m_fxChainCache.ListFolders(listPath);
+
+    std::string foldersJson = "[";
+    for (size_t i = 0; i < folders.size(); i++) {
+        if (i > 0) foldersJson += ",";
+        foldersJson += json_string(folders[i]);
+    }
+    foldersJson += "]";
+
+    std::string payload = "{";
+    payload += json_string("folders") + ":" + foldersJson + ",";
+    payload += json_string("path") + ":" + json_string(folder.empty() ? "/" : folder);
     payload += "}";
 
     SendResponse(clientId, id, true, payload);

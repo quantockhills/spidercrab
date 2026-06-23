@@ -329,6 +329,9 @@ private:
     void HandleFxChainGetInfo(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainSearchRecursive(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainCycle(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainSearchCached(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainRefreshCache(int clientId, const std::string& id, const std::string& params);
+    void HandleFxChainListFolders(int clientId, const std::string& id, const std::string& params);
 
     // Internal: load a chain file onto a track, replacing only chain-group FX
     // Returns true on success, false on failure.
@@ -387,8 +390,4 @@ private:
 
     // Command handlers — sequencer convert to clip (Issue #92)
     void HandleSequencerConvertToClip(int clientId, const std::string& id, const std::string& params);
-
-    // Command handlers — chain search (Issue #103)
-    void HandleFxChainSearchCached(int clientId, const std::string& id, const std::string& params);
-    void HandleFxChainRefreshCache(int clientId, const std::string& id, const std::string& params);
 };

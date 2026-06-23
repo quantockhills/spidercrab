@@ -146,3 +146,37 @@ void FxChainCache::Clear()
     m_rootPath.clear();
     m_isIndexed = false;
 }
+
+std::vector<std::string> FxChainCache::ListFolders(const std::string& path) const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    std::vector<std::string> folders;
+
+    if (!m_isIndexed || m_rootPath.empty() || path.empty())
+        return folders;
+
+    // Validate that path is within the indexed root
+    std::error_code ec;
+    fs::path canonicalPath = fs::weakly_canonical(fs::path(path), ec);
+    fs::path canonicalRoot = fs::weakly_canonical(fs::path(m_rootPath), ec);
+    
+    if (ec)
+        return folders;
+
+    // Check if path is within root
+    if (canonicalPath.native().find(canonicalRoot.native()) != 0)
+        return folders;
+
+    try {
+        for (const auto& entry : fs::directory_iterator(canonicalPath)) {
+            if (entry.is_directory()) {
+                folders.push_back(entry.path().filename().string());
+            }
+        }
+        std::sort(folders.begin(), folders.end());
+    } catch (const fs::filesystem_error&) {
+        // Return empty on error
+    }
+
+    return folders;
+}

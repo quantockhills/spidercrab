@@ -50,6 +50,10 @@ public:
     /// Check if cache has been built (even if empty).
     bool IsIndexed() const;
 
+    /// List immediate subdirectories in a given path.
+    /// Returns empty vector if path is invalid or not indexed.
+    std::vector<std::string> ListFolders(const std::string& path) const;
+
     /// Clear the cache.
     void Clear();
 
