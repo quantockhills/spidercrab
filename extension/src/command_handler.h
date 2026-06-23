@@ -11,6 +11,7 @@
 #include "fx_tags.h"
 #include "sample_tags.h"
 #include "slicer.h"
+#include "pipeline_stage_manager.h"
 #include <functional>
 #include <map>
 #include <mutex>

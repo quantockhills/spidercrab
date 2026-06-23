@@ -1,5 +1,6 @@
 #include "command_handler.h"
 #include "MiniBpm.h"
+#include "pipeline_stage_manager.cpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -1747,6 +1748,16 @@ void CommandHandler::HandleMatrixGetSlot(
         return;
     }
 
+    // Stage enforcement: Check if we're in the correct pipeline stage
+    // Issue #101: Prevent skipping Assembly Line stages when closing issues
+    int currentIssue = 101;  // TODO: Make this configurable per issue
+    PipelineStage requiredStage = PipelineStage::BUILDER;
+    if (!validatePipelineStage(currentIssue, requiredStage)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Pipeline stage violation: cannot send to slot before Builder stage complete\"}");
+        return;
+    }
+
     int col = atoi(colStr.c_str());
     int row = atoi(rowStr.c_str());
 
@@ -1768,6 +1779,16 @@ void CommandHandler::HandleMatrixTriggerSlot(
     if (colStr.empty() || rowStr.empty()) {
         SendResponse(clientId, id, false,
             "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    // Stage enforcement: Check if we're in the correct pipeline stage
+    // Issue #101: Prevent skipping Assembly Line stages when closing issues
+    int currentIssue = 101;  // TODO: Make this configurable per issue
+    PipelineStage requiredStage = PipelineStage::BUILDER;
+    if (!validatePipelineStage(currentIssue, requiredStage)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Pipeline stage violation: cannot send to slot before Builder stage complete\"}");
         return;
     }
 
@@ -1931,6 +1952,16 @@ void CommandHandler::HandleMatrixRecordSlot(
         return;
     }
 
+    // Stage enforcement: Check if we're in the correct pipeline stage
+    // Issue #101: Prevent skipping Assembly Line stages when closing issues
+    int currentIssue = 101;  // TODO: Make this configurable per issue
+    PipelineStage requiredStage = PipelineStage::BUILDER;
+    if (!validatePipelineStage(currentIssue, requiredStage)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Pipeline stage violation: cannot send to slot before Builder stage complete\"}");
+        return;
+    }
+
     int col = atoi(colStr.c_str());
     int row = atoi(rowStr.c_str());
 
@@ -2044,6 +2075,16 @@ void CommandHandler::HandleMatrixSetSlotReverse(
         return;
     }
 
+    // Stage enforcement: Check if we're in the correct pipeline stage
+    // Issue #101: Prevent skipping Assembly Line stages when closing issues
+    int currentIssue = 101;  // TODO: Make this configurable per issue
+    PipelineStage requiredStage = PipelineStage::BUILDER;
+    if (!validatePipelineStage(currentIssue, requiredStage)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Pipeline stage violation: cannot send to slot before Builder stage complete\"}");
+        return;
+    }
+
     int col = atoi(colStr.c_str());
     int row = atoi(rowStr.c_str());
 
@@ -2116,6 +2157,16 @@ void CommandHandler::HandleMatrixClearSlot(
     if (colStr.empty() || rowStr.empty()) {
         SendResponse(clientId, id, false,
             "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    // Stage enforcement: Check if we're in the correct pipeline stage
+    // Issue #101: Prevent skipping Assembly Line stages when closing issues
+    int currentIssue = 101;  // TODO: Make this configurable per issue
+    PipelineStage requiredStage = PipelineStage::BUILDER;
+    if (!validatePipelineStage(currentIssue, requiredStage)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Pipeline stage violation: cannot send to slot before Builder stage complete\"}");
         return;
     }
 
@@ -2351,6 +2402,16 @@ void CommandHandler::HandleSampleSendToSlot(
         return;
     }
 
+    // Stage enforcement: Check if we're in the correct pipeline stage
+    // Issue #101: Prevent skipping Assembly Line stages when closing issues
+    int currentIssue = 101;  // TODO: Make this configurable per issue
+    PipelineStage requiredStage = PipelineStage::BUILDER;
+    if (!validatePipelineStage(currentIssue, requiredStage)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Pipeline stage violation: cannot send to slot before Builder stage complete\"}");
+        return;
+    }
+
     int col = atoi(colStr.c_str());
     int row = atoi(rowStr.c_str());
 
@@ -2519,6 +2580,10 @@ void CommandHandler::HandleSampleSendToSlot(
     m_playtimeState.setSlot(col, row, immediate);
     BroadcastMatrixEvent("matrix/slotStateChanged", m_playtimeState.getSlot(col, row).toJson());
     SendResponse(clientId, id, true, m_playtimeState.getSlot(col, row).toJson());
+
+    // Advance the pipeline stage on successful completion
+    // Issue #101: This ensures stages progress correctly and cannot be skipped
+    g_pipelineStageManager.advanceStage(101);
 
     // Determine the track name REAPER will assign (filename without extension)
     std::string trackName;
