@@ -447,7 +447,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         if (i > 0) tracksJson += ",";
 
         // Read actual state from Reaper (setNewValue=nullptr = read mode)
-        bool muted = false, soloed = false, armed = false;
+        bool muted = false, soloed = false, armed = false, selected = false;
         double volume = 0.75; // sane default if API unavailable
         double pan = 0.0;  // sane default if API unavailable
         int recMode = 0; // I_RECMODE: 0=input (audio), 7=MIDI overdub, 8=MIDI replace
@@ -459,6 +459,8 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
             if (sp) soloed = (*sp != 0);
             int* ap = (int*)m_api.GetSetMediaTrackInfo(track, "I_RECARM", nullptr);
             if (ap) armed = (*ap != 0);
+            int* selp = (int*)m_api.GetSetMediaTrackInfo(track, "I_SELECTED", nullptr);
+            if (selp) selected = (*selp != 0);
             double* vp = (double*)m_api.GetSetMediaTrackInfo(track, "D_VOL", nullptr);
             if (vp) volume = *vp;
             double* pp = (double*)m_api.GetSetMediaTrackInfo(track, "D_PAN", nullptr);
@@ -488,7 +490,7 @@ void CommandHandler::HandleGetTracks(int clientId, const std::string& id, const 
         tracksJson += json_string("index") + ":" + std::to_string(i) + ",";
         tracksJson += json_string("name") + ":" + json_string(displayName) + ",";
         tracksJson += json_string("trackNumber") + ":" + std::to_string(i + 1) + ",";
-        tracksJson += json_string("selected") + ":false,";
+        tracksJson += json_string("selected") + ":" + std::string(selected ? "true" : "false") + ",";
         tracksJson += json_string("muted") + ":" + std::string(muted ? "true" : "false") + ",";
         tracksJson += json_string("soloed") + ":" + std::string(soloed ? "true" : "false") + ",";
         tracksJson += json_string("armed") + ":" + std::string(armed ? "true" : "false") + ",";
@@ -1413,11 +1415,27 @@ void CommandHandler::HandleSetTrackSelected(
         SendResponse(clientId, id, false, "{\"error\":\"Invalid track index\"}");
         return;
     }
-    // Only SetTrackSelected — safe because it's a standalone user action
-    // (I_SELECTED crash trigger is only during concurrent FX/media operations).
-    // REAPER's own web interface uses the same approach via SET/TRACK/SEL.
-    int selected = (selectedStr == "true" || selectedStr == "1") ? 1 : 0;
-    m_api.GetSetMediaTrackInfo(track, "I_SELECTED", &selected);
+
+    bool selected = (selectedStr == "true" || selectedStr == "1");
+
+    if (selected) {
+        // Use SetOnlyTrackSelected for proper multi-track selection.
+        // This deselects all other tracks first, then selects this one.
+        // Direct I_SELECTED manipulation can cause inconsistent state
+        // when combined with FX operations (Issue #102).
+        if (m_api.SetOnlyTrackSelected) {
+            m_api.SetOnlyTrackSelected(track);
+        } else {
+            // Fallback: manual selection (less robust)
+            int sel = 1;
+            m_api.GetSetMediaTrackInfo(track, "I_SELECTED", &sel);
+        }
+    } else {
+        // Deselection: just clear I_SELECTED for this track
+        int sel = 0;
+        m_api.GetSetMediaTrackInfo(track, "I_SELECTED", &sel);
+    }
+
     SendResponse(clientId, id, true,
         "{\"selected\":" + std::string(selected ? "true" : "false") + "}");
 }
