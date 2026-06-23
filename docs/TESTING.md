@@ -73,6 +73,65 @@ This project has four distinct testing layers. Each catches different bugs.
   - `hardened_fx_test.py` — multi-track isolation, exact name matching
 - **Exit codes:** 0 = pass, 1 = setup fail, 2 = test failures
 
+### Headless Test Workflow
+
+#### Prerequisites
+
+| Requirement | How to Install |
+|-------------|----------------|
+| Xvfb | `sudo apt install xvfb` (Debian/Ubuntu) or `brew install xorg-server` (macOS) |
+| Python 3 | Usually pre-installed; verify with `python3 --version` |
+| REAPER Portable | Download from <https://www.reaper.fm/download.php> → extract to `~/reaper-portable/` |
+| Extension built | Run `make build` to compile `reaper_spidercrab.so` |
+
+#### Quick Start
+
+```bash
+# One-command test run
+make headless-test
+
+# Or step-by-step for debugging
+make headless-launch    # Start Xvfb + Reaper in background
+make headless-status    # Check if WebSocket is ready
+# ... run tests manually ...
+make headless-stop      # Clean shutdown
+```
+
+#### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DISPLAY_NUM` | `99` | Xvfb display number |
+| `REAPER_PORT` | `9224` | WebSocket port to test |
+| `REAPER_HOME` | `~/reaper-portable` | Path to portable Reaper |
+| `EXT_SO` | (auto-detect) | Path to extension `.so` |
+| `TIMEOUT_START` | `10` | Seconds to wait for Reaper startup |
+| `VERBOSE` | `0` | Set to `1` for debug output |
+| `KEEP_CONFIG` | (unset) | Keep temp config dir after test (for debugging) |
+
+#### What Gets Tested
+
+1. **WebSocket handshake** — SEC-WebSocket upgrade, Accept header
+2. **transport/getState** — live play/recording state from `GetPlayState()`
+3. **transport/play & stop** — command dispatch + live state verification
+4. **track/getAll** — enumerate all tracks with correct structure
+5. **hello message** — client greeting handling
+6. **unknown command error** — proper error response for invalid commands
+7. **FX operations** — enumerate, add, param get/set, delete
+8. **ReaEQ param roundtrip** — add ReaEQ, change 5 params, verify values stick
+9. **Hardened FX tests** — multi-track isolation, exact FX name matching
+
+#### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `Xvfb not found` | X virtual framebuffer not installed | `sudo apt install xvfb` or `brew install xorg-server` |
+| `Extension .so not found` | Extension not built or wrong path | Run `make build` or set `EXT_SO=/path/to/so` |
+| `WebSocket did not become ready` | REAPER didn't start or wrong port | Check REAPER logs, verify `REAPER_PORT` matches extension |
+| `Reaper died during startup` | Missing libraries or config error | Check `LD_LIBRARY_PATH`, use `KEEP_CONFIG=1` to inspect config |
+| `Broken pipe` | REAPER crashed or closed connection | Check REAPER console for crash info, run with `VERBOSE=1` |
+| `Segmentation fault` | Extension bug or REAPER API misuse | Run with `make build-debug` for ASan output |
+
 ## Integration Testing (Windows)
 
 - **Script:** `extension/test/deploy_and_test.ps1`
