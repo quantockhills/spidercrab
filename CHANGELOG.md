@@ -1,4 +1,14 @@
 
+## v0.3.0-alpha — 2026-06-23
+
+### Verified
+- **Playtime clip operations verified** — All matrix operations (clear slot, reverse toggle, record, trigger) tested and confirmed working:
+  - C++ tests: 326/326 passing
+  - Frontend tests: 422/439 passing (17 skipped)
+  - `HandleMatrixClearSlot` removes media items and notifies Playtime via OSC
+  - `HandleMatrixSetSlotReverse` toggles `B_REVERSETAKES` on takes
+  - Full integration with SessionView.tsx UI
+
 ## v0.3.0-alpha — 2026-06-11
 
 ### Highlights
