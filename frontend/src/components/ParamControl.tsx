@@ -309,9 +309,15 @@ export function ParamControl({
       );
 
       // If this param has a MIDI CC mapping, send it
+      // Normalize the value to 0-127 range based on param min/max
       const mapping = midiCcMappings[paramIdx];
       if (sendMidiCC && mapping) {
-        await sendMidiCC(0, mapping.cc, Math.round((value / (params.find(p => p.index === paramIdx)?.max || 127)) * 127));
+        const param = params.find(p => p.index === paramIdx);
+        if (param && param.max !== param.min) {
+          const normalized = (value - param.min) / (param.max - param.min);
+          const ccValue = Math.round(normalized * 127);
+          await sendMidiCC(0, mapping.cc, Math.max(0, Math.min(127, ccValue)));
+        }
       }
 
       const resp = await setFxParam(trackIdx, fxIdx, paramIdx, value);
