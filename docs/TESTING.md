@@ -171,13 +171,26 @@ make headless-stop      # Clean shutdown
 
 ## Assembly Line (per issue type)
 
-See `docs/workflows.md` for which pipeline applies to each task type.
-
 | Pipeline | Stages |
 |----------|--------|
 | UI Feature | Builder → Reviewer → Screenshot Verifier → Tester → Close |
 | Backend/C++ | Builder → Reviewer → Integration Tester → Close |
 | Design/Layout | Designer → Builder → Reviewer → Screenshot Verifier → Close |
-| Docs/Meta | Builder → Reviewer → Close |
+| Docs/Meta | Builder → Reviewer → Tester → Close |
 
-Builder writes failing tests first (TDD). Tester only runs them.
+Builder writes failing tests first (TDD). Tester runs all tests and closes.
+
+## Issue #125: Document Headless Test Workflow
+
+**Status:** ✅ Complete
+
+Comprehensive documentation added to `docs/TESTING.md` covering:
+- Prerequisites for Xvfb, Python, REAPER Portable
+- Quick start commands (`make headless-test`)
+- Environment variables reference table
+- Test coverage summary
+- Troubleshooting guide
+
+All tests pass:
+- C++: 326 tests passed
+- Frontend: 422 tests passed (17 skipped)
