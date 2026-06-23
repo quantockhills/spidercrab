@@ -28,7 +28,7 @@ import { useSequencer } from './useSequencer';
 
 // Re-export all types for backward compatibility
 export type { Track } from './useTrackState';
-export type { FxInfo, EnumeratedFx, FxParam, FxPresetInfo, FxPresetNames } from './useFx';
+export type { FxInfo, EnumeratedFx, FxParam, FxPresetInfo, FxPresetNames, MidiCcMapping } from './useFx';
 export type { DirEntry, SampleTagData } from './useSampleBrowser';
 export type { FxChainEntry, FxChainInfo, FxChainSearchResult, FxChainCachedSearchResult } from './useFxChains';
 export type { ClipSlot, MatrixData } from './usePlaytime';

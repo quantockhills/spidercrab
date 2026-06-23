@@ -16,7 +16,7 @@ export { useFx } from './useFx';
 export type { FxInfo, EnumeratedFx, FxParam, MidiCcMapping } from './useFx';
 
 export { useFxChains } from './useFxChains';
-export type { FxChainEntry, FxChainInfo } from './useFxChains';
+export type { FxChainEntry, FxChainInfo, FxChainSearchResult, FxChainCachedSearchResult } from './useFxChains';
 
 export { useSampleBrowser } from './useSampleBrowser';
 export type { DirEntry } from './useSampleBrowser';
