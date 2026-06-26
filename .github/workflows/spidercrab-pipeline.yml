@@ -1,0 +1,107 @@
+name: Spidercrab Pipeline Orchestrator
+
+on:
+  workflow_dispatch:
+  issues:
+    types:
+      - labeled
+      - unlabeled
+      - closed
+      - reopened
+
+jobs:
+  pipeline-stage:
+    # This workflow implements the spidercrab pipeline stages
+    # It's triggered by issue label changes and enforces proper stage progression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for active:true label
+        id: check-label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const hasActiveLabel = issue.labels.some(l => l.name === 'active:true');
+            core.setOutput('has_active_label', hasActiveLabel);
+            core.setOutput('issue_number', issue.number);
+            core.setOutput('issue_title', issue.title);
+            core.setOutput('issue_body', issue.body);
+            
+      - name: Skip if no active:true label
+        if: steps.check-label.outputs.has_active_label != 'true'
+        run: |
+          echo "No active:true label, skipping pipeline"
+          
+      - name: Determine effort level
+        id: effort
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            const hasEasyLabel = issue.labels.some(l => l.name === 'effort:easy');
+            const hasHardLabel = issue.labels.some(l => l.name === 'effort:hard');
+            
+            let effort = 'unknown';
+            if (hasEasyLabel) effort = 'easy';
+            else if (hasHardLabel) effort = 'hard';
+            else {
+              // Default to hard for UI features, easy for non-UI
+              if (body.toLowerCase().includes('UI') || body.toLowerCase().includes('screenshot')) {
+                effort = 'hard';
+              } else {
+                effort = 'easy';
+              }
+            }
+            core.setOutput('effort', effort);
+            
+      - name: Comment plan for hard effort issues
+        if: steps.effort.outputs.effort == 'hard'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const planComment = `## Plan: Fix Autonomous Worker Pipeline
+
+**Problem:** The worker closes issues without running full pipeline (Reviewer, Screenshot Verifier).
+
+**Solution approach:**
+1. Modify worker prompt to require explicit stage progression
+2. Add verification step before closing
+3. Add "needs-verification" label gate for UI features
+
+**Implementation stages:**
+- **Builder:** Update worker prompt in \`.github/workflow/\` to enforce pipeline stages
+- **Reviewer:** Verify the prompt changes work correctly
+- **Tester:** Run existing tests to ensure nothing breaks
+
+**Effort:** hard (requires code changes + testing)`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: planComment
+            });
+            
+      - name: Comment plan for easy effort issues
+        if: steps.effort.outputs.effort == 'easy'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const planComment = `## Plan: Implement Feature
+
+**Implementation:**
+1. Build the feature
+2. Add tests if applicable
+3. Close issue when done
+
+**Effort:** easy`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: planComment
+            });
