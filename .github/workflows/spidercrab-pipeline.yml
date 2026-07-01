@@ -125,16 +125,51 @@ jobs:
               });
             }
 
-      - name: Remove active:true when issue is closed
+      - name: Enforce pipeline stage progression for closing
         if: github.event.action == 'closed'
         uses: actions/github-script@v7
         with:
           script: |
             const issueNumber = context.payload.issue.number;
+            const issue = context.payload.issue;
+            
+            // Check if issue has active:true label - if so, it was closed without proper pipeline
+            const hasActiveLabel = issue.labels.some(l => l.name === 'active:true');
+            
+            if (hasActiveLabel) {
+              // Reopen the issue and add a comment explaining the pipeline violation
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: '## Pipeline Violation Detected\n\nThe issue was closed while still having the `active:true` label. This indicates the pipeline was not followed correctly.\n\n**Required action:** Remove `active:true` label before closing, ensuring all stages (Builder → Reviewer → Tester) complete successfully.'
+              });
+              
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                state: 'open'
+              });
+              
+              core.setFailed('Issue closed without completing pipeline - reopened');
+            }
+            
+      - name: Remove active:true when issue is closed properly
+        if: github.event.action == 'closed' && !steps.check-label.outputs.has_active_label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
             // Remove active:true label when issue is closed
-            await github.rest.issues.removeLabel({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              name: 'active:true'
-            });
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: 'active:true'
+              });
+            } catch (e) {
+              // Label might already be removed
+              console.log('Label already removed or not found');
+            }
