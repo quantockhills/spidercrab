@@ -27,6 +27,19 @@ jobs:
             core.setOutput('issue_title', issue.title);
             core.setOutput('issue_body', issue.body);
             
+      - name: Add stage:builder label when active:true is added
+        if: github.event.action == 'labeled' && github.event.label.name == 'active:true' && steps.check-label.outputs.has_active_label == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['stage:builder']
+            });
+            
       - name: Skip if no active:true label
         if: steps.check-label.outputs.has_active_label != 'true'
         run: |
@@ -125,6 +138,34 @@ jobs:
               });
             }
 
+      - name: Advance to stage:reviewer when builder comments
+        if: github.event_name == 'issues' && github.event.action == 'commented'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const comment = context.payload.comment.body;
+            const issue = context.payload.issue;
+            
+            // Check if comment indicates builder completion
+            const builderKeywords = ['implementation complete', 'build finished', 'builder done', 'ready for review'];
+            const isBuilderComplete = builderKeywords.some(kw => comment.toLowerCase().includes(kw));
+            
+            if (isBuilderComplete && issue.labels.some(l => l.name === 'stage:builder')) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: 'stage:builder'
+              });
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['stage:reviewer']
+              });
+            }
+
       - name: Enforce pipeline stage progression for closing
         if: github.event.action == 'closed'
         uses: actions/github-script@v7
@@ -135,6 +176,7 @@ jobs:
             
             // Check if issue has active:true label - if so, it was closed without proper pipeline
             const hasActiveLabel = issue.labels.some(l => l.name === 'active:true');
+            const hasAnyStageLabel = issue.labels.some(l => l.name.startsWith('stage:'));
             
             if (hasActiveLabel) {
               // Reopen the issue and add a comment explaining the pipeline violation
@@ -153,6 +195,12 @@ jobs:
               });
               
               core.setFailed('Issue closed without completing pipeline - reopened');
+            }
+            
+            // For hard issues, check that stage labels were used
+            const hasHardLabel = issue.labels.some(l => l.name === 'effort:hard');
+            if (hasHardLabel && hasAnyStageLabel) {
+              core.setFailed('Issue has stage labels but was closed - pipeline not completed');
             }
             
       - name: Remove active:true when issue is closed properly
