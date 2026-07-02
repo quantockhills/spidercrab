@@ -8,6 +8,7 @@ on:
       - unlabeled
       - closed
       - reopened
+      - opened
 
 jobs:
   pipeline-stage:
@@ -26,19 +27,60 @@ jobs:
             core.setOutput('issue_number', issue.number);
             core.setOutput('issue_title', issue.title);
             core.setOutput('issue_body', issue.body);
+            core.setOutput('stage_labels', issue.labels.filter(l => l.name.startsWith('stage:')).map(l => l.name).join(','));
             
-      - name: Add stage:builder label when active:true is added
+      - name: Initialize pipeline for new active:true issues
         if: github.event.action == 'labeled' && github.event.label.name == 'active:true' && steps.check-label.outputs.has_active_label == 'true'
         uses: actions/github-script@v7
         with:
           script: |
             const issueNumber = context.payload.issue.number;
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            
+            // Determine effort level
+            const hasEasyLabel = issue.labels.some(l => l.name === 'effort:easy');
+            const hasHardLabel = issue.labels.some(l => l.name === 'effort:hard');
+            
+            let effort = 'unknown';
+            if (hasEasyLabel) effort = 'easy';
+            else if (hasHardLabel) effort = 'hard';
+            else {
+              // Default to hard for UI features, easy for non-UI
+              if (body.toLowerCase().includes('UI') || body.toLowerCase().includes('screenshot') || body.toLowerCase().includes('GUI')) {
+                effort = 'hard';
+              } else {
+                effort = 'easy';
+              }
+            }
+            
+            // Add effort label if not present
+            if (effort !== 'unknown') {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: [`effort:${effort}`]
+              });
+            }
+            
+            // Add stage:builder label
             await github.rest.issues.addLabels({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: issueNumber,
               labels: ['stage:builder']
             });
+            
+            // Add needs-verification for UI features
+            if (effort === 'hard' && (body.toLowerCase().includes('UI') || body.toLowerCase().includes('screenshot') || body.toLowerCase().includes('GUI'))) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                labels: ['needs-verification']
+              });
+            }
             
       - name: Skip if no active:true label
         if: steps.check-label.outputs.has_active_label != 'true'
@@ -84,7 +126,7 @@ jobs:
 3. Add "needs-verification" label gate for UI features
 
 **Implementation stages:**
-- **Builder:** Update worker prompt in \`.github/workflow/\` to enforce pipeline stages
+- **Builder:** Update worker prompt in \`.github/WORKER_PROMPT.md\` to enforce pipeline stages
 - **Reviewer:** Verify the prompt changes work correctly
 - **Tester:** Run existing tests to ensure nothing breaks
 
@@ -119,25 +161,6 @@ jobs:
               body: planComment
             });
             
-      - name: Add needs-verification label for UI features
-        if: steps.effort.outputs.effort == 'hard'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const issueNumber = context.payload.issue.number;
-            const issue = context.payload.issue;
-            const body = issue.body || '';
-            
-            // Add needs-verification label for UI features
-            if (body.toLowerCase().includes('UI') || body.toLowerCase().includes('screenshot') || body.toLowerCase().includes('GUI')) {
-              await github.rest.issues.addLabels({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                labels: ['needs-verification']
-              });
-            }
-
       - name: Advance to stage:reviewer when builder comments
         if: github.event_name == 'issues' && github.event.action == 'commented'
         uses: actions/github-script@v7
@@ -148,10 +171,15 @@ jobs:
             const issue = context.payload.issue;
             
             // Check if comment indicates builder completion
-            const builderKeywords = ['implementation complete', 'build finished', 'builder done', 'ready for review'];
+            const builderKeywords = ['implementation complete', 'build finished', 'builder done', 'ready for review', 'implementation verified'];
             const isBuilderComplete = builderKeywords.some(kw => comment.toLowerCase().includes(kw));
             
-            if (isBuilderComplete && issue.labels.some(l => l.name === 'stage:builder')) {
+            const hasBuilderStage = issue.labels.some(l => l.name === 'stage:builder');
+            const hasReviewerStage = issue.labels.some(l => l.name === 'stage:reviewer');
+            const hasHardEffort = issue.labels.some(l => l.name === 'effort:hard');
+            
+            // For hard issues: builder must complete before reviewer
+            if (isBuilderComplete && hasBuilderStage && !hasReviewerStage) {
               await github.rest.issues.removeLabel({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -165,7 +193,53 @@ jobs:
                 labels: ['stage:reviewer']
               });
             }
-
+            
+      - name: Advance to stage:tester or screenshot when reviewer comments
+        if: github.event_name == 'issues' && github.event.action == 'commented'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+            const comment = context.payload.comment.body;
+            const issue = context.payload.issue;
+            
+            // Check if comment indicates reviewer completion
+            const reviewerKeywords = ['review complete', 'verified and approved', 'code looks good', 'no issues found', 'ready for testing'];
+            const isReviewerComplete = reviewerKeywords.some(kw => comment.toLowerCase().includes(kw));
+            
+            const hasReviewerStage = issue.labels.some(l => l.name === 'stage:reviewer');
+            const hasTesterStage = issue.labels.some(l => l.name === 'stage:tester');
+            const hasScreenshotStage = issue.labels.some(l => l.name === 'stage:screenshot');
+            const hasHardEffort = issue.labels.some(l => l.name === 'effort:hard');
+            const body = issue.body || '';
+            
+            // For hard issues: reviewer must complete before tester/screenshot
+            if (isReviewerComplete && hasReviewerStage && !hasTesterStage && !hasScreenshotStage) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: 'stage:reviewer'
+              });
+              
+              // Determine if UI feature (needs screenshot) or backend (goes to tester)
+              if (body.toLowerCase().includes('UI') || body.toLowerCase().includes('screenshot') || body.toLowerCase().includes('GUI')) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  labels: ['stage:screenshot']
+                });
+              } else {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  labels: ['stage:tester']
+                });
+              }
+            }
+            
       - name: Enforce pipeline stage progression for closing
         if: github.event.action == 'closed'
         uses: actions/github-script@v7
@@ -177,6 +251,7 @@ jobs:
             // Check if issue has active:true label - if so, it was closed without proper pipeline
             const hasActiveLabel = issue.labels.some(l => l.name === 'active:true');
             const hasAnyStageLabel = issue.labels.some(l => l.name.startsWith('stage:'));
+            const hasHardLabel = issue.labels.some(l => l.name === 'effort:hard');
             
             if (hasActiveLabel) {
               // Reopen the issue and add a comment explaining the pipeline violation
@@ -197,13 +272,20 @@ jobs:
               core.setFailed('Issue closed without completing pipeline - reopened');
             }
             
-            // For hard issues, check that stage labels were used
-            const hasHardLabel = issue.labels.some(l => l.name === 'effort:hard');
-            if (hasHardLabel && hasAnyStageLabel) {
-              core.setFailed('Issue has stage labels but was closed - pipeline not completed');
+            // For hard issues, check that all stages completed
+            if (hasHardLabel) {
+              const hasBuilderStage = issue.labels.some(l => l.name === 'stage:builder');
+              const hasReviewerStage = issue.labels.some(l => l.name === 'stage:reviewer');
+              const hasTesterStage = issue.labels.some(l => l.name === 'stage:tester');
+              const hasScreenshotStage = issue.labels.some(l => l.name === 'stage:screenshot');
+              
+              // Hard issues must have gone through all stages
+              if (hasBuilderStage || hasReviewerStage || hasScreenshotStage) {
+                core.setFailed('Hard issue closed before pipeline completion - stages remaining');
+              }
             }
             
-      - name: Remove active:true when issue is closed properly
+      - name: Remove active:true and stage labels when issue is closed properly
         if: github.event.action == 'closed' && !steps.check-label.outputs.has_active_label
         uses: actions/github-script@v7
         with:
@@ -220,4 +302,31 @@ jobs:
             } catch (e) {
               // Label might already be removed
               console.log('Label already removed or not found');
+            }
+            
+            // Remove all stage labels
+            const stageLabels = ['stage:builder', 'stage:reviewer', 'stage:tester', 'stage:screenshot'];
+            for (const label of stageLabels) {
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issueNumber,
+                  name: label
+                });
+              } catch (e) {
+                // Label might not exist
+              }
+            }
+            
+            // Remove needs-verification if present
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                name: 'needs-verification'
+              });
+            } catch (e) {
+              // Label might not exist
             }
