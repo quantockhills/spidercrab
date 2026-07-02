@@ -90,6 +90,10 @@ git pull origin feat/playtime-clip-ops
 2. **active:true label blocks closing:** Must be removed before issue can close
 3. **needs-verification label:** Required for UI features, removed by Tester
 4. **Worker must spawn sub-agents for each stage** - do not skip stages
+5. **MUST read `/home/sasha/cron_stage.txt` before each run** to determine current stage
+6. **MUST advance stage file explicitly** after completing each stage
+7. **Tester is the ONLY role that closes issues** - no exceptions
+8. **If stage file is missing or invalid, default to `idle` and pick a new issue**
 
 ## Current Run
 
