@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { MatrixData, ClipSlot, Track } from '../hooks/useReaper';
+import type { DragPayload } from '../hooks/useDragContext';
 
 interface SessionViewProps {
   matrix: MatrixData | null;
@@ -32,6 +33,10 @@ interface SessionViewProps {
   onToggleRecordMode?: (trackIdx: number) => void;
   /** Navigate to Track view and select this track (Issue #111) */
   onNavigateToTrack?: (trackIdx: number) => void;
+  /** Drag payload from SampleBrowser (Issue #138) */
+  dragPayload?: DragPayload | null;
+  /** Send sample to slot (Issue #138) */
+  sendSampleToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
 }
 
 /** Map slot state to display color hex (for the cell accent) */
@@ -65,6 +70,8 @@ export function SessionView({
   onToggleSolo,
   onToggleRecordMode,
   onNavigateToTrack,
+  dragPayload,
+  sendSampleToSlot,
 }: SessionViewProps) {
   const [loading, setLoading] = useState(!matrix);
   const [activeScene, setActiveScene] = useState<number | null>(null);
@@ -73,6 +80,7 @@ export function SessionView({
   const [playtimeAvailable, setPlaytimeAvailable] = useState<boolean | null>(null);
   const [playtimeLaunching, setPlaytimeLaunching] = useState(false);
   const [playtimeError, setPlaytimeError] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{col: number; row: number} | null>(null);
   const initializedRef = useRef(false);
 
   // Load matrix on mount if not provided
@@ -199,6 +207,32 @@ export function SessionView({
       setPlaytimeLaunching(false);
     }
   }, [onLaunchPlaytime, getMatrix]);
+
+  // Handle drop - Issue #138
+  const handleDrop = useCallback(async (col: number, row: number) => {
+    if (!dragPayload || !sendSampleToSlot) return;
+    try {
+      await sendSampleToSlot(dragPayload.path, col, row);
+      setDropTarget(null);
+      getMatrix();
+    } catch (err) {
+      console.error('Failed to send sample to slot:', err);
+    }
+  }, [dragPayload, sendSampleToSlot, getMatrix]);
+
+  // Drag over handlers
+  const handleDragEnter = useCallback((col: number, row: number) => {
+    setDropTarget({ col, row });
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDropTarget(null);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, col: number, row: number) => {
+    e.preventDefault();
+    setDropTarget({ col, row });
+  }, []);
 
   if (loading) {
     return (
@@ -397,105 +431,101 @@ export function SessionView({
       </div>
 
       {/* Column headers */}
-      {(() => {
-        return (
-          <div className="px-3 pt-2 border-b border-[var(--border)]">
-            <div className="flex gap-px">
-              {visibleColumns.map((col) => {
-                const track = (tracks ?? [])[col];
-                const trackName = track?.name || `Track ${col + 1}`;
-                const isArmed = track?.armed ?? false;
-                const isMuted = track?.muted ?? false;
-                const isSoloed = track?.soloed ?? false;
-                const recMode = track?.recMode ?? 0;
-                const isMidiMode = recMode >= 7;
-                return (
-                  <div key={col} className="flex-1 flex flex-col items-center min-w-0 px-px">
-                    {/* Track name + nav button */}
-                    <div
-                      className="w-full flex items-center justify-center gap-0.5 py-1"
+      <div className="px-3 pt-2 border-b border-[var(--border)]">
+        <div className="flex gap-px">
+          {visibleColumns.map((col) => {
+            const track = (tracks ?? [])[col];
+            const trackName = track?.name || `Track ${col + 1}`;
+            const isArmed = track?.armed ?? false;
+            const isMuted = track?.muted ?? false;
+            const isSoloed = track?.soloed ?? false;
+            const recMode = track?.recMode ?? 0;
+            const isMidiMode = recMode >= 7;
+            return (
+              <div key={col} className="flex-1 flex flex-col items-center min-w-0 px-px">
+                {/* Track name + nav button */}
+                <div
+                  className="w-full flex items-center justify-center gap-0.5 py-1"
+                >
+                  <span
+                    className="text-[10px] font-semibold text-[var(--text-secondary)] truncate"
+                    title={trackName}
+                    aria-label={`Column ${col + 1}: ${trackName}`}
+                  >
+                    {trackName}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onNavigateToTrack?.(col); }}
+                    className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-[10px] leading-none rounded transition-all active:brightness-90 hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:text-[var(--accent-orange)]"
+                    aria-label={`Navigate to track ${col + 1}`}
+                    title="Go to Track view"
+                  >
+                    ↗
+                  </button>
+                </div>
+                {/* Control buttons row */}
+                <div className="flex items-center gap-px pb-1">
+                  {/* Record arm button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onToggleArm?.(col); }}
+                    className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
+                      isArmed
+                        ? 'bg-[var(--accent-red)]/40 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/50'
+                        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
+                    }`}
+                    aria-label={`Track ${col + 1} arm toggle`}
+                    title={isArmed ? 'Armed' : 'Disarmed'}
+                  >
+                    R
+                  </button>
+                  {/* Record mode toggle (A/M) — only visible when armed */}
+                  {isArmed && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onToggleRecordMode?.(col); }}
+                      className={`w-5 h-5 flex items-center justify-center text-[8px] font-bold rounded transition-all active:brightness-90 ${
+                        isMidiMode
+                          ? 'bg-[var(--accent-blue)]/30 text-[var(--accent-blue)] ring-1 ring-[var(--accent-blue)]/40'
+                          : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/80 hover:bg-[var(--bg-secondary)]'
+                      }`}
+                      aria-label={`Track ${col + 1} record mode toggle`}
+                      title={isMidiMode ? 'MIDI input' : 'Audio input'}
                     >
-                      <span
-                        className="text-[10px] font-semibold text-[var(--text-secondary)] truncate"
-                        title={trackName}
-                        aria-label={`Column ${col + 1}: ${trackName}`}
-                      >
-                        {trackName}
-                      </span>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onNavigateToTrack?.(col); }}
-                        className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-[10px] leading-none rounded transition-all active:brightness-90 hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:text-[var(--accent-orange)]"
-                        aria-label={`Navigate to track ${col + 1}`}
-                        title="Go to Track view"
-                      >
-                        ↗
-                      </button>
-                    </div>
-                    {/* Control buttons row */}
-                    <div className="flex items-center gap-px pb-1">
-                      {/* Record arm button */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onToggleArm?.(col); }}
-                        className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
-                          isArmed
-                            ? 'bg-[var(--accent-red)]/40 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/50'
-                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
-                        }`}
-                        aria-label={`Track ${col + 1} arm toggle`}
-                        title={isArmed ? 'Armed' : 'Disarmed'}
-                      >
-                        R
-                      </button>
-                      {/* Record mode toggle (A/M) — only visible when armed */}
-                      {isArmed && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onToggleRecordMode?.(col); }}
-                          className={`w-5 h-5 flex items-center justify-center text-[8px] font-bold rounded transition-all active:brightness-90 ${
-                            isMidiMode
-                              ? 'bg-[var(--accent-blue)]/30 text-[var(--accent-blue)] ring-1 ring-[var(--accent-blue)]/40'
-                              : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/80 hover:bg-[var(--bg-secondary)]'
-                          }`}
-                          aria-label={`Track ${col + 1} record mode toggle`}
-                          title={isMidiMode ? 'MIDI input' : 'Audio input'}
-                        >
-                          {isMidiMode ? 'M' : 'A'}
-                        </button>
-                      )}
-                      {/* Mute button */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onToggleMute?.(col); }}
-                        className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
-                          isMuted
-                            ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
-                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
-                        }`}
-                        aria-label={`Track ${col + 1} mute toggle`}
-                        title={isMuted ? 'Muted' : 'Unmuted'}
-                      >
-                        M
-                      </button>
-                      {/* Solo button */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onToggleSolo?.(col); }}
-                        className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
-                          isSoloed
-                            ? 'bg-[var(--accent-yellow)]/25 text-[var(--accent-yellow)] ring-1 ring-[var(--accent-yellow)]/40'
-                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
-                        }`}
-                        aria-label={`Track ${col + 1} solo toggle`}
-                        title={isSoloed ? 'Soloed' : 'Unsoloed'}
-                      >
-                        S
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="w-8 flex-shrink-0" />
-            </div>
-          </div>
-        );
-      })()}
+                      {isMidiMode ? 'M' : 'A'}
+                    </button>
+                  )}
+                  {/* Mute button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onToggleMute?.(col); }}
+                    className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
+                      isMuted
+                        ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
+                        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
+                    }`}
+                    aria-label={`Track ${col + 1} mute toggle`}
+                    title={isMuted ? 'Muted' : 'Unmuted'}
+                  >
+                    M
+                  </button>
+                  {/* Solo button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onToggleSolo?.(col); }}
+                    className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
+                      isSoloed
+                        ? 'bg-[var(--accent-yellow)]/25 text-[var(--accent-yellow)] ring-1 ring-[var(--accent-yellow)]/40'
+                        : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:bg-[var(--bg-secondary)]'
+                    }`}
+                    aria-label={`Track ${col + 1} solo toggle`}
+                    title={isSoloed ? 'Soloed' : 'Unsoloed'}
+                  >
+                    S
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          <div className="w-8 flex-shrink-0" />
+        </div>
+      </div>
 
       {/* Grid area */}
       <div className="flex-1 overflow-y-auto p-3">
@@ -507,10 +537,15 @@ export function SessionView({
                 const state = slot?.state ?? 'empty';
                 const name = slot?.name ?? '';
                 const clipType = slot?.clipType ?? 'none';
+                const isDropTarget = dropTarget?.col === col && dropTarget?.row === row;
                 return (
                   <button
                     key={col}
                     onClick={() => handleSlotTap(col, row)}
+                    onDragEnter={(e) => { e.preventDefault(); handleDragEnter(col, row); }}
+                    onDragOver={(e) => { e.preventDefault(); handleDragOver(e, col, row); }}
+                    onDragLeave={(e) => { e.preventDefault(); handleDragLeave(); }}
+                    onDrop={(e) => { e.preventDefault(); handleDrop(col, row); }}
                     className={`
                       relative flex-1 flex flex-col items-center justify-center
                       aspect-square min-h-[44px]
@@ -519,6 +554,7 @@ export function SessionView({
                       ${state === 'stopped' ? 'bg-[var(--accent-dim)]/20 hover:bg-[var(--accent-dim)]/30 text-[var(--text-primary)]' : ''}
                       ${state === 'playing' ? 'bg-[var(--accent-green)] text-black hover:brightness-110' : ''}
                       ${state === 'recording' ? 'bg-[var(--accent-red)] text-black animate-pulse hover:brightness-110' : ''}
+                      ${isDropTarget ? 'ring-2 ring-[var(--accent-orange)] bg-[var(--accent-orange)]/10' : ''}
                       active:brightness-90
                     `}
                     aria-label={`Slot ${col + 1},${row + 1}`}
@@ -554,6 +590,12 @@ export function SessionView({
                     {state === 'playing' && <span className="absolute bottom-0.5 right-0.5 text-[8px] opacity-70">▶</span>}
                     {state === 'recording' && <span className="absolute bottom-0.5 right-0.5 text-[8px] text-[var(--accent-red)] opacity-80">●</span>}
                     {slot?.reversed && state !== 'empty' && <span className="absolute top-0.5 left-0.5 text-[7px] font-bold text-[var(--accent-orange)] opacity-90">R</span>}
+                    {/* Drop indicator overlay */}
+                    {isDropTarget && dragPayload && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-[var(--accent-orange)]/20">
+                        <span className="text-[12px] font-bold text-[var(--accent-orange)]">↓</span>
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -579,3 +621,5 @@ export function SessionView({
     </div>
   );
 }
+
+export default SessionView;
