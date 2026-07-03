@@ -5,6 +5,7 @@ import { volumeToDb } from '../utils/volume';
 import type { WsResponse } from '../lib/wsClient';
 import { ParamSlider } from './ParamControl';
 import { ChainCycler } from './ChainCycler';
+import { TrackDropZone } from './TrackDropZone';
 
 // ── Chain search type (Issue #105) ───────────────────────────
 
@@ -33,6 +34,8 @@ interface TrackOverviewProps {
   onSelectFx?: (trackIdx: number, fxIdx: number, fxName: string) => void;
   onOpenFx?: (trackIdx: number) => void;
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
+  // File drag-and-drop onto tracks (Issue #144)
+  onDropFile?: (trackIdx: number, filePath: string) => Promise<boolean>;
   // Chain cycle support (Issue #95)
   fxChainCycle?: (trackIdx: number, direction: 'next' | 'prev', chainPath?: string) => Promise<{success: boolean; fx?: FxInfo[]}>;
   // Inline FX search props (Issue #102)
@@ -448,6 +451,7 @@ export function TrackOverview({
                 onVolumeChange={onVolumeChange ? (v) => onVolumeChange(track.index, v) : undefined}
                 onPanChange={onPanChange ? (v) => onPanChange(track.index, v) : undefined}
                 onOpenFx={onOpenFx ? () => onOpenFx(track.index) : undefined}
+                onDropFile={onDropFile ? (trackIdx, filePath) => onDropFile(trackIdx, filePath) : undefined}
               />
               {/* FX grid cards under the track row — grouped by chainPath (Issue #95) */}
               {getTrackFx && onSelectFx && (
@@ -1640,6 +1644,7 @@ interface TrackRowProps {
   onVolumeChange?: (volume: number) => void;
   onPanChange?: (pan: number) => void;
   onOpenFx?: () => void;
+  onDropFile?: (trackIdx: number, filePath: string) => Promise<boolean>;
 }
 
 function TrackRow({
@@ -1653,6 +1658,7 @@ function TrackRow({
   onVolumeChange,
   onPanChange,
   onOpenFx,
+  onDropFile,
 }: TrackRowProps) {
   return (
     <div
@@ -1665,6 +1671,7 @@ function TrackRow({
           : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]'
         }
         ${track.muted ? 'opacity-50' : ''}
+        relative
       `}
     >
       {/* Track icon + name */}
@@ -1769,6 +1776,14 @@ function TrackRow({
           </button>
         )}
       </div>
+      {/* Drop zone for file drag-and-drop */}
+      {onDropFile && (
+        <TrackDropZone
+          trackIdx={track.index}
+          onDrop={onDropFile}
+          disabled={!onDropFile}
+        />
+      )}
     </div>
   );
 }

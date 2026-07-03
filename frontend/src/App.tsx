@@ -611,6 +611,7 @@ function AppInner() {
               return result.results.map(r => ({ filePath: r.filePath, name: r.name }));
             }}
             loadChain={(trackIdx: number, filePath: string) => fxChainLoad(trackIdx, filePath, 'append')}
+            onDropFile={sendSampleToTrack}
           />
         )}
 
