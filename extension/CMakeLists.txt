@@ -61,6 +61,7 @@ set(TEST_SOURCES
     test/test_sha1_utils.cpp
     test/test_websocket.cpp
     test/test_osc.cpp
+    test/test_pipeline_stage_manager.cpp
 )
 
 # ============================================================
