@@ -95,6 +95,34 @@ git pull origin feat/playtime-clip-ops
 7. **Tester is the ONLY role that closes issues** - no exceptions
 8. **If stage file is missing or invalid, default to `idle` and pick a new issue**
 
+## VERIFICATION STEP (Critical Fix)
+
+**Before doing ANYTHING, verify the pipeline state:**
+
+1. Read `/home/sasha/cron_stage.txt` - this tells you the CURRENT stage
+2. If stage is `idle` or missing:
+   - Fetch open issues from GitHub API
+   - Find issue with `active:true` label
+   - Write to `/home/sasha/current_issue.txt`
+   - Write `builder-hard` or `builder-easy` to stage file
+   - POST PLAN COMMENT and EXIT
+3. If stage is `builder-hard` or `builder-easy`:
+   - IMPLEMENT the feature
+   - COMMIT and PUSH to feat/playtime-clip-ops
+   - Advance stage file (to `reviewer` or close)
+   - EXIT (do not continue to next stage in same run)
+4. If stage is `reviewer`:
+   - REVIEW the diff
+   - Verify implementation
+   - Advance stage file or write `builder-hard` if issues
+   - EXIT
+5. If stage is `screenshot` or `tester`:
+   - RUN tests
+   - On pass: CLOSE issue, remove `active:true`, clean up
+   - On fail: write `builder-hard` to stage file
+   - EXIT
+6. **NEVER continue to next stage in same run** - only advance stage file
+
 ## Current Run
 
 **Stage:** builder-hard
