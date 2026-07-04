@@ -337,6 +337,42 @@ public:
         return sendPacket(buildClearSlotMessage(col, row));
     }
 
+    // Duplicate a clip: sends /playtime/slot/<col>/<row>/duplicate
+    bool sendDuplicateSlot(int srcCol, int srcRow, int dstCol, int dstRow)
+    {
+        std::string addr = "/playtime/slot/" + std::to_string(srcCol) + "/"
+            + std::to_string(srcRow) + "/duplicate";
+        std::vector<int> args = { dstCol, dstRow };
+        return sendPacket(buildMessage(addr, "ii", args));
+    }
+
+    // Trim a clip: sends /playtime/slot/<col>/<row>/trim  float=startOffset  float=endOffset
+    bool sendTrimSlot(int col, int row, double startOffset, double endOffset)
+    {
+        std::string addr = "/playtime/slot/" + std::to_string(col) + "/"
+            + std::to_string(row) + "/trim";
+        // Build with two float args: startOffset, endOffset
+        std::vector<uint8_t> buf;
+        size_t addrLen = paddedStringLength(addr.size());
+        buf.reserve(addrLen + 8 + 8);
+        buf.insert(buf.end(), addr.begin(), addr.end());
+        buf.resize(buf.size() + addrLen - addr.size(), 0);
+        // Type tag ",ff"
+        buf.push_back(','); buf.push_back('f'); buf.push_back('f'); buf.push_back('\0');
+        // Float args big-endian
+        auto addFloat = [&](float val) {
+            uint32_t bits;
+            memcpy(&bits, &val, 4);
+            buf.push_back(static_cast<uint8_t>((bits >> 24) & 0xFF));
+            buf.push_back(static_cast<uint8_t>((bits >> 16) & 0xFF));
+            buf.push_back(static_cast<uint8_t>((bits >> 8)  & 0xFF));
+            buf.push_back(static_cast<uint8_t>( bits        & 0xFF));
+        };
+        addFloat(static_cast<float>(startOffset));
+        addFloat(static_cast<float>(endOffset));
+        return sendPacket(buf);
+    }
+
 private:
     int m_sock;
     int m_remotePort;

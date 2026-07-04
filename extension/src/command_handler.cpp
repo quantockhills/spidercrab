@@ -300,6 +300,10 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["matrix/pollState"]        = &CommandHandler::HandleMatrixPollState;
     m_commandMap["matrix/setSlotReverse"]    = &CommandHandler::HandleMatrixSetSlotReverse;
     m_commandMap["matrix/clearSlot"]       = &CommandHandler::HandleMatrixClearSlot;
+    m_commandMap["clip/duplicate"]         = &CommandHandler::HandleClipDuplicate;
+    m_commandMap["clip/delete"]            = &CommandHandler::HandleClipDelete;
+    m_commandMap["clip/trim"]              = &CommandHandler::HandleClipTrim;
+    m_commandMap["clip/getRecentOps"]      = &CommandHandler::HandleClipGetRecentOps;
     m_commandMap["sequencer/getAll"]        = &CommandHandler::HandleSequencerGetAll;
     m_commandMap["sequencer/toggleStep"]    = &CommandHandler::HandleSequencerToggleStep;
     m_commandMap["sequencer/setStep"]       = &CommandHandler::HandleSequencerSetStep;
@@ -2305,6 +2309,356 @@ void CommandHandler::HandleMatrixClearSlot(
     BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
 
     SendResponse(clientId, id, true, updated.toJson());
+}
+
+// ============================================================
+// HandleClipDuplicate — Duplicate a clip slot (Issue #146)
+//
+// Copies the clip from (srcColumn, srcRow) to (dstColumn, dstRow).
+// Creates a new REAPER media item on the destination track and
+// copies the slot state with playtime tracking.
+// ============================================================
+
+void CommandHandler::HandleClipDuplicate(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string srcColStr = parser.getString("srcColumn");
+    std::string srcRowStr = parser.getString("srcRow");
+    std::string dstColStr = parser.getString("dstColumn");
+    std::string dstRowStr = parser.getString("dstRow");
+
+    if (srcColStr.empty() || srcRowStr.empty() ||
+        dstColStr.empty() || dstRowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing srcColumn, srcRow, dstColumn, or dstRow\"}");
+        return;
+    }
+
+    int srcCol = atoi(srcColStr.c_str());
+    int srcRow = atoi(srcRowStr.c_str());
+    int dstCol = atoi(dstColStr.c_str());
+    int dstRow = atoi(dstRowStr.c_str());
+
+    // Validate bounds
+    if (srcCol < 0 || srcCol >= m_playtimeState.columns() ||
+        srcRow < 0 || srcRow >= m_playtimeState.rows() ||
+        dstCol < 0 || dstCol >= m_playtimeState.columns() ||
+        dstRow < 0 || dstRow >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Check source has a clip
+    SlotState srcSlot = m_playtimeState.getSlot(srcCol, srcRow);
+    if (srcSlot.state == "empty" || srcSlot.clipType == "none") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Source slot is empty\"}");
+        return;
+    }
+
+    // Duplicate the REAPER media item on the destination track
+    bool reaperOk = false;
+    if (m_api.GetTrack && m_api.CountTrackMediaItems &&
+        m_api.GetTrackMediaItem && m_api.AddMediaItemToTrack &&
+        m_api.AddTakeToMediaItem && m_api.GetActiveTake &&
+        m_api.GetMediaItemTake_Source && m_api.SetMediaItemInfo_Value &&
+        m_api.GetMediaItemInfo_Value) {
+        int numTracks = m_api.CountTracks ? m_api.CountTracks(nullptr) : 0;
+        MediaTrack* srcTrack = (srcCol < numTracks) ? m_api.GetTrack(nullptr, srcCol) : nullptr;
+        MediaTrack* dstTrack = (dstCol < numTracks) ? m_api.GetTrack(nullptr, dstCol) : nullptr;
+        if (srcTrack && dstTrack) {
+            int srcItemCount = m_api.CountTrackMediaItems(srcTrack);
+            if (srcRow < srcItemCount) {
+                MediaItem* srcItem = m_api.GetTrackMediaItem(srcTrack, srcRow);
+                if (srcItem) {
+                    MediaItem_Take* srcTake = m_api.GetActiveTake(srcItem);
+                    if (srcTake) {
+                        PCM_source* srcSource = m_api.GetMediaItemTake_Source(srcTake);
+                        if (srcSource) {
+                            // Create new item on destination track
+                            MediaItem* newItem = m_api.AddMediaItemToTrack(dstTrack);
+                            if (newItem) {
+                                MediaItem_Take* newTake = m_api.AddTakeToMediaItem(newItem);
+                                if (newTake) {
+                                    // Copy position and length from source
+                                    double srcPos = m_api.GetMediaItemInfo_Value(srcItem, "D_POSITION");
+                                    double srcLen = m_api.GetMediaItemInfo_Value(srcItem, "D_LENGTH");
+                                    m_api.SetMediaItemInfo_Value(newItem, "D_POSITION", srcPos);
+                                    m_api.SetMediaItemInfo_Value(newItem, "D_LENGTH", srcLen);
+                                    // Notify REAPER to update
+                                    if (m_api.UpdateArrange) m_api.UpdateArrange();
+                                    reaperOk = true;
+                                    fprintf(stderr,
+                                        "[spidercrab] clip/duplicate: col=%d,row=%d -> col=%d,row=%d OK\n",
+                                        srcCol, srcRow, dstCol, dstRow);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Copy slot state to destination
+    SlotState dstSlot = srcSlot;
+    dstSlot.column = dstCol;
+    dstSlot.row    = dstRow;
+    dstSlot.state  = "stopped";
+    m_playtimeState.setSlot(dstCol, dstRow, dstSlot);
+
+    // Notify Playtime via OSC
+    m_oscSender.sendDuplicateSlot(srcCol, srcRow, dstCol, dstRow);
+
+    // Record operation in playtime tracker
+    m_clipOpTracker.recordOperation(
+        "duplicate", srcCol, srcRow, dstCol, dstRow,
+        std::string("Duplicated clip \"") + srcSlot.name + "\"");
+
+    // Broadcast slot state change
+    SlotState updated = m_playtimeState.getSlot(dstCol, dstRow);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// ============================================================
+// HandleClipDelete — Delete a clip from a slot (Issue #146)
+//
+// Deletes the REAPER media item at (column, row) and resets
+// the slot to empty. Returns the deleted slot state with
+// playtime tracking metadata.
+// ============================================================
+
+void CommandHandler::HandleClipDelete(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    // Capture slot state before deletion (for tracking response)
+    SlotState beforeState = m_playtimeState.getSlot(col, row);
+
+    if (beforeState.state == "empty" && beforeState.clipType == "none") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Slot is already empty\"}");
+        return;
+    }
+
+    // Delete the REAPER media item from the track/slot
+    if (m_api.CountTracks && m_api.GetTrack &&
+        m_api.CountTrackMediaItems && m_api.GetTrackMediaItem &&
+        m_api.DeleteTrackMediaItem) {
+        int numTracks = m_api.CountTracks(nullptr);
+        if (col >= 0 && col < numTracks) {
+            MediaTrack* track = m_api.GetTrack(nullptr, col);
+            if (track) {
+                int itemCount = m_api.CountTrackMediaItems(track);
+                if (row >= 0 && row < itemCount) {
+                    MediaItem* item = m_api.GetTrackMediaItem(track, row);
+                    if (item) {
+                        bool deleted = m_api.DeleteTrackMediaItem(track, item);
+                        fprintf(stderr,
+                            "[spidercrab] clip/delete: slot %d,%d: item %p %s\n",
+                            col, row, (void*)item,
+                            deleted ? "deleted" : "delete failed");
+                        if (deleted && m_api.UpdateArrange) {
+                            m_api.UpdateArrange();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Reset slot state to empty
+    SlotState emptySlot;
+    emptySlot.column   = col;
+    emptySlot.row      = row;
+    emptySlot.state    = "empty";
+    emptySlot.color    = "";
+    emptySlot.name     = "";
+    emptySlot.clipType = "none";
+    emptySlot.reversed = false;
+    m_playtimeState.setSlot(col, row, emptySlot);
+
+    // Notify Playtime via OSC
+    m_oscSender.sendClearSlot(col, row);
+
+    // Record operation in playtime tracker
+    m_clipOpTracker.recordOperation(
+        "delete", col, row, -1, -1,
+        std::string("Deleted clip \"") + beforeState.name + "\"");
+
+    // Broadcast slot state change
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+
+    // Return the deleted slot's previous state as payload (for undo tracking)
+    std::string responseJson = "{\"deleted\":" + beforeState.toJson() +
+        ",\"empty\":" + updated.toJson() + "}";
+    SendResponse(clientId, id, true, responseJson);
+}
+
+// ============================================================
+// HandleClipTrim — Trim a clip's start/end offsets (Issue #146)
+//
+// Adjusts the clip (media item) at (column, row) by setting
+// the start offset and/or end (length) with playtime tracking.
+// Parameters:
+//   column, row: slot position
+//   startOffset: new start position in seconds (or -1 to keep)
+//   endOffset: new end position in seconds (or -1 to keep)
+// ============================================================
+
+void CommandHandler::HandleClipTrim(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser parser(payloadStr);
+    std::string colStr   = parser.getString("column");
+    std::string rowStr   = parser.getString("row");
+    std::string startStr = parser.getString("startOffset");
+    std::string endStr   = parser.getString("endOffset");
+
+    if (colStr.empty() || rowStr.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'column' or 'row' parameter\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    SlotState slot = m_playtimeState.getSlot(col, row);
+    if (slot.state == "empty" || slot.clipType == "none") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Slot is empty, nothing to trim\"}");
+        return;
+    }
+
+    // Apply trim via REAPER item properties
+    bool trimmed = false;
+    double oldStart = 0.0, oldLen = 0.0;
+    double newStart = 0.0, newLen = 0.0;
+
+    if (m_api.GetTrack && m_api.CountTrackMediaItems &&
+        m_api.GetTrackMediaItem && m_api.GetActiveTake &&
+        m_api.GetMediaItemInfo_Value && m_api.SetMediaItemInfo_Value) {
+        int numTracks = m_api.CountTracks ? m_api.CountTracks(nullptr) : 0;
+        if (col < numTracks) {
+            MediaTrack* track = m_api.GetTrack(nullptr, col);
+            if (track) {
+                int itemCount = m_api.CountTrackMediaItems(track);
+                if (row < itemCount) {
+                    MediaItem* item = m_api.GetTrackMediaItem(track, row);
+                    if (item) {
+                        oldStart = m_api.GetMediaItemInfo_Value(item, "D_POSITION");
+                        oldLen   = m_api.GetMediaItemInfo_Value(item, "D_LENGTH");
+
+                        newStart = oldStart;
+                        newLen   = oldLen;
+
+                        // Apply start offset (move position)
+                        if (!startStr.empty()) {
+                            double requestedStart = atof(startStr.c_str());
+                            if (requestedStart >= 0.0) {
+                                newStart = requestedStart;
+                            }
+                        }
+
+                        // Apply end offset (adjust length)
+                        if (!endStr.empty()) {
+                            double requestedEnd = atof(endStr.c_str());
+                            if (requestedEnd > newStart) {
+                                newLen = requestedEnd - newStart;
+                            }
+                        }
+
+                        // Sanity check
+                        if (newLen > 0.0) {
+                            m_api.SetMediaItemInfo_Value(item, "D_POSITION", newStart);
+                            m_api.SetMediaItemInfo_Value(item, "D_LENGTH", newLen);
+                            trimmed = true;
+                        }
+
+                        if (m_api.UpdateArrange) m_api.UpdateArrange();
+                    }
+                }
+            }
+        }
+    }
+
+    std::string details = slot.name + ": position " +
+        std::to_string(oldStart) + "->" + std::to_string(newStart) +
+        ", length " + std::to_string(oldLen) + "->" + std::to_string(newLen);
+
+    // Notify Playtime via OSC
+    m_oscSender.sendTrimSlot(col, row, newStart, newStart + newLen);
+
+    // Record operation in playtime tracker
+    m_clipOpTracker.recordOperation(
+        "trim", col, row, -1, -1, details);
+
+    // Broadcast slot state change
+    SlotState updatedSlot = m_playtimeState.getSlot(col, row);
+    BroadcastMatrixEvent("matrix/slotStateChanged", updatedSlot.toJson());
+
+    if (!trimmed) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Failed to trim clip - invalid parameters or API unavailable\"}");
+        return;
+    }
+
+    std::string result = "{" +
+        std::string("\"column\":") + std::to_string(col) + "," +
+        std::string("\"row\":") + std::to_string(row) + "," +
+        std::string("\"oldStart\":") + std::to_string(oldStart) + "," +
+        std::string("\"oldEnd\":") + std::to_string(oldStart + oldLen) + "," +
+        std::string("\"newStart\":") + std::to_string(newStart) + "," +
+        std::string("\"newEnd\":") + std::to_string(newStart + newLen) + "}";
+
+    SendResponse(clientId, id, true, result);
+}
+
+// ============================================================
+// HandleClipGetRecentOps — Get recent clip operations (Issue #146)
+// ============================================================
+
+void CommandHandler::HandleClipGetRecentOps(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string ops = m_clipOpTracker.getRecentOpsAsJson(20);
+    std::string response = "{\"operations\":" + ops + "}";
+    SendResponse(clientId, id, true, response);
 }
 
 // ============================================================

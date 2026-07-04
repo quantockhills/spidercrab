@@ -12,6 +12,7 @@
 #include "sample_tags.h"
 #include "slicer.h"
 #include "pipeline_stage_manager.h"
+#include "playtime_tracker.h"
 #include <functional>
 #include <map>
 #include <mutex>
@@ -393,4 +394,13 @@ private:
 
     // Command handlers — sequencer convert to clip (Issue #92)
     void HandleSequencerConvertToClip(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — clip operations (Issue #146)
+    void HandleClipDuplicate(int clientId, const std::string& id, const std::string& params);
+    void HandleClipDelete(int clientId, const std::string& id, const std::string& params);
+    void HandleClipTrim(int clientId, const std::string& id, const std::string& params);
+    void HandleClipGetRecentOps(int clientId, const std::string& id, const std::string& params);
+
+    // Clip operation tracker (Issue #146 — playtime tracking)
+    ClipOperationTracker m_clipOpTracker;
 };
