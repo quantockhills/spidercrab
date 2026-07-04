@@ -1,7 +1,7 @@
 import { useDragContext } from '../hooks/useDragContext';
 
 export function DragOverlay() {
-  const { payload, position, edgeReached } = useDragContext();
+  const { payload, position, edgeReached, hoveredZoneId } = useDragContext();
 
   if (!payload || !position) return null;
 
@@ -23,7 +23,9 @@ export function DragOverlay() {
           maxWidth: '200px',
         }}
       >
-        <span className="text-base">🎵</span>
+        <span className="text-base">
+          {payload.type === 'fx' ? '🔧' : payload.type === 'fxchain' ? '📦' : '🎵'}
+        </span>
         <span className="truncate">{payload.name}</span>
       </div>
 
@@ -35,6 +37,17 @@ export function DragOverlay() {
             rounded-sm shadow-lg animate-pulse"
         >
           Drop here →
+        </div>
+      )}
+
+      {/* Active drop zone indicator */}
+      {hoveredZoneId && (
+        <div
+          className="absolute bottom-4 left-1/2 -translate-x-1/2
+            px-4 py-1.5 bg-[var(--accent-green)]/70 text-black text-[10px] font-semibold
+            rounded-sm shadow-md"
+        >
+          Drop over slot
         </div>
       )}
     </div>

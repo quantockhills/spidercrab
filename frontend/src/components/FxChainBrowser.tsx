@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Track, FxChainEntry, FxChainInfo, FxChainSearchResult, FxChainCachedSearchResult } from '../hooks/useReaper';
+import { useTouchDrag } from '../hooks/useDragContext';
 
 
 interface DirData { chains: FxChainEntry[]; dirs: string[] }
@@ -266,8 +267,17 @@ export function FxChainBrowser({
     const isSelected = selectedFile === filePath;
     const isLoading = loadingFile === filePath;
     const isLoaded = loadedFiles.has(filePath);
+    const touchDrag = useTouchDrag({
+      payload: { path: filePath, name: name, type: 'fxchain' },
+      threshold: 400,
+      enabled: selectedTrack !== null,
+    });
     return (
-      <div className={`flex items-center gap-2 px-3 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors ${isSelected ? 'ring-1 ring-[var(--accent-orange)]/40' : ''}`}>
+      <div
+        className={`flex items-center gap-2 px-3 py-2 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors ${isSelected ? 'ring-1 ring-[var(--accent-orange)]/40' : ''}`}
+        style={{ touchAction: 'none' }}
+        {...touchDrag}
+      >
         <button onClick={() => handleSelectChain(filePath)} className="flex-1 min-w-0 text-left">
           <div className="text-sm truncate">{name}</div>
           {size > 0 && <div className="text-[10px] text-[var(--text-secondary)]">{formatSize(size)}</div>}

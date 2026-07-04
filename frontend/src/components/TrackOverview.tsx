@@ -6,6 +6,7 @@ import type { WsResponse } from '../lib/wsClient';
 import { ParamSlider } from './ParamControl';
 import { ChainCycler } from './ChainCycler';
 import { TrackDropZone } from './TrackDropZone';
+import { useDragContext } from '../hooks/useDragContext';
 
 // ── Chain search type (Issue #105) ───────────────────────────
 
@@ -36,6 +37,8 @@ interface TrackOverviewProps {
   onReorderFx?: (trackIdx: number, fromIndex: number, toIndex: number) => Promise<boolean>;
   // File drag-and-drop onto tracks (Issue #144)
   onDropFile?: (trackIdx: number, filePath: string) => Promise<boolean>;
+  // Drag-and-drop from custom drag context (Issue #122) — receives payload with type info
+  onDropPayload?: (trackIdx: number, filePath: string, type?: string) => Promise<boolean>;
   // Chain cycle support (Issue #95)
   fxChainCycle?: (trackIdx: number, direction: 'next' | 'prev', chainPath?: string) => Promise<{success: boolean; fx?: FxInfo[]}>;
   // Inline FX search props (Issue #102)
@@ -1659,13 +1662,33 @@ function TrackRow({
   onPanChange,
   onOpenFx,
   onDropFile,
+  onDropPayload,
 }: TrackRowProps) {
+  const { registerDropZone, hoveredZoneId } = useDragContext();
+  const zoneId = `track-${track.index}`;
+
+  // Register as a drop zone for custom touch-based drag from browsers
+  useEffect(() => {
+    if (!onDropPayload && !onDropFile) return;
+    return registerDropZone(zoneId, async (payload) => {
+      if (onDropPayload) {
+        await onDropPayload(track.index, payload.path, payload.type);
+      } else if (onDropFile) {
+        await onDropFile(track.index, payload.path);
+      }
+    });
+  }, [zoneId, track.index, onDropPayload, onDropFile, registerDropZone]);
+
+  const isHovered = hoveredZoneId === zoneId;
+
   return (
     <div
+      data-drop-zone={zoneId}
       onClick={onSelect}
       className={`
         flex items-center gap-2.5 px-3 py-2 cursor-pointer
         active:brightness-95 transition-colors duration-100 select-none
+        ${isHovered ? 'ring-2 ring-[var(--accent-orange)]/60 bg-[var(--accent-orange)]/10' : ''}
         ${isSelected
           ? 'bg-[var(--bg-tertiary)] ring-1 ring-[var(--accent-orange)]/40'
           : 'bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]'

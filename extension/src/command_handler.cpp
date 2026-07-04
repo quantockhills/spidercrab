@@ -316,6 +316,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fxchain/searchCached"]    = &CommandHandler::HandleFxChainSearchCached;
     m_commandMap["fxchain/refreshCache"]    = &CommandHandler::HandleFxChainRefreshCache;
     m_commandMap["fxchain/listFolders"]     = &CommandHandler::HandleFxChainListFolders;
+    m_commandMap["fxchain/dropToTrack"]    = &CommandHandler::HandleFxChainDropToTrack;
+    m_commandMap["fx/dropToTrack"]         = &CommandHandler::HandleFxDropToTrack;
     m_commandMap["fx/reorder"]              = &CommandHandler::HandleReorderFX;
     m_commandMap["fx/getPreset"]            = &CommandHandler::HandleGetFxPreset;
     m_commandMap["fx/setPreset"]            = &CommandHandler::HandleSetFxPreset;
@@ -1289,6 +1291,74 @@ void CommandHandler::HandleFxChainListFolders(
     payload += "}";
 
     SendResponse(clientId, id, true, payload);
+}
+
+// HandleFxChainDropToTrack — Load a chain file onto a track via drag-and-drop (Issue #122)
+void CommandHandler::HandleFxChainDropToTrack(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string filePath    = parser.getString("filePath");
+
+    if (trackIdxStr.empty() || filePath.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'filePath' parameter\"}");
+        return;
+    }
+
+    if (!fs::exists(filePath)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Chain file not found: " + json_escape(filePath) + "\"}");
+        return;
+    }
+
+    int trackIdx = atoi(trackIdxStr.c_str());
+    // Reuse doLoadChain to handle chain loading logic
+    bool ok = doLoadChain(trackIdx, filePath, "replace");
+    SendResponse(clientId, id, ok, ok ? "{}" : "{\"error\":\"Failed to load chain\"}");
+}
+
+// HandleFxDropToTrack — Add an FX to a track via drag-and-drop (Issue #122)
+void CommandHandler::HandleFxDropToTrack(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string fxName      = parser.getString("fxName");
+
+    if (trackIdxStr.empty() || fxName.empty()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Missing 'trackIdx' or 'fxName' parameter\"}");
+        return;
+    }
+
+    if (!m_api.TrackFX_AddByName) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"API not loaded\"}");
+        return;
+    }
+
+    int         trackIdx = atoi(trackIdxStr.c_str());
+    MediaTrack* track    = m_api.GetTrack ? m_api.GetTrack(nullptr, trackIdx) : nullptr;
+    if (!track) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Invalid track index\"}");
+        return;
+    }
+
+    int fxIdx = m_api.TrackFX_AddByName(track, fxName.c_str(), false, 1);
+
+    // Update chain-source indices: new FX inserted at fxIdx
+    auto sit = m_trackChainSources.find(trackIdx);
+    if (sit != m_trackChainSources.end() && fxIdx >= 0) {
+        ShiftChainSourceIndices(sit->second, fxIdx, 1);
+    }
+
+    SendResponse(clientId, id, fxIdx >= 0,
+        "{\"fxIdx\":" + std::to_string(fxIdx) + "}");
 }
 
 void CommandHandler::HandleEnumerateFX(

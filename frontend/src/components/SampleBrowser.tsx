@@ -5,7 +5,7 @@ import type { DirResult, ReaperLibrary } from '../hooks/useSampleBrowser';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
-import { useDragContext } from '../hooks/useDragContext';
+import { useDragContext, useTouchDrag } from '../hooks/useDragContext';
 
 // ── Tag colors (deterministic by name hash) ──────────────────
 
@@ -1173,6 +1173,7 @@ function CrossRootSearchResults({
             <CrossRootEntryRow
               key={group.root + '/' + entry.name}
               entry={entry}
+              entryPath={group.root + '/' + entry.name}
               isAudio={isAudioFile(entry.name)}
               isSending={sending === entry.name}
               isSent={sentFiles.has(entry.name)}
@@ -1193,6 +1194,7 @@ function CrossRootSearchResults({
 
 interface CrossRootEntryRowProps {
   entry: DirEntry;
+  entryPath: string;
   isAudio: boolean;
   isSending: boolean;
   isSent: boolean;
@@ -1203,17 +1205,23 @@ interface CrossRootEntryRowProps {
   onLongPress: (x: number, y: number) => void;
 }
 
-function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, isSelected, onSend, onSelect, onLongPress }: CrossRootEntryRowProps) {
+function CrossRootEntryRow({ entry, entryPath, isAudio, isSending, isSent, canSend, isSelected, onSend, onSelect, onLongPress }: CrossRootEntryRowProps) {
+  const touchDrag = useTouchDrag({
+    payload: { path: entryPath, name: entry.name, type: 'sample' },
+    threshold: 350,
+    enabled: isAudio && canSend,
+  });
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (isAudio && canSend) return; // useTouchDrag handles it
     longPressTriggered.current = false;
     longPressTimer.current = setTimeout(() => {
       longPressTriggered.current = true;
       onLongPress(e.clientX, e.clientY);
     }, 500);
-  }, [onLongPress]);
+  }, [onLongPress, isAudio, canSend]);
 
   const handlePointerUp = useCallback(() => {
     if (longPressTimer.current) {
@@ -1257,9 +1265,32 @@ function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, isSelec
 
   return (
     <div
-      onPointerDown={handlePointerDown}
-      onPointerUp={handlePointerUp}
-      onPointerMove={handlePointerMove}
+      onPointerDown={(e) => {
+        if (isAudio && canSend) {
+          touchDrag.onPointerDown(e);
+        } else {
+          handlePointerDown(e);
+        }
+      }}
+      onPointerUp={(e) => {
+        if (isAudio && canSend) {
+          touchDrag.onPointerUp(e);
+        } else {
+          handlePointerUp();
+        }
+      }}
+      onPointerMove={(e) => {
+        if (isAudio && canSend) {
+          touchDrag.onPointerMove(e);
+        } else {
+          handlePointerMove();
+        }
+      }}
+      onPointerCancel={(e) => {
+        if (isAudio && canSend) {
+          touchDrag.onPointerCancel(e);
+        }
+      }}
       onPointerLeave={handlePointerUp}
       onClick={handleClick}
       className={`flex items-center gap-2.5 px-3 py-2
@@ -1268,6 +1299,7 @@ function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, isSelec
           ? 'bg-[var(--accent-orange)]/15 ring-1 ring-[var(--accent-orange)]/30'
           : 'bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60'
         }`}
+      style={{ touchAction: 'none' }}
     >
       {/* Play button (audio files only) */}
       {isAudio && (

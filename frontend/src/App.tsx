@@ -1,5 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ReaperClientProvider, useTheme } from './hooks';
+import { DragProvider } from './hooks/useDragContext';
+import { DragOverlay } from './components/DragOverlay';
 import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
@@ -383,6 +385,40 @@ function AppInner() {
     setFxChainView(true);
   }, []);
 
+  // Universal drop handler for drag-and-drop onto tracks (Issue #122)
+  // Handles samples, FX, and FX chains dropped from any browser
+  const handleDropOnTrack = useCallback(async (trackIdx: number, filePath: string, type?: string): Promise<boolean> => {
+    if (type === 'fx') {
+      try {
+        const resp = await sendCommand('fx/dropToTrack', { trackIdx, fxName: filePath });
+        return resp.success;
+      } catch { return false; }
+    } else if (type === 'fxchain') {
+      try {
+        const resp = await sendCommand('fxchain/dropToTrack', { trackIdx, filePath });
+        return resp.success;
+      } catch { return false; }
+    } else {
+      // Default: send as sample
+      return sendSampleToTrack(filePath, trackIdx);
+    }
+  }, [sendCommand, sendSampleToTrack]);
+
+  // TrackDropZone handler for native HTML drag-and-drop (identifies type from path extension)
+  const handleDropFileOnTrack = useCallback(async (trackIdx: number, filePath: string): Promise<boolean> => {
+    const lower = filePath.toLowerCase();
+    if (lower.endsWith('.rfxchain') || lower.endsWith('.chain')) {
+      try {
+        const resp = await sendCommand('fxchain/dropToTrack', { trackIdx, filePath });
+        return resp.success;
+      } catch { return false; }
+    }
+    if (lower.endsWith('.vst3') || lower.endsWith('.dll') || lower.endsWith('.component') || lower.endsWith('.clap') || lower.endsWith('.jsfx')) {
+      return false; // Can't drop binary FX files directly
+    }
+    return sendSampleToTrack(filePath, trackIdx);
+  }, [sendCommand, sendSampleToTrack]);
+
   const handleBackFromFxChains = useCallback(() => {
     setFxChainView(false);
   }, []);
@@ -611,7 +647,8 @@ function AppInner() {
               return result.results.map(r => ({ filePath: r.filePath, name: r.name }));
             }}
             loadChain={(trackIdx: number, filePath: string) => fxChainLoad(trackIdx, filePath, 'append')}
-            onDropFile={sendSampleToTrack}
+            onDropFile={handleDropFileOnTrack}
+            onDropPayload={(trackIdx, filePath, type) => handleDropOnTrack(trackIdx, filePath, type)}
           />
         )}
 
@@ -897,7 +934,10 @@ function AppInner() {
 export default function App() {
   return (
     <ReaperClientProvider>
-      <AppInner />
+      <DragProvider>
+        <AppInner />
+        <DragOverlay />
+      </DragProvider>
     </ReaperClientProvider>
   );
 }

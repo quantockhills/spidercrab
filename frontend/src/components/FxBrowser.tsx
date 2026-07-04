@@ -722,6 +722,8 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, on
       className="flex items-center gap-2.5 px-3 py-2
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
         active:brightness-95 transition-all duration-100 select-none"
+      style={{ touchAction: 'none' }}
+      {...touchDrag}
     >
       {/* FX name - tap to view params */}
       <button
@@ -810,6 +812,11 @@ interface ChainRowProps {
 
 function ChainRow({ chain, selectedTrack, isLoading, onLoad, tags, onEditTags, isEditingTags, tagEditValue, onTagChange, onTagSave, onTagCancel }: ChainRowProps) {
   const displayName = chain.name.replace(/\.RfxChain$/i, '').replace(/^.*[/\\]/, '');
+  const touchDrag = useTouchDrag({
+    payload: { path: chain.filePath, name: displayName, type: 'fxchain' },
+    threshold: 400,
+    enabled: selectedTrack !== null,
+  });
 
   if (isEditingTags) {
     return (
@@ -833,6 +840,8 @@ function ChainRow({ chain, selectedTrack, isLoading, onLoad, tags, onEditTags, i
       className="flex items-center gap-2.5 px-3 py-2
         bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
         active:brightness-95 transition-all duration-100 select-none"
+      style={{ touchAction: 'none' }}
+      {...touchDrag}
     >
       <button
         onClick={() => {

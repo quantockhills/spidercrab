@@ -7,6 +7,8 @@ export interface DragPayload {
   path: string;
   /** Display name of the file */
   name: string;
+  /** Optional type hint for the drop target to determine action */
+  type?: 'sample' | 'fx' | 'fxchain';
 }
 
 export interface DragState {
@@ -22,6 +24,10 @@ export interface DragState {
   updatePosition: (x: number, y: number) => void;
   /** End/cancel the drag */
   endDrag: () => void;
+  /** Register a drop zone callback identified by DOM data-drop-zone attribute value */
+  registerDropZone: (zoneId: string, handler: (payload: DragPayload) => void) => () => void;
+  /** Current hovered drop zone id (set by position checks) */
+  hoveredZoneId: string | null;
 }
 
 // ── Context ──────────────────────────────────────────────────
@@ -33,6 +39,8 @@ const DragContext = createContext<DragState>({
   startDrag: () => {},
   updatePosition: () => {},
   endDrag: () => {},
+  registerDropZone: () => () => {},
+  hoveredZoneId: null,
 });
 
 export function useDragContext(): DragState {
@@ -49,6 +57,15 @@ interface DragProviderProps {
   onEdgeReached?: (payload: DragPayload) => void;
 }
 
+/**
+ * Find the nearest ancestor with a data-drop-zone attribute and return its value.
+ */
+function findDropZoneId(element: Element | null): string | null {
+  if (!element) return null;
+  const zoneEl = element.closest('[data-drop-zone]');
+  return zoneEl ? zoneEl.getAttribute('data-drop-zone') : null;
+}
+
 export function DragProvider({
   children,
   edgeThreshold = 0.8,
@@ -57,18 +74,44 @@ export function DragProvider({
   const [payload, setPayload] = useState<DragPayload | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const [edgeReached, setEdgeReached] = useState(false);
+  const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
   const edgeFiredRef = useRef(false);
   const payloadRef = useRef<DragPayload | null>(null);
+  const positionRef = useRef<{ x: number; y: number } | null>(null);
+  const dropHandlersRef = useRef<Map<string, (payload: DragPayload) => void>>(new Map());
+
+  const registerDropZone = useCallback((zoneId: string, handler: (payload: DragPayload) => void) => {
+    dropHandlersRef.current.set(zoneId, handler);
+    return () => {
+      dropHandlersRef.current.delete(zoneId);
+    };
+  }, []);
+
+  // Hit-test using elementFromPoint + DOM traversal
+  const hitTestDropZones = useCallback((x: number, y: number): string | null => {
+    // Temporarily hide drag overlay to get real element
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    // Walk up to find data-drop-zone
+    const zoneId = findDropZoneId(el);
+    return zoneId;
+  }, []);
 
   const startDrag = useCallback((p: DragPayload) => {
     setPayload(p);
     payloadRef.current = p;
     setEdgeReached(false);
     edgeFiredRef.current = false;
+    setHoveredZoneId(null);
   }, []);
 
   const updatePosition = useCallback((x: number, y: number) => {
     setPosition({ x, y });
+    positionRef.current = { x, y };
+
+    // Update hover state using elementFromPoint
+    const hitId = hitTestDropZones(x, y);
+    setHoveredZoneId(hitId);
 
     // Check edge threshold
     if (!edgeFiredRef.current && payloadRef.current) {
@@ -79,15 +122,31 @@ export function DragProvider({
         onEdgeReached?.(payloadRef.current);
       }
     }
-  }, [edgeThreshold, onEdgeReached]);
+  }, [edgeThreshold, onEdgeReached, hitTestDropZones]);
 
   const endDrag = useCallback(() => {
+    const currentPayload = payloadRef.current;
+    const currentPosition = positionRef.current;
+
+    // If we have a payload and position, hit-test drop zones
+    if (currentPayload && currentPosition) {
+      const hitId = hitTestDropZones(currentPosition.x, currentPosition.y);
+      if (hitId) {
+        const handler = dropHandlersRef.current.get(hitId);
+        if (handler) {
+          handler(currentPayload);
+        }
+      }
+    }
+
     setPayload(null);
     payloadRef.current = null;
     setPosition(null);
+    positionRef.current = null;
     setEdgeReached(false);
     edgeFiredRef.current = false;
-  }, []);
+    setHoveredZoneId(null);
+  }, [hitTestDropZones]);
 
   return (
     <DragContext.Provider
@@ -98,6 +157,8 @@ export function DragProvider({
         startDrag,
         updatePosition,
         endDrag,
+        registerDropZone,
+        hoveredZoneId,
       }}
     >
       {children}
@@ -117,7 +178,7 @@ interface UseTouchDragOptions {
 }
 
 export function useTouchDrag({
-  payload,
+  payload: dragPayload,
   threshold = 500,
   enabled = true,
 }: UseTouchDragOptions) {
@@ -133,19 +194,14 @@ export function useTouchDrag({
     longPressTimer.current = setTimeout(() => {
       longPressTriggered.current = true;
       dragActive.current = true;
-      startDrag(payload);
+      startDrag(dragPayload);
       updatePosition(e.clientX, e.clientY);
     }, threshold);
-  }, [enabled, threshold, payload, startDrag, updatePosition]);
+  }, [enabled, threshold, dragPayload, startDrag, updatePosition]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (dragActive.current) {
       updatePosition(e.clientX, e.clientY);
-    } else if (longPressTimer.current) {
-      // Cancel long-press on significant movement
-      const threshold = 10; // px
-      // We can't easily track start pos here, so we cancel on any move
-      // The caller should use touch-action: none to prevent scroll interference
     }
   }, [updatePosition]);
 
