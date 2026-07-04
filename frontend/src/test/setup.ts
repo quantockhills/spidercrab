@@ -15,3 +15,10 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: () => false,
   }),
 });
+
+// Mock document.elementFromPoint for jsdom
+document.elementFromPoint = () => {
+  const mockElement = document.createElement('div');
+  mockElement.setAttribute('data-drop-zone', 'test-zone');
+  return mockElement;
+};

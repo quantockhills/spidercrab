@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTouchDrag } from '../hooks/useDragContext';
 import type { EnumeratedFx, Track } from '../hooks/useReaper';
 import type { FxTagData, TagTarget } from '../hooks/useFx';
 
@@ -696,6 +697,13 @@ interface FxRowProps {
 
 function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, onEditTags, isEditingTags, tagEditValue, onTagChange, onTagSave, onTagCancel }: FxRowProps) {
   const displayName = cleanFxName(fx.name);
+
+  // Touch drag support for dragging samples to tracks
+  const touchDrag = useTouchDrag({
+    payload: { path: `/samples/${fx.ident}.wav`, name: displayName, type: 'sample' },
+    threshold: 300,
+    enabled: selectedTrack !== null,
+  });
 
   if (isEditingTags) {
     return (

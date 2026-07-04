@@ -180,6 +180,8 @@ export function TrackOverview({
   onSelectFx,
   onOpenFx,
   onReorderFx,
+  onDropFile,
+  onDropPayload,
   getFxParams,
   setFxParam,
   getFxPreset,
@@ -455,6 +457,7 @@ export function TrackOverview({
                 onPanChange={onPanChange ? (v) => onPanChange(track.index, v) : undefined}
                 onOpenFx={onOpenFx ? () => onOpenFx(track.index) : undefined}
                 onDropFile={onDropFile ? (trackIdx, filePath) => onDropFile(trackIdx, filePath) : undefined}
+                onDropPayload={onDropPayload ? (trackIdx, filePath, type) => onDropPayload(trackIdx, filePath, type) : undefined}
               />
               {/* FX grid cards under the track row — grouped by chainPath (Issue #95) */}
               {getTrackFx && onSelectFx && (
@@ -1648,6 +1651,7 @@ interface TrackRowProps {
   onPanChange?: (pan: number) => void;
   onOpenFx?: () => void;
   onDropFile?: (trackIdx: number, filePath: string) => Promise<boolean>;
+  onDropPayload?: (trackIdx: number, filePath: string, type?: string) => Promise<boolean>;
 }
 
 function TrackRow({
