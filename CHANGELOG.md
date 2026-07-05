@@ -1,4 +1,9 @@
 
+## v0.3.0-alpha — Unreleased
+
+### Pipeline
+- **Pipeline orchestrator test** — Validated issue #147 workflow (Issue #147)
+
 ## v0.3.0-alpha — 2026-06-23
 
 ### Verified
