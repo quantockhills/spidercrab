@@ -127,6 +127,10 @@ struct ReaperAPI {
     // RS5K sampler named config (Issue #124 — sample trim)
     bool (*TrackFX_GetNamedConfigParm)(MediaTrack* track, int fx, const char* parmname, char* bufOutNeedBig, int bufOutNeedBig_sz) = nullptr;
     bool (*TrackFX_SetNamedConfigParm)(MediaTrack* track, int fx, const char* parmname, const char* value) = nullptr;
+
+    // Project ext state (persist slot source paths across sessions)
+    int (*GetProjExtState)(ReaProject* proj, const char* extname, const char* key, char* valOutNeedBig, int valOutNeedBig_sz) = nullptr;
+    int (*SetProjExtState)(ReaProject* proj, const char* extname, const char* key, const char* value) = nullptr;
 };
 
 class CommandHandler {
@@ -319,6 +323,8 @@ private:
     void HandleSamplerLoadFile(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerGetAdsrInfo(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerSetAdsrParam(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerCreate(int clientId, const std::string& id, const std::string& params);
+    void HandleSamplerSetReverse(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — slicer (Issue #123)
     void HandleSlicerDetect(int clientId, const std::string& id, const std::string& params);

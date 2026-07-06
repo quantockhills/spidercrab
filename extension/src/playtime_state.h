@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdlib>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -20,8 +21,9 @@ struct SlotState {
     std::string state    = "empty";   // "empty"|"stopped"|"playing"|"recording"|"queued"
     std::string color    = "";        // RGB hex string like "#ff6600" (empty = unset)
     std::string name     = "";        // Slot/clip display name
-    std::string clipType = "none";    // "audio"|"midi"|"none"
-    bool        reversed = false;     // Whether the clip is playing in reverse (Issue #75)
+    std::string clipType   = "none";    // "audio"|"midi"|"none"
+    bool        reversed   = false;     // Whether the clip is playing in reverse (Issue #75)
+    std::string sourcePath = "";      // Source media file (known for clips we imported)
 
     // Serialize this slot to a JSON object string (no newlines)
     std::string toJson() const
@@ -33,6 +35,7 @@ struct SlotState {
         json += "\"color\":" + toJsonString(color) + ",";
         json += "\"name\":" + toJsonString(name) + ",";
         json += "\"clipType\":" + toJsonString(clipType) + ",";
+        json += std::string("\"hasSource\":") + std::string(sourcePath.empty() ? "false" : "true") + ",";
         json += std::string("\"reversed\":") + (reversed ? "true" : "false");
         json += "}";
         return json;
@@ -113,9 +116,10 @@ public:
             return;
         m_slots[idx].state = newState;
         if (newState == "empty") {
-            m_slots[idx].name     = "";
-            m_slots[idx].clipType = "none";
-            m_slots[idx].reversed = false;
+            m_slots[idx].name       = "";
+            m_slots[idx].clipType   = "none";
+            m_slots[idx].reversed   = false;
+            m_slots[idx].sourcePath = "";
         }
     }
 
@@ -164,6 +168,51 @@ public:
     {
         int instance = findPlaytimeInstance();
         return instance >= 0;
+    }
+
+    // Record the source media file for a slot (set when we import a sample)
+    void setSlotSource(int col, int row, const std::string& path)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        int idx = indexOf(col, row);
+        if (idx < 0 || idx >= (int)m_slots.size())
+            return;
+        m_slots[idx].sourcePath = path;
+    }
+
+    // Serialize all known slot sources as "col|row|path" lines ('|' cannot
+    // appear in Windows paths). Used to persist via project ext state.
+    std::string serializeSources() const
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        std::string out;
+        for (const auto& s : m_slots) {
+            if (s.sourcePath.empty()) continue;
+            out += std::to_string(s.column) + "|" + std::to_string(s.row)
+                 + "|" + s.sourcePath + "\n";
+        }
+        return out;
+    }
+
+    // Restore slot sources from serializeSources() output.
+    void loadSources(const std::string& data)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (auto& s : m_slots) s.sourcePath = "";
+        size_t pos = 0;
+        while (pos < data.size()) {
+            size_t eol  = data.find('\n', pos);
+            std::string line = data.substr(pos, (eol == std::string::npos ? data.size() : eol) - pos);
+            pos = (eol == std::string::npos) ? data.size() : eol + 1;
+            size_t p1 = line.find('|');
+            size_t p2 = (p1 == std::string::npos) ? std::string::npos : line.find('|', p1 + 1);
+            if (p2 == std::string::npos) continue;
+            int col = atoi(line.substr(0, p1).c_str());
+            int row = atoi(line.substr(p1 + 1, p2 - p1 - 1).c_str());
+            int idx = indexOf(col, row);
+            if (idx >= 0 && idx < (int)m_slots.size())
+                m_slots[idx].sourcePath = line.substr(p2 + 1);
+        }
     }
 
 private:
