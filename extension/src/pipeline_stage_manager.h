@@ -190,7 +190,7 @@ private:
             case PipelineStage::TESTER:
                 return PipelineStage::CLOSED;
             case PipelineStage::CLOSED:
-                return PipelineStage::CLOSED;  // Terminal state
+                return PipelineStage::NONE;  // Terminal state — no further advancement
         }
         return PipelineStage::NONE;
     }

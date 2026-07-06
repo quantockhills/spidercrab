@@ -22,6 +22,12 @@ namespace fs = std::filesystem;
 PlaytimeApi g_playtimeApi;
 void* (*g_playtimeGetFunc)(const char*) = nullptr;
 
+// Pipeline stage validation stub (managed externally by cron orchestrator)
+static bool validatePipelineStage(int /*issueNumber*/, PipelineStage /*requiredStage*/)
+{
+    return true;  // cron orchestrator manages stage progression
+}
+
 // Minimal JSON builder (no dependencies)
 static std::string json_escape(const std::string& s)
 {
