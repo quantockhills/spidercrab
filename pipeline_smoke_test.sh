@@ -21,10 +21,10 @@ check() {
     shift
     if eval "$@"; then
         green "  ✓ $desc"
-        ((PASS++))
+        PASS=$((PASS + 1))
     else
         red "  ✗ $desc"
-        ((FAIL++))
+        FAIL=$((FAIL + 1))
     fi
 }
 
