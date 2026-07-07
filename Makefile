@@ -125,6 +125,16 @@ check-all: lint frontend-lint build frontend-build test frontend-test frontend-e
 git-status:
 	git status
 
+# ---- Pipeline Orchestrator Tests ----
+
+# Run pipeline smoke test
+pipeline-smoke:
+	bash pipeline_smoke_test.sh
+
+# Run pipeline orchestrator integration tests
+pipeline-test:
+	bash test_pipeline_orchestrator.sh
+
 docs-pull:
 	@echo "Everything is in docs/ already."
 	@echo "  docs/reaper-sdk/ — SDK headers"
