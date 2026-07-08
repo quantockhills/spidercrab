@@ -137,6 +137,19 @@ server.on('connection', (ws) => {
         break;
       }
 
+      // ── Drag-and-drop commands (Issue #122) ──
+      case 'fx/dropToTrack': {
+        console.log(`  fx/dropToTrack: trackIdx=${msg.trackIdx}, fxName=${msg.fxName}`);
+        ws.send(makeResponse(id, true, { success: true, fxIndex: msg.trackIdx }));
+        break;
+      }
+
+      case 'fxchain/dropToTrack': {
+        console.log(`  fxchain/dropToTrack: trackIdx=${msg.trackIdx}, filePath=${msg.filePath}`);
+        ws.send(makeResponse(id, true, { success: true }));
+        break;
+      }
+
       default:
         console.log(`Unhandled command: ${command}`);
         ws.send(makeResponse(id, true, {}));
