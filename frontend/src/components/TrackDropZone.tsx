@@ -47,7 +47,8 @@ export function TrackDropZone({ trackIdx, onDropFile, onDropPayload }: TrackDrop
     if (!files || files.length === 0) return;
 
     const file = files[0];
-    const filePath = file.path || file.name;
+    // File.path is not available in browser - use name or webkitRelativePath for drag-and-drop
+    const filePath = (file as any).path || file.name || file.webkitRelativePath || '';
 
     if (onDropFile) {
       await onDropFile(trackIdx, filePath);

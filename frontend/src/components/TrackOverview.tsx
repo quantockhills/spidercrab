@@ -1807,8 +1807,7 @@ function TrackRow({
       {onDropFile && (
         <TrackDropZone
           trackIdx={track.index}
-          onDrop={onDropFile}
-          disabled={!onDropFile}
+          onDropFile={onDropFile}
         />
       )}
     </div>

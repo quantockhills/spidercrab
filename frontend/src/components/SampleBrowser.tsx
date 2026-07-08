@@ -1223,14 +1223,14 @@ function CrossRootEntryRow({ entry, entryPath, isAudio, isSending, isSent, canSe
     }, 500);
   }, [onLongPress, isAudio, canSend]);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e?: React.PointerEvent) => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
   }, []);
 
-  const handlePointerMove = useCallback(() => {
+  const handlePointerMove = useCallback((e?: React.PointerEvent) => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
@@ -1274,7 +1274,7 @@ function CrossRootEntryRow({ entry, entryPath, isAudio, isSending, isSent, canSe
       }}
       onPointerUp={(e) => {
         if (isAudio && canSend) {
-          touchDrag.onPointerUp(e);
+          touchDrag.onPointerUp();
         } else {
           handlePointerUp();
         }
@@ -1286,12 +1286,12 @@ function CrossRootEntryRow({ entry, entryPath, isAudio, isSending, isSent, canSe
           handlePointerMove();
         }
       }}
-      onPointerCancel={(e) => {
+      onPointerCancel={() => {
         if (isAudio && canSend) {
-          touchDrag.onPointerCancel(e);
+          touchDrag.onPointerCancel();
         }
       }}
-      onPointerLeave={handlePointerUp}
+      onPointerLeave={() => handlePointerUp()}
       onClick={handleClick}
       className={`flex items-center gap-2.5 px-3 py-2
         active:brightness-95 transition-colors duration-100 select-none touch-none
@@ -1403,14 +1403,14 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, tags,
     }, 500); // 500ms long-press threshold
   }, [onLongPress]);
 
-  const handlePointerUp = useCallback(() => {
+  const handlePointerUp = useCallback((e?: React.PointerEvent) => {
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
       longPressTimer.current = null;
     }
   }, []);
 
-  const handlePointerMove = useCallback(() => {
+  const handlePointerMove = useCallback((e?: React.PointerEvent) => {
     // Cancel long-press on drag/move
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -1436,7 +1436,7 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, tags,
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerMove={handlePointerMove}
-      onPointerLeave={handlePointerUp}
+      onPointerLeave={() => handlePointerUp()}
       onClick={handleClick}
       className={`flex items-center gap-2.5 px-3 py-2
         active:brightness-95 transition-colors duration-100 select-none touch-none
