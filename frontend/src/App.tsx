@@ -254,6 +254,25 @@ function AppInner() {
         updateTrack(trackIdx, updates);
       }
     });
+    // Volume/pan real-time updates (Issue #92)
+    const unsubVolume = onEvent('event:track_volume_changed', (msg: unknown) => {
+      const m = msg as Record<string, unknown>;
+      const payload = m.payload as Record<string, unknown> || {};
+      const trackIdx = payload.trackIdx as number;
+      const value = payload.value as number;
+      if (trackIdx !== undefined && value !== undefined) {
+        updateTrack(trackIdx, { volume: value });
+      }
+    });
+    const unsubPan = onEvent('event:track_pan_changed', (msg: unknown) => {
+      const m = msg as Record<string, unknown>;
+      const payload = m.payload as Record<string, unknown> || {};
+      const trackIdx = payload.trackIdx as number;
+      const value = payload.value as number;
+      if (trackIdx !== undefined && value !== undefined) {
+        updateTrack(trackIdx, { pan: value });
+      }
+    });
     const unsubList = onEvent('event:track_list_changed', () => {
       refreshTracks();
       // Matrix dimensions may change when tracks are added/removed
@@ -269,6 +288,8 @@ function AppInner() {
     const pollInterval = setInterval(() => { getMatrix(); }, 1000);
     return () => {
       unsubTrack();
+      unsubVolume();
+      unsubPan();
       unsubList();
       unsubSlot();
       clearInterval(pollInterval);
