@@ -116,21 +116,7 @@ jobs:
         with:
           script: |
             const issueNumber = context.payload.issue.number;
-            const planComment = `## Plan: Fix Autonomous Worker Pipeline
-
-**Problem:** The worker closes issues without running full pipeline (Reviewer, Screenshot Verifier).
-
-**Solution approach:**
-1. Modify worker prompt to require explicit stage progression
-2. Add verification step before closing
-3. Add "needs-verification" label gate for UI features
-
-**Implementation stages:**
-- **Builder:** Update worker prompt in \`.github/WORKER_PROMPT.md\` to enforce pipeline stages
-- **Reviewer:** Verify the prompt changes work correctly
-- **Tester:** Run existing tests to ensure nothing breaks
-
-**Effort:** hard (requires code changes + testing)`;
+            const planComment = `## Plan: Fix Autonomous Worker Pipeline\n\n**Problem:** The worker closes issues without running full pipeline (Reviewer, Screenshot Verifier).\n\n**Solution approach:**\n1. Modify worker prompt to require explicit stage progression\n2. Add verification step before closing\n3. Add "needs-verification" label gate for UI features\n\n**Implementation stages:**\n- **Builder:** Update worker prompt in \`.github/WORKER_PROMPT.md\` to enforce pipeline stages\n- **Reviewer:** Verify the prompt changes work correctly\n- **Tester:** Run existing tests to ensure nothing breaks\n\n**Effort:** hard (requires code changes + testing)`;
             
             await github.rest.issues.createComment({
               owner: context.repo.owner,
@@ -145,14 +131,7 @@ jobs:
         with:
           script: |
             const issueNumber = context.payload.issue.number;
-            const planComment = `## Plan: Implement Feature
-
-**Implementation:**
-1. Build the feature
-2. Add tests if applicable
-3. Close issue when done
-
-**Effort:** easy`;
+            const planComment = `## Plan: Implement Feature\n\n**Implementation:**\n1. Build the feature\n2. Add tests if applicable\n3. Close issue when done\n\n**Effort:** easy`;
             
             await github.rest.issues.createComment({
               owner: context.repo.owner,
