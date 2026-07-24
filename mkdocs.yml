@@ -1,0 +1,91 @@
+site_name: Spidercrab
+site_description: Touch control for REAPER. Feature, gesture, and command reference.
+site_url: https://quantockhills.github.io/spidercrab/
+repo_url: https://github.com/quantockhills/spidercrab
+repo_name: quantockhills/spidercrab
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.sections
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+
+nav:
+  - Welcome: index.md
+  - Getting Started: getting-started.md
+  - Using Spidercrab:
+      - The App at a Glance: features/README.md
+      - Tracks & Mixing: features/tracks.md
+      - Effects (FX): features/fx.md
+      - Samples & Media: features/media.md
+      - Clip Launcher: features/playtime.md
+      - Step Sequencer: features/sequencer.md
+      - Settings: features/settings.md
+  - Touch Gestures: gestures.md
+  - For Developers:
+      - Command Reference: commands.md
+
+# Keep the site focused on the curated docs; exclude vendored SDK,
+# screenshots, and internal/AI-workflow notes from the build.
+exclude_docs: |
+  WDL/
+  reaper-sdk/
+  react/
+  helgobox/
+  research/
+  debugging/
+  realearn-presets/
+  screenshots/
+  ARCHITECTURE.md
+  TESTING.md
+  UI.md
+  macos-build.md
+  blockers.md
+  workflows.md
+  playwright.md
+  push-playtime-research.md
+  release-docs-issue.md
+  *.sh
+
+validation:
+  omitted_files: ignore
+  absolute_links: ignore
+  unrecognized_links: ignore
