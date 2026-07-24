@@ -633,11 +633,9 @@ static bool InitializeCoreServices()
         fprintf(stderr, "[reaper-ipad] WARNING: OSC receiver bind failed on port 9011\n"
                         "           ReaLearn feedback will not work.\n"
                         "           Check if another service is using this port.\n");
-        { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "STARTUP: bind FAILED on port 9011\n"); fclose(f); } }
     } else {
         fprintf(stderr, "[reaper-ipad] OSC receiver listening on port %d\n",
             g_cmdHandler->GetOscReceiver().port());
-        { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "STARTUP: bound to port %d\n", g_cmdHandler->GetOscReceiver().port()); fclose(f); } }
     }
 
     // Set up WebSocket message handler

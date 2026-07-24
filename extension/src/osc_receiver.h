@@ -380,8 +380,6 @@ private:
 
     void dispatchPacket(const std::vector<uint8_t>& data)
     {
-        { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "packet: %zu bytes\n", data.size()); fclose(f); } }
-
         // OSC bundle: "#bundle\0" + 8-byte timetag + (4-byte size + element)*
         if (data.size() >= 16 && memcmp(data.data(), "#bundle\0", 8) == 0) {
             size_t pos = 16;
@@ -405,12 +403,8 @@ private:
         std::vector<float> floatArgs;
 
         if (!parseMessage(data, address, intArgs, strArgs, floatArgs)) {
-            { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "parse FAILED: %zu bytes\n", data.size()); fclose(f); } }
             return;
         }
-
-        // DEBUG: log received addresses to file
-        { FILE* f = fopen("C:\\Users\\Tamura\\osc_debug.txt", "a"); if (f) { fprintf(f, "addr='%s' f0=%.4f\n", address.c_str(), floatArgs.empty() ? -1.f : floatArgs[0]); fclose(f); } }
 
         // Dispatch based on address
         if (address == "/playtime/slot/state" && m_slotStateCb) {
