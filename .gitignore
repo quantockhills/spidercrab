@@ -2,6 +2,9 @@
 extension/build/
 extension/cmake-build*/
 
+# MkDocs site output
+/site/
+
 # IDE
 .vscode/
 .idea/
