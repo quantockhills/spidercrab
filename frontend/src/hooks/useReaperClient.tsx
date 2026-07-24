@@ -31,7 +31,10 @@ interface ReaperClientProviderProps {
 
 export function ReaperClientProvider({
   children,
-  host = '127.0.0.1',
+  // Default to the host that served this page. On an iPad the page is served
+  // by the REAPER machine (port 5173), so its hostname is the correct target
+  // for the WebSocket too. Falls back to loopback outside a browser (tests).
+  host = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1',
   port = 9224,
 }: ReaperClientProviderProps) {
   const clientRef = useRef<WsClient | null>(null);

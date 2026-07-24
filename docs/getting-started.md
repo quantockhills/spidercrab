@@ -17,7 +17,7 @@ Spidercrab isn't an app you download from the App Store. It's a little control s
     - **Linux** — `reaper_spidercrab.so`
 
     (Not sure where UserPlugins is? In REAPER: **Options → Show REAPER resource path**, then open the `UserPlugins` folder.)
-3. Copy the **`frontend`** folder from the release into that **same** UserPlugins folder, right next to the plugin file.
+3. Copy the **`frontend`** folder from the release into that **same** UserPlugins folder, right next to the plugin file. It must be named exactly **`frontend`**, with **`index.html` directly inside it** — that is the folder the plugin serves to your iPad.
 4. **Restart REAPER.**
 
 On startup Spidercrab quietly runs two things in the background: the control connection your iPad talks to, and a small web server that hosts the iPad page.

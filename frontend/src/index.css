@@ -43,6 +43,9 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
+  /* Native-app feel: no grey tap flash, no long-press callout menu */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
   /* Prevent iOS bounce/overscroll */
   overscroll-behavior: none;
   /* Safe area for iPad notch/home indicator */

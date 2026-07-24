@@ -108,7 +108,7 @@ else()
         SUFFIX ".dll"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
     )
-    target_link_libraries(reaper-spidercrab PRIVATE ws2_32)
+    target_link_libraries(reaper-spidercrab PRIVATE ws2_32 iphlpapi)
 endif()
 
 # ============================================================
