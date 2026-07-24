@@ -102,7 +102,7 @@ void CommandHandler::HandleMatrixTriggerSlot(
         return;
     }
 
-    // Send OSC to ReaLearn — real state will come back via OSC feedback on port 9000
+    // Send OSC to ReaLearn — real state will come back via OSC feedback on port 9011
     m_oscSender.sendTriggerSlot(col, row);
 
     SlotState current = m_playtimeState.getSlot(col, row);
