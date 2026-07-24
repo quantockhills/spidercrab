@@ -64,12 +64,14 @@ Spidercrab is early software under active development. Keep backups, and see the
 ```bash
 git clone https://github.com/quantockhills/spidercrab.git
 cd spidercrab
-make build          # build the extension
-make deploy         # copy it into REAPER
-cd frontend && npm run dev
+make build          # build the extension plugin
+make deploy         # copy the plugin into REAPER (plugin only)
+cd frontend && npm run build   # build the web UI
 ```
 
-Architecture and build notes are in [`docs/`](docs/).
+`make deploy` installs the **plugin** only. To deploy the **web UI**, copy the built `frontend/dist` output into a folder named **`frontend`** next to the plugin in UserPlugins. The plugin serves `<plugin folder>/frontend/index.html`, so the folder must be named `frontend` (not `dist`), with `index.html` at its root. For live UI work, `npm run dev` runs a hot-reloading dev server instead.
+
+On Windows the plugin is built with **clang-cl** (or MSVC), never MinGW. Architecture and build notes are in [`docs/`](docs/).
 
 ## License
 

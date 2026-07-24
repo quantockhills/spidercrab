@@ -1,6 +1,8 @@
 # Build artifacts
 extension/build/
+extension/build-cmake/
 extension/cmake-build*/
+/build_win.bat
 
 # MkDocs site output
 /site/

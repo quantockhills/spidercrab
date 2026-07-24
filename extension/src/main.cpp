@@ -67,6 +67,8 @@
 #define REAPERAPI_WANT_SetMediaItemSelected
 #define REAPERAPI_WANT_DeleteTrackMediaItem
 #define REAPERAPI_WANT_UpdateArrange
+#define REAPERAPI_WANT_ShowMessageBox
+#define REAPERAPI_WANT_AddExtensionsMainMenu
 #define REAPERAPI_WANT_PCM_Source_CreateFromFile
 #define REAPERAPI_WANT_PlayPreview
 #define REAPERAPI_WANT_StopPreview
@@ -118,6 +120,10 @@ static void DebugLog(const char* msg)
 #include "command_handler.h"
 #include "websocket_server.h"
 #include "frontend_server.h"
+#ifdef _WIN32
+#include <iphlpapi.h>   // GetAdaptersAddresses — list only real (gatewayed) adapters
+#endif
+#include <vector>
 #include "playtime_api.h"
 
 #ifdef _WIN32
@@ -713,6 +719,197 @@ static reaper_csurf_reg_t g_csurfReg = { "REAPER_IPAD", "Reaper iPad Remote Cont
     } };
 
 // ============================================================
+// Extensions menu integration  (Extensions > Spidercrab)
+// The remote starts on demand instead of auto-starting on load.
+// ============================================================
+static bool g_running  = false;   // servers + control surface active?
+static bool g_coreInit = false;   // InitializeCoreServices() done once?
+static int  g_cmdStartStop = 0;   // action command ids
+static int  g_cmdShowAddr  = 0;
+
+// Start the remote: init core services (once), open the servers, and register
+// the control-surface instance so REAPER pushes live state to connected clients.
+static void StartSpidercrab()
+{
+    if (g_running) return;
+    if (!g_coreInit) { InitializeCoreServices(); g_coreInit = true; }
+    StartNetworkServers();
+    if (g_pluginInfo && g_surface)
+        g_pluginInfo->Register("csurf_inst", g_surface);
+    g_running = true;
+    fprintf(stderr, "[reaper-ipad] remote started (http %d, ws %d)\n", g_httpPort, g_port);
+}
+
+// Stop the remote: close the servers and unregister the control surface.
+static void StopSpidercrab()
+{
+    if (!g_running) return;
+    g_wsServer.Stop();
+    g_httpServer.removeListenPort(g_httpPort);
+    if (g_pluginInfo && g_surface)
+        g_pluginInfo->Register("-csurf_inst", g_surface);
+    g_running = false;
+    fprintf(stderr, "[reaper-ipad] remote stopped\n");
+}
+
+// Build the "open this in a browser" address text for the Show-address dialog.
+static void BuildConnectionInfo(std::string& out)
+{
+    char host[256] = { 0 };
+    gethostname(host, (int)sizeof(host));
+
+    out  = "Open this address in a browser on a device on the same Wi-Fi\n";
+    out += "(then use Add to Home Screen for a full-screen app):\n\n";
+
+    bool any = false;
+
+#ifdef _WIN32
+    // List only adapters that have a default gateway, i.e. a real route to a
+    // network. This skips WSL/Docker/Hyper-V host-only virtual adapters, whose
+    // addresses aren't reachable from other devices and would only confuse.
+    ULONG bufLen = 16384;
+    std::vector<unsigned char> buf(bufLen);
+    const ULONG gaaFlags = GAA_FLAG_INCLUDE_GATEWAYS | GAA_FLAG_SKIP_ANYCAST |
+                           GAA_FLAG_SKIP_MULTICAST  | GAA_FLAG_SKIP_DNS_SERVER;
+    ULONG ret = GetAdaptersAddresses(AF_INET, gaaFlags, nullptr,
+                    (IP_ADAPTER_ADDRESSES*)buf.data(), &bufLen);
+    if (ret == ERROR_BUFFER_OVERFLOW) {
+        buf.resize(bufLen);
+        ret = GetAdaptersAddresses(AF_INET, gaaFlags, nullptr,
+                    (IP_ADAPTER_ADDRESSES*)buf.data(), &bufLen);
+    }
+    if (ret == NO_ERROR) {
+        for (IP_ADAPTER_ADDRESSES* ad = (IP_ADAPTER_ADDRESSES*)buf.data(); ad; ad = ad->Next) {
+            if (ad->OperStatus != IfOperStatusUp) continue;
+            if (ad->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+            if (!ad->FirstGatewayAddress) continue; // no gateway => virtual/host-only
+            for (IP_ADAPTER_UNICAST_ADDRESS* ua = ad->FirstUnicastAddress; ua; ua = ua->Next) {
+                if (!ua->Address.lpSockaddr || ua->Address.lpSockaddr->sa_family != AF_INET) continue;
+                sockaddr_in* a = (sockaddr_in*)ua->Address.lpSockaddr;
+                char ip[64] = { 0 };
+                if (inet_ntop(AF_INET, &a->sin_addr, ip, sizeof(ip))) {
+                    if (strncmp(ip, "127.", 4) == 0) continue;
+                    out += "    http://" + std::string(ip) + ":" + std::to_string(g_httpPort) + "\n";
+                    any = true;
+                }
+            }
+        }
+    }
+#else
+    struct addrinfo hints; memset(&hints, 0, sizeof(hints));
+    hints.ai_family   = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    struct addrinfo* res = nullptr;
+    if (getaddrinfo(host, nullptr, &hints, &res) == 0) {
+        for (struct addrinfo* p = res; p; p = p->ai_next) {
+            char ip[64] = { 0 };
+            struct sockaddr_in* a = (struct sockaddr_in*)p->ai_addr;
+            if (inet_ntop(AF_INET, &a->sin_addr, ip, sizeof(ip))) {
+                if (strncmp(ip, "127.", 4) == 0) continue; // skip loopback
+                out += "    http://" + std::string(ip) + ":" + std::to_string(g_httpPort) + "\n";
+                any = true;
+            }
+        }
+        freeaddrinfo(res);
+    }
+#endif
+
+    if (!any) // fall back to the computer name (may resolve on the LAN)
+        out += "    http://" + std::string(host) + ":" + std::to_string(g_httpPort) + "\n";
+
+    out += "\nOn this computer:  http://localhost:" + std::to_string(g_httpPort) + "\n";
+    if (!g_running)
+        out += "\n(The remote is currently STOPPED. Start it from Extensions > Spidercrab.)";
+}
+
+static void ShowConnectionAddress()
+{
+    std::string msg;
+    BuildConnectionInfo(msg);
+    if (ShowMessageBox)
+        ShowMessageBox(msg.c_str(), "Spidercrab connection address", 0);
+    else
+        fprintf(stderr, "[reaper-ipad] %s\n", msg.c_str());
+}
+
+// REAPER hook: run one of our actions.
+static bool OnHookCommand(int command, int flag)
+{
+    (void)flag;
+    if (command && command == g_cmdStartStop) {
+        if (g_running) StopSpidercrab(); else StartSpidercrab();
+        return true;
+    }
+    if (command && command == g_cmdShowAddr) {
+        ShowConnectionAddress();
+        return true;
+    }
+    return false;
+}
+
+// REAPER hook: report toggle state so the menu/action shows a checkmark.
+static int OnToggleAction(int command)
+{
+    if (command == g_cmdStartStop) return g_running ? 1 : 0;
+    return -1;
+}
+
+// REAPER hook: build the "Spidercrab" submenu under the Extensions menu.
+static void OnCustomMenu(const char* menuidstr, void* menu, int flag)
+{
+    if (flag != 0 || !menuidstr || strcmp(menuidstr, "Main extensions"))
+        return;
+
+    HMENU sub = CreatePopupMenu();
+
+    MENUITEMINFO miStart; memset(&miStart, 0, sizeof(miStart));
+    miStart.cbSize     = sizeof(miStart);
+    miStart.fMask      = MIIM_TYPE | MIIM_ID;
+    miStart.fType      = MFT_STRING;
+    miStart.dwTypeData = (char*)"Start / stop remote";
+    miStart.wID        = g_cmdStartStop;
+    InsertMenuItem(sub, GetMenuItemCount(sub), TRUE, &miStart);
+
+    MENUITEMINFO miAddr; memset(&miAddr, 0, sizeof(miAddr));
+    miAddr.cbSize      = sizeof(miAddr);
+    miAddr.fMask       = MIIM_TYPE | MIIM_ID;
+    miAddr.fType       = MFT_STRING;
+    miAddr.dwTypeData  = (char*)"Show connection address";
+    miAddr.wID         = g_cmdShowAddr;
+    InsertMenuItem(sub, GetMenuItemCount(sub), TRUE, &miAddr);
+
+    HMENU hExt = (HMENU)menu;
+    MENUITEMINFO miSub; memset(&miSub, 0, sizeof(miSub));
+    miSub.cbSize       = sizeof(miSub);
+    miSub.fMask        = MIIM_SUBMENU | MIIM_TYPE;
+    miSub.fType        = MFT_STRING;
+    miSub.dwTypeData   = (char*)"Spidercrab";
+    miSub.hSubMenu     = sub;
+    InsertMenuItem(hExt, GetMenuItemCount(hExt), TRUE, &miSub);
+}
+
+// Register the actions, toggle state, and Extensions submenu at load.
+static void RegisterSpidercrabMenu(reaper_plugin_info_t* rec)
+{
+    g_cmdStartStop = rec->Register("command_id", (void*)"SPIDERCRAB_STARTSTOP");
+    g_cmdShowAddr  = rec->Register("command_id", (void*)"SPIDERCRAB_SHOWADDR");
+
+    static gaccel_register_t accelStartStop = { { 0, 0, 0 }, "Spidercrab: Start/stop remote" };
+    accelStartStop.accel.cmd = g_cmdStartStop;
+    rec->Register("gaccel", &accelStartStop);
+
+    static gaccel_register_t accelShowAddr = { { 0, 0, 0 }, "Spidercrab: Show connection address" };
+    accelShowAddr.accel.cmd = g_cmdShowAddr;
+    rec->Register("gaccel", &accelShowAddr);
+
+    rec->Register("hookcommand", (void*)&OnHookCommand);
+    rec->Register("toggleaction", (void*)&OnToggleAction);
+    rec->Register("hookcustommenu", (void*)&OnCustomMenu);
+
+    if (AddExtensionsMainMenu) AddExtensionsMainMenu();
+}
+
+// ============================================================
 // REAPER Plugin Entry Point
 // ============================================================
 extern "C" {
@@ -766,18 +963,12 @@ REAPER_PLUGIN_DLL_EXPORT int REAPER_PLUGIN_ENTRYPOINT(
             g_port = p;
     }
 
-    // 1. Initialize core services (cmd handler, PreCacheFX, Playtime, MIDI, WS callback)
-    InitializeCoreServices();
+    // Register the Extensions-menu actions and the "Spidercrab" submenu.
+    // The remote no longer auto-starts on launch — the user starts/stops it
+    // from Extensions > Spidercrab (or via the registered actions/toolbar).
+    RegisterSpidercrabMenu(rec);
 
-    // 2. Register the control surface type (appears in Reaper prefs)
-
-    rec->Register("csurf", &g_csurfReg);
-
-    // 3. Create surface + start servers + register instance
-    StartNetworkServers();
-    rec->Register("csurf_inst", g_surface);
-
-    // 4. Save extstate for next launch
+    // Save extstate for next launch
     if (SetProjExtState) {
         char portBuf[16];
         snprintf(portBuf, sizeof(portBuf), "%d", g_port);

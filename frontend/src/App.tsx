@@ -583,7 +583,7 @@ function AppInner() {
                 </div>
               </div>
               <div className="text-xs text-[var(--text-secondary)]">
-                Server: ws://localhost:9224
+                Server: ws://{typeof window !== 'undefined' ? window.location.hostname : 'localhost'}:9224
               </div>
               <button
                 onClick={() => refreshTracks()}

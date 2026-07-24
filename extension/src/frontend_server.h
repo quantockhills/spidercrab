@@ -111,6 +111,7 @@ public:
         else if (ext == ".png")   mime = "image/png";
         else if (ext == ".ico")   mime = "image/x-icon";
         else if (ext == ".json")  mime = "application/json";
+        else if (ext == ".webmanifest") mime = "application/manifest+json";
         else if (ext == ".woff2") mime = "font/woff2";
         else if (ext == ".woff")  mime = "font/woff";
         else if (ext == ".ttf")   mime = "font/ttf";
