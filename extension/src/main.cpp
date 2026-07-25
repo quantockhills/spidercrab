@@ -124,6 +124,7 @@ static void DebugLog(const char* msg)
 #include <iphlpapi.h>   // GetAdaptersAddresses — list only real (gatewayed) adapters
 #endif
 #include <vector>
+#include <filesystem>
 #include "playtime_api.h"
 
 #ifdef _WIN32
@@ -504,6 +505,35 @@ public:
 
 static iPadControlSurface* g_surface = nullptr;
 
+// --- Ensure the spidercrab/ config dir exists, and migrate any legacy config
+//     files (tags) that older builds wrote directly into UserPlugins/. ---
+static std::string EnsureSpidercrabConfigDir(const std::string& pluginDir)
+{
+    namespace fs = std::filesystem;
+    std::string cfg = pluginDir;
+    if (!cfg.empty() && cfg.back() != '/' && cfg.back() != '\\') cfg += "/";
+    cfg += "spidercrab";
+
+    std::error_code ec;
+    fs::create_directories(cfg, ec);
+
+    const char* legacy[] = { "fx_tags.json", "fxchain_tags.json", "sample_tags.json" };
+    for (const char* fn : legacy) {
+        fs::path oldp = fs::path(pluginDir) / fn;
+        fs::path newp = fs::path(cfg) / fn;
+        if (fs::exists(oldp, ec) && !fs::exists(newp, ec)) {
+            fs::rename(oldp, newp, ec);
+            if (ec) { // e.g. cross-volume or locked — fall back to copy + remove
+                ec.clear();
+                std::error_code ec2;
+                fs::copy_file(oldp, newp, ec2);
+                if (!ec2) fs::remove(oldp, ec2);
+            }
+        }
+    }
+    return cfg;
+}
+
 // --- Idempotent core service initialization ---
 static bool InitializeCoreServices()
 {
@@ -511,7 +541,7 @@ static bool InitializeCoreServices()
         return true; // already initialized
 
     g_cmdHandler = new CommandHandler(&g_wsServer);
-    g_cmdHandler->SetConfigDir(FindPluginDir());
+    g_cmdHandler->SetConfigDir(EnsureSpidercrabConfigDir(FindPluginDir()));
 
     ReaperAPI api;
     api.CountTracks                 = CountTracks;
@@ -582,15 +612,12 @@ static bool InitializeCoreServices()
     // from a Chromium WebSocket context (X11/SWELL display conflict).
     g_cmdHandler->PreCacheFX();
 
-    // Pre-build FX chain cache at startup (if chain root path is known)
+    // Pre-build FX chain cache at startup from the globally-configured folder
+    // (spidercrab/settings.json), not the per-project RPP.
     {
-        char chainRootBuf[4096] = { 0 };
-        int gotChainRoot = GetProjExtState
-            ? GetProjExtState(nullptr, "REAPER_IPAD", "chainRoot", chainRootBuf, (int)sizeof(chainRootBuf))
-            : 0;
-        if (gotChainRoot > 0 && chainRootBuf[0] != '\0') {
-            g_cmdHandler->PreCacheFxChains(chainRootBuf);
-        }
+        std::string chainRoot = g_cmdHandler->GetSettings().fxChainPath();
+        if (!chainRoot.empty())
+            g_cmdHandler->PreCacheFxChains(chainRoot);
     }
 
     // Initialize Playtime 2 API (resolves HB_* function pointers)

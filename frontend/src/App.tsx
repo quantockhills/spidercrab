@@ -214,6 +214,41 @@ function AppInner() {
     localStorage.setItem('fxChainPath', fxChainPath);
   }, [fxChainPath]);
 
+  // ── Global settings sync ──
+  // Sample folders and the FX-chains path now live on the PC
+  // (spidercrab/settings.json) so they're the same for every project and every
+  // device. On first connect we pull them from the backend; if the backend has
+  // none yet but this browser has local values, we migrate those up once. After
+  // that, changes are pushed to the backend (localStorage above stays as a fast
+  // local cache / offline fallback).
+  const [settingsSynced, setSettingsSynced] = useState(false);
+  const settingsSyncRef = useRef(false);
+  useEffect(() => {
+    if (!connected || settingsSyncRef.current) return;
+    settingsSyncRef.current = true;
+    (async () => {
+      try {
+        const resp = await sendCommand('settings/get');
+        const s = resp.payload as { fxChainPath?: string; sampleFolders?: string[] };
+        if (s.sampleFolders && s.sampleFolders.length > 0) setSamplePaths(s.sampleFolders);
+        else if (samplePaths.length > 0) await sendCommand('settings/setSampleFolders', { folders: samplePaths });
+        if (s.fxChainPath) setFxChainPath(s.fxChainPath);
+        else if (fxChainPath) await sendCommand('settings/setFxChainPath', { path: fxChainPath });
+      } catch { /* older/offline backend — keep local values */ }
+      setSettingsSynced(true);
+    })();
+  }, [connected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!settingsSynced) return;
+    sendCommand('settings/setSampleFolders', { folders: samplePaths }).catch(() => {});
+  }, [samplePaths, settingsSynced, sendCommand]);
+
+  useEffect(() => {
+    if (!settingsSynced) return;
+    sendCommand('settings/setFxChainPath', { path: fxChainPath }).catch(() => {});
+  }, [fxChainPath, settingsSynced, sendCommand]);
+
   // Param control navigation state
   const [paramView, setParamView] = useState<{
     trackIdx: number;

@@ -9,6 +9,7 @@
 #include "osc_receiver.h"
 #include "sequencer_state.h"
 #include "fx_tags.h"
+#include "settings_store.h"
 #include "sample_tags.h"
 #include <functional>
 #include <map>
@@ -192,6 +193,7 @@ public:
 
     // Access the FX chain cache (for testing)
     FxChainCache& GetFxChainCache() { return m_fxChainCache; }
+    SettingsStore& GetSettings() { return m_settings; }
 
     // Real-time event broadcasting (Issue #57)
     // Broadcast a track state change event (mute/solo/arm/volume) to all WS clients
@@ -250,6 +252,7 @@ private:
 
     // FX chain cache (Issue #103)
     FxChainCache m_fxChainCache;
+    SettingsStore m_settings;
 
     // Sample directory cache (built on-demand via sample/refreshCache)
     SampleCache m_sampleCache;
@@ -307,6 +310,9 @@ private:
     void HandleSampleGetCachedPaths(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsGetAll(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsSet(int clientId, const std::string& id, const std::string& params);
+    void HandleSettingsGet(int clientId, const std::string& id, const std::string& params);
+    void HandleSettingsSetFxChainPath(int clientId, const std::string& id, const std::string& params);
+    void HandleSettingsSetSampleFolders(int clientId, const std::string& id, const std::string& params);
     void HandleSampleReaperLibraries(int clientId, const std::string& id, const std::string& params);
     void HandleSampleReaperLibraryFiles(int clientId, const std::string& id, const std::string& params);
     void HandleSamplePurgeStaleCache(int clientId, const std::string& id, const std::string& params);
