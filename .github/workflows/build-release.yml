@@ -1,0 +1,87 @@
+name: build-release
+
+# Manual only — trigger from the Actions tab. Builds the extension DLL, the
+# web UI, and (optionally) the Windows installer, and uploads them as
+# downloadable artifacts. Does NOT run on push.
+on:
+  workflow_dispatch:
+    inputs:
+      make_installer:
+        description: "Also build the Windows installer (SpidercrabSetup.exe)"
+        type: boolean
+        default: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive   # pulls WDL + REAPER SDK (docs/WDL, docs/reaper-sdk)
+
+      # ---- Web UI ----
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      # ---- Toolchain: clang-cl inside the MSVC environment (never MinGW) ----
+      - name: Install LLVM + Ninja
+        run: choco install llvm ninja -y --no-progress
+      - name: Set up MSVC environment (Windows SDK + CRT for clang-cl)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Build extension DLL (CMake + Ninja + clang-cl)
+        working-directory: extension
+        run: |
+          cmake -S . -B build -G Ninja `
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo `
+            -DCMAKE_C_COMPILER=clang-cl `
+            -DCMAKE_CXX_COMPILER=clang-cl
+          cmake --build build --target reaper-spidercrab
+
+      - name: Locate built DLL
+        id: dll
+        shell: pwsh
+        run: |
+          $dll = Get-ChildItem extension\build -Recurse -Filter reaper_spidercrab.dll | Select-Object -First 1
+          if (-not $dll) { throw "reaper_spidercrab.dll not found after build" }
+          "path=$($dll.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "dir=$($dll.DirectoryName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "DLL: $($dll.FullName)"
+
+      # ---- Installer (optional) ----
+      - name: Build Windows installer
+        if: ${{ inputs.make_installer }}
+        shell: pwsh
+        run: |
+          $stage = "installer\payload"
+          Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory "$stage\frontend" -Force | Out-Null
+          Copy-Item "${{ steps.dll.outputs.path }}" "$stage\reaper_spidercrab.dll"
+          Copy-Item "frontend\dist\*" "$stage\frontend\" -Recurse
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\spidercrab.iss
+
+      # ---- Publish downloadable artifacts ----
+      - name: Upload extension + web UI
+        uses: actions/upload-artifact@v4
+        with:
+          name: spidercrab-extension
+          path: |
+            ${{ steps.dll.outputs.dir }}/reaper_spidercrab.dll
+            ${{ steps.dll.outputs.dir }}/reaper_spidercrab.pdb
+            frontend/dist/**
+
+      - name: Upload installer
+        if: ${{ inputs.make_installer }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpidercrabSetup
+          path: installer/output/SpidercrabSetup.exe
