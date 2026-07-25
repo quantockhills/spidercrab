@@ -56,34 +56,43 @@ jobs:
           "dir=$($dll.DirectoryName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           Write-Host "DLL: $($dll.FullName)"
 
+      # ---- Stage a clean drop-in bundle: reaper_spidercrab.dll + frontend/ ----
+      # (This is both the manual-install download AND the installer's payload.)
+      - name: Stage install bundle
+        shell: pwsh
+        run: |
+          $stage = "installer\payload"
+          New-Item -ItemType Directory "$stage\frontend" -Force | Out-Null
+          Copy-Item "${{ steps.dll.outputs.path }}" "$stage\reaper_spidercrab.dll" -Force
+          Copy-Item "frontend\dist\*" "$stage\frontend\" -Recurse -Force
+
       # ---- Installer (optional) ----
       - name: Build Windows installer
         if: ${{ inputs.make_installer }}
         shell: pwsh
         run: |
-          $stage = "installer\payload"
-          Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory "$stage\frontend" -Force | Out-Null
-          Copy-Item "${{ steps.dll.outputs.path }}" "$stage\reaper_spidercrab.dll"
-          Copy-Item "frontend\dist\*" "$stage\frontend\" -Recurse
           choco install innosetup -y --no-progress
           $iscc = Get-ChildItem "${env:ProgramFiles(x86)}","$env:ProgramFiles" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $iscc) { throw "ISCC.exe not found after installing Inno Setup" }
           & $iscc.FullName installer\spidercrab.iss
 
-      # ---- Publish downloadable artifacts ----
-      - name: Upload extension + web UI
-        uses: actions/upload-artifact@v4
-        with:
-          name: spidercrab-extension
-          path: |
-            ${{ steps.dll.outputs.dir }}/reaper_spidercrab.dll
-            ${{ steps.dll.outputs.dir }}/reaper_spidercrab.pdb
-            frontend/dist/**
-
+      # ---- Publish downloadable artifacts (each is a separate download) ----
       - name: Upload installer
         if: ${{ inputs.make_installer }}
         uses: actions/upload-artifact@v4
         with:
           name: SpidercrabSetup
           path: installer/output/SpidercrabSetup.exe
+
+      - name: Upload manual-install bundle (DLL + frontend, drop into UserPlugins)
+        uses: actions/upload-artifact@v4
+        with:
+          name: spidercrab-manual
+          path: installer/payload/**
+
+      - name: Upload debug symbols (PDB)
+        uses: actions/upload-artifact@v4
+        with:
+          name: spidercrab-debug-symbols
+          path: ${{ steps.dll.outputs.dir }}/reaper_spidercrab.pdb
+          if-no-files-found: ignore
