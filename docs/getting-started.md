@@ -20,24 +20,21 @@ Spidercrab isn't an app you download from the App Store. It's a little control s
 3. Copy the **`frontend`** folder from the release into that **same** UserPlugins folder, right next to the plugin file. It must be named exactly **`frontend`**, with **`index.html` directly inside it** — that is the folder the plugin serves to your iPad.
 4. **Restart REAPER.**
 
-On startup Spidercrab quietly runs two things in the background: the control connection your iPad talks to, and a small web server that hosts the iPad page.
+Spidercrab now lives in REAPER's **Extensions** menu, and it **doesn't start on its own** — you launch it when you want it:
+
+> **Extensions → Spidercrab → Start / stop remote**
+
+That starts the small web server that hosts the iPad page plus the control connection your iPad talks to. The same item stops it, and a checkmark shows when it's running.
 
 ## 2. Open it on your iPad
 
-Your iPad and your computer need to be on the **same Wi-Fi network**.
+Your iPad and your computer need to be on the **same Wi-Fi network**, and Spidercrab must be started (above).
 
-1. **Find your computer's address.** On many networks you can just use its name; otherwise use its IP address.
-    - Windows: run `ipconfig` and look for the IPv4 address.
-    - macOS: **System Settings → Network**.
-2. On the iPad, open **Safari** and go to:
-
-    ```
-    http://YOUR-COMPUTER:5173
-    ```
-
-    …replacing `YOUR-COMPUTER` with the name or IP from step 1.
+1. **Get the address the easy way:** in REAPER, go to **Extensions → Spidercrab → Show connection address**. It lists the exact `http://<your-ip>:5173` to open (and skips virtual/WSL adapters, so you don't have to guess which IP).
+    - *No menu handy?* Find your computer's IP yourself (Windows: `ipconfig`; macOS: **System Settings → Network**) and use `http://<that-ip>:5173`.
+2. On the tablet, open that address in a browser (**Safari** or **Chrome**).
 3. The control surface loads. 🎉
-4. **Recommended:** tap the **Share** button → **Add to Home Screen**. Now it opens full-screen, just like an app.
+4. **Recommended:** use **Share → Add to Home Screen** for a full-screen, app-like experience.
 
 That's enough to **control tracks, mixing, effects, and the transport**. Samples and the clip launcher each need a bit more setup, below.
 
@@ -52,9 +49,12 @@ To use the **Media** tab:
 
 The [Clip Launcher](features/playtime.md) drives **Playtime 2** through **ReaLearn**, using OSC messages. It's a one-time setup — allow yourself a few minutes.
 
+!!! info "Set it up on the computer, then play from your tablet"
+    Everything in this step happens **once, on the PC**, inside REAPER — installing Helgobox, downloading the preset, and wiring up OSC. Once that's done you never touch the computer again: your **tablet or phone** drives the whole clip launcher. Go buckwild.
+
 1. **Install Helgobox** (it bundles both ReaLearn and Playtime 2) from [helgoboss.org](https://www.helgoboss.org/projects/helgobox/), then restart REAPER.
 2. **Add ReaLearn** to a track (any track works, or add it as monitoring FX).
-3. **Import the preset:** in the app, go to **Settings → Download ReaLearn Preset**. Open the downloaded file and copy everything. In ReaLearn's **Main** compartment, click the menu (**⋯**) → **Import from Lua**, paste, and confirm. This builds the mappings for an 8×8 grid of clips.
+3. **Download + import the preset — on the computer:** open Spidercrab in a browser **on the PC** (`http://localhost:5173`) and go to **Settings → Download ReaLearn Preset**. (Download it here, not on the tablet — the file has to land on the same machine as REAPER.) Open the downloaded file, copy everything, and in ReaLearn's **Main** compartment click the menu (**⋯**) → **Import from Lua**, paste, and confirm. This builds the mappings for an 8×8 grid of clips.
 4. **Connect OSC:** in ReaLearn, go to **Preferences → OSC devices → Add**:
     - **Control input** — listen on port **9001**
     - **Feedback output** — address `127.0.0.1`, port **9011**

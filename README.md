@@ -36,8 +36,8 @@ It reads clearly in both light and dark.
 ## Getting started
 
 1. Copy the plugin for your system into REAPER's UserPlugins folder, and place the `frontend` folder next to it.
-2. Restart REAPER.
-3. On your iPad, open the address REAPER is serving, then add it to your home screen.
+2. Restart REAPER, then start it from **Extensions → Spidercrab → Start / stop remote** (it no longer runs on its own).
+3. Get the address from **Extensions → Spidercrab → Show connection address**, open it on your tablet, and add it to the home screen.
 
 That is enough for track, effect and sample control. The clip launcher adds Playtime 2 and a short, one-time setup.
 

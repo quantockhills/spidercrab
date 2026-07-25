@@ -60,6 +60,9 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/getCacheStatus"]  = &CommandHandler::HandleSampleGetCacheStatus;
     m_commandMap["sample/getAllCached"]    = &CommandHandler::HandleSampleGetAllCached;
     m_commandMap["sample/getCachedPaths"] = &CommandHandler::HandleSampleGetCachedPaths;
+    m_commandMap["settings/get"]                  = &CommandHandler::HandleSettingsGet;
+    m_commandMap["settings/setFxChainPath"]       = &CommandHandler::HandleSettingsSetFxChainPath;
+    m_commandMap["settings/setSampleFolders"]     = &CommandHandler::HandleSettingsSetSampleFolders;
     m_commandMap["matrix/getAll"]           = &CommandHandler::HandleMatrixGetAll;
     m_commandMap["matrix/getSlot"]          = &CommandHandler::HandleMatrixGetSlot;
     m_commandMap["matrix/triggerSlot"]      = &CommandHandler::HandleMatrixTriggerSlot;
@@ -134,6 +137,8 @@ void CommandHandler::SetConfigDir(const std::string& dir)
     m_fxTagStorage.Load();
     m_sampleTagStorage = SampleTagStorage(dir);
     m_sampleTagStorage.Load();
+    m_settings.SetConfigDir(dir);
+    m_settings.Load();
     PreCacheFxChains(dir);
 }
 
