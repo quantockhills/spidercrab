@@ -37,10 +37,16 @@ Copy-Item "frontend\dist\*" "$stage\frontend\" -Recurse
 ## 2. Compile
 
 ```powershell
-& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\spidercrab.iss
+# Path varies by version/install type — find ISCC.exe rather than hardcode it:
+$iscc = Get-ChildItem "${env:ProgramFiles(x86)}","$env:ProgramFiles","$env:LOCALAPPDATA\Programs" -Recurse -Filter ISCC.exe -EA SilentlyContinue | Select-Object -First 1
+& $iscc.FullName installer\spidercrab.iss
 ```
 
 The installer lands in `installer/output/SpidercrabSetup.exe`.
+
+> Verified: Inno Setup 6.7.3 (per-user install, no admin) compiles this script and
+> produces a working installer that lays out `reaper_spidercrab.dll` + `frontend/`
+> correctly under the chosen folder.
 
 ## Notes
 
