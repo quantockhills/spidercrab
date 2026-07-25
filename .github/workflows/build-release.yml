@@ -67,7 +67,9 @@ jobs:
           Copy-Item "${{ steps.dll.outputs.path }}" "$stage\reaper_spidercrab.dll"
           Copy-Item "frontend\dist\*" "$stage\frontend\" -Recurse
           choco install innosetup -y --no-progress
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\spidercrab.iss
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}","$env:ProgramFiles" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found after installing Inno Setup" }
+          & $iscc.FullName installer\spidercrab.iss
 
       # ---- Publish downloadable artifacts ----
       - name: Upload extension + web UI
