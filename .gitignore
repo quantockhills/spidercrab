@@ -7,6 +7,10 @@ extension/cmake-build*/
 # MkDocs site output
 /site/
 
+# Installer build artifacts (staged payload + compiled exe)
+installer/payload/
+installer/output/
+
 # IDE
 .vscode/
 .idea/

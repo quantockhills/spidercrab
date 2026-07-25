@@ -34,7 +34,7 @@ Your iPad and your computer need to be on the **same Wi-Fi network**, and Spider
     - *No menu handy?* Find your computer's IP yourself (Windows: `ipconfig`; macOS: **System Settings → Network**) and use `http://<that-ip>:5173`.
 2. On the tablet, open that address in a browser (**Safari** or **Chrome**).
 3. The control surface loads. 🎉
-4. **Recommended:** use **Share → Add to Home Screen** for a full-screen, app-like experience.
+4. **Recommended — go tabless:** use **Share → Add to Home Screen**, then launch it from that new icon. It opens **full-screen with no browser tabs or address bar**, exactly like a native app. (Opening the URL in a normal browser tab works too; you just get the browser chrome.)
 
 That's enough to **control tracks, mixing, effects, and the transport**. Samples and the clip launcher each need a bit more setup, below.
 
