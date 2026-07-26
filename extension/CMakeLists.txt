@@ -114,6 +114,13 @@ endif()
 # ============================================================
 # 2. Unit tests (standalone executable, no Reaper needed)
 # ============================================================
+# On by default so `make test` works as before. Configure with
+# -DSPIDERCRAB_BUILD_TESTS=OFF to skip the GoogleTest download when you only
+# need the extension DLL (used by the release CI).
+option(SPIDERCRAB_BUILD_TESTS "Build the unit-test target (downloads GoogleTest)" ON)
+
+if(SPIDERCRAB_BUILD_TESTS)
+
 # Google Test via FetchContent — downloads on first build
 include(FetchContent)
 FetchContent_Declare(
@@ -138,3 +145,5 @@ target_compile_options(reaper-ipad-test PRIVATE -Wall -Wextra -Wno-unused-parame
 include(CTest)
 enable_testing()
 add_test(NAME reaper-ipad-test COMMAND reaper-ipad-test)
+
+endif() # SPIDERCRAB_BUILD_TESTS
