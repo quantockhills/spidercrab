@@ -6,7 +6,7 @@ Spidercrab isn't an app you download from the App Store. It's a little control s
     Spidercrab is under active development. Back up your projects, and don't rely on it for a critical live show just yet.
 
 !!! success "No extra REAPER add-ons needed"
-    Spidercrab is self-contained — it does **not** require SWS, js_ReaScriptAPI, ReaPack, a MIDI loopback (like loopMIDI), or any other REAPER extension or script. Track, FX, sample, and sequencer control all work with a plain REAPER install (the sampler uses REAPER's stock ReaSamplOmatic5000). The **only** add-on you'll need is **Helgobox (ReaLearn + Playtime 2)** — and only if you want the [Clip Launcher](features/playtime.md) (step 4 below).
+    Spidercrab is self-contained — it does **not** require SWS, js_ReaScriptAPI, ReaPack, a MIDI loopback (like loopMIDI), or any other REAPER extension or script. Track, FX and sample control all work with a plain REAPER install (the sampler uses REAPER's stock ReaSamplOmatic5000). The **only** add-on you'll need is **Helgobox (ReaLearn + Playtime 2)** — and only if you want the [Clip Launcher](features/playtime.md) (step 4 below).
 
 ## 1. Install Spidercrab into REAPER
 

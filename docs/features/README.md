@@ -7,7 +7,7 @@ Spidercrab is organised into **five tabs** along the edge of the screen. Here's 
 | **Media** | 📂 | Find, preview, and load your samples. |
 | **FX** | 🎛️ | Add effects and effect chains, and tweak their knobs. |
 | **Tracks** | 🎚️ | Play, record, and mix — volume, pan, mute, solo per track. |
-| **Playtime** | 🎹 | Launch clips in a session grid, or program beats in the step sequencer. |
+| **Playtime** | 🎹 | Launch clips and scenes in a session grid. |
 | **Settings** | ⚙️ | Connection, appearance, and housekeeping. |
 
 The app opens on the **Tracks** tab. You can move the tab bar to the top or bottom of the screen in [Settings](settings.md).
@@ -19,7 +19,7 @@ The app opens on the **Tracks** tab. You can move the tab bar to the top or bott
 - **Want to add effects?** → [Effects (FX)](fx.md)
 - **Want to work with samples?** → [Samples & Media](media.md)
 - **Want to launch loops?** → [Clip Launcher](playtime.md)
-- **Want to program a beat?** → [Step Sequencer](sequencer.md)
+- *(A [step sequencer](sequencer.md) exists but is hidden in the current release.)*
 
 ## A note on staying in sync
 

@@ -32,7 +32,7 @@ Think of it as a control surface you already own: instead of reaching for the mo
 - **Shape your sound** — add effects, load effect chains, and tweak parameters with big finger-friendly sliders.
 - **Work with samples** — browse, preview, tag, and drop samples onto tracks or clip slots.
 - **Launch clips** — a session grid for triggering loops and scenes (works with Playtime 2).
-- **Program beats** — a step sequencer for building patterns and turning them into clips.
+- **Turn clips into instruments** — send a sample or clip to a sampler and play it across the keys.
 
 ## What you'll need
 
