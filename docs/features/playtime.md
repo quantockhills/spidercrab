@@ -1,9 +1,8 @@
 # Clip Launcher 🎹
 
-The **Playtime** tab is your session view — a grid of clips you can fire off live. It has two modes, switched at the top:
+The **Playtime** tab is your session view — a grid of clips you can fire off live.
 
-- **Session** — the clip grid (this page)
-- **Sequencer** — a step grid for programming beats (see [Step Sequencer](sequencer.md))
+(A [step sequencer](sequencer.md) also exists, but it's **hidden in the current release** until it works reliably.)
 
 The clip launcher works with **Playtime 2**, and needs a one-time setup (installing Helgobox and linking it up with OSC) before it'll respond. If you haven't done that yet, follow [Getting Started → Set up the Clip Launcher](../getting-started.md#4-set-up-the-clip-launcher-optional).
 

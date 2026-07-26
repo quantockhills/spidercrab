@@ -1,9 +1,9 @@
 # Step Sequencer 🎹
 
-The second mode of the **Playtime** tab (tap **Sequencer** at the top). A classic step grid for programming drum patterns and melodies — then turn them into a clip you can launch.
+!!! warning "Not currently available"
+    The step sequencer is **hidden in the current release** — it isn't working reliably yet, so the Session/Sequencer toggle doesn't appear in the app. The page below describes how it's intended to work, and it will return once it's fixed and verified.
 
-!!! note "Newer feature"
-    The step sequencer is one of the less battle-tested parts of Spidercrab. It should work as described, but if something behaves oddly, that's the likely culprit — save your work first.
+A step grid for programming drum patterns and melodies — then turning them into a clip you can launch. When enabled, it's the second mode of the **Playtime** tab (tap **Sequencer** at the top).
 
 ## Reading the grid
 

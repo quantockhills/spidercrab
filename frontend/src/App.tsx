@@ -16,6 +16,11 @@ import type { DirResult, ReaperLibrary } from './hooks/useSampleBrowser';
 type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 
+// The step sequencer is built but not yet working reliably, so it's hidden
+// from the UI for now. All of its code is intact — flip this to true to bring
+// the Session/Sequencer toggle back once it's verified.
+const SHOW_SEQUENCER = false;
+
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'media',   label: 'Media',   icon: '📂' },
   { id: 'fx',      label: 'FX',      icon: '🎛️' },
@@ -450,7 +455,8 @@ function AppInner() {
 
         {activeTab === 'clips' && (
           <div className="flex flex-col h-full min-h-0">
-            {/* Mode toggle */}
+            {/* Mode toggle — hidden while the sequencer is disabled */}
+            {SHOW_SEQUENCER && (
             <div className="flex border-b border-[var(--border)]">
               <button
                 onClick={() => setSessionMode('session')}
@@ -473,8 +479,9 @@ function AppInner() {
                 Sequencer
               </button>
             </div>
+            )}
             <div className="flex-1 overflow-hidden min-h-0">
-              {sessionMode === 'session' ? (
+              {(sessionMode === 'session' || !SHOW_SEQUENCER) ? (
                 <SessionView
                   matrix={matrix}
                   tracks={tracks}

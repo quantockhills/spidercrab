@@ -29,7 +29,7 @@ Spidercrab adds a touch control surface to REAPER that you open on an iPad, or a
 - Play, stop and record, and fire off clips and scenes with Playtime 2.
 - Add effects and effect chains, and tune their parameters on large, finger-friendly sliders.
 - Browse, tag and preview your samples, then send them to a track or a clip.
-- Program patterns in a step sequencer and bounce them to clips.
+- Turn a sample or clip into a playable instrument on a sampler track.
 
 It reads clearly in both light and dark.
 

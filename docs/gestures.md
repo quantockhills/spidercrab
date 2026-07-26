@@ -23,7 +23,7 @@ Everything in Spidercrab happens by touch, and a **tap**, a **double-tap**, and 
 | **Clip slot** | Launch (or record) | — | Actions: sampler / delete | — |
 | **Clip's ↻ corner button** | Reverse the clip | — | — | — |
 | **Sample** | Preview it | — | Open its menu | Pick it up |
-| **Sequencer step** | Turn it on/off | — | — | — |
+| **Sequencer step** *(hidden for now)* | Turn it on/off | — | — | — |
 | **Track buttons** | Mute / solo / arm | — | — | — |
 
 ## A little more detail
@@ -43,5 +43,5 @@ Tap to launch the clip. If you've armed recording first, tapping an empty slot *
 ### Samples
 Tap to hear a sample (and a mini Session grid appears so you can tap a slot to send it there). Hold to open its menu — send to track, send to sampler, drag to a slot, or file info. Drag to carry it onto a clip slot.
 
-### Sequencer steps
+### Sequencer steps *(hidden in the current release)*
 Tap a step to turn it on or off. That's it — build your pattern one tap at a time.
