@@ -13,7 +13,9 @@ on:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    # Pinned (not windows-latest) so the toolchain doesn't shift under us;
+    # matches the existing windows-build.yml runner.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,27 +32,45 @@ jobs:
           npm run build
 
       # ---- Toolchain: clang-cl inside the MSVC environment (never MinGW) ----
-      - name: Install LLVM + Ninja
-        run: choco install llvm ninja -y --no-progress
+      # The runner image ships LLVM at C:\Program Files\LLVM; we reference
+      # clang-cl by absolute path rather than relying on PATH propagation.
+      # Ninja comes from chocolatey (its bin dir is already on PATH).
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
       - name: Set up MSVC environment (Windows SDK + CRT for clang-cl)
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
+      - name: Resolve clang-cl
+        id: clang
+        shell: pwsh
+        run: |
+          $c = "C:\Program Files\LLVM\bin\clang-cl.exe"
+          if (-not (Test-Path $c)) {
+            choco install llvm -y --no-progress
+          }
+          if (-not (Test-Path $c)) { throw "clang-cl.exe not found at $c" }
+          "path=$c" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          & $c --version
+
+      # Uses the same build dir + absolute compiler path as the verified local build.
       - name: Build extension DLL (CMake + Ninja + clang-cl)
         working-directory: extension
+        shell: pwsh
         run: |
-          cmake -S . -B build -G Ninja `
+          $cc = "${{ steps.clang.outputs.path }}"
+          cmake -S . -B build-cmake -G Ninja `
             -DCMAKE_BUILD_TYPE=RelWithDebInfo `
-            -DCMAKE_C_COMPILER=clang-cl `
-            -DCMAKE_CXX_COMPILER=clang-cl
-          cmake --build build --target reaper-spidercrab
+            -DCMAKE_C_COMPILER="$cc" `
+            -DCMAKE_CXX_COMPILER="$cc"
+          cmake --build build-cmake --target reaper-spidercrab
 
       - name: Locate built DLL
         id: dll
         shell: pwsh
         run: |
-          $dll = Get-ChildItem extension\build -Recurse -Filter reaper_spidercrab.dll | Select-Object -First 1
+          $dll = Get-ChildItem extension -Recurse -Filter reaper_spidercrab.dll -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $dll) { throw "reaper_spidercrab.dll not found after build" }
           "path=$($dll.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "dir=$($dll.DirectoryName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -72,9 +92,14 @@ jobs:
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
-          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}","$env:ProgramFiles" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          # Look in the standard Inno Setup locations (any major version) rather
+          # than recursing all of Program Files, which is slow on the runner.
+          $iscc = Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup*","$env:ProgramFiles\Inno Setup*" `
+                    -Filter ISCC.exe -Recurse -Depth 1 -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $iscc) { throw "ISCC.exe not found after installing Inno Setup" }
+          Write-Host "ISCC: $($iscc.FullName)"
           & $iscc.FullName installer\spidercrab.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed ($LASTEXITCODE)" }
 
       # ---- Publish downloadable artifacts (each is a separate download) ----
       - name: Upload installer
