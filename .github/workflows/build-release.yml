@@ -126,8 +126,10 @@ jobs:
           if-no-files-found: ignore
 
   macos:
-    # Pinned to Apple Silicon (arm64), matching current Macs.
-    runs-on: macos-14
+    # Pinned (not macos-latest) so the toolchain doesn't shift under us.
+    # macos-14 is mid-deprecation (began 2026-07-06, gone 2026-11-02) — use 15.
+    # Apple Silicon (arm64), matching current Macs.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
