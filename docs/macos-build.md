@@ -136,6 +136,15 @@ bash extension/test/test_macos_build.sh
 - On macOS, `SWELL_TARGET_OSX` is defined automatically
 - No Objective-C++ (.mm) files needed — the extension is pure C++
 - Cocoa and Carbon frameworks are linked for SWELL compatibility
+- **Known limitation:** the "Spidercrab" submenu under REAPER's Extensions menu
+  is currently Windows-only. It's built with SWELL's raw `HMENU`/`InsertMenuItem`
+  API, which (outside Windows) needs those symbols resolved from the host
+  process at runtime — a different, unverified loading path from the one this
+  extension uses. On macOS/Linux, the **Start/stop remote** and **Show
+  connection address** actions still work; find them in REAPER's Action List
+  (they're prefixed "Spidercrab:") and bind them to a shortcut or toolbar
+  button. A native submenu on Mac/Linux is a follow-up once the SWELL wiring
+  is verified on real hardware.
 
 ### REAPER SDK on macOS
 - `REAPER_PLUGIN_DLL_EXPORT` → `__attribute__((visibility("default")))`

@@ -124,3 +124,40 @@ jobs:
           name: spidercrab-debug-symbols
           path: ${{ steps.dll.outputs.dir }}/reaper_spidercrab.pdb
           if-no-files-found: ignore
+
+  macos:
+    # Pinned to Apple Silicon (arm64), matching current Macs.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive   # pulls WDL + REAPER SDK (docs/WDL, docs/reaper-sdk)
+
+      # Xcode Command Line Tools (clang++, the Frameworks) ship on the runner
+      # image already — no toolchain install needed, unlike Windows.
+      - name: Build extension dylib (CMake + clang++)
+        working-directory: extension
+        run: |
+          cmake -S . -B build-cmake \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DSPIDERCRAB_BUILD_TESTS=OFF
+          cmake --build build-cmake --target reaper-spidercrab --parallel
+
+      - name: Locate + verify the built dylib
+        id: dylib
+        run: |
+          DYLIB=$(find build-cmake -name reaper_spidercrab.dylib | head -1)
+          if [ -z "$DYLIB" ]; then echo "reaper_spidercrab.dylib not found after build"; exit 1; fi
+          echo "path=extension/$DYLIB" >> "$GITHUB_OUTPUT"
+          file "$DYLIB"
+          # Confirm the REAPER entry point is actually exported.
+          nm -gU "$DYLIB" | grep -q ReaperPluginEntry || { echo "ReaperPluginEntry not exported"; exit 1; }
+        working-directory: extension
+
+      - name: Ad-hoc codesign
+        run: codesign --force --deep --sign - "${{ steps.dylib.outputs.path }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spidercrab-macos
+          path: ${{ steps.dylib.outputs.path }}
