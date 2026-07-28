@@ -35,13 +35,19 @@ It reads clearly in both light and dark.
 
 ## Getting started
 
-1. Copy the plugin for your system into REAPER's UserPlugins folder, and place the `frontend` folder next to it.
-2. Restart REAPER, then start it from **Extensions → Spidercrab → Start / stop remote** (it no longer runs on its own).
-3. Get the address from **Extensions → Spidercrab → Show connection address**, open it on your tablet, and add it to the home screen.
+Two ways to install, both from the [releases page](https://github.com/quantockhills/spidercrab/releases):
+
+- **Windows installer:** run `SpidercrabSetup.exe`. It places the plugin and the web UI into REAPER's UserPlugins folder for you.
+- **Manual (any OS):** copy the plugin for your system into REAPER's UserPlugins folder, and place the `frontend` folder next to it.
+
+Either way, then:
+
+1. Restart REAPER, then start it from **Extensions → Spidercrab → Start / stop remote** (macOS/Linux: search "Spidercrab" in the Action List instead). It no longer runs on its own.
+2. Get the address from **Extensions → Spidercrab → Show connection address**, open it on your tablet, and add it to the home screen.
 
 That is enough for track, effect and sample control. The clip launcher adds Playtime 2 and a short, one-time setup.
 
-**Full walkthrough: [Getting Started](docs/getting-started.md).**
+**Full walkthrough: [Getting Started](docs/getting-started.md).** Building it yourself instead? See [For developers](#for-developers) below.
 
 Nothing else is required. No SWS, no scripts, no other REAPER add-ons. The only extra piece is Helgobox, and only if you want the clip launcher.
 
@@ -69,7 +75,7 @@ make deploy         # copy the plugin into REAPER (plugin only)
 cd frontend && npm run build   # build the web UI
 ```
 
-WDL and the REAPER SDK are git submodules (`docs/WDL`, `docs/reaper-sdk`) — the `--recursive` above fetches them. Already cloned without it? Run `git submodule update --init`.
+WDL and the REAPER SDK are git submodules (`docs/WDL`, `docs/reaper-sdk`); the `--recursive` above fetches them. Already cloned without it? Run `git submodule update --init`.
 
 `make deploy` installs the **plugin** only. To deploy the **web UI**, copy the built `frontend/dist` output into a folder named **`frontend`** next to the plugin in UserPlugins. The plugin serves `<plugin folder>/frontend/index.html`, so the folder must be named `frontend` (not `dist`), with `index.html` at its root. For live UI work, `npm run dev` runs a hot-reloading dev server instead.
 
