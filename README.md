@@ -23,13 +23,15 @@
 
 ## What it does
 
-Spidercrab adds a touch control surface to REAPER that you open on an iPad, or any tablet. No cloud, no subscription, no second computer. Once it is running you can:
+Spidercrab adds a touch interface to REAPER that you open on an iPad, or any tablet. No cloud, no subscription, no second computer. Once it is running you can:
 
 - Mix by touch, with volume, pan, mute, solo and record-arm on every track.
 - Play, stop and record, and fire off clips and scenes with Playtime 2.
 - Add effects and effect chains, and tune their parameters on large, finger-friendly sliders.
 - Browse, tag and preview your samples, then send them to a track or a clip.
 - Turn a sample or clip into a playable instrument on a sampler track.
+
+**For example:** playing live, you might set up a track for your vocals, drop a reverb on it, and loop a phrase through Playtime. If you're running a MIDI synth, add VST effects to its track and tweak them by hand while you play, the same way you'd reach for a knob on a modular synth. Drop in samples too, and use Playtime's grid to arrange them however you want, whether that's jamming loosely or triggering a set song.
 
 It reads clearly in both light and dark.
 
@@ -53,13 +55,13 @@ Nothing else is required. No SWS, no scripts, no other REAPER add-ons. The only 
 
 ## Documentation
 
-The complete guide lives in [`docs/`](docs/) and covers every tab, every gesture, and setup from scratch:
+**[quantockhills.github.io/spidercrab](https://quantockhills.github.io/spidercrab/)** is the full guide, searchable, and covers every tab, every gesture, and setup from scratch. Or browse the source in [`docs/`](docs/):
 
 - [Getting Started](docs/getting-started.md)
 - [Touch Gestures](docs/gestures.md)
 - [A tour of the five tabs](docs/features/README.md)
 
-Read it on GitHub, or build the searchable site locally with `mkdocs serve` (dependencies in [`docs/requirements.txt`](docs/requirements.txt)).
+To run the site locally instead, `mkdocs serve` (dependencies in [`docs/requirements.txt`](docs/requirements.txt)).
 
 ## Status
 
