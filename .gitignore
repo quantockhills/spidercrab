@@ -79,7 +79,7 @@ extension/build-debug/
 /cron_stage_*.txt
 /cron_stage_*.txt.old
 /cron_stage_*.lock
-/screenshots/
+/screenshots/issue*/
 /ss-pad-*.png
 docs/blockers.md
 docs/close-stale-issues.sh
