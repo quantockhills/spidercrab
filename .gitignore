@@ -68,3 +68,33 @@ TOOLS.md
 USER.md
 test-results/
 extension/build-debug/
+
+# AI-agent pipeline workspace (handoff notes, cron stage tracking, planning
+# scratch docs, per-issue screenshot captures) — internal automation state,
+# never meant to be committed
+/AGENTS.md
+/.handoff/
+/Testing/
+/cron_heartbeat_log.txt
+/cron_stage_*.txt
+/cron_stage_*.txt.old
+/cron_stage_*.lock
+/screenshots/
+/ss-pad-*.png
+docs/blockers.md
+docs/close-stale-issues.sh
+docs/workflows.md
+docs/debugging/
+docs/ipad-test-issue.md
+docs/playwright.md
+docs/push-playtime-research.md
+docs/why-spidercrab-issue.md
+
+# Vendored reference material pulled in for local research — not authored
+# content, not part of the published docs site
+docs/react/
+design/original-theme/
+
+# Stray test artifact with a mangled Windows temp path baked into its
+# filename (accidental, from an old FX-chain-save test run)
+extension/UsersTamuraAppDataLocalTemp_fxchain_save_testsaved_chain.RfxChain
