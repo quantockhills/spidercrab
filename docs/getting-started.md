@@ -45,8 +45,8 @@ Spidercrab now lives in REAPER's **Extensions** menu, and it **doesn't start on 
 
 That starts the small web server that hosts the iPad page plus the control connection your iPad talks to. The same item stops it, and a checkmark shows when it's running.
 
-!!! note "On macOS / Linux"
-    The **Extensions → Spidercrab** submenu is currently Windows-only. On macOS and Linux, open REAPER's **Action List** and search for "Spidercrab" — you'll find **Spidercrab: Start/stop remote** and **Spidercrab: Show connection address** there instead, and you can bind either to a shortcut or a toolbar button.
+!!! note "On Linux"
+    The **Extensions → Spidercrab** submenu works on Windows and macOS. On Linux it isn't verified yet (no build/test environment for it currently) — open REAPER's **Action List** and search for "Spidercrab" instead, where you'll find **Spidercrab: Start/stop remote** and **Spidercrab: Show connection address**, and can bind either to a shortcut or a toolbar button.
 
 ## 2. Open it on your iPad
 

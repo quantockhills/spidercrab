@@ -40,7 +40,7 @@ It reads clearly in both light and dark.
 Two ways to install, both from the [releases page](https://github.com/quantockhills/spidercrab/releases):
 
 - **Installer (Windows/macOS):** run `SpidercrabSetup.exe` or `SpidercrabInstaller.pkg`. It places the plugin and the web UI into REAPER's UserPlugins folder for you. On macOS, since the installer isn't notarized, you'll need to allow it once — right-click it → Open → confirm (or, on some macOS versions, System Settings → Privacy & Security → Open Anyway instead) — after that, it also clears Gatekeeper's quarantine flag on the plugin itself, so there's no Terminal step.
-- **Manual (any OS, if you'd rather DIY):** copy the plugin for your system into REAPER's UserPlugins folder, and place the `frontend` folder next to it. On macOS this means one Terminal command first — `xattr -dr com.apple.quarantine reaper_spidercrab.dylib` — to clear Gatekeeper's quarantine flag yourself instead of letting the installer do it. Full steps, including exactly where UserPlugins is on each OS: [Getting Started](docs/getting-started.md).
+- **Manual (any OS, if you'd rather DIY):** copy the plugin for your system into REAPER's UserPlugins folder, and place the `frontend` folder next to it. On macOS this means one Terminal command first — `xattr -dr com.apple.quarantine reaper_spidercrab.dylib` — to clear Gatekeeper's quarantine flag yourself instead of letting the installer do it. Full steps, including exactly where UserPlugins is on each OS: [Getting Started](https://quantockhills.github.io/spidercrab/getting-started/).
 
 Either way, then:
 
@@ -49,17 +49,19 @@ Either way, then:
 
 That is enough for track, effect and sample control. The clip launcher adds Playtime 2 and a short, one-time setup.
 
-**Full walkthrough: [Getting Started](docs/getting-started.md).** Building it yourself instead? See [For developers](#for-developers) below.
+**Full walkthrough: [Getting Started](https://quantockhills.github.io/spidercrab/getting-started/).** Building it yourself instead? See [For developers](#for-developers) below.
 
 Nothing else is required. No SWS, no scripts, no other REAPER add-ons. The only extra piece is Helgobox, and only if you want the clip launcher.
 
 ## Documentation
 
-**[quantockhills.github.io/spidercrab](https://quantockhills.github.io/spidercrab/)** is the full guide, searchable, and covers every tab, every gesture, and setup from scratch. Or browse the source in [`docs/`](docs/):
+**[quantockhills.github.io/spidercrab](https://quantockhills.github.io/spidercrab/)** is the full guide, searchable, and covers every tab, every gesture, and setup from scratch:
 
-- [Getting Started](docs/getting-started.md)
-- [Touch Gestures](docs/gestures.md)
-- [A tour of the five tabs](docs/features/README.md)
+- [Getting Started](https://quantockhills.github.io/spidercrab/getting-started/)
+- [Touch Gestures](https://quantockhills.github.io/spidercrab/gestures/)
+- [A tour of the five tabs](https://quantockhills.github.io/spidercrab/features/)
+
+Prefer browsing the raw source instead? It's all in [`docs/`](docs/).
 
 To run the site locally instead, `mkdocs serve` (dependencies in [`docs/requirements.txt`](docs/requirements.txt)).
 
