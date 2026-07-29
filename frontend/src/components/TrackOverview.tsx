@@ -632,7 +632,7 @@ function FxGrid({
 
   return (
     <div
-      className="flex flex-wrap gap-2 px-3 pb-2"
+      className="flex flex-wrap gap-2 px-3 pt-2 pb-2"
       onDragOver={(e) => {
         if (!dragDataRef.current) return;
         e.preventDefault();
