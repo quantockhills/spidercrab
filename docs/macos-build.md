@@ -134,17 +134,22 @@ bash extension/test/test_macos_build.sh
 ### SWELL on macOS
 - The extension includes `swell/swell.h` via WDL includes
 - On macOS, `SWELL_TARGET_OSX` is defined automatically
-- No Objective-C++ (.mm) files needed — the extension is pure C++
+- Compiles one Objective-C++ file, `swell/swell-modstub.mm` — the standard
+  glue a REAPER extension needs to resolve SWELL's Windows-shaped GUI API
+  (`CreatePopupMenu`, `InsertMenuItem`, etc.) from the host process. It works
+  via a static initializer that queries REAPER's own app delegate
+  (`swellGetAPPAPIFunc`) automatically when the dylib loads, before
+  `ReaperPluginEntry` is even called — see `CMakeLists.txt`
+  (`SWELL_PROVIDED_BY_APP` + this file, `APPLE` branch)
 - Cocoa and Carbon frameworks are linked for SWELL compatibility
-- **Known limitation:** the "Spidercrab" submenu under REAPER's Extensions menu
-  is currently Windows-only. It's built with SWELL's raw `HMENU`/`InsertMenuItem`
-  API, which (outside Windows) needs those symbols resolved from the host
-  process at runtime — a different, unverified loading path from the one this
-  extension uses. On macOS/Linux, the **Start/stop remote** and **Show
-  connection address** actions still work; find them in REAPER's Action List
-  (they're prefixed "Spidercrab:") and bind them to a shortcut or toolbar
-  button. A native submenu on Mac/Linux is a follow-up once the SWELL wiring
-  is verified on real hardware.
+- The "Spidercrab" submenu under REAPER's Extensions menu is enabled on
+  macOS via the above — confirmed working on real hardware. The Linux
+  equivalent (`swell/swell-modstub-generic.cpp`, same `SWELL_dllMain`
+  mechanism) is wired the same way but not CI-verified (no Linux build job
+  exists yet). Either way, the **Start/stop remote** and **Show connection
+  address** actions are also reachable from REAPER's Action List (prefixed
+  "Spidercrab:") on every platform, if you'd rather bind them to a shortcut
+  or toolbar button instead.
 
 ### REAPER SDK on macOS
 - `REAPER_PLUGIN_DLL_EXPORT` → `__attribute__((visibility("default")))`
