@@ -72,9 +72,9 @@ var
   Count, I: Integer;
   Val: String;
   AlreadySet: Boolean;
-const
-  OscLine = 'OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""';
+  OscLine: String;
 begin
+  OscLine := 'OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""';
   ReaperIni := ExpandConstant('{userappdata}\REAPER\reaper.ini');
   if not FileExists(ReaperIni) then
   begin
