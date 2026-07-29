@@ -148,9 +148,14 @@ jobs:
       - name: Locate + verify the built dylib
         id: dylib
         run: |
-          DYLIB=$(find build-cmake -name reaper_spidercrab.dylib | head -1)
+          # Search all of extension/, not just build-cmake/: on macOS a .dylib
+          # is a CMake LIBRARY artifact, so the project's hardcoded
+          # LIBRARY_OUTPUT_DIRECTORY (extension/build/, matching build.sh's
+          # output convention) applies here, unlike on Windows where a .dll is
+          # a RUNTIME artifact and that setting is ignored.
+          DYLIB=$(find . -name reaper_spidercrab.dylib | head -1)
           if [ -z "$DYLIB" ]; then echo "reaper_spidercrab.dylib not found after build"; exit 1; fi
-          echo "path=extension/$DYLIB" >> "$GITHUB_OUTPUT"
+          echo "path=extension/${DYLIB#./}" >> "$GITHUB_OUTPUT"
           file "$DYLIB"
           # Confirm the REAPER entry point is actually exported.
           nm -gU "$DYLIB" | grep -q ReaperPluginEntry || { echo "ReaperPluginEntry not exported"; exit 1; }
