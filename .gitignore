@@ -50,6 +50,12 @@ docs/helgobox/
 
 extension/test/reaper-recentfx.ini
 
+# Personal runtime data (written to CWD if the extension/tests ever run from
+# the repo root instead of the REAPER config dir — should never be committed)
+/fx_tags.json
+/fxchain_tags.json
+/sample_tags.json
+
 # Workspace config (do not commit)
 .openclaw/
 HEARTBEAT.md
