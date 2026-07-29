@@ -1,4 +1,24 @@
 
+## v0.5.1-beta — 2026-07-29
+
+### Highlights
+- **macOS installer** — `SpidercrabInstaller.pkg` mirrors the Windows `.exe`: copies the plugin + web UI into `UserPlugins`, clears Gatekeeper's quarantine flag, and warns (without hard-blocking) if REAPER is still running.
+- **Both installers auto-register the Clip Launcher's OSC device** — adds the `spidercrab` device straight into ReaLearn's own OSC device list (`Helgoboss/ReaLearn/osc.json`), so the only manual step left is picking it from ReaLearn's Input/Output dropdowns once.
+- **Sample region trim, reverse-region playback, and loop** — the Media tab's waveform now has always-present L/R trim handles; Reverse renders real reversed audio (previously a no-op UI flag) and can be combined with a trimmed region; a Loop toggle repeats preview playback.
+
+### Features
+- **Browser tab favicon** — uses the spider-crab illustration from the README instead of the generic app icon.
+- **UI Size setting** — Settings gets a 85%–140% scale control for Safari/iPad, which has no `ctrl +/-` zoom shortcut.
+
+### Fixes
+- **Row-level ▶ play button in the Media tab** — was calling the same handler as tapping the rest of the card (open/close the preview panel) instead of actually starting playback.
+- **FX chain deletion could absorb the FX before it** — deleting a chain's first (or only) member shifted the chain's tracked index range onto whatever FX sat before it, silently folding an unrelated effect into the chain box. Root cause was an off-by-one in how chain index ranges were adjusted on delete vs. insert.
+- **Session grid column headers using the wrong track index** — the Helgobox/ReaLearn/Playtime control track sits in the track list but isn't itself a matrix column, so column-header actions (arm, record mode, navigate to track) could operate on the wrong track.
+- **Stale FX gesture docs** — docs described tap-to-bypass/hold-to-delete; actual behavior is double-tap-to-bypass, hold-then-tap-again-to-confirm-delete, with params opened via a separate corner arrow. Also documents the FX chain browser's pagination/tabs, the Remove FX button, and the Media tab's region/loop controls.
+
+### Privacy / repo hygiene
+- Removed `fx_tags.json` (personal FX tag data that had been accidentally committed to the repo root) and added it to `.gitignore` alongside its siblings.
+
 ## v0.3.0-alpha — 2026-06-11
 
 ### Highlights

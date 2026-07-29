@@ -9,7 +9,7 @@
 
 #define AppName "Spidercrab"
 ; Keep in sync with CHANGELOG.md
-#define AppVersion "0.3.0-alpha"
+#define AppVersion "0.5.1-beta"
 #define AppPublisher "quantockhills"
 #define AppURL "https://github.com/quantockhills/spidercrab"
 
