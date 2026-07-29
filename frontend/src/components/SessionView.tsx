@@ -367,11 +367,15 @@ export function SessionView({
     slotMap.set(`${slot.column},${slot.row}`, slot);
   }
 
-  // Column order — push helgobox/realearn/playtime tracks to the end
-  const isSystemTrack = (col: number) =>
-    /helgobox|realearn|playtime/i.test((tracks ?? [])[col]?.name ?? '');
-  const visibleColumns = Array.from({ length: cols }, (_, col) => col)
-    .sort((a, b) => Number(isSystemTrack(a)) - Number(isSystemTrack(b)));
+  // Matrix column N is NOT the same thing as REAPER track index N — the
+  // Helgobox/ReaLearn/Playtime control track sits in the track list too, but
+  // isn't itself a matrix column. Build the list of real column tracks by
+  // excluding it first, so column 0 correctly lines up with the first real
+  // track, column 1 with the second, and so on.
+  const musicTracks = (tracks ?? []).filter(
+    (t) => !/helgobox|realearn|playtime/i.test(t.name ?? ''),
+  );
+  const visibleColumns = Array.from({ length: cols }, (_, col) => col);
 
   return (
     <div className="flex flex-col h-full">
@@ -480,7 +484,7 @@ export function SessionView({
           <div className="px-3 pt-2 border-b border-[var(--border)]">
             <div className="flex gap-px">
               {visibleColumns.map((col) => {
-                const track = (tracks ?? [])[col];
+                const track = musicTracks[col];
                 const trackName = track?.name || `Track ${col + 1}`;
                 const isArmed = track?.armed ?? false;
                 const isMuted = track?.muted ?? false;
@@ -501,7 +505,7 @@ export function SessionView({
                         {trackName}
                       </span>
                       <button
-                        onClick={(e) => { e.stopPropagation(); onNavigateToTrack?.(col); }}
+                        onClick={(e) => { e.stopPropagation(); onNavigateToTrack?.(track?.index ?? col); }}
                         className="flex-shrink-0 w-5 h-5 flex items-center justify-center text-[10px] leading-none rounded transition-all active:brightness-90 hover:bg-[var(--bg-tertiary)] text-[var(--text-secondary)]/60 hover:text-[var(--accent-orange)]"
                         aria-label={`Navigate to track ${col + 1}`}
                         title="Go to Track view"
@@ -513,7 +517,7 @@ export function SessionView({
                     <div className="flex items-center gap-px pb-1">
                       {/* Record arm button */}
                       <button
-                        onClick={(e) => { e.stopPropagation(); onToggleArm?.(col); }}
+                        onClick={(e) => { e.stopPropagation(); onToggleArm?.(track?.index ?? col); }}
                         className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
                           isArmed
                             ? 'bg-[var(--accent-red)]/40 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/50'
@@ -527,7 +531,7 @@ export function SessionView({
                       {/* Record mode toggle (A/M) — only visible when armed */}
                       {isArmed && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); onToggleRecordMode?.(col); }}
+                          onClick={(e) => { e.stopPropagation(); onToggleRecordMode?.(track?.index ?? col); }}
                           className={`w-5 h-5 flex items-center justify-center text-[8px] font-bold rounded transition-all active:brightness-90 ${
                             isMidiMode
                               ? 'bg-[var(--accent-blue)]/30 text-[var(--accent-blue)] ring-1 ring-[var(--accent-blue)]/40'
@@ -541,7 +545,7 @@ export function SessionView({
                       )}
                       {/* Mute button */}
                       <button
-                        onClick={(e) => { e.stopPropagation(); onToggleMute?.(col); }}
+                        onClick={(e) => { e.stopPropagation(); onToggleMute?.(track?.index ?? col); }}
                         className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
                           isMuted
                             ? 'bg-[var(--accent-red)]/25 text-[var(--accent-red)] ring-1 ring-[var(--accent-red)]/40'
@@ -554,7 +558,7 @@ export function SessionView({
                       </button>
                       {/* Solo button */}
                       <button
-                        onClick={(e) => { e.stopPropagation(); onToggleSolo?.(col); }}
+                        onClick={(e) => { e.stopPropagation(); onToggleSolo?.(track?.index ?? col); }}
                         className={`w-6 h-6 flex items-center justify-center text-[9px] font-bold rounded transition-all active:brightness-90 ${
                           isSoloed
                             ? 'bg-[var(--accent-yellow)]/25 text-[var(--accent-yellow)] ring-1 ring-[var(--accent-yellow)]/40'
