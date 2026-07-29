@@ -60,52 +60,105 @@ begin
   end;
 end;
 
-// Registers the "spidercrab" OSC device in REAPER's global prefs
-// (reaper.ini), so ReaLearn's Input/Output device dropdowns have it to pick
-// from without a manual Preferences > Control/OSC/web step. Only touches
-// reaper.ini if it already exists (REAPER writes it on first launch — a
-// never-yet-run REAPER has nothing to patch) and only if a "spidercrab"
-// device isn't already registered.
+// Registers the "spidercrab" device in ReaLearn's OWN OSC device list
+// (Helgoboss/ReaLearn/osc.json under the REAPER resource dir) — NOT
+// reaper.ini. REAPER has its own separate native OSC control-surface list
+// (reaper.ini's csurf_N entries, configured via REAPER's own Preferences),
+// which is a completely different system ReaLearn's Input/Output dropdowns
+// don't read from at all. ReaLearn maintains its own device list, editable
+// only via its "Manage OSC devices" dialog, persisted to this JSON file.
+//
+// The UUID below is fixed (not randomly generated) on purpose: it has to
+// match the id embedded in any ReaLearn "unit" export we ship, or an
+// imported unit's controlDeviceId/feedbackDeviceId reference wouldn't
+// resolve to this device.
 procedure RegisterSpidercrabOscDevice();
 var
-  ReaperIni: String;
-  Count, I: Integer;
-  Val: String;
-  AlreadySet: Boolean;
-  OscLine: String;
+  OscJsonPath: String;
+  RawContent: AnsiString;
+  Content: String;
+  DeviceObj: String;
+  DevicesPos, BracketPos, ScanPos: Integer;
+  Ch: Char;
+  Rest, Insertion: String;
+  IsEmptyArray: Boolean;
 begin
-  OscLine := 'OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""';
-  ReaperIni := ExpandConstant('{userappdata}\REAPER\reaper.ini');
-  if not FileExists(ReaperIni) then
+  DeviceObj := '{"id":"5fb52133-18ef-489b-b7a9-57152d58db98","name":"spidercrab",' +
+    '"localPort":9001,"deviceHost":"127.0.0.1","devicePort":9011}';
+  OscJsonPath := ExpandConstant('{userappdata}\REAPER\Helgoboss\ReaLearn\osc.json');
+
+  if not FileExists(OscJsonPath) then
   begin
-    Log('reaper.ini not found — skipping OSC device setup (REAPER has probably never been run yet)');
+    ForceDirectories(ExtractFilePath(OscJsonPath));
+    SaveStringToFile(OscJsonPath, AnsiString('{"devices":[' + DeviceObj + ']}'), False);
+    Log('Created osc.json with the spidercrab OSC device');
     Exit;
   end;
 
-  // Min=Max=0 disables GetIniInt's range check (equal bounds means "ignored"
-  // per Inno's docs), so any value in the file is accepted as-is.
-  Count := GetIniInt('reaper', 'csurf_cnt', 0, 0, 0, ReaperIni);
-
-  AlreadySet := False;
-  for I := 0 to Count - 1 do
+  if not LoadStringFromFile(OscJsonPath, RawContent) then
   begin
-    Val := GetIniString('reaper', 'csurf_' + IntToStr(I), '', ReaperIni);
-    if Val = OscLine then
+    Log('Could not read osc.json — skipping OSC device setup');
+    Exit;
+  end;
+  // Do all actual string work (indexing, Pos, Copy) on a plain String
+  // (Inno 6 is Unicode, String = UnicodeString) rather than AnsiString —
+  // LoadStringFromFile/SaveStringToFile need AnsiString specifically, but
+  // mixing that with per-character indexing/comparisons risks an
+  // AnsiChar-vs-Char type mismatch, so convert once right after loading
+  // and convert back once right before saving.
+  Content := String(RawContent);
+
+  if Pos('"spidercrab"', Content) > 0 then
+  begin
+    Log('spidercrab OSC device already present in osc.json — leaving as-is');
+    Exit;
+  end;
+
+  DevicesPos := Pos('"devices"', Content);
+  if DevicesPos = 0 then
+  begin
+    Log('osc.json has no "devices" key — skipping OSC device setup (unexpected format)');
+    Exit;
+  end;
+
+  BracketPos := 0;
+  for ScanPos := DevicesPos to Length(Content) do
+  begin
+    if Content[ScanPos] = '[' then
     begin
-      AlreadySet := True;
+      BracketPos := ScanPos;
       break;
     end;
   end;
-
-  if AlreadySet then
+  if BracketPos = 0 then
   begin
-    Log('spidercrab OSC device already present in reaper.ini — leaving as-is');
+    Log('osc.json "devices" has no array — skipping OSC device setup');
     Exit;
   end;
 
-  SetIniString('reaper', 'csurf_' + IntToStr(Count), OscLine, ReaperIni);
-  SetIniString('reaper', 'csurf_cnt', IntToStr(Count + 1), ReaperIni);
-  Log('Added spidercrab OSC device to reaper.ini (csurf_' + IntToStr(Count) + ')');
+  // Peek past the '[' (skipping whitespace) to see if the array is empty —
+  // JSON forbids a trailing comma, so an empty array needs different
+  // insertion text than a non-empty one.
+  IsEmptyArray := False;
+  for ScanPos := BracketPos + 1 to Length(Content) do
+  begin
+    Ch := Content[ScanPos];
+    if (Ch = ' ') or (Ch = #9) or (Ch = #13) or (Ch = #10) then
+      continue;
+    IsEmptyArray := (Ch = ']');
+    break;
+  end;
+
+  if IsEmptyArray then
+    Insertion := DeviceObj
+  else
+    Insertion := DeviceObj + ',';
+
+  Rest := Copy(Content, BracketPos + 1, Length(Content) - BracketPos);
+  Content := Copy(Content, 1, BracketPos) + Insertion + Rest;
+
+  SaveStringToFile(OscJsonPath, AnsiString(Content), False);
+  Log('Added spidercrab OSC device to osc.json');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

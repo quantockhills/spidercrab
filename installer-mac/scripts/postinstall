@@ -16,9 +16,11 @@
 #      itself already went through (files copied by the installer can
 #      still inherit quarantine from the resources they came from).
 #   4. Hand ownership back to the real user (step 2 ran as root).
-#   5. Register the "spidercrab" OSC device in REAPER's global prefs
-#      (reaper.ini), so ReaLearn's Input/Output device dropdowns have it
-#      to pick from without a manual Preferences > Control/OSC/web step.
+#   5. Register the "spidercrab" device in ReaLearn's OWN OSC device list
+#      (Helgoboss/ReaLearn/osc.json — NOT reaper.ini, a completely separate
+#      system ReaLearn's Input/Output dropdowns don't read from at all), so
+#      those dropdowns have it to pick from without a manual "Manage OSC
+#      devices" step.
 set -e
 
 CONSOLE_USER=$(stat -f%Su /dev/console 2>/dev/null || true)
@@ -44,34 +46,45 @@ xattr -dr com.apple.quarantine "$DEST/reaper_spidercrab.dylib" "$DEST/frontend" 
 
 chown -R "$CONSOLE_USER" "$DEST" 2>/dev/null || true
 
-# ---- Register the OSC device REAPER/ReaLearn need for the Clip Launcher ----
-# Only touches reaper.ini if it already exists (REAPER writes it on first
-# launch — a never-yet-run REAPER has nothing to patch) and only if a
-# "spidercrab" device isn't already registered. The new csurf_N line is
-# inserted right after csurf_cnt so it lands inside the [reaper] section,
-# not wherever happens to be last in the file.
-REAPER_INI="$USER_HOME/Library/Application Support/REAPER/reaper.ini"
-OSC_LINE='OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""'
-if [ -f "$REAPER_INI" ] && ! grep -qF "$OSC_LINE" "$REAPER_INI"; then
-  if grep -q '^csurf_cnt=' "$REAPER_INI"; then
-    awk -v newline="$OSC_LINE" '
-      /^csurf_cnt=/ {
-        cnt = $0
-        sub(/^csurf_cnt=/, "", cnt)
-        cnt = cnt + 0
-        print "csurf_cnt=" (cnt + 1)
-        print "csurf_" cnt "=" newline
-        next
-      }
-      { print }
-    ' "$REAPER_INI" > "$REAPER_INI.spidercrab-tmp" && mv "$REAPER_INI.spidercrab-tmp" "$REAPER_INI"
-    chown "$CONSOLE_USER" "$REAPER_INI" 2>/dev/null || true
-    echo "Spidercrab: registered the spidercrab OSC device in reaper.ini"
-  else
-    echo "Spidercrab: reaper.ini has no csurf_cnt key — skipping OSC auto-setup (add it manually via Preferences > Control/OSC/web if you use the Clip Launcher)"
-  fi
+# ---- Register the spidercrab device in ReaLearn's own OSC device list ----
+# The UUID below is fixed (not randomly generated) on purpose: it has to
+# match the id embedded in any ReaLearn "unit" export we ship, or an
+# imported unit's controlDeviceId/feedbackDeviceId reference wouldn't
+# resolve to this device.
+OSC_JSON="$USER_HOME/Library/Application Support/REAPER/Helgoboss/ReaLearn/osc.json"
+DEVICE_OBJ='{"id":"5fb52133-18ef-489b-b7a9-57152d58db98","name":"spidercrab","localPort":9001,"deviceHost":"127.0.0.1","devicePort":9011}'
+
+if [ -f "$OSC_JSON" ] && grep -qF '"spidercrab"' "$OSC_JSON"; then
+  echo "Spidercrab: spidercrab OSC device already present in osc.json — skipping"
+elif [ ! -f "$OSC_JSON" ]; then
+  mkdir -p "$(dirname "$OSC_JSON")"
+  printf '{"devices":[%s]}' "$DEVICE_OBJ" > "$OSC_JSON"
+  chown "$CONSOLE_USER" "$OSC_JSON" 2>/dev/null || true
+  echo "Spidercrab: created osc.json with the spidercrab OSC device"
+elif grep -q '"devices"' "$OSC_JSON"; then
+  # Insert right after the "devices" array's opening bracket. JSON forbids
+  # a trailing comma, so whether the array was empty or not decides
+  # whether the inserted object needs one after it.
+  awk -v dev="$DEVICE_OBJ" '
+    BEGIN { RS="\x00" }
+    {
+      content = $0
+      devPos = index(content, "\"devices\"")
+      tail = substr(content, devPos)
+      brPosRel = index(tail, "[")
+      absBracket = devPos + brPosRel - 1
+      rest = substr(content, absBracket + 1)
+      trimmed = rest
+      gsub(/^[ \t\r\n]+/, "", trimmed)
+      if (substr(trimmed, 1, 1) == "]") { insertion = dev } else { insertion = dev "," }
+      result = substr(content, 1, absBracket) insertion rest
+      printf "%s", result
+    }
+  ' "$OSC_JSON" > "$OSC_JSON.spidercrab-tmp" && mv "$OSC_JSON.spidercrab-tmp" "$OSC_JSON"
+  chown "$CONSOLE_USER" "$OSC_JSON" 2>/dev/null || true
+  echo "Spidercrab: registered the spidercrab OSC device in osc.json"
 else
-  echo "Spidercrab: reaper.ini not found, or the OSC device is already registered — skipping"
+  echo "Spidercrab: osc.json has no \"devices\" key — skipping OSC auto-setup (unexpected format)"
 fi
 
 echo "Spidercrab: done."

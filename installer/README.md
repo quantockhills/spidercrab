@@ -1,9 +1,9 @@
 # Windows installer
 
 Builds `SpidercrabSetup.exe`, which copies the extension DLL and the web UI
-into REAPER's `UserPlugins` folder, and registers the `spidercrab` OSC
-device in REAPER's global prefs (for ReaLearn/Playtime) — so end users
-don't place files by hand or dig through Preferences.
+into REAPER's `UserPlugins` folder, and registers the `spidercrab` device
+in ReaLearn's own OSC device list (for the Clip Launcher) — so end users
+don't place files by hand or dig through ReaLearn's device manager.
 
 It installs to `%APPDATA%\REAPER\UserPlugins` **without admin rights** (the
 directory page lets the user pick a different folder for a portable REAPER).
@@ -53,17 +53,28 @@ The installer lands in `installer/output/SpidercrabSetup.exe`.
 ## Notes
 
 - **OSC device registration:** `CurStepChanged`'s `RegisterSpidercrabOscDevice`
-  adds a `csurf_N=OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""` line
-  to `%APPDATA%\REAPER\reaper.ini` (REAPER's global prefs, not the project
-  file — this is what ReaLearn's Input/Output device dropdowns read from)
-  after install finishes. Only if `reaper.ini` already exists (a REAPER
-  that's never been launched has no file to patch yet) and only if a
-  `spidercrab` device isn't already registered, so re-running the installer
-  doesn't create duplicates. This doesn't select the device in ReaLearn's
-  own Input/Output dropdowns — that's a ReaLearn-instance setting, not
-  something reaper.ini controls — so it's a one-time manual pick per
-  ReaLearn instance, not fully zero-click. See `installer-mac/` for the
-  same logic on macOS (bash instead of Pascal Script).
+  adds a device entry to `%APPDATA%\REAPER\Helgoboss\ReaLearn\osc.json` —
+  **not** `reaper.ini`. REAPER has its own separate, native OSC
+  control-surface list (`reaper.ini`'s `csurf_N` entries, configured via
+  REAPER's own Preferences); ReaLearn's Input/Output dropdowns don't read
+  from that at all. ReaLearn maintains a completely independent device
+  list of its own, normally only editable via its "Manage OSC devices"
+  dialog, persisted to this JSON file. If the file doesn't exist yet, a
+  fresh one is created; if it exists with other devices already in it, the
+  new device is inserted into the `"devices"` array without disturbing
+  them. Only if a `spidercrab` device isn't already present, so re-running
+  the installer doesn't create duplicates.
+  The device's `id` is a **fixed** UUID
+  (`5fb52133-18ef-489b-b7a9-57152d58db98`), not randomly generated — this
+  matters if we ever ship a ReaLearn "unit" export (which references its
+  OSC device by this same ID) instead of the current mappings-only
+  compartment export, since importing it would only auto-select this
+  device correctly if the IDs match. Until then, this still doesn't select
+  the device in ReaLearn's own Input/Output dropdowns — that's a
+  ReaLearn-instance setting the device list alone can't reach — so it's a
+  one-time manual pick per ReaLearn instance, not fully zero-click. See
+  `installer-mac/` for the same logic on macOS (bash instead of Pascal
+  Script).
 - **Version:** bump `AppVersion` in `spidercrab.iss` to match `CHANGELOG.md`.
 - **What the user does after installing:** open REAPER → **Extensions → Spidercrab → Start / stop remote**, then **Show connection address** for the URL.
 - **Uninstall** removes the DLL and the `frontend/` folder; it leaves the runtime

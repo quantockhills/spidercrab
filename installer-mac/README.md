@@ -2,9 +2,10 @@
 
 Builds `SpidercrabInstaller.pkg`, which copies the extension `.dylib` and the
 web UI into REAPER's `UserPlugins` folder, clears the Gatekeeper
-quarantine flag on them, and registers the `spidercrab` OSC device in
-REAPER's global prefs (for ReaLearn/Playtime) — so users don't place files
-by hand, touch Terminal, or dig through Preferences.
+quarantine flag on them, and registers the `spidercrab` device in
+ReaLearn's own OSC device list (for the Clip Launcher) — so users don't
+place files by hand, touch Terminal, or dig through ReaLearn's device
+manager.
 
 Installs to `~/Library/Application Support/REAPER/UserPlugins`, per-user,
 no admin password.
@@ -84,18 +85,27 @@ install doesn't prompt for a password.
 - **`payload/` and `build-scripts/` are build artifacts** — gitignored,
   staged fresh each build. Only `scripts/preinstall` and
   `scripts/postinstall` are checked in.
-- **OSC device registration:** `postinstall` also adds a `csurf_N=OSC
-  "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""` line to `reaper.ini`
-  (REAPER's global prefs, not the project file — this is what ReaLearn's
-  Input/Output device dropdowns read from), right after `csurf_cnt` so it
-  stays inside the `[reaper]` section. Only if `reaper.ini` already exists
-  (a REAPER that's never been launched has no file to patch yet — the
-  device just won't be pre-registered in that case) and only if a
-  `spidercrab` device isn't already there, so re-running the installer
-  doesn't create duplicates. This still doesn't select the device in
-  ReaLearn's own Input/Output dropdowns — that's a ReaLearn-instance
-  setting, not something reaper.ini controls — so it's a one-time manual
-  pick per ReaLearn instance, not fully zero-click.
+- **OSC device registration:** `postinstall` adds a device entry to
+  `Helgoboss/ReaLearn/osc.json` (under the REAPER resource dir) — **not**
+  `reaper.ini`. REAPER has its own separate, native OSC control-surface
+  list (`reaper.ini`'s `csurf_N` entries, configured via REAPER's own
+  Preferences); ReaLearn's Input/Output dropdowns don't read from that at
+  all. ReaLearn maintains a completely independent device list of its own,
+  normally only editable via its "Manage OSC devices" dialog, persisted to
+  this JSON file. If the file doesn't exist yet, a fresh one is created; if
+  it exists with other devices already in it, the new device is inserted
+  into the `"devices"` array without disturbing them. Only if a
+  `spidercrab` device isn't already present, so re-running the installer
+  doesn't create duplicates.
+  The device's `id` is a **fixed** UUID
+  (`5fb52133-18ef-489b-b7a9-57152d58db98`), not randomly generated — this
+  matters if we ever ship a ReaLearn "unit" export (which references its
+  OSC device by this same ID) instead of the current mappings-only
+  compartment export, since importing it would only auto-select this
+  device correctly if the IDs match. Until then, this still doesn't select
+  the device in ReaLearn's own Input/Output dropdowns — that's a
+  ReaLearn-instance setting the device list alone can't reach — so it's a
+  one-time manual pick per ReaLearn instance, not fully zero-click.
 - **What the user does after installing:** open REAPER → **Extensions →
   Spidercrab → Start / stop remote**, then **Show connection address** for
   the URL. Same as the manual-install / Windows-installer flow.

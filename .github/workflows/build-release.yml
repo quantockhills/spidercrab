@@ -232,22 +232,23 @@ jobs:
           reaper_dir="$HOME/Library/Application Support/REAPER"
           rm -rf "$dest"
 
-          # Seed a minimal reaper.ini so the postinstall's OSC-device patch
-          # has something real to patch, same as a machine REAPER has
-          # already run on at least once.
-          mkdir -p "$reaper_dir"
-          # Heredoc body is indented to stay inside this YAML block scalar
-          # (an unindented line here would end it early and break the rest
-          # of the file's parsing) — sed strips that indentation back out
-          # before it lands in the actual seeded reaper.ini.
-          cat <<'EOF' | sed 's/^ *//' > "$reaper_dir/reaper.ini"
-          [reaper]
-          config_toolbar_h=0
-          csurf_cnt=1
-          csurf_0=SomeOtherDevice 0 9 1 1
-
-          [otherplugin]
-          somekey=somevalue
+          # Seed a non-empty osc.json (ReaLearn's OWN OSC device list, not
+          # reaper.ini) with an unrelated pre-existing device, so the
+          # postinstall's array-insertion logic has something real to
+          # insert into rather than only ever hitting the empty-file path.
+          mkdir -p "$reaper_dir/Helgoboss/ReaLearn"
+          cat <<'EOF' | sed 's/^ *//' > "$reaper_dir/Helgoboss/ReaLearn/osc.json"
+          {
+            "devices": [
+              {
+                "id": "aaaa-existing",
+                "name": "debug",
+                "localPort": 9003,
+                "deviceHost": "127.0.0.1",
+                "devicePort": 9005
+              }
+            ]
+          }
           EOF
 
           installer -pkg installer-mac/output/SpidercrabInstaller.pkg -target CurrentUserHomeDirectory
@@ -257,17 +258,19 @@ jobs:
           echo "Installed bundle verified at: $dest"
           ls -la "$dest"
 
-          echo "--- reaper.ini after install ---"
-          cat "$reaper_dir/reaper.ini"
-          grep -qF 'OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""' "$reaper_dir/reaper.ini" || { echo "OSC device line missing from reaper.ini"; exit 1; }
-          grep -q '^csurf_cnt=2$' "$reaper_dir/reaper.ini" || { echo "csurf_cnt wasn't bumped correctly"; exit 1; }
-          grep -q '^csurf_0=SomeOtherDevice 0 9 1 1$' "$reaper_dir/reaper.ini" || { echo "pre-existing csurf_0 entry was clobbered"; exit 1; }
-          grep -qF '[otherplugin]' "$reaper_dir/reaper.ini" || { echo "unrelated [otherplugin] section got lost"; exit 1; }
-          echo "reaper.ini OSC device registration verified"
+          osc_json="$reaper_dir/Helgoboss/ReaLearn/osc.json"
+          echo "--- osc.json after install ---"
+          cat "$osc_json"
+          jq -e '.' "$osc_json" > /dev/null || { echo "osc.json isn't valid JSON after install"; exit 1; }
+          jq -e '.devices | any(.name == "spidercrab")' "$osc_json" > /dev/null || { echo "spidercrab device missing from osc.json"; exit 1; }
+          jq -e '.devices | any(.name == "debug")' "$osc_json" > /dev/null || { echo "pre-existing debug device was lost"; exit 1; }
+          jq -e '.devices[] | select(.name == "spidercrab") | .id == "5fb52133-18ef-489b-b7a9-57152d58db98"' "$osc_json" > /dev/null || { echo "wrong fixed UUID"; exit 1; }
+          jq -e '.devices[] | select(.name == "spidercrab") | .localPort == 9001 and .deviceHost == "127.0.0.1" and .devicePort == 9011' "$osc_json" > /dev/null || { echo "wrong port config"; exit 1; }
+          echo "osc.json is valid JSON and the spidercrab device is correct"
 
           # Re-run the installer to confirm it doesn't duplicate the entry.
           installer -pkg installer-mac/output/SpidercrabInstaller.pkg -target CurrentUserHomeDirectory
-          count=$(grep -c 'OSC "spidercrab"' "$reaper_dir/reaper.ini")
+          count=$(jq '[.devices[] | select(.name == "spidercrab")] | length' "$osc_json")
           [ "$count" -eq 1 ] || { echo "OSC device entry duplicated on reinstall (count=$count)"; exit 1; }
           echo "Re-install idempotency verified (no duplicate OSC device entry)"
 

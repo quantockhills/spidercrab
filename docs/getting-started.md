@@ -76,13 +76,17 @@ The [Clip Launcher](features/playtime.md) drives **Playtime 2** through **ReaLea
 4. **Connect OSC:**
 
     !!! success "Already done if you used the installer"
-        `SpidercrabSetup.exe` / `SpidercrabInstaller.pkg` already registered a `spidercrab` OSC device in REAPER's prefs during install (matching the ports below) — skip straight to selecting it, below. If REAPER had never been run before you installed, or you used the manual-copy path, add it yourself first:
+        `SpidercrabSetup.exe` / `SpidercrabInstaller.pkg` already registered a `spidercrab` device in ReaLearn's own OSC device list during install (matching the ports below) — skip straight to selecting it, below. If REAPER had never been run before you installed, or you used the manual-copy path, add it yourself first:
 
-        In REAPER, go to **Preferences → Control/OSC/web → Add**, choose **OSC**, and set:
+        !!! note "This is ReaLearn's own device list, not REAPER's"
+            ReaLearn keeps its own separate list of OSC devices — it doesn't use REAPER's built-in OSC control surfaces (Preferences → Control/OSC/web), which is a different, unrelated system.
 
-        - **Device name** — `spidercrab`
-        - **Receive on port** — **9001**
-        - **Send to port** — **9011**, address `127.0.0.1`
+        In ReaLearn's **Input** menu, choose **Manage OSC devices → \<New\>**, and set:
+
+        - **Name** — `spidercrab`
+        - **Local port** — **9001**
+        - **Device host** — `127.0.0.1`
+        - **Device port** — **9011**
 
     Either way, back in ReaLearn's **Main** compartment, select the **`spidercrab`** device as **both** the Control input and the Feedback output — that part's a per-ReaLearn-instance setting, so it always needs picking once by hand even when the device itself was set up automatically.
 5. **Try it:** make sure Playtime 2 has a matrix with some clips, open the **Playtime** tab on your iPad, and tap a slot. It should fire the clip, and the slot should light up live as it plays.
