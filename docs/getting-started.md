@@ -65,7 +65,7 @@ That's enough to **control tracks, mixing, effects, and the transport**. Samples
 To use the **Media** tab:
 
 1. In the app, open **Settings** and add one or more **sample folders**.
-2. Tap **scan/refresh**. The first pass through a big folder takes a moment; after that, browsing is instant.
+2. Tap the **⟳** button next to the folder you just added. This is required the first time — a freshly-added folder has nothing cached yet, so the Media tab won't show anything in it until you do this. The first pass through a big folder takes a moment; after that, browsing is instant, and you won't need to press it again unless the folder's contents change.
 
 ## 4. Set up the Clip Launcher (optional)
 
