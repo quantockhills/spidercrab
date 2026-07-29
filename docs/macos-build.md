@@ -174,6 +174,13 @@ xcrun --sdk macosx --show-sdk-path
 codesign --force --deep --sign - path/to/reaper_spidercrab.dylib
 ```
 
+### Downloaded the dylib (e.g. from a GitHub release) and REAPER won't load it, or macOS says "cannot be opened" / "is damaged"
+This is Gatekeeper, not a bad download. Files downloaded from the internet get a `com.apple.quarantine` flag, and macOS enforces code-signing/notarization checks on plugins loaded by another app (like REAPER loading this dylib), not just on apps you double-click. Release builds here are only ad-hoc signed, not notarized (notarization needs a paid Apple Developer account), so a downloaded dylib will likely hit this. Clear the flag before REAPER loads it:
+```bash
+xattr -dr com.apple.quarantine reaper_spidercrab.dylib
+```
+Building it yourself locally doesn't trigger this — only a file that's been downloaded does.
+
 ### Symbol not found errors
 The extension uses `dladdr()` for path resolution (POSIX). This works on macOS — `dladdr()` is part of libSystem.
 
