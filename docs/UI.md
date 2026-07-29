@@ -108,7 +108,8 @@ FX browser, FX chain browser, and real-time parameter control.
 └─────────────────────────────────────────────────────────┘
 ```
 
-- **Format filter:** All, VST, VST3, CLAP, JSFX, RfxChain
+- **Format filter:** All, VST3, VST, CLAP, JSFX, AU, DX
+- **🔗 Chains button** — jumps to the FX Chain Browser without leaving the header
 - **Format badge** next to each plugin name
 - **Search** — filter by name as you type (300ms debounce)
 - **Tags** — color-coded badges, filterable, editable inline
@@ -118,7 +119,8 @@ FX browser, FX chain browser, and real-time parameter control.
 
 Same layout for `.RfxChain` files from a configurable folder path.
 Chains appear with a 🔗 prefix. Supports same search + tag filtering.
-**Cached index** — `FxChainCache` scans once at startup, searches in-memory (zero filesystem IO), paginated (16/page).
+**Two tabs** — Browse & Load, and Save Chain (save the selected track's current FX as a new chain).
+**Cached index** — `FxChainCache` scans once at startup, searches in-memory (zero filesystem IO). Both folder browsing and search results are paginated, 100 per page.
 
 ### Inline FX Search
 
@@ -143,16 +145,16 @@ Tap an FX to show its parameters as touch sliders:
 │  Gain 2       ██████████████  +6.0 dB                  │
 │  Q 2          ██████░░░░░░░░░  1.2                      │
 │                                                         │
-│  [Bypass]  [Delete]  [Preset: Default ▼]               │
+│  [Remove FX]              Preset: [Default ▼] ◀ ▶       │
 └─────────────────────────────────────────────────────────┘
 ```
 
 - Touch sliders with name, value, visual indicator
 - Changes reflect **instantly** in REAPER (WebSocket, pushed via CSURF_EXT callbacks)
 - Scrollable for many-parameter FX
-- **Bypass toggle** — tap to bypass, long-press (500ms) for delete confirmation
-- **Preset browser** — load/save presets per FX
-- **Drag to reorder** — FX list supports drag-and-drop to rearrange
+- **Remove FX** — deletes the plugin immediately, no confirmation step (unlike the Tracks tab card, which requires holding then tapping again)
+- **Preset browser** — load/save presets per FX, or step through with ◀ ▶
+- No bypass control on this page — bypass a track's FX from its card on the Tracks tab (double-tap)
 
 ---
 
@@ -187,11 +189,12 @@ Each row:
 - **R** — Record Arm toggle (red when armed)
   - Armed tracks show A (audio) / M (MIDI) mode toggle
 - **Volume fader** — touch slider
-- **FX cards** — compact row of FX on this track, tap for parameter control
-  - **Tap to bypass FX** — toggles bypass
-  - **Long-press to delete** — shows confirmation
+- **FX cards** — compact row of FX on this track
+  - **Double-tap to bypass** — bypassed FX dim and grey out
+  - **Hold, then tap again, to delete** — hold shows a "Delete?" confirmation on the card itself; tapping it again removes the FX, tapping elsewhere cancels
+  - **Tap the ▼ corner** to open parameter control in the inline drawer
   - **Long-press (on + Add FX button)** — inline FX search
-- **Drag FX to reorder** — drag-and-drop within the FX list
+- **Drag FX to reorder** — drag a single FX, or drag a whole chain block by its header to move the group together
 
 ---
 
@@ -246,33 +249,32 @@ Each cell shows:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Settings                              Build v0.2.5      │
+│  Settings                                                │
 ├──────────────────────────────────────────────────────────┤
 │                                                          │
-│  🔌 Connection                                           │
-│  Host: [192.168.1.100]  Port: [9224]  [Reconnect]       │
-│  Status: ● Connected                                     │
+│  Connection            ● Connected                      │
+│  Server: ws://<host>:9224                                │
+│  [Refresh Tracks] [Refresh Plugin List] [Refresh Chain Cache] │
+│                                                          │
+│  Theme        [Light] [Dark] [System]                    │
+│  Tab Bar Position   [Top] [Bottom] [Left] [Right]         │
+│                                                          │
+│  🎛️ FX Chains                                            │
+│  [/home/reaper/Data/FXChains]        [Browse FX Chains]  │
 │                                                          │
 │  📂 Sample Directories                                   │
-│  [/home/samples/drums]                         [✕]     │
-│  [/home/samples/loops]                         [✕]     │
-│  [/home/samples/one-shots]                     [✕]     │
-│  [+ Add Directory]                                       │
-│  [Refresh Sample Cache]                                  │
+│  📁 /home/samples/drums              [⟳] [✕]           │
+│  📁 /home/samples/loops              [⟳] [✕]           │
+│  [+ Add Directory]  [Clear stale cache]                   │
 │                                                          │
-│  🎛️ FX Chain Folder                                      │
-│  [/home/reaper/Data/FXChains]  [Refresh Cache]           │
+│  🎹 Playtime 2                                            │
+│  [↓ Download ReaLearn Preset]                             │
 │                                                          │
-│  🎹 Playtime 2                                           │
-│  [Download ReaLearn Preset]                              │
-│  Status: ● Available / ○ Not installed                   │
-│                                                          │
-│  ℹ️ About                                                │
-│  spidercrab v0.2.5-alpha                                │
-│  C++ tests: 307/307 · Frontend tests: 388/388           │
-│                                                          │
+│                                    build <timestamp>      │
 └──────────────────────────────────────────────────────────┘
 ```
+
+There is no host/port editor — Spidercrab always connects to `window.location.hostname` on port 9224, so it's the address you typed into the browser to load the page, not a settings field.
 
 ---
 
@@ -280,11 +282,15 @@ Each cell shows:
 
 | Gesture | Action |
 |---------|--------|
-| Tap | Select, play, launch, toggle bypass |
-| Long-press (500ms) | Inline FX search, delete FX, context menu |
-| Drag FX card | Reorder FX on track |
+| Tap | Select, play, launch |
+| Double-tap | Bypass FX, reset a param to default |
+| Long-press (500ms) | Inline FX search, arm FX for deletion, context menu |
+| Long-press (2s) | Cycle a chain block |
+| Drag FX card | Reorder FX on track (single FX, or a whole chain block by its header) |
 | Drag sample → slot | Load into Playtime slot |
 | Swipe tabs | Switch between browser modes |
+
+Full, per-screen gesture reference: [Touch Gestures](gestures.md).
 
 ---
 
@@ -305,6 +311,7 @@ Full design guidelines in `design/design-guidelines.md`. Quick summary:
 
 ## Current Status
 
-- Phase 1 MVP complete — all 36 issues closed
-- Active features: 5 tabs, full REAPER integration, Playtime 2 matrix, sample browser + cache + tempo matching, FX browser + chains + tags, real-time parameter control
-- Test suites: 307 C++ tests (Google Test) + 388 frontend tests (Vitest) + Playwright E2E, all passing
+- Active features: 5 tabs (Media, FX, Tracks, Playtime, Settings — Sequencer exists in code but is hidden behind a flag), full REAPER integration, Playtime 2 matrix, sample browser + cache + tempo matching, FX browser + chains + tags, real-time parameter control
+- Test suites: C++ (Google Test) + frontend (Vitest) + Playwright E2E
+
+This page describes the mockups the UI was originally designed from and gets checked against the real components periodically — if something here looks off, the running app and the component source are the source of truth, not this page.

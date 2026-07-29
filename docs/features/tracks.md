@@ -31,11 +31,11 @@ Everything you do here happens in REAPER instantly — and if a fader moves on t
 
 Each card also shows that track's effects as little cards, with an **Add FX** button. You can do a lot without leaving this tab:
 
-- **Tap an effect** to switch it off and on (bypass).
-- **Hold an effect** to remove it.
-- **Tap to open its parameters** in an **inline drawer** — tweak the knobs right here on the track card, no need to visit the FX tab. The drawer also lets you **step through presets** (◀ ▶) and **pin** your favourite knobs to a "Pinned" strip up top so they're always in reach (your pins are remembered).
-- **Drag effects** to reorder them — a whole effect chain moves as one block.
-- **Hold a chain block for 2 seconds** to open the **Chain Cycler** — a little pop-up that steps **◀ / ▶** through the other chains in that folder (showing how many effects each has) so you can swap the whole chain out and tap **Done**.
+- **Double-tap an effect** to switch it off and on (bypass) — a bypassed effect dims and greys out so you can see at a glance what's off.
+- **Hold an effect** (about half a second) to arm it for removal — the card flips to a red **"Delete? ✕"** confirmation. Tap it again to actually delete, or tap anywhere else to cancel.
+- **Tap the small ▼ in the card's corner** to open its parameters in an **inline drawer** — tweak the knobs right here on the track card, no need to visit the FX tab. The drawer also lets you **step through presets** (◀ ▶) and **pin** your favourite knobs to a "Pinned" strip up top so they're always in reach (your pins are remembered).
+- **Drag an individual effect** to reorder it on its own, even if it's inside a chain block — or **drag a whole chain block** (by its green header) to move every effect in it together.
+- **Hold a chain block's header for 2 seconds** to open the **Chain Cycler** — a little pop-up that steps **◀ / ▶** through the other chains in that folder (showing how many effects each has) so you can swap the whole chain out and tap **Done**.
 - **Tap Add FX** to add an effect.
 - **Hold Add FX** to open a quick search — start typing and it finds plugins *and* saved effect chains; tap one to drop it on the track.
 

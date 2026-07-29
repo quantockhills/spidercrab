@@ -5,9 +5,9 @@ Everything in Spidercrab happens by touch, and a **tap**, a **double-tap**, and 
 ## The four moves
 
 - **Tap** — a quick press. The everyday action: launch, select, toggle.
-- **Double-tap** — two quick taps. Usually "reset to default."
+- **Double-tap** — two quick taps within 300ms. Usually "reset to default" — except on an effect, where it means "bypass."
 - **Hold** — press and keep your finger down for about half a second. This reveals extra options like delete or search.
-- **Long hold (2 seconds)** — one special case: holding a **chain block** for two full seconds cycles it to the next chain.
+- **Long hold (2 seconds)** — one special case: holding a **chain block's header** for two full seconds cycles it to the next chain.
 - **Drag** — press and slide. For sliders, reordering, and moving things around.
 
 > **Tip:** A hold only counts if you keep still. If you start sliding, it becomes a drag instead.
@@ -17,8 +17,9 @@ Everything in Spidercrab happens by touch, and a **tap**, a **double-tap**, and 
 | Where you are | Tap | Double-tap | Hold | Drag |
 |---------------|-----|------------|------|------|
 | **Effect knob / slider** | Jump to that spot | Reset to default | — | Slide the value |
-| **Effect on a track** | Bypass, or open its knobs | — | Remove it | Reorder effects |
-| **Chain block** | — | — | Remove · *2s: Chain Cycler* | Reorder as a block |
+| **Effect on a track** | — | Bypass | Confirm to remove | Reorder it |
+| **Effect's ▼ corner** | Open its knobs | — | — | — |
+| **Chain block header** | — | — | *2s: Chain Cycler* | Reorder the whole block |
 | **Add FX button** | Add an effect | — | Open search | — |
 | **Clip slot** | Launch (or record) | — | Actions: sampler / delete | — |
 | **Clip's ↻ corner button** | Reverse the clip | — | — | — |
@@ -32,7 +33,7 @@ Everything in Spidercrab happens by touch, and a **tap**, a **double-tap**, and 
 Slide to dial a value in — you'll hear it change as you move. Tap anywhere to jump straight there. Double-tap to snap back to the default.
 
 ### Effects on a track
-Tap an effect to bypass it or open its parameters in an inline drawer. Hold it to remove it. Drag effects to reorder them — a whole effect chain moves together as one block. Holding a **chain block for two seconds** opens the **Chain Cycler**, where you step ◀ / ▶ through the other chains in that folder and swap the whole thing out.
+**Double-tap** an effect to bypass it (it dims and greys out while off). Tap its small **▼** corner to open its parameters in an inline drawer. **Hold** the card to arm it for deletion — it flips to a red "Delete?" confirmation, tap it again to actually delete, or tap elsewhere to back out. Drag a single effect to reorder it, or drag a whole chain block by its green header to move every effect in it together. Holding a **chain block's header for two seconds** opens the **Chain Cycler**, where you step ◀ / ▶ through the other chains in that folder and swap the whole thing out.
 
 ### Add FX
 Tap to add an effect. **Hold** it to open a search box: start typing and it finds both plugins and your saved effect chains — tap a result to drop it on the track.

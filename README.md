@@ -40,7 +40,7 @@ It reads clearly in both light and dark.
 Two ways to install, both from the [releases page](https://github.com/quantockhills/spidercrab/releases):
 
 - **Installer (Windows/macOS):** run `SpidercrabSetup.exe` or `SpidercrabInstaller.pkg`. It places the plugin and the web UI into REAPER's UserPlugins folder for you. On macOS, since the installer isn't notarized, you'll need to allow it once via System Settings → Privacy & Security → Open Anyway — after that, it also clears Gatekeeper's quarantine flag on the plugin itself, so there's no Terminal step.
-- **Manual (any OS):** copy the plugin for your system into REAPER's UserPlugins folder, and place the `frontend` folder next to it.
+- **Manual (any OS, if you'd rather DIY):** copy the plugin for your system into REAPER's UserPlugins folder, and place the `frontend` folder next to it. On macOS this means one Terminal command first — `xattr -dr com.apple.quarantine reaper_spidercrab.dylib` — to clear Gatekeeper's quarantine flag yourself instead of letting the installer do it. Full steps, including exactly where UserPlugins is on each OS: [Getting Started](docs/getting-started.md).
 
 Either way, then:
 

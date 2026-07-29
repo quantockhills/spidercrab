@@ -14,13 +14,17 @@ Tap a plugin's **Add** button to drop it on the selected track (it flashes **✓
 
 You can also add effects without leaving the Tracks tab — hold the **Add FX** button on any track card for a quick search. (See [Tracks & Mixing](tracks.md).)
 
+A **🔗 Chains** button next to the FX Browser title jumps straight to the [effect chain browser](#effect-chains) below.
+
 **Tags:** tap the **✏️** next to any plugin to give it labels (comma-separated). Tags are colour-coded, persist between sessions, and power the filter chips.
 
 ## Effect chains
 
 An effect chain is a saved stack of effects — a whole vocal chain or drum-bus setup in one go. Spidercrab reads them from your REAPER **FXChains** folder (set the folder in [Settings](settings.md)).
 
-- **Browse** chains by folder, or **search** them.
+The chain browser has two tabs: **Browse & Load** (find and apply an existing chain) and **Save Chain** (save the selected track's current effects as a new one).
+
+- **Browse** chains by folder, or **search** them. Either way, results beyond 100 are paginated with **← Prev / Next →**.
 - **Peek inside** a chain (Chain Info) to see what effects it contains before you load it.
 - **Load a chain two ways:** **Append** it after the track's current effects, or **Replace** everything on the track with it.
 - **Save** a track's current effects as a new chain — you give it a name.
@@ -35,6 +39,8 @@ Open an effect to see its parameters, each as a big horizontal slider:
 - **Double-tap** to snap it back to the default.
 
 Plugins with lots of parameters are paged so the list stays manageable. The sliders stay in sync with REAPER, so if a value changes on the desktop it updates here too — and your in-progress adjustment won't get yanked out from under you.
+
+A **Remove FX** button in the header deletes the plugin outright — unlike the Tracks tab's hold-to-delete, this one doesn't ask you to confirm, so use it deliberately.
 
 **Right on the Tracks tab:** you don't even have to come to this tab — each track card has an **inline drawer** that shows an effect's parameters in place. (See [Tracks & Mixing](tracks.md).)
 
