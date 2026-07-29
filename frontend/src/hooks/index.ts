@@ -33,3 +33,6 @@ export type { UseReaperOptions } from './useReaper';
 
 // ── Theme ──
 export { useTheme } from './useTheme';
+
+// ── UI scale (Safari/iPad has no ctrl +/- zoom) ──
+export { useUIScale, UI_SCALE_STEPS } from './useUIScale';

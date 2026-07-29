@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ReaperClientProvider, useTheme } from './hooks';
+import { ReaperClientProvider, useTheme, useUIScale, UI_SCALE_STEPS } from './hooks';
 import { useReaper } from './hooks/useReaper';
 import { TrackOverview } from './components/TrackOverview';
 import { FxBrowser } from './components/FxBrowser';
@@ -103,6 +103,7 @@ function AppInner() {
   } = useReaper();
 
   const { preference, isDark, setTheme } = useTheme();
+  const { scale: uiScale, setScale: setUiScale, increase: increaseUiScale, decrease: decreaseUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale } = useUIScale();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
 
@@ -427,7 +428,20 @@ function AppInner() {
   );
 
   return (
-    <div className={`h-dvh bg-[var(--bg-primary)] flex ${navVertical ? 'flex-row' : 'flex-col'} text-[var(--text-primary)] overflow-hidden`}>
+    // Fixed-size viewport clip. The scaled content below is sized to exactly
+    // compensate for its own transform, so it always fills this box no
+    // matter which UI scale step is active (Settings → UI Size — Safari on
+    // iPad has no ctrl +/- zoom, so this is the equivalent in-app control).
+    <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden' }}>
+    <div
+      className={`h-dvh bg-[var(--bg-primary)] flex ${navVertical ? 'flex-row' : 'flex-col'} text-[var(--text-primary)] overflow-hidden`}
+      style={{
+        transform: `scale(${uiScale})`,
+        transformOrigin: 'top left',
+        width: `${100 / uiScale}%`,
+        height: `${100 / uiScale}%`,
+      }}
+    >
       {(navPosition === 'top' || navPosition === 'left') && navBar}
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-hidden min-h-0 min-w-0">
@@ -708,6 +722,47 @@ function AppInner() {
               </p>
             </div>
 
+            {/* UI scale — Safari on iPad has no ctrl +/- zoom, so this is the in-app equivalent */}
+            <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">UI Size</h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={decreaseUiScale}
+                  disabled={!canDecreaseUiScale}
+                  className="w-11 py-2.5 text-base font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] transition-colors active:brightness-95 disabled:opacity-30"
+                  aria-label="Decrease UI size"
+                >
+                  −
+                </button>
+                <div className="flex-1 flex gap-1">
+                  {UI_SCALE_STEPS.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setUiScale(s)}
+                      className={`flex-1 py-2.5 text-xs transition-colors active:brightness-95 ${
+                        uiScale === s
+                          ? 'bg-[var(--accent-dim)] text-[var(--accent-orange)]'
+                          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
+                      }`}
+                    >
+                      {Math.round(s * 100)}%
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={increaseUiScale}
+                  disabled={!canIncreaseUiScale}
+                  className="w-11 py-2.5 text-base font-medium bg-[var(--bg-secondary)] text-[var(--text-secondary)] transition-colors active:brightness-95 disabled:opacity-30"
+                  aria-label="Increase UI size"
+                >
+                  +
+                </button>
+              </div>
+              <p className="text-[11px] text-[var(--text-secondary)] text-center">
+                Scales the whole app — handy on Safari/iPad, where ctrl +/- zoom isn't available.
+              </p>
+            </div>
+
             {/* Tab bar position */}
             <div className="bg-[var(--bg-tertiary)] p-4 space-y-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">Tab Bar Position</h3>
@@ -887,6 +942,7 @@ function AppInner() {
 
       {/* Bottom safe area for iPhone notch/home indicator */}
       {navPosition === 'bottom' && <div className="h-[env(safe-area-inset-bottom)]" />}
+    </div>
     </div>
   );
 }
