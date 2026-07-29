@@ -45,7 +45,7 @@ Two ways to install, both from the [releases page](https://github.com/quantockhi
 Either way, then:
 
 1. Restart REAPER, then start it from **Extensions → Spidercrab → Start / stop remote** (macOS/Linux: search "Spidercrab" in the Action List instead). It no longer runs on its own.
-2. Get the address from **Extensions → Spidercrab → Show connection address**, open it on your tablet, and add it to the home screen.
+2. Get the address from **Extensions → Spidercrab → Show connection address**, open it on your tablet (Safari, Chrome, or other Chromium-based browsers — **not Firefox**, which currently doesn't seem to work), and add it to the home screen.
 
 That is enough for track, effect and sample control. The clip launcher adds Playtime 2 and a short, one-time setup.
 

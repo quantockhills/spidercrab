@@ -55,6 +55,9 @@ Your iPad and your computer need to be on the **same Wi-Fi network**, and Spider
 1. **Get the address the easy way:** in REAPER, go to **Extensions → Spidercrab → Show connection address**. It lists the exact `http://<your-ip>:5173` to open (and skips virtual/WSL adapters, so you don't have to guess which IP).
     - *No menu handy?* Find your computer's IP yourself (Windows: `ipconfig`; macOS: **System Settings → Network**) and use `http://<that-ip>:5173`.
 2. On the tablet, open that address in a browser (**Safari** or **Chrome**).
+
+    !!! warning "Not Firefox"
+        Firefox currently doesn't seem to work. Safari, Chrome, and other Chromium-based browsers are fine.
 3. The control surface loads. 🎉
 4. **Recommended — go tabless:** use **Share → Add to Home Screen**, then launch it from that new icon. It opens **full-screen with no browser tabs or address bar**, exactly like a native app. (Opening the URL in a normal browser tab works too; you just get the browser chrome.)
 
