@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { dirCacheStore, persistDirCache } from '../utils/dirCacheStore';
 import type { Track, DirEntry, MatrixData, ClipSlot, SampleTagData } from '../hooks/useReaper';
-import type { DirResult, ReaperLibrary } from '../hooks/useSampleBrowser';
+import type { DirResult, ReaperLibrary, SampleRegion } from '../hooks/useSampleBrowser';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
@@ -40,9 +40,9 @@ interface SampleBrowserProps {
   tracks: Track[];
   selectedTrack: number | null;
   getDirectory: (path: string, offset?: number, limit?: number) => Promise<DirResult>;
-  sendSampleToTrack: (path: string, trackIdx: number) => Promise<boolean>;
+  sendSampleToTrack: (path: string, trackIdx: number, region?: SampleRegion) => Promise<boolean>;
   sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>;
-  sendToSlot?: (path: string, column: number, row: number) => Promise<boolean>;
+  sendToSlot?: (path: string, column: number, row: number, region?: SampleRegion) => Promise<boolean>;
   sendToSampler?: (path: string) => Promise<{trackIdx: number; fxIdx: number; name: string} | null>;
   samplePaths?: string[];
   matrix?: MatrixData | null;
@@ -143,6 +143,50 @@ export function SampleBrowser({
   const crossRootLoading = isCrossRootSearchActive && crossRootResults === null;
 
   const audioPreview = useAudioPreview(selectedFile, sendCommand, autoplay);
+
+  // Region trim handles (fractions [0, 1]; default = the whole file) and the
+  // "play/send backwards" toggle. Reset whenever a different file is selected.
+  const [selStart, setSelStart] = useState(0);
+  const [selEnd, setSelEnd] = useState(1);
+  const [reverseMode, setReverseMode] = useState(false);
+  const [loopMode, setLoopMode] = useState(false);
+  useEffect(() => {
+    setSelStart(0);
+    setSelEnd(1);
+    setReverseMode(false);
+    setLoopMode(false);
+  }, [selectedFile]);
+
+  const hasSelection = selStart > 0.0001 || selEnd < 0.9999;
+  const regionForActions: SampleRegion | undefined = (hasSelection || reverseMode)
+    ? { start: selStart * audioPreview.duration, end: selEnd * audioPreview.duration, reverse: reverseMode }
+    : undefined;
+
+  // Flip direction. If something is currently playing, don't just change the
+  // mode for next time — restart immediately from the current audible
+  // position, continuing in the new direction, so the toggle actually does
+  // something to what you're hearing right now.
+  const handleToggleReverse = useCallback(() => {
+    setReverseMode((prev) => {
+      const next = !prev;
+      if (audioPreview.isPlaying) {
+        const regionStartSec = selStart * audioPreview.duration;
+        const regionEndSec = selEnd * audioPreview.duration;
+        const current = audioPreview.currentTime;
+        const MIN_SLIVER = 0.05; // seconds — avoid an empty/near-empty region right at a boundary
+        if (next && current - regionStartSec > MIN_SLIVER) {
+          audioPreview.play({ start: regionStartSec, end: current, reverse: true, loop: loopMode });
+        } else if (!next && regionEndSec - current > MIN_SLIVER) {
+          audioPreview.play({ start: current, end: regionEndSec, reverse: false, loop: loopMode });
+        } else {
+          // Too close to the edge for a meaningful continuation — just
+          // restart the whole region in the new direction.
+          audioPreview.play({ start: regionStartSec, end: regionEndSec, reverse: next, loop: loopMode });
+        }
+      }
+      return next;
+    });
+  }, [audioPreview, selStart, selEnd, loopMode]);
 
   // Load tags on mount
   useEffect(() => {
@@ -352,7 +396,11 @@ export function SampleBrowser({
     const fullPath = (basePath || currentPath) + '/' + entry.name;
     setSending(entry.name);
     try {
-      const ok = await sendSampleToTrack(fullPath, selectedTrack);
+      // Only apply the region/reverse selection if it belongs to this exact
+      // file — the waveform + trim handles are for whichever file is
+      // currently previewed, not necessarily the one being sent here.
+      const region = fullPath === selectedFile ? regionForActions : undefined;
+      const ok = await sendSampleToTrack(fullPath, selectedTrack, region);
       if (ok) {
         setSentFiles((prev) => new Set(prev).add(entry.name));
         setTimeout(() => {
@@ -368,7 +416,7 @@ export function SampleBrowser({
     } finally {
       setSending(null);
     }
-  }, [selectedTrack, currentPath, sendSampleToTrack]);
+  }, [selectedTrack, currentPath, sendSampleToTrack, selectedFile, regionForActions]);
 
   // Filtered entries
   const filteredEntries = useMemo(() => {
@@ -449,6 +497,34 @@ export function SampleBrowser({
     }
   }, [currentPath, selectedFile, audioPreview]);
 
+  // The row's own ▶ button should actually start playback, not just open or
+  // close the preview panel the way tapping the rest of the row does.
+  // If this file is already open, toggle real play/pause. Otherwise select
+  // it and remember to auto-play once its audio info has finished loading
+  // (the hook needs a render cycle for `selectedFile` to reach it first).
+  const [pendingPlayFile, setPendingPlayFile] = useState<string | null>(null);
+
+  const handlePlayButtonClick = useCallback((entry: DirEntry, basePath?: string) => {
+    if (entry.type !== 'file') return;
+    const fullPath = (basePath || currentPath) + '/' + entry.name;
+    if (selectedFile === fullPath) {
+      if (audioPreview.isPlaying) audioPreview.pause();
+      else audioPreview.play();
+    } else {
+      audioPreview.stop();
+      setSelectedFile(fullPath);
+      setPendingPlayFile(fullPath);
+    }
+  }, [currentPath, selectedFile, audioPreview]);
+
+  useEffect(() => {
+    if (!pendingPlayFile || pendingPlayFile !== selectedFile) return;
+    if (audioPreview.isLoading || !audioPreview.peaks) return;
+    audioPreview.play();
+    setPendingPlayFile(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPlayFile, selectedFile, audioPreview.isLoading, audioPreview.peaks]);
+
   // Long-press handler for context menu (Issue #28)
   const handleLongPress = useCallback((entry: DirEntry, basePath: string, x: number, y: number) => {
     if (entry.type !== 'file') return;
@@ -470,7 +546,8 @@ export function SampleBrowser({
         label: 'Send to Track',
         icon: '🎯',
         action: () => {
-          sendSampleToTrack(fullPath, selectedTrack).then((ok) => {
+          const region = fullPath === selectedFile ? regionForActions : undefined;
+          sendSampleToTrack(fullPath, selectedTrack, region).then((ok) => {
             if (ok) {
               setSentFiles((prev) => new Set(prev).add(entry.name));
               setTimeout(() => {
@@ -528,7 +605,7 @@ export function SampleBrowser({
     });
 
     return items;
-  }, [selectedTrack, sendSampleToTrack, sendToSampler, startDrag]);
+  }, [selectedTrack, sendSampleToTrack, sendToSampler, startDrag, selectedFile, regionForActions]);
 
   const handleCloseFileInfo = useCallback(() => {
     setFileInfo(null);
@@ -738,8 +815,10 @@ export function SampleBrowser({
               sending={sending}
               sentFiles={sentFiles}
               selectedFile={selectedFile}
+              previewIsPlaying={audioPreview.isPlaying}
               onSendToTrack={(entry, basePath) => handleSendToTrack(entry, basePath)}
               onFileClick={(entry, basePath) => handleFileClick(entry, basePath)}
+              onPlayButtonClick={(entry, basePath) => handlePlayButtonClick(entry, basePath)}
               onLongPress={(entry, basePath, x, y) => handleLongPress(entry, basePath, x, y)}
             />
           ) : null
@@ -768,9 +847,11 @@ export function SampleBrowser({
                     isSent={sentFiles.has(basePath + '/' + entry.name)}
                     canSend={selectedTrack !== null}
                     isSelected={selectedFile === basePath + '/' + entry.name}
+                    isPlaying={selectedFile === basePath + '/' + entry.name && audioPreview.isPlaying}
                     tags={tags}
                     onSend={() => handleSendToTrack(entry, basePath)}
                     onSelect={() => handleFileClick(entry, basePath)}
+                    onPlayButtonClick={() => handlePlayButtonClick(entry, basePath)}
                     onLongPress={(x, y) => handleLongPress(entry, basePath, x, y)}
                   />
                 ))}
@@ -805,9 +886,11 @@ export function SampleBrowser({
                       isSent={sentFiles.has(filePath)}
                       canSend={selectedTrack !== null}
                       isSelected={selectedFile === filePath}
+                      isPlaying={selectedFile === filePath && audioPreview.isPlaying}
                       tags={tags}
                       onSend={() => handleSendToTrack(entry, basePath)}
                       onSelect={() => handleFileClick(entry, basePath)}
+                      onPlayButtonClick={() => handlePlayButtonClick(entry, basePath)}
                       onLongPress={(x, y) => handleLongPress(entry, basePath, x, y)}
                     />
                   );
@@ -943,6 +1026,7 @@ export function SampleBrowser({
                   isSent={sentFiles.has(entry.name)}
                   canSend={selectedTrack !== null}
                   isSelected={selectedFile !== null && fullPath === selectedFile}
+                  isPlaying={selectedFile !== null && fullPath === selectedFile && audioPreview.isPlaying}
                   tags={fileTags}
                   isEditingTags={editingTagPath === fullPath}
                   tagEditInput={tagEditInput}
@@ -952,6 +1036,7 @@ export function SampleBrowser({
                   onCancelEditTags={handleCancelEditTags}
                   onSend={() => handleSendToTrack(entry)}
                   onSelect={() => handleFileClick(entry)}
+                  onPlayButtonClick={() => handlePlayButtonClick(entry)}
                   onLongPress={(x, y) => handleLongPress(entry, currentPath, x, y)}
                 />
               );
@@ -1008,7 +1093,7 @@ export function SampleBrowser({
               selectedFile={selectedFile}
               onSendToSlot={(col, row) => {
                 if (selectedFile) {
-                  sendToSlot(selectedFile, col, row);
+                  sendToSlot(selectedFile, col, row, regionForActions);
                 }
               }}
             />
@@ -1049,26 +1134,70 @@ export function SampleBrowser({
                 isPlaying={audioPreview.isPlaying}
                 reverse={audioPreview.reverse}
                 onSeek={audioPreview.seek}
+                selectionStart={selStart}
+                selectionEnd={selEnd}
+                onSelectionChange={(s, e) => { setSelStart(s); setSelEnd(e); }}
                 height={64}
               />
+
+              {/* Selection readout — only shown once a handle has been moved */}
+              {hasSelection && (
+                <div className="flex items-center justify-between text-[10px] text-[var(--accent-orange)]">
+                  <span>
+                    Region: {formatTime(selStart * audioPreview.duration)} – {formatTime(selEnd * audioPreview.duration)}
+                    {' '}({formatTime((selEnd - selStart) * audioPreview.duration)})
+                  </span>
+                  <button
+                    onClick={() => { setSelStart(0); setSelEnd(1); }}
+                    className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-1"
+                    aria-label="Clear selection"
+                  >
+                    ✕ Clear
+                  </button>
+                </div>
+              )}
 
               {/* Transport controls */}
               <div className="flex items-center justify-center gap-4">
                 <button
-                  onClick={audioPreview.isPlaying ? audioPreview.pause : audioPreview.play}
+                  onClick={() => {
+                    if (audioPreview.isPlaying) {
+                      audioPreview.pause();
+                    } else {
+                      audioPreview.play({
+                        start: selStart * audioPreview.duration,
+                        end: selEnd * audioPreview.duration,
+                        reverse: reverseMode,
+                        loop: loopMode,
+                      });
+                    }
+                  }}
                   className="px-4 py-2 text-sm font-medium bg-[var(--accent-orange)] text-black min-h-[44px] active:brightness-90"
                   aria-label={audioPreview.isPlaying ? 'Pause' : 'Play'}
                 >
                   {audioPreview.isPlaying ? '⏸ Pause' : '▶ Play'}
                 </button>
                 <button
-                  onClick={audioPreview.toggleReverse}
+                  onClick={() => setLoopMode((prev) => !prev)}
                   className={`px-3 py-2 text-sm font-medium min-h-[44px] active:brightness-90 ${
-                    audioPreview.reverse
+                    loopMode
+                      ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/40'
+                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                  }`}
+                  aria-label="Toggle loop"
+                  title={hasSelection ? 'Keep playing the selected region on repeat' : 'Keep playing on repeat'}
+                >
+                  🔁 Loop
+                </button>
+                <button
+                  onClick={handleToggleReverse}
+                  className={`px-3 py-2 text-sm font-medium min-h-[44px] active:brightness-90 ${
+                    reverseMode
                       ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/40'
                       : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
                   }`}
                   aria-label="Toggle reverse"
+                  title={hasSelection ? 'Play/send the selected region backwards' : 'Play/send the whole file backwards'}
                 >
                   ↔ Rev
                 </button>
@@ -1121,8 +1250,10 @@ interface CrossRootSearchResultsProps {
   sending: string | null;
   sentFiles: Set<string>;
   selectedFile: string | null;
+  previewIsPlaying: boolean;
   onSendToTrack: (entry: DirEntry, basePath: string) => void;
   onFileClick: (entry: DirEntry, basePath: string) => void;
+  onPlayButtonClick: (entry: DirEntry, basePath: string) => void;
   onLongPress: (entry: DirEntry, basePath: string, x: number, y: number) => void;
 }
 
@@ -1134,8 +1265,10 @@ function CrossRootSearchResults({
   sending,
   sentFiles,
   selectedFile,
+  previewIsPlaying,
   onSendToTrack,
   onFileClick,
+  onPlayButtonClick,
   onLongPress,
 }: CrossRootSearchResultsProps) {
   const lowerQuery = searchQuery.toLowerCase();
@@ -1200,8 +1333,10 @@ function CrossRootSearchResults({
               isSent={sentFiles.has(entry.name)}
               canSend={selectedTrack !== null}
               isSelected={selectedFile !== null && group.root + '/' + entry.name === selectedFile}
+              isPlaying={selectedFile !== null && group.root + '/' + entry.name === selectedFile && previewIsPlaying}
               onSend={() => onSendToTrack(entry, group.root)}
               onSelect={() => onFileClick(entry, group.root)}
+              onPlayButtonClick={() => onPlayButtonClick(entry, group.root)}
               onLongPress={(x, y) => onLongPress(entry, group.root, x, y)}
             />
           ))}
@@ -1220,12 +1355,14 @@ interface CrossRootEntryRowProps {
   isSent: boolean;
   canSend: boolean;
   isSelected: boolean;
+  isPlaying: boolean;
   onSend: () => void;
   onSelect: () => void;
+  onPlayButtonClick: () => void;
   onLongPress: (x: number, y: number) => void;
 }
 
-function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, isSelected, onSend, onSelect, onLongPress }: CrossRootEntryRowProps) {
+function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, isSelected, isPlaying, onSend, onSelect, onPlayButtonClick, onLongPress }: CrossRootEntryRowProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
 
@@ -1291,16 +1428,18 @@ function CrossRootEntryRow({ entry, isAudio, isSending, isSent, canSend, isSelec
           : 'bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60'
         }`}
     >
-      {/* Play button (audio files only) */}
+      {/* Play button (audio files only) — always actually plays/pauses,
+          unlike tapping the rest of the row which just opens/closes the preview */}
       {isAudio && (
         <button
-          onClick={(e) => { e.stopPropagation(); onSelect(); }}
+          onClick={(e) => { e.stopPropagation(); onPlayButtonClick(); }}
+          onPointerDown={(e) => e.stopPropagation()}
           className="flex-shrink-0 w-8 h-8 flex items-center justify-center
             text-sm bg-[var(--bg-tertiary)] hover:bg-[var(--accent-orange)]/20
             active:brightness-90 transition-colors"
-          aria-label={isSelected ? 'Close preview' : 'Preview'}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
         >
-          {isSelected ? '⏹' : '▶'}
+          {isPlaying ? '⏸' : '▶'}
         </button>
       )}
 
@@ -1369,6 +1508,7 @@ interface FileRowProps {
   isSent: boolean;
   canSend: boolean;
   isSelected: boolean;
+  isPlaying: boolean;
   tags?: string[];
   isEditingTags?: boolean;
   tagEditInput?: string;
@@ -1378,10 +1518,11 @@ interface FileRowProps {
   onCancelEditTags?: () => void;
   onSend: () => void;
   onSelect: () => void;
+  onPlayButtonClick: () => void;
   onLongPress: (x: number, y: number) => void;
 }
 
-function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, tags, isEditingTags, tagEditInput, onTagEditInputChange, onStartEditTags, onSaveTags, onCancelEditTags, onSend, onSelect, onLongPress }: FileRowProps) {
+function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, isPlaying, tags, isEditingTags, tagEditInput, onTagEditInputChange, onStartEditTags, onSaveTags, onCancelEditTags, onSend, onSelect, onPlayButtonClick, onLongPress }: FileRowProps) {
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressTriggered = useRef(false);
 
@@ -1435,16 +1576,18 @@ function FileRow({ entry, isAudio, isSending, isSent, canSend, isSelected, tags,
           : 'bg-[var(--bg-secondary)]/80 hover:bg-[var(--bg-tertiary)]/60'
         }`}
     >
-      {/* Play button (audio files only) */}
+      {/* Play button (audio files only) — always actually plays/pauses,
+          unlike tapping the rest of the row which just opens/closes the preview */}
       {isAudio && (
         <button
-          onClick={(e) => { e.stopPropagation(); onSelect(); }}
+          onClick={(e) => { e.stopPropagation(); onPlayButtonClick(); }}
+          onPointerDown={(e) => e.stopPropagation()}
           className="flex-shrink-0 w-8 h-8 flex items-center justify-center
             text-sm bg-[var(--bg-tertiary)] hover:bg-[var(--accent-orange)]/20
             active:brightness-90 transition-colors"
-          aria-label={isSelected ? 'Close preview' : 'Preview'}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
         >
-          {isSelected ? '⏹' : '▶'}
+          {isPlaying ? '⏸' : '▶'}
         </button>
       )}
 

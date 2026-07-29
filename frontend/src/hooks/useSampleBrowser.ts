@@ -8,6 +8,22 @@ export interface DirEntry {
   type: 'dir' | 'file';
 }
 
+/** An optional trimmed region (seconds) to send instead of the whole file. */
+export interface SampleRegion {
+  start: number;
+  end: number;
+  reverse?: boolean;
+}
+
+function regionParams(region?: SampleRegion): Record<string, unknown> {
+  if (!region) return {};
+  return {
+    regionStart: region.start,
+    regionEnd: region.end,
+    reverse: region.reverse ? 'true' : undefined,
+  };
+}
+
 export interface SampleTagData {
   sampleTags: Record<string, string[]>;
 }
@@ -44,8 +60,8 @@ export function useSampleBrowser() {
   );
 
   const sendSampleToTrack = useCallback(
-    async (path: string, trackIdx: number): Promise<boolean> => {
-      const resp = await send('sample/sendToTrack', { path, trackIdx });
+    async (path: string, trackIdx: number, region?: SampleRegion): Promise<boolean> => {
+      const resp = await send('sample/sendToTrack', { path, trackIdx, ...regionParams(region) });
       return resp.success;
     },
     [send],
@@ -62,8 +78,8 @@ export function useSampleBrowser() {
   );
 
   const sendSampleToSlot = useCallback(
-    async (path: string, column: number, row: number): Promise<boolean> => {
-      const resp = await send('sample/sendToSlot', { path, column, row });
+    async (path: string, column: number, row: number, region?: SampleRegion): Promise<boolean> => {
+      const resp = await send('sample/sendToSlot', { path, column, row, ...regionParams(region) });
       return resp.success;
     },
     [send],

@@ -1,6 +1,12 @@
 #include "command_handler.h"
 #include "command_handler_helpers.h"
 
+// Defined below — render a reversed copy of [regionStart, regionEnd) of
+// srcPath to outPath. regionEnd <= 0 means "to the end of the file".
+static bool RenderReversedSlice(
+    ReaperAPI& api, const std::string& srcPath,
+    double regionStart, double regionEnd, const std::string& outPath);
+
 void CommandHandler::HandleSampleGetDirectory(
     int clientId, const std::string& id, const std::string& params)
 {
@@ -121,10 +127,17 @@ void CommandHandler::HandleSampleGetDirectory(
 void CommandHandler::HandleSampleSendToTrack(
     int clientId, const std::string& id, const std::string& params)
 {
-    std::string payloadStr = extractPayload(params);
+    std::string payloadStr     = extractPayload(params);
     JsonParser  parser(payloadStr);
-    std::string filePath = parser.getString("path");
-    std::string trackIdxStr = parser.getString("trackIdx");
+    std::string filePath       = parser.getString("path");
+    std::string trackIdxStr    = parser.getString("trackIdx");
+    std::string regionStartStr = parser.getString("regionStart");
+    std::string regionEndStr   = parser.getString("regionEnd");
+    std::string reverseStr     = parser.getString("reverse");
+    bool   reverse     = (reverseStr == "true" || reverseStr == "1");
+    bool   hasRegion   = !regionStartStr.empty() || !regionEndStr.empty();
+    double regionStart = regionStartStr.empty() ? 0.0  : atof(regionStartStr.c_str());
+    double regionEnd   = regionEndStr.empty()   ? -1.0 : atof(regionEndStr.c_str());
 
     if (filePath.empty()) {
         SendResponse(clientId, id, false,
@@ -145,42 +158,104 @@ void CommandHandler::HandleSampleSendToTrack(
         return;
     }
 
+    std::string insertPath = filePath;
+
+    // Reversed region: render a permanent slice first (the filename encodes
+    // the region bounds, so a later, differently-bounded render never
+    // overwrites audio a previously-inserted item still points at) and
+    // insert that instead of trimming afterward.
+    if (reverse) {
+        std::string stem = filePath, ext = "wav";
+        size_t dot = filePath.rfind('.');
+        if (dot != std::string::npos) {
+            stem = filePath.substr(0, dot);
+            ext  = filePath.substr(dot + 1);
+        }
+        char boundsBuf[64];
+        snprintf(boundsBuf, sizeof(boundsBuf), "-%ld-%ld",
+            (long)(regionStart * 1000), (long)(regionEnd * 1000));
+        std::string target = stem + "__" + ext + "-spidercrab-rev" + boundsBuf + ".wav";
+        if (!fs::exists(target) &&
+            !RenderReversedSlice(m_api, filePath, regionStart, regionEnd, target)) {
+            SendResponse(clientId, id, false, "{\"error\":\"Failed to render reversed region\"}");
+            return;
+        }
+        insertPath = target;
+        hasRegion  = false; // the rendered file already IS just that slice — no trim needed
+    }
+
     // Track-specific insert (avoid I_SELECTED — known crash trigger)
     int insertResult = 0;
     bool trackSpecific = false;
+    int trackIdx = -1;
 
     if (!trackIdxStr.empty() && m_api.CountTracks) {
-        int trackIdx = atoi(trackIdxStr.c_str());
+        trackIdx = atoi(trackIdxStr.c_str());
         if (trackIdx >= 0 && trackIdx < m_api.CountTracks(nullptr)) {
             // Use InsertMedia with mode=512 to target absolute track index
             int insertFlags = 512 | (trackIdx << 16);
-            insertResult = m_api.InsertMedia(filePath.c_str(), insertFlags);
+            insertResult = m_api.InsertMedia(insertPath.c_str(), insertFlags);
             trackSpecific = true;
         }
     }
 
     if (!trackSpecific) {
         // No track specified — insert at current track
-        insertResult = m_api.InsertMedia(filePath.c_str(), 0);
+        insertResult = m_api.InsertMedia(insertPath.c_str(), 0);
     }
 
-    if (insertResult > 0) {
-        SendResponse(clientId, id, true,
-            "{\"inserted\":true,\"result\":" + std::to_string(insertResult) + "}");
-    } else {
+    if (insertResult <= 0) {
         SendResponse(clientId, id, false,
             "{\"error\":\"InsertMedia returned " + std::to_string(insertResult) + "\"}");
+        return;
     }
+
+    // Trim the inserted item to a forward (non-reversed) region, if given.
+    if (hasRegion && trackSpecific &&
+        m_api.GetTrack && m_api.CountTrackMediaItems && m_api.GetTrackMediaItem &&
+        m_api.GetActiveTake && m_api.GetSetMediaItemTakeInfo && m_api.SetMediaItemInfo_Value) {
+        MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+        if (track) {
+            int itemCount = m_api.CountTrackMediaItems(track);
+            MediaItem* item = itemCount > 0 ? m_api.GetTrackMediaItem(track, itemCount - 1) : nullptr;
+            MediaItem_Take* take = item ? m_api.GetActiveTake(item) : nullptr;
+            if (take) {
+                double endForLen = regionEnd;
+                if (endForLen <= 0.0 && m_api.GetMediaItemTake_Source && m_api.GetMediaSourceLength) {
+                    PCM_source* src = m_api.GetMediaItemTake_Source(take);
+                    if (src) {
+                        bool isQN = false;
+                        endForLen = m_api.GetMediaSourceLength(src, &isQN);
+                    }
+                }
+                double len = endForLen - regionStart;
+                if (len > 0.0) {
+                    m_api.GetSetMediaItemTakeInfo(take, "D_STARTOFFS", &regionStart);
+                    m_api.SetMediaItemInfo_Value(item, "D_LENGTH", len);
+                }
+            }
+        }
+    }
+
+    SendResponse(clientId, id, true,
+        "{\"inserted\":true,\"result\":" + std::to_string(insertResult) + "}");
 }
 
 void CommandHandler::HandleSampleSendToSlot(
     int clientId, const std::string& id, const std::string& params)
 {
-    std::string payloadStr = extractPayload(params);
+    std::string payloadStr     = extractPayload(params);
     JsonParser  parser(payloadStr);
-    std::string filePath   = parser.getString("path");
-    std::string colStr     = parser.getString("column");
-    std::string rowStr     = parser.getString("row");
+    std::string filePath       = parser.getString("path");
+    std::string colStr         = parser.getString("column");
+    std::string rowStr         = parser.getString("row");
+    std::string regionStartStr = parser.getString("regionStart");
+    std::string regionEndStr   = parser.getString("regionEnd");
+    std::string reverseStr     = parser.getString("reverse");
+    bool   reverse     = (reverseStr == "true" || reverseStr == "1");
+    bool   hasRegion   = !regionStartStr.empty() || !regionEndStr.empty();
+    double regionStart = regionStartStr.empty() ? 0.0  : atof(regionStartStr.c_str());
+    double regionEnd   = regionEndStr.empty()   ? -1.0 : atof(regionEndStr.c_str());
 
     if (filePath.empty()) {
         SendResponse(clientId, id, false,
@@ -243,9 +318,35 @@ void CommandHandler::HandleSampleSendToSlot(
         return;
     }
 
+    // Reversed region: render a permanent slice first (the filename encodes
+    // the region bounds, so a later, differently-bounded render never
+    // overwrites audio a previously-inserted clip still points at) and
+    // insert that instead — the rest of this handler (tempo-match etc.)
+    // then naturally operates on just that slice, no further changes needed.
+    std::string insertPath = filePath;
+    if (reverse) {
+        std::string stem = filePath, ext = "wav";
+        size_t dot = filePath.rfind('.');
+        if (dot != std::string::npos) {
+            stem = filePath.substr(0, dot);
+            ext  = filePath.substr(dot + 1);
+        }
+        char boundsBuf[64];
+        snprintf(boundsBuf, sizeof(boundsBuf), "-%ld-%ld",
+            (long)(regionStart * 1000), (long)(regionEnd * 1000));
+        std::string target = stem + "__" + ext + "-spidercrab-rev" + boundsBuf + ".wav";
+        if (!fs::exists(target) &&
+            !RenderReversedSlice(m_api, filePath, regionStart, regionEnd, target)) {
+            SendResponse(clientId, id, false, "{\"error\":\"Failed to render reversed region\"}");
+            return;
+        }
+        insertPath = target;
+        hasRegion  = false; // the rendered file already IS just that slice — no trim needed
+    }
+
     // Step 1: Insert media on the temp track
     int insertFlags  = 512 | (numTracks << 16);
-    int insertResult = m_api.InsertMedia(filePath.c_str(), insertFlags);
+    int insertResult = m_api.InsertMedia(insertPath.c_str(), insertFlags);
 
     if (insertResult <= 0) {
         SendResponse(clientId, id, false,
@@ -317,6 +418,36 @@ void CommandHandler::HandleSampleSendToSlot(
                         m_api.SetMediaItemInfo_Value(insertedItem, "D_LENGTH", newLen);
                     }
                 }
+            }
+        }
+    }
+
+    // Forward (non-reversed) region: trim the inserted item to just that
+    // slice. Runs after tempo-match so it can read back whatever D_PLAYRATE
+    // was set (defaulting to 1.0 if tempo-match didn't run) — D_STARTOFFS is
+    // source-time seconds and unaffected by playrate, but D_LENGTH must be
+    // divided by it. Deliberately skips the bar-snap heuristic above: an
+    // explicit hand-picked region shouldn't be silently stretched or shrunk.
+    if (hasRegion && m_api.GetActiveTake && m_api.GetSetMediaItemTakeInfo &&
+        m_api.SetMediaItemInfo_Value) {
+        MediaItem_Take* take = m_api.GetActiveTake(insertedItem);
+        if (take) {
+            double rate = 1.0;
+            void* rateP = m_api.GetSetMediaItemTakeInfo(take, "D_PLAYRATE", nullptr);
+            if (rateP) rate = *(double*)rateP;
+
+            double endForLen = regionEnd;
+            if (endForLen <= 0.0 && m_api.GetMediaItemTake_Source && m_api.GetMediaSourceLength) {
+                PCM_source* src = m_api.GetMediaItemTake_Source(take);
+                if (src) {
+                    bool isQN = false;
+                    endForLen = m_api.GetMediaSourceLength(src, &isQN);
+                }
+            }
+            double len = (endForLen - regionStart) / (rate > 0.0 ? rate : 1.0);
+            if (len > 0.0) {
+                m_api.GetSetMediaItemTakeInfo(take, "D_STARTOFFS", &regionStart);
+                m_api.SetMediaItemInfo_Value(insertedItem, "D_LENGTH", len);
             }
         }
     }
@@ -503,10 +634,13 @@ void CommandHandler::HandleSampleGetAudioInfo(
 void CommandHandler::HandleSamplePreview(
     int clientId, const std::string& id, const std::string& params)
 {
-    std::string payloadStr = extractPayload(params);
+    std::string payloadStr   = extractPayload(params);
     JsonParser  parser(payloadStr);
-    std::string filePath = parser.getString("path");
-    std::string startPosStr = parser.getString("startPos");
+    std::string filePath     = parser.getString("path");
+    std::string startPosStr  = parser.getString("startPos");
+    std::string regionEndStr = parser.getString("regionEnd");
+    std::string reverseStr   = parser.getString("reverse");
+    bool reverse = (reverseStr == "true" || reverseStr == "1");
 
     if (filePath.empty()) {
         SendResponse(clientId, id, false,
@@ -527,6 +661,34 @@ void CommandHandler::HandleSamplePreview(
         return;
     }
 
+    double startPos = startPosStr.empty() ? 0.0 : atof(startPosStr.c_str());
+    double effectiveDuration = -1.0; // -1 = not computed; frontend keeps its own duration
+
+    // Reverse preview (whole file or a selected region): REAPER has no native
+    // reverse playback, so render the requested slice reversed to a scratch
+    // file (overwritten each call — this is a live/throwaway preview, not
+    // something a track will reference later) and preview that instead.
+    if (reverse) {
+        double regionEnd = regionEndStr.empty() ? -1.0 : atof(regionEndStr.c_str());
+        std::error_code ec;
+        std::string scratchPath =
+            (fs::temp_directory_path(ec) / "spidercrab-preview-reverse.wav").string();
+        if (ec || !RenderReversedSlice(m_api, filePath, startPos, regionEnd, scratchPath)) {
+            SendResponse(clientId, id, false,
+                "{\"error\":\"Failed to render reversed preview\"}");
+            return;
+        }
+        filePath = scratchPath;
+        startPos = 0.0;
+
+        // PCM_Source_CreateFromFile is safe on background thread (just opens file/decoder)
+        PCM_source* probe = m_api.PCM_Source_CreateFromFile(filePath.c_str());
+        if (probe) {
+            effectiveDuration = probe->GetLength();
+            delete probe;
+        }
+    }
+
     // PCM_Source_CreateFromFile is safe on background thread (just opens file/decoder)
     PCM_source* src = m_api.PCM_Source_CreateFromFile(filePath.c_str());
     if (!src) {
@@ -534,8 +696,6 @@ void CommandHandler::HandleSamplePreview(
             "{\"error\":\"Failed to create PCM source from file\"}");
         return;
     }
-
-    double startPos = startPosStr.empty() ? 0.0 : atof(startPosStr.c_str());
 
     // Build preview_register_t on this thread — PlayPreview must run on main thread
     preview_register_t* reg = new preview_register_t();
@@ -580,8 +740,11 @@ void CommandHandler::HandleSamplePreview(
     });
 
     // Respond optimistically — audio starts on next Run() tick (~33ms)
-    SendResponse(clientId, id, true,
-        "{\"playing\":true,\"startPos\":" + std::to_string(startPos) + "}");
+    std::string resp = "{\"playing\":true,\"startPos\":" + std::to_string(startPos);
+    if (effectiveDuration >= 0.0)
+        resp += ",\"effectiveDuration\":" + std::to_string(effectiveDuration);
+    resp += "}";
+    SendResponse(clientId, id, true, resp);
 }
 
 void CommandHandler::HandleSampleStopPreview(
@@ -1032,6 +1195,69 @@ static bool writeFloatWav(const std::string& path, const std::vector<float>& int
     return ok;
 }
 
+// Render a reversed copy of [regionStart, regionEnd) of srcPath to outPath.
+// regionEnd <= 0 means "to the end of the file". Shared by the sampler's
+// reverse toggle (whole file) and the Media tab's region-aware reverse
+// preview/send (an arbitrary slice). Returns false on failure.
+static bool RenderReversedSlice(
+    ReaperAPI& api, const std::string& srcPath,
+    double regionStart, double regionEnd, const std::string& outPath)
+{
+    if (!api.PCM_Source_CreateFromFile || !api.GetMediaSourceSampleRate ||
+        !api.GetMediaSourceNumChannels || !api.GetMediaSourceLength)
+        return false;
+
+    PCM_source* src = api.PCM_Source_CreateFromFile(srcPath.c_str());
+    if (!src) return false;
+
+    int    srate   = api.GetMediaSourceSampleRate(src);
+    int    nch     = api.GetMediaSourceNumChannels(src);
+    bool   isQN    = false;
+    double fullLen = api.GetMediaSourceLength(src, &isQN);
+
+    if (regionStart < 0.0) regionStart = 0.0;
+    if (regionEnd <= 0.0 || regionEnd > fullLen) regionEnd = fullLen;
+    double len = regionEnd - regionStart;
+
+    // Cap render length at 10 minutes to bound memory
+    if (srate <= 0 || nch <= 0 || len <= 0 || len > 600.0) {
+        delete src;
+        return false;
+    }
+
+    int totalFrames = (int)(len * srate + 0.5);
+    std::vector<float>     out((size_t)totalFrames * nch, 0.0f);
+    const int hop = 65536;
+    std::vector<ReaSample> buf((size_t)nch * hop, 0.0);
+
+    PCM_source_transfer_t block = {};
+    block.samplerate = (double)srate;
+    block.nch        = nch;
+    block.samples    = buf.data();
+    block.time_s     = regionStart;
+
+    int readFrames = 0;
+    while (readFrames < totalFrames) {
+        block.length      = (totalFrames - readFrames) < hop ? (totalFrames - readFrames) : hop;
+        block.samples_out = 0;
+        src->GetSamples(&block);
+        int got = block.samples_out;
+        if (got <= 0) break;
+        for (int i = 0; i < got; i++) {
+            // Write each frame into its mirrored position
+            int dstFrame = totalFrames - 1 - (readFrames + i);
+            for (int c = 0; c < nch; c++)
+                out[(size_t)dstFrame * nch + c] = (float)buf[(size_t)i * nch + c];
+        }
+        readFrames   += got;
+        block.time_s += (double)got / (double)srate;
+    }
+    delete src;
+
+    if (readFrames <= 0) return false;
+    return writeFloatWav(outPath, out, nch, srate);
+}
+
 // Toggle reverse on an RS5K instance. RS5K has no native reverse, so we
 // render a reversed copy of the source file next to it (cached) and swap
 // FILE0 between the original and the "-spidercrab-rev.wav" copy.
@@ -1101,58 +1327,10 @@ void CommandHandler::HandleSamplerSetReverse(
         }
         target = stem + "__" + origExt + revTag + ".wav";
 
-        if (!fs::exists(target)) {
-            // Render the reversed copy
-            PCM_source* src = m_api.PCM_Source_CreateFromFile(forward.c_str());
-            if (!src) {
-                SendResponse(clientId, id, false, "{\"error\":\"Could not open source file\"}");
-                return;
-            }
-            int    srate = m_api.GetMediaSourceSampleRate(src);
-            int    nch   = m_api.GetMediaSourceNumChannels(src);
-            bool   isQN  = false;
-            double len   = m_api.GetMediaSourceLength(src, &isQN);
-            // Cap render length at 10 minutes to bound memory
-            if (srate <= 0 || nch <= 0 || len <= 0 || len > 600.0) {
-                delete src;
-                SendResponse(clientId, id, false,
-                    "{\"error\":\"Unsupported source (too long or unreadable)\"}");
-                return;
-            }
-
-            int totalFrames = (int)(len * srate + 0.5);
-            std::vector<float>     out((size_t)totalFrames * nch, 0.0f);
-            const int hop = 65536;
-            std::vector<ReaSample> buf((size_t)nch * hop, 0.0);
-
-            PCM_source_transfer_t block = {};
-            block.samplerate = (double)srate;
-            block.nch        = nch;
-            block.samples    = buf.data();
-            block.time_s     = 0.0;
-
-            int readFrames = 0;
-            while (readFrames < totalFrames) {
-                block.length      = (totalFrames - readFrames) < hop ? (totalFrames - readFrames) : hop;
-                block.samples_out = 0;
-                src->GetSamples(&block);
-                int got = block.samples_out;
-                if (got <= 0) break;
-                for (int i = 0; i < got; i++) {
-                    // Write each frame into its mirrored position
-                    int dstFrame = totalFrames - 1 - (readFrames + i);
-                    for (int c = 0; c < nch; c++)
-                        out[(size_t)dstFrame * nch + c] = (float)buf[(size_t)i * nch + c];
-                }
-                readFrames   += got;
-                block.time_s += (double)got / (double)srate;
-            }
-            delete src;
-
-            if (readFrames <= 0 || !writeFloatWav(target, out, nch, srate)) {
-                SendResponse(clientId, id, false, "{\"error\":\"Failed to render reversed file\"}");
-                return;
-            }
+        if (!fs::exists(target) &&
+            !RenderReversedSlice(m_api, forward, 0.0, -1.0, target)) {
+            SendResponse(clientId, id, false, "{\"error\":\"Failed to render reversed file\"}");
+            return;
         }
     }
 

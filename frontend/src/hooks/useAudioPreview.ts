@@ -7,9 +7,20 @@ export interface AudioInfoResult {
   peaks: number[]; // downsampled peak amplitudes [0..1]
 }
 
+export interface PlayOptions {
+  /** Region start, in seconds. Defaults to the current position (or 0). */
+  start?: number;
+  /** Region end, in seconds. Defaults to the full duration. */
+  end?: number;
+  /** Play the [start, end) region backwards (renders a reversed slice host-side). */
+  reverse?: boolean;
+  /** Restart from the beginning of the region when it finishes, instead of stopping. */
+  loop?: boolean;
+}
+
 export interface AudioPreviewState {
-  /** Play (starts host-side preview) */
-  play: () => void;
+  /** Play. With no arguments, behaves exactly as before (from current position to the end). */
+  play: (opts?: PlayOptions) => void;
   /** Pause (stops host-side preview, remembers position) */
   pause: () => void;
   /** Seek to fraction [0, 1] */
@@ -18,7 +29,9 @@ export interface AudioPreviewState {
   isPlaying: boolean;
   /** Duration in seconds */
   duration: number;
-  /** Current playback position in seconds (simulated via animation frame) */
+  /** Current playback position in seconds (simulated via animation frame).
+   *  During reverse playback this counts DOWN, matching what's audibly
+   *  happening relative to the (always-forward) waveform display. */
   currentTime: number;
   /** Waveform peaks (downsampled for display) */
   peaks: Float32Array | null;
@@ -26,10 +39,8 @@ export interface AudioPreviewState {
   isLoading: boolean;
   /** Error message if fetch failed */
   error: string | null;
-  /** Reverse playback flag (UI only — not supported by host preview yet) */
+  /** Whether the last/current play() was a reverse play */
   reverse: boolean;
-  /** Toggle reverse (UI only) */
-  toggleReverse: () => void;
   /** Reset/stop playback */
   stop: () => void;
 }
@@ -60,6 +71,10 @@ export function useAudioPreview(
   // Refs for playback simulation
   const startTimeRef = useRef(0);       // Date.now() when playback started
   const startOffsetRef = useRef(0);     // position offset (in seconds) at start
+  const directionRef = useRef<1 | -1>(1); // 1 = forward, -1 = reverse (counts DOWN)
+  const stopAtRef = useRef<number | null>(null); // where playback naturally ends; null = duration
+  const loopRef = useRef(false);
+  const restartRef = useRef<(() => void) | null>(null); // repeats the last play() call, for looping
   const animFrameRef = useRef<number>(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const autoplayRef = useRef(autoplay);
@@ -77,20 +92,34 @@ export function useAudioPreview(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Animation frame for updating currentTime
+  // Animation frame for updating currentTime. Forward playback counts up;
+  // reverse playback counts DOWN (the playhead moves right-to-left over the
+  // waveform, matching what's audibly happening — the waveform itself is
+  // always drawn in its natural, forward order).
   const updatePosition = useCallback(() => {
     if (!startTimeRef.current) return;
     const elapsed = (Date.now() - startTimeRef.current) / 1000;
-    const newTime = startOffsetRef.current + elapsed;
-    if (duration > 0 && newTime >= duration) {
+    const dir = directionRef.current;
+    const newTime = startOffsetRef.current + dir * elapsed;
+    const stopAt = stopAtRef.current ?? (dir > 0 ? duration : 0);
+
+    const finished = dir > 0 ? newTime >= stopAt : newTime <= stopAt;
+    if (finished) {
+      if (loopRef.current && restartRef.current) {
+        // Loop: jump straight back to the start of the region and go again,
+        // rather than stopping. restartRef repeats the exact same play() call.
+        restartRef.current();
+        return;
+      }
       // Playback finished naturally
       setIsPlaying(false);
-      setCurrentTime(duration);
+      setCurrentTime(Math.max(0, Math.min(stopAt, duration || stopAt)));
+      sendCommand('sample/stopPreview').catch(() => {});
       return;
     }
-    setCurrentTime(Math.min(newTime, duration || Infinity));
+    setCurrentTime(Math.max(0, Math.min(newTime, duration || Infinity)));
     animFrameRef.current = requestAnimationFrame(updatePosition);
-  }, [duration]);
+  }, [duration, sendCommand]);
 
   // Reset all playback state (keeps peaks loaded)
   const resetPlayback = useCallback(() => {
@@ -178,15 +207,60 @@ export function useAudioPreview(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filePath]);
 
-  const play = useCallback(() => {
+  const play = useCallback((opts?: PlayOptions) => {
     if (!filePath) return;
 
     // Stop any existing preview first
     sendCommand('sample/stopPreview').catch(() => {});
 
-    const startPos = startOffsetRef.current;
+    const doReverse = opts?.reverse ?? false;
+    const regionStart = opts?.start ?? 0;
+    const regionEnd = opts?.end ?? duration;
+    setReverse(doReverse);
+    loopRef.current = opts?.loop ?? false;
+    // Capture the RESOLVED bounds (not the raw opts) so a loop restart is
+    // always well-defined, even if the original call relied on a default.
+    restartRef.current = () => play({ start: regionStart, end: regionEnd, reverse: doReverse, loop: true });
 
-    // Start host preview
+    if (doReverse) {
+      // Host renders [regionStart, regionEnd) reversed and previews that.
+      // The visual playhead counts DOWN from regionEnd to regionStart —
+      // that's what's audibly happening relative to the (always-forward)
+      // waveform drawing.
+      directionRef.current = -1;
+      startOffsetRef.current = regionEnd;
+      stopAtRef.current = regionStart;
+      setCurrentTime(regionEnd);
+
+      sendCommand('sample/preview', {
+        path: filePath,
+        startPos: String(regionStart),
+        regionEnd: String(regionEnd),
+        reverse: 'true',
+      })
+        .then((resp) => {
+          const effectiveDuration = resp.payload?.effectiveDuration as number | undefined;
+          if (typeof effectiveDuration === 'number' && effectiveDuration > 0) {
+            stopAtRef.current = regionEnd - effectiveDuration;
+          }
+          startTimeRef.current = Date.now();
+          setIsPlaying(true);
+          animFrameRef.current = requestAnimationFrame(updatePosition);
+        })
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : 'Failed to start reverse preview';
+          setError(msg);
+        });
+      return;
+    }
+
+    // Forward playback (unchanged from before when called with no options —
+    // starts from wherever we last were, plays to the end).
+    directionRef.current = 1;
+    const startPos = opts?.start ?? startOffsetRef.current;
+    stopAtRef.current = opts?.end ?? null; // null → updatePosition falls back to `duration`
+    startOffsetRef.current = startPos;
+
     sendCommand('sample/preview', { path: filePath, startPos: String(startPos) })
       .then(() => {
         startTimeRef.current = Date.now();
@@ -197,7 +271,7 @@ export function useAudioPreview(
         const msg = err instanceof Error ? err.message : 'Failed to start preview';
         setError(msg);
       });
-  }, [filePath, sendCommand, updatePosition]);
+  }, [filePath, duration, sendCommand, updatePosition]);
 
   const pause = useCallback(() => {
     if (!filePath || !isPlaying) return;
@@ -205,9 +279,9 @@ export function useAudioPreview(
     // Stop host preview
     sendCommand('sample/stopPreview').catch(() => {});
 
-    // Record current offset
+    // Record current offset (direction-aware: reverse counts down)
     const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
-    startOffsetRef.current = startOffsetRef.current + elapsed;
+    startOffsetRef.current = startOffsetRef.current + directionRef.current * elapsed;
     cancelAnimationFrame(animFrameRef.current);
     setIsPlaying(false);
     setCurrentTime(startOffsetRef.current);
@@ -217,6 +291,9 @@ export function useAudioPreview(
     if (!filePath || duration <= 0) return;
     const newTime = Math.max(0, Math.min(fraction, 1)) * duration;
     startOffsetRef.current = newTime;
+    directionRef.current = 1;
+    stopAtRef.current = null;
+    setReverse(false);
     setCurrentTime(newTime);
 
     // If playing, restart host preview at new position
@@ -240,13 +317,11 @@ export function useAudioPreview(
     sendCommand('sample/stopPreview').catch(() => {});
     cancelAnimationFrame(animFrameRef.current);
     startOffsetRef.current = 0;
+    directionRef.current = 1;
+    stopAtRef.current = null;
     setIsPlaying(false);
     setCurrentTime(0);
   }, [filePath, sendCommand]);
-
-  const toggleReverse = useCallback(() => {
-    setReverse(prev => !prev);
-  }, []);
 
   return {
     play,
@@ -259,7 +334,6 @@ export function useAudioPreview(
     isLoading,
     error,
     reverse,
-    toggleReverse,
     stop,
   };
 }
