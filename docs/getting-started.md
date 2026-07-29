@@ -17,7 +17,11 @@ Download the latest release for your system from the [releases page](https://git
     Run **`SpidercrabSetup.exe`** (Windows) or **`SpidercrabInstaller.pkg`** (macOS). It places the plugin and the web UI into REAPER's UserPlugins folder for you — no manual copying.
 
     !!! warning "macOS: allow the installer once"
-        The `.pkg` isn't notarized (that needs a paid Apple Developer account), so macOS blocks it the first time you open it. Go to **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to the installer. That's the only manual step — the installer then places the files *and* clears Gatekeeper's quarantine flag on them itself, so there's no Terminal command to run.
+        The `.pkg` isn't notarized (that needs a paid Apple Developer account), so macOS blocks it the first time you try to open it. **Right-click (or Control-click) `SpidercrabInstaller.pkg` → Open**, then confirm in the dialog that appears — on most macOS versions that's it, no Settings menu needed.
+
+        If right-clicking doesn't offer an **Open** option, double-click it once (it'll get blocked), then go to **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to it there instead.
+
+        Either way, that's the only manual step — the installer then places the files *and* clears Gatekeeper's quarantine flag on them itself, so there's no Terminal command to run.
 
     **Restart REAPER.**
 

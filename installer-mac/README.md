@@ -111,8 +111,12 @@ install doesn't prompt for a password.
   the URL. Same as the manual-install / Windows-installer flow.
 - **Gatekeeper on the `.pkg` itself:** since it isn't notarized (that needs
   a paid Apple Developer ID), macOS will still block *opening the
-  installer* the first time — System Settings → Privacy & Security →
-  scroll to Security → **Open Anyway**. That's the one unavoidable step;
-  everything after it (file placement, quarantine clearing on the payload)
-  is automatic. See `docs/getting-started.md` for the current manual-copy
+  installer* the first time. Confirmed in practice: right-click (Control-click)
+  the `.pkg` → **Open** → confirm in the dialog works directly on most macOS
+  versions, no Settings menu needed. If right-click doesn't offer an Open
+  option, double-click it once (it'll get blocked), then **System Settings →
+  Privacy & Security → Security → Open Anyway** instead. Either way, that's
+  the one unavoidable step; everything after it (file placement, quarantine
+  clearing on the payload) is automatic. See `docs/getting-started.md` for
+  the current manual-copy
   alternative, which needs a Terminal command instead of this one click.
