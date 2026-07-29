@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       make_installer:
-        description: "Also build the Windows installer (SpidercrabSetup.exe)"
+        description: "Also build the installers (SpidercrabSetup.exe, SpidercrabInstaller.pkg)"
         type: boolean
         default: true
 
@@ -135,6 +135,18 @@ jobs:
         with:
           submodules: recursive   # pulls WDL + REAPER SDK (docs/WDL, docs/reaper-sdk)
 
+      # ---- Web UI ----
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       # Xcode Command Line Tools (clang++, the Frameworks) ship on the runner
       # image already — no toolchain install needed, unlike Windows.
       - name: Build extension dylib (CMake + clang++)
@@ -164,7 +176,69 @@ jobs:
       - name: Ad-hoc codesign
         run: codesign --force --deep --sign - "${{ steps.dylib.outputs.path }}"
 
+      # ---- Stage a clean drop-in bundle: reaper_spidercrab.dylib + frontend/ ----
+      # (This is both the manual-install download AND the installer's payload.)
+      - name: Stage install bundle
+        run: |
+          stage="installer-mac/payload"
+          mkdir -p "$stage/frontend"
+          cp "${{ steps.dylib.outputs.path }}" "$stage/reaper_spidercrab.dylib"
+          cp -R frontend/dist/. "$stage/frontend/"
+
       - uses: actions/upload-artifact@v4
         with:
           name: spidercrab-macos
           path: ${{ steps.dylib.outputs.path }}
+
+      - name: Upload manual-install bundle (dylib + frontend, drop into UserPlugins)
+        uses: actions/upload-artifact@v4
+        with:
+          name: spidercrab-macos-manual
+          path: installer-mac/payload/**
+
+      # ---- Installer (optional) ----
+      - name: Build macOS installer (.pkg)
+        if: ${{ inputs.make_installer }}
+        run: |
+          version="$(git describe --tags --always 2>/dev/null || echo 0.0.0)"
+          # Payload-free package: postinstall + the staged dylib/frontend
+          # travel together as the package's "Scripts" bundle (see
+          # installer-mac/README.md for why — there's no fixed, admin-free
+          # install location to expand "the current user's home" into at
+          # build time, only at install time, inside the script).
+          scripts_dir="installer-mac/build-scripts"
+          rm -rf "$scripts_dir"
+          mkdir -p "$scripts_dir"
+          cp installer-mac/scripts/postinstall "$scripts_dir/postinstall"
+          chmod +x "$scripts_dir/postinstall"
+          cp installer-mac/payload/reaper_spidercrab.dylib "$scripts_dir/reaper_spidercrab.dylib"
+          cp -R installer-mac/payload/frontend "$scripts_dir/frontend"
+
+          mkdir -p installer-mac/output
+          pkgbuild \
+            --nopayload \
+            --identifier org.quantockhills.spidercrab \
+            --version "$version" \
+            --scripts "$scripts_dir" \
+            --install-location /tmp/spidercrab-installer-unused \
+            installer-mac/output/SpidercrabInstaller.pkg
+
+      - name: Verify the installer actually installs (real install, on this runner)
+        if: ${{ inputs.make_installer }}
+        run: |
+          set -e
+          dest="$HOME/Library/Application Support/REAPER/UserPlugins"
+          rm -rf "$dest"
+          installer -pkg installer-mac/output/SpidercrabInstaller.pkg -target CurrentUserHomeDirectory
+          test -f "$dest/reaper_spidercrab.dylib" || { echo "dylib missing after install"; exit 1; }
+          test -f "$dest/frontend/index.html" || { echo "frontend/index.html missing after install"; exit 1; }
+          nm -gU "$dest/reaper_spidercrab.dylib" | grep -q ReaperPluginEntry || { echo "installed dylib doesn't export ReaperPluginEntry"; exit 1; }
+          echo "Installed bundle verified at: $dest"
+          ls -la "$dest"
+
+      - name: Upload macOS installer
+        if: ${{ inputs.make_installer }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpidercrabInstaller
+          path: installer-mac/output/SpidercrabInstaller.pkg

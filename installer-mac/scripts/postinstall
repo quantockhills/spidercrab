@@ -1,0 +1,45 @@
+#!/bin/bash
+# Spidercrab macOS installer — postinstall
+#
+# Runs after pkgbuild extracts this script's own bundle (which also
+# contains reaper_spidercrab.dylib and frontend/, staged alongside this
+# file at build time). Everything here is plain, readable shell — nothing
+# hidden, nothing compiled.
+#
+# What it does, in order:
+#   1. Find the real user's home directory (this script runs as root
+#      during install, so $HOME/$USER point at root, not the person
+#      installing it).
+#   2. Copy the plugin + web UI into REAPER's UserPlugins folder.
+#   3. Clear macOS's quarantine flag on what we just installed, so REAPER
+#      doesn't hit the same "cannot be opened" Gatekeeper block the .pkg
+#      itself already went through (files copied by the installer can
+#      still inherit quarantine from the resources they came from).
+#   4. Hand ownership back to the real user (step 2 ran as root).
+set -e
+
+CONSOLE_USER=$(stat -f%Su /dev/console 2>/dev/null || true)
+if [ -z "$CONSOLE_USER" ] || [ "$CONSOLE_USER" = "root" ]; then
+  CONSOLE_USER="${SUDO_USER:-$USER}"
+fi
+USER_HOME=$(dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+if [ -z "$USER_HOME" ]; then
+  USER_HOME="$HOME"
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEST="$USER_HOME/Library/Application Support/REAPER/UserPlugins"
+
+echo "Spidercrab: installing for user '$CONSOLE_USER' into: $DEST"
+
+mkdir -p "$DEST"
+cp "$SCRIPT_DIR/reaper_spidercrab.dylib" "$DEST/reaper_spidercrab.dylib"
+rm -rf "$DEST/frontend"
+cp -R "$SCRIPT_DIR/frontend" "$DEST/frontend"
+
+xattr -dr com.apple.quarantine "$DEST/reaper_spidercrab.dylib" "$DEST/frontend" 2>/dev/null || true
+
+chown -R "$CONSOLE_USER" "$DEST" 2>/dev/null || true
+
+echo "Spidercrab: done."
+exit 0

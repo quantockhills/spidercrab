@@ -10,6 +10,9 @@ extension/cmake-build*/
 # Installer build artifacts (staged payload + compiled exe)
 installer/payload/
 installer/output/
+installer-mac/payload/
+installer-mac/build-scripts/
+installer-mac/output/
 
 # IDE
 .vscode/

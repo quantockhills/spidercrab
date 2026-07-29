@@ -10,18 +10,30 @@ Spidercrab isn't an app you download from the App Store. It's a little control s
 
 ## 1. Install Spidercrab into REAPER
 
-1. Download the latest release for your system from the [releases page](https://github.com/quantockhills/spidercrab/releases).
-2. Put the plugin file into REAPER's **UserPlugins** folder:
-    - **Windows** — `reaper_spidercrab.dll`
-    - **macOS** — `reaper_spidercrab.dylib`
-    - **Linux** — `reaper_spidercrab.so`
+Download the latest release for your system from the [releases page](https://github.com/quantockhills/spidercrab/releases), then:
 
-    (Not sure where UserPlugins is? In REAPER: **Options → Show REAPER resource path**, then open the `UserPlugins` folder.)
+=== "Windows / macOS installer (easiest)"
 
-    !!! warning "macOS: clear the quarantine flag first"
-        macOS blocks downloaded plugins by default. Before REAPER can load `reaper_spidercrab.dylib`, run this in Terminal from wherever you downloaded it: `xattr -dr com.apple.quarantine reaper_spidercrab.dylib`. Otherwise REAPER (or macOS) may say it "cannot be opened" or "is damaged" — it isn't, that's just Gatekeeper.
-3. Copy the **`frontend`** folder from the release into that **same** UserPlugins folder, right next to the plugin file. It must be named exactly **`frontend`**, with **`index.html` directly inside it** — that is the folder the plugin serves to your iPad.
-4. **Restart REAPER.**
+    Run **`SpidercrabSetup.exe`** (Windows) or **`SpidercrabInstaller.pkg`** (macOS). It places the plugin and the web UI into REAPER's UserPlugins folder for you — no manual copying.
+
+    !!! warning "macOS: allow the installer once"
+        The `.pkg` isn't notarized (that needs a paid Apple Developer account), so macOS blocks it the first time you open it. Go to **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway** next to the installer. That's the only manual step — the installer then places the files *and* clears Gatekeeper's quarantine flag on them itself, so there's no Terminal command to run.
+
+    **Restart REAPER.**
+
+=== "Manual (any OS)"
+
+    1. Put the plugin file into REAPER's **UserPlugins** folder:
+        - **Windows** — `reaper_spidercrab.dll`
+        - **macOS** — `reaper_spidercrab.dylib`
+        - **Linux** — `reaper_spidercrab.so`
+
+        (Not sure where UserPlugins is? In REAPER: **Options → Show REAPER resource path**, then open the `UserPlugins` folder.)
+
+        !!! warning "macOS: clear the quarantine flag first"
+            macOS blocks downloaded plugins by default. Before REAPER can load `reaper_spidercrab.dylib`, run this in Terminal from wherever you downloaded it: `xattr -dr com.apple.quarantine reaper_spidercrab.dylib`. Otherwise REAPER (or macOS) may say it "cannot be opened" or "is damaged" — it isn't, that's just Gatekeeper.
+    2. Copy the **`frontend`** folder from the release into that **same** UserPlugins folder, right next to the plugin file. It must be named exactly **`frontend`**, with **`index.html` directly inside it** — that is the folder the plugin serves to your iPad.
+    3. **Restart REAPER.**
 
 Spidercrab now lives in REAPER's **Extensions** menu, and it **doesn't start on its own** — you launch it when you want it:
 

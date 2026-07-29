@@ -55,5 +55,5 @@ The installer lands in `installer/output/SpidercrabSetup.exe`.
 - **Uninstall** removes the DLL and the `frontend/` folder; it leaves the runtime
   `spidercrab/` config folder (tags + settings) in place so nothing is lost on reinstall.
 - **`payload/` is a build artifact** — it is gitignored.
-- **Windows only.** macOS (`.dylib`) and Linux (`.so`) would need their own packaging
-  (a `.pkg` / script); this installer is x64 Windows.
+- **Windows only.** See `installer-mac/` for the macOS `.pkg` equivalent. Linux
+  (`.so`) still has no packaged installer, just the manual-copy instructions.
