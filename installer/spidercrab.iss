@@ -82,7 +82,9 @@ begin
     Exit;
   end;
 
-  Count := GetIniInt('reaper', 'csurf_cnt', 0, ReaperIni);
+  // Min=Max=0 disables GetIniInt's range check (equal bounds means "ignored"
+  // per Inno's docs), so any value in the file is accepted as-is.
+  Count := GetIniInt('reaper', 'csurf_cnt', 0, 0, 0, ReaperIni);
 
   AlreadySet := False;
   for I := 0 to Count - 1 do
