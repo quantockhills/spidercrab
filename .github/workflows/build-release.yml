@@ -1,8 +1,8 @@
 name: build-release
 
 # Manual only — trigger from the Actions tab. Builds the extension DLL, the
-# web UI, and (optionally) the Windows installer, and uploads them as
-# downloadable artifacts. Does NOT run on push.
+# web UI, and (optionally) the installers (Windows + macOS). Uploads
+# everything as downloadable artifacts. Does NOT run on push.
 on:
   workflow_dispatch:
     inputs:
