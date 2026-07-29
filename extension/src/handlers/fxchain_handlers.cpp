@@ -554,8 +554,17 @@ void CommandHandler::HandleFxChainRefreshCache(
 void CommandHandler::ShiftChainSourceIndices(
     std::vector<ChainSource>& sources, int beforeIndex, int delta)
 {
+    // Insertion (delta > 0): an FX lands exactly at beforeIndex, pushing anything
+    // at or after it up — so a chain starting exactly at beforeIndex moves too.
+    // Deletion (delta < 0): the FX AT beforeIndex is gone and everything after it
+    // slides down. A chain starting exactly at beforeIndex just loses that one
+    // member (its start stays put, the next FX slides into the vacated slot) —
+    // it must NOT be shifted as a whole, or the FX now sitting at its old start
+    // index (which was never part of the chain) gets silently absorbed into it.
     for (auto& cs : sources) {
-        if (cs.fxStartIdx >= beforeIndex) {
+        bool wholeChainShifts = (delta > 0) ? (cs.fxStartIdx >= beforeIndex)
+                                             : (cs.fxStartIdx > beforeIndex);
+        if (wholeChainShifts) {
             cs.fxStartIdx += delta;
             cs.fxEndIdx += delta;
         } else if (cs.fxEndIdx > beforeIndex) {
