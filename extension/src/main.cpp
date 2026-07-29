@@ -904,16 +904,13 @@ static int OnToggleAction(int command)
 
 // REAPER hook: build the "Spidercrab" submenu under the Extensions menu.
 //
-// Windows-only: this uses SWELL's raw HMENU/InsertMenuItem API. On non-Windows
-// platforms those symbols require SWELL's menu implementation to be resolved
-// from the host process at runtime (via the app delegate / SWELL_dllMain),
-// which is a different loading path than the REAPER_PLUGIN_ENTRYPOINT this
-// extension uses, and isn't verifiable without a real macOS/Linux REAPER to
-// test against. The actions themselves (registered below) are pure REAPER SDK
-// calls and work on every platform regardless — on Mac/Linux they're reachable
-// from the Action List (and can be bound to a shortcut or toolbar button)
-// instead of a dedicated submenu, until the SWELL wiring is verified.
-#ifdef _WIN32
+// Uses SWELL's raw HMENU/InsertMenuItem API, which on non-Windows platforms
+// is resolved from the host process (REAPER itself) at dylib-load time via
+// swell-modstub.mm/swell-modstub-generic.cpp (see CMakeLists.txt) — a static
+// initializer that runs automatically before ReaperPluginEntry is called, so
+// these functions are already valid by the time RegisterSpidercrabMenu below
+// runs. Same mechanism other REAPER extensions with an Extensions-menu entry
+// (e.g. Helgobox) use on macOS.
 static void OnCustomMenu(const char* menuidstr, void* menu, int flag)
 {
     if (flag != 0 || !menuidstr || strcmp(menuidstr, "Main extensions"))
@@ -946,7 +943,6 @@ static void OnCustomMenu(const char* menuidstr, void* menu, int flag)
     miSub.hSubMenu     = sub;
     InsertMenuItem(hExt, GetMenuItemCount(hExt), TRUE, &miSub);
 }
-#endif // _WIN32
 
 // Register the actions, toggle state, and Extensions submenu at load.
 static void RegisterSpidercrabMenu(reaper_plugin_info_t* rec)
@@ -964,10 +960,8 @@ static void RegisterSpidercrabMenu(reaper_plugin_info_t* rec)
 
     rec->Register("hookcommand", (void*)&OnHookCommand);
     rec->Register("toggleaction", (void*)&OnToggleAction);
-#ifdef _WIN32
     rec->Register("hookcustommenu", (void*)&OnCustomMenu);
     if (AddExtensionsMainMenu) AddExtensionsMainMenu();
-#endif
 }
 
 // ============================================================

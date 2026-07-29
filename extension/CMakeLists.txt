@@ -89,6 +89,15 @@ if(APPLE)
         SUFFIX ".dylib"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
     )
+    # SWELL_PROVIDED_BY_APP + swell-modstub.mm: the standard way a REAPER
+    # extension resolves SWELL's Windows-shaped GUI API (CreatePopupMenu,
+    # InsertMenuItem, etc.) from the host app at load time, via REAPER's
+    # own app delegate (queried through a static initializer that runs
+    # automatically when this dylib loads, before ReaperPluginEntry is
+    # even called) — this is what lets the Extensions-menu code below work
+    # on macOS instead of being Windows-only.
+    target_sources(reaper-spidercrab PRIVATE ${WDL_DIR}/WDL/swell/swell-modstub.mm)
+    target_compile_definitions(reaper-spidercrab PRIVATE SWELL_PROVIDED_BY_APP)
     target_link_libraries(reaper-spidercrab PRIVATE pthread)
     target_link_libraries(reaper-spidercrab PRIVATE "-framework Cocoa" "-framework Carbon")
     target_compile_definitions(reaper-spidercrab PRIVATE PTHREAD=1)
@@ -99,6 +108,12 @@ elseif(UNIX)
         SUFFIX ".so"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/build"
     )
+    # Linux equivalent of the macOS modstub above (SWELL_dllMain export,
+    # resolved by REAPER at load time) — not CI-verified (no Linux build
+    # job exists yet), but mirrors the same pattern main.cpp already
+    # shares between Mac and Linux for everything else non-Windows.
+    target_sources(reaper-spidercrab PRIVATE ${WDL_DIR}/WDL/swell/swell-modstub-generic.cpp)
+    target_compile_definitions(reaper-spidercrab PRIVATE SWELL_PROVIDED_BY_APP)
     target_link_libraries(reaper-spidercrab PRIVATE pthread dl)
     target_compile_definitions(reaper-spidercrab PRIVATE PTHREAD=1)
 else()
