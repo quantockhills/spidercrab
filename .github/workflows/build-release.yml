@@ -236,15 +236,19 @@ jobs:
           # has something real to patch, same as a machine REAPER has
           # already run on at least once.
           mkdir -p "$reaper_dir"
-          cat > "$reaper_dir/reaper.ini" <<'EOF'
-[reaper]
-config_toolbar_h=0
-csurf_cnt=1
-csurf_0=SomeOtherDevice 0 9 1 1
+          # Heredoc body is indented to stay inside this YAML block scalar
+          # (an unindented line here would end it early and break the rest
+          # of the file's parsing) — sed strips that indentation back out
+          # before it lands in the actual seeded reaper.ini.
+          cat <<'EOF' | sed 's/^ *//' > "$reaper_dir/reaper.ini"
+          [reaper]
+          config_toolbar_h=0
+          csurf_cnt=1
+          csurf_0=SomeOtherDevice 0 9 1 1
 
-[otherplugin]
-somekey=somevalue
-EOF
+          [otherplugin]
+          somekey=somevalue
+          EOF
 
           installer -pkg installer-mac/output/SpidercrabInstaller.pkg -target CurrentUserHomeDirectory
           test -f "$dest/reaper_spidercrab.dylib" || { echo "dylib missing after install"; exit 1; }
