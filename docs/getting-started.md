@@ -17,6 +17,9 @@ Spidercrab isn't an app you download from the App Store. It's a little control s
     - **Linux** — `reaper_spidercrab.so`
 
     (Not sure where UserPlugins is? In REAPER: **Options → Show REAPER resource path**, then open the `UserPlugins` folder.)
+
+    !!! warning "macOS: clear the quarantine flag first"
+        macOS blocks downloaded plugins by default. Before REAPER can load `reaper_spidercrab.dylib`, run this in Terminal from wherever you downloaded it: `xattr -dr com.apple.quarantine reaper_spidercrab.dylib`. Otherwise REAPER (or macOS) may say it "cannot be opened" or "is damaged" — it isn't, that's just Gatekeeper.
 3. Copy the **`frontend`** folder from the release into that **same** UserPlugins folder, right next to the plugin file. It must be named exactly **`frontend`**, with **`index.html` directly inside it** — that is the folder the plugin serves to your iPad.
 4. **Restart REAPER.**
 

@@ -132,9 +132,12 @@ static void DebugLog(const char* msg)
 #else
 #include <dlfcn.h>
 #include <unistd.h>     // gethostname()
-#include <sys/socket.h> // getaddrinfo() / sockaddr_in — POSIX socket API
+#include <sys/socket.h> // sockaddr_in — POSIX socket API
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <ifaddrs.h>    // getifaddrs() — real network interface enumeration
+#include <net/if.h>     // IFF_UP / IFF_LOOPBACK
+#include <cstring>      // strncmp
 #endif
 
 // ============================================================
@@ -827,21 +830,35 @@ static void BuildConnectionInfo(std::string& out)
         }
     }
 #else
-    struct addrinfo hints; memset(&hints, 0, sizeof(hints));
-    hints.ai_family   = AF_INET;
-    hints.ai_socktype = SOCK_STREAM;
-    struct addrinfo* res = nullptr;
-    if (getaddrinfo(host, nullptr, &hints, &res) == 0) {
-        for (struct addrinfo* p = res; p; p = p->ai_next) {
+    // Enumerate real network interfaces directly (the POSIX equivalent of
+    // GetAdaptersAddresses above), rather than resolving the hostname via
+    // getaddrinfo — that depends on mDNS/hosts being set up and can miss or
+    // misreport interfaces. Skip loopback and common virtual-adapter name
+    // prefixes (VPN tunnels, container/VM bridges) so this doesn't show the
+    // same kind of confusing, unreachable IP that WSL caused on Windows.
+    static const char* kSkipPrefixes[] = {
+        "lo", "utun", "awdl", "llw", "bridge", "vmnet", "vnic",
+        "docker", "veth", "tun", "tap", "anpi", "ap1"
+    };
+    struct ifaddrs* ifaddr = nullptr;
+    if (getifaddrs(&ifaddr) == 0) {
+        for (struct ifaddrs* ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+            if (!(ifa->ifa_flags & IFF_UP) || (ifa->ifa_flags & IFF_LOOPBACK)) continue;
+            bool skip = false;
+            for (const char* pfx : kSkipPrefixes) {
+                if (strncmp(ifa->ifa_name, pfx, strlen(pfx)) == 0) { skip = true; break; }
+            }
+            if (skip) continue;
+
             char ip[64] = { 0 };
-            struct sockaddr_in* a = (struct sockaddr_in*)p->ai_addr;
+            struct sockaddr_in* a = (struct sockaddr_in*)ifa->ifa_addr;
             if (inet_ntop(AF_INET, &a->sin_addr, ip, sizeof(ip))) {
-                if (strncmp(ip, "127.", 4) == 0) continue; // skip loopback
                 out += "    http://" + std::string(ip) + ":" + std::to_string(g_httpPort) + "\n";
                 any = true;
             }
         }
-        freeaddrinfo(res);
+        freeifaddrs(ifaddr);
     }
 #endif
 
