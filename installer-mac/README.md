@@ -1,9 +1,10 @@
 # macOS installer
 
 Builds `SpidercrabInstaller.pkg`, which copies the extension `.dylib` and the
-web UI into REAPER's `UserPlugins` folder and clears the Gatekeeper
-quarantine flag on them — so users don't place files by hand or touch
-Terminal.
+web UI into REAPER's `UserPlugins` folder, clears the Gatekeeper
+quarantine flag on them, and registers the `spidercrab` OSC device in
+REAPER's global prefs (for ReaLearn/Playtime) — so users don't place files
+by hand, touch Terminal, or dig through Preferences.
 
 Installs to `~/Library/Application Support/REAPER/UserPlugins`, per-user,
 no admin password.
@@ -30,7 +31,8 @@ From the repo root:
 
 ```
 installer-mac/
-  scripts/postinstall        <- already in the repo (the only checked-in file)
+  scripts/preinstall         <- already in the repo (warns if REAPER is running)
+  scripts/postinstall        <- already in the repo (copies files, clears quarantine, registers OSC device)
   payload/
     reaper_spidercrab.dylib  <- from extension/build-cmake/ (ad-hoc codesigned)
     frontend/                <- the CONTENTS of frontend/dist/ (index.html at its root)
@@ -52,7 +54,8 @@ staged payload need to sit side by side in one folder before building:
 scripts_dir="installer-mac/build-scripts"
 rm -rf "$scripts_dir" && mkdir -p "$scripts_dir"
 cp installer-mac/scripts/postinstall "$scripts_dir/postinstall"
-chmod +x "$scripts_dir/postinstall"
+cp installer-mac/scripts/preinstall "$scripts_dir/preinstall"
+chmod +x "$scripts_dir/postinstall" "$scripts_dir/preinstall"
 cp installer-mac/payload/reaper_spidercrab.dylib "$scripts_dir/reaper_spidercrab.dylib"
 cp -R installer-mac/payload/frontend "$scripts_dir/frontend"
 
@@ -79,7 +82,20 @@ install doesn't prompt for a password.
 ## Notes
 
 - **`payload/` and `build-scripts/` are build artifacts** — gitignored,
-  staged fresh each build. Only `scripts/postinstall` itself is checked in.
+  staged fresh each build. Only `scripts/preinstall` and
+  `scripts/postinstall` are checked in.
+- **OSC device registration:** `postinstall` also adds a `csurf_N=OSC
+  "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""` line to `reaper.ini`
+  (REAPER's global prefs, not the project file — this is what ReaLearn's
+  Input/Output device dropdowns read from), right after `csurf_cnt` so it
+  stays inside the `[reaper]` section. Only if `reaper.ini` already exists
+  (a REAPER that's never been launched has no file to patch yet — the
+  device just won't be pre-registered in that case) and only if a
+  `spidercrab` device isn't already there, so re-running the installer
+  doesn't create duplicates. This still doesn't select the device in
+  ReaLearn's own Input/Output dropdowns — that's a ReaLearn-instance
+  setting, not something reaper.ini controls — so it's a one-time manual
+  pick per ReaLearn instance, not fully zero-click.
 - **What the user does after installing:** open REAPER → **Extensions →
   Spidercrab → Start / stop remote**, then **Show connection address** for
   the URL. Same as the manual-install / Windows-installer flow.

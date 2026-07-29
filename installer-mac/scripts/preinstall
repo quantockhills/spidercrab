@@ -1,0 +1,23 @@
+#!/bin/bash
+# Spidercrab macOS installer — preinstall
+#
+# Warns (doesn't hard-block) if REAPER is running, since its running
+# instance locks reaper_spidercrab.dylib and may overwrite reaper.ini with
+# its own in-memory prefs after postinstall edits it — mirrors the same
+# check the Windows installer does in InitializeSetup.
+set -e
+
+if pgrep -x REAPER >/dev/null 2>&1; then
+  CONSOLE_USER=$(stat -f%Su /dev/console 2>/dev/null || echo "$USER")
+  BUTTON=$(sudo -u "$CONSOLE_USER" osascript -e '
+    display dialog "REAPER looks like it is running.\n\nPlease close REAPER before installing, otherwise the plugin file is locked and the copy will fail.\n\nContinue anyway?" ¬
+      with title "Spidercrab" buttons {"Cancel", "Continue Anyway"} default button "Cancel"
+    button returned of result
+  ' 2>/dev/null || echo "Cancel")
+  if [ "$BUTTON" != "Continue Anyway" ]; then
+    echo "Spidercrab: install cancelled (REAPER is running)"
+    exit 1
+  fi
+fi
+
+exit 0

@@ -210,7 +210,8 @@ jobs:
           rm -rf "$scripts_dir"
           mkdir -p "$scripts_dir"
           cp installer-mac/scripts/postinstall "$scripts_dir/postinstall"
-          chmod +x "$scripts_dir/postinstall"
+          cp installer-mac/scripts/preinstall "$scripts_dir/preinstall"
+          chmod +x "$scripts_dir/postinstall" "$scripts_dir/preinstall"
           cp installer-mac/payload/reaper_spidercrab.dylib "$scripts_dir/reaper_spidercrab.dylib"
           cp -R installer-mac/payload/frontend "$scripts_dir/frontend"
 
@@ -228,13 +229,43 @@ jobs:
         run: |
           set -e
           dest="$HOME/Library/Application Support/REAPER/UserPlugins"
+          reaper_dir="$HOME/Library/Application Support/REAPER"
           rm -rf "$dest"
+
+          # Seed a minimal reaper.ini so the postinstall's OSC-device patch
+          # has something real to patch, same as a machine REAPER has
+          # already run on at least once.
+          mkdir -p "$reaper_dir"
+          cat > "$reaper_dir/reaper.ini" <<'EOF'
+[reaper]
+config_toolbar_h=0
+csurf_cnt=1
+csurf_0=SomeOtherDevice 0 9 1 1
+
+[otherplugin]
+somekey=somevalue
+EOF
+
           installer -pkg installer-mac/output/SpidercrabInstaller.pkg -target CurrentUserHomeDirectory
           test -f "$dest/reaper_spidercrab.dylib" || { echo "dylib missing after install"; exit 1; }
           test -f "$dest/frontend/index.html" || { echo "frontend/index.html missing after install"; exit 1; }
           nm -gU "$dest/reaper_spidercrab.dylib" | grep -q ReaperPluginEntry || { echo "installed dylib doesn't export ReaperPluginEntry"; exit 1; }
           echo "Installed bundle verified at: $dest"
           ls -la "$dest"
+
+          echo "--- reaper.ini after install ---"
+          cat "$reaper_dir/reaper.ini"
+          grep -qF 'OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""' "$reaper_dir/reaper.ini" || { echo "OSC device line missing from reaper.ini"; exit 1; }
+          grep -q '^csurf_cnt=2$' "$reaper_dir/reaper.ini" || { echo "csurf_cnt wasn't bumped correctly"; exit 1; }
+          grep -q '^csurf_0=SomeOtherDevice 0 9 1 1$' "$reaper_dir/reaper.ini" || { echo "pre-existing csurf_0 entry was clobbered"; exit 1; }
+          grep -qF '[otherplugin]' "$reaper_dir/reaper.ini" || { echo "unrelated [otherplugin] section got lost"; exit 1; }
+          echo "reaper.ini OSC device registration verified"
+
+          # Re-run the installer to confirm it doesn't duplicate the entry.
+          installer -pkg installer-mac/output/SpidercrabInstaller.pkg -target CurrentUserHomeDirectory
+          count=$(grep -c 'OSC "spidercrab"' "$reaper_dir/reaper.ini")
+          [ "$count" -eq 1 ] || { echo "OSC device entry duplicated on reinstall (count=$count)"; exit 1; }
+          echo "Re-install idempotency verified (no duplicate OSC device entry)"
 
       - name: Upload macOS installer
         if: ${{ inputs.make_installer }}

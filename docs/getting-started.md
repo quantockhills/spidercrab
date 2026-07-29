@@ -73,11 +73,18 @@ The [Clip Launcher](features/playtime.md) drives **Playtime 2** through **ReaLea
 1. **Install Helgobox** (it bundles both ReaLearn and Playtime 2) from [helgoboss.org](https://www.helgoboss.org/projects/helgobox/), then restart REAPER.
 2. **Add ReaLearn** to a track (any track works, or add it as monitoring FX).
 3. **Download + import the preset — on the computer:** open Spidercrab in a browser **on the PC** (`http://localhost:5173`) and go to **Settings → Download ReaLearn Preset**. (Download it here, not on the tablet — the file has to land on the same machine as REAPER.) Open the downloaded file, copy everything, and in ReaLearn's **Main** compartment click the menu (**⋯**) → **Import from Lua**, paste, and confirm. This builds the mappings for an 8×8 grid of clips.
-4. **Connect OSC:** in ReaLearn, go to **Preferences → OSC devices → Add**:
-    - **Control input** — listen on port **9001**
-    - **Feedback output** — address `127.0.0.1`, port **9011**
+4. **Connect OSC:**
 
-    Then, back in the **Main** compartment, select this device as **both** the Control input and the Feedback output.
+    !!! success "Already done if you used the installer"
+        `SpidercrabSetup.exe` / `SpidercrabInstaller.pkg` already registered a `spidercrab` OSC device in REAPER's prefs during install (matching the ports below) — skip straight to selecting it, below. If REAPER had never been run before you installed, or you used the manual-copy path, add it yourself first:
+
+        In REAPER, go to **Preferences → Control/OSC/web → Add**, choose **OSC**, and set:
+
+        - **Device name** — `spidercrab`
+        - **Receive on port** — **9001**
+        - **Send to port** — **9011**, address `127.0.0.1`
+
+    Either way, back in ReaLearn's **Main** compartment, select the **`spidercrab`** device as **both** the Control input and the Feedback output — that part's a per-ReaLearn-instance setting, so it always needs picking once by hand even when the device itself was set up automatically.
 5. **Try it:** make sure Playtime 2 has a matrix with some clips, open the **Playtime** tab on your iPad, and tap a slot. It should fire the clip, and the slot should light up live as it plays.
 
 !!! tip "Nothing happens when you tap a slot?"

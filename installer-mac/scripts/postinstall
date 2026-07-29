@@ -16,6 +16,9 @@
 #      itself already went through (files copied by the installer can
 #      still inherit quarantine from the resources they came from).
 #   4. Hand ownership back to the real user (step 2 ran as root).
+#   5. Register the "spidercrab" OSC device in REAPER's global prefs
+#      (reaper.ini), so ReaLearn's Input/Output device dropdowns have it
+#      to pick from without a manual Preferences > Control/OSC/web step.
 set -e
 
 CONSOLE_USER=$(stat -f%Su /dev/console 2>/dev/null || true)
@@ -40,6 +43,36 @@ cp -R "$SCRIPT_DIR/frontend" "$DEST/frontend"
 xattr -dr com.apple.quarantine "$DEST/reaper_spidercrab.dylib" "$DEST/frontend" 2>/dev/null || true
 
 chown -R "$CONSOLE_USER" "$DEST" 2>/dev/null || true
+
+# ---- Register the OSC device REAPER/ReaLearn need for the Clip Launcher ----
+# Only touches reaper.ini if it already exists (REAPER writes it on first
+# launch — a never-yet-run REAPER has nothing to patch) and only if a
+# "spidercrab" device isn't already registered. The new csurf_N line is
+# inserted right after csurf_cnt so it lands inside the [reaper] section,
+# not wherever happens to be last in the file.
+REAPER_INI="$USER_HOME/Library/Application Support/REAPER/reaper.ini"
+OSC_LINE='OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""'
+if [ -f "$REAPER_INI" ] && ! grep -qF "$OSC_LINE" "$REAPER_INI"; then
+  if grep -q '^csurf_cnt=' "$REAPER_INI"; then
+    awk -v newline="$OSC_LINE" '
+      /^csurf_cnt=/ {
+        cnt = $0
+        sub(/^csurf_cnt=/, "", cnt)
+        cnt = cnt + 0
+        print "csurf_cnt=" (cnt + 1)
+        print "csurf_" cnt "=" newline
+        next
+      }
+      { print }
+    ' "$REAPER_INI" > "$REAPER_INI.spidercrab-tmp" && mv "$REAPER_INI.spidercrab-tmp" "$REAPER_INI"
+    chown "$CONSOLE_USER" "$REAPER_INI" 2>/dev/null || true
+    echo "Spidercrab: registered the spidercrab OSC device in reaper.ini"
+  else
+    echo "Spidercrab: reaper.ini has no csurf_cnt key — skipping OSC auto-setup (add it manually via Preferences > Control/OSC/web if you use the Clip Launcher)"
+  fi
+else
+  echo "Spidercrab: reaper.ini not found, or the OSC device is already registered — skipping"
+fi
 
 echo "Spidercrab: done."
 exit 0

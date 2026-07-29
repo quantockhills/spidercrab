@@ -59,3 +59,55 @@ begin
       Result := False;
   end;
 end;
+
+// Registers the "spidercrab" OSC device in REAPER's global prefs
+// (reaper.ini), so ReaLearn's Input/Output device dropdowns have it to pick
+// from without a manual Preferences > Control/OSC/web step. Only touches
+// reaper.ini if it already exists (REAPER writes it on first launch — a
+// never-yet-run REAPER has nothing to patch) and only if a "spidercrab"
+// device isn't already registered.
+procedure RegisterSpidercrabOscDevice();
+var
+  ReaperIni: String;
+  Count, I: Integer;
+  Val: String;
+  AlreadySet: Boolean;
+const
+  OscLine = 'OSC "spidercrab" 6 9001 "127.0.0.1" 9011 1024 10 ""';
+begin
+  ReaperIni := ExpandConstant('{userappdata}\REAPER\reaper.ini');
+  if not FileExists(ReaperIni) then
+  begin
+    Log('reaper.ini not found — skipping OSC device setup (REAPER has probably never been run yet)');
+    Exit;
+  end;
+
+  Count := GetIniInt('reaper', 'csurf_cnt', 0, ReaperIni);
+
+  AlreadySet := False;
+  for I := 0 to Count - 1 do
+  begin
+    Val := GetIniString('reaper', 'csurf_' + IntToStr(I), '', ReaperIni);
+    if Val = OscLine then
+    begin
+      AlreadySet := True;
+      break;
+    end;
+  end;
+
+  if AlreadySet then
+  begin
+    Log('spidercrab OSC device already present in reaper.ini — leaving as-is');
+    Exit;
+  end;
+
+  SetIniString('reaper', 'csurf_' + IntToStr(Count), OscLine, ReaperIni);
+  SetIniString('reaper', 'csurf_cnt', IntToStr(Count + 1), ReaperIni);
+  Log('Added spidercrab OSC device to reaper.ini (csurf_' + IntToStr(Count) + ')');
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    RegisterSpidercrabOscDevice();
+end;
