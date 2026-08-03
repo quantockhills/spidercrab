@@ -25,6 +25,13 @@ function createMockEntries(): DirEntry[] {
   ];
 }
 
+// getDirectory takes (path, offset?, limit?) since directory listing was
+// paginated in 9220012. These tests care only about which path was requested,
+// not the paging arguments.
+function expectDirectoryRequested(mock: ReturnType<typeof vi.fn>, path: string) {
+  expect(mock.mock.calls.map((c) => c[0])).toContain(path);
+}
+
 // ── Tests ─────────────────────────────────────────────────────
 
 describe('SampleBrowser', () => {
@@ -150,7 +157,9 @@ describe('SampleBrowser', () => {
     await waitFor(() => {
       // The send button text should change
       expect(mockSendSampleToTrack).toHaveBeenCalledTimes(1);
-      expect(mockSendSampleToTrack).toHaveBeenCalledWith(expect.stringContaining('kick.wav'), 0);
+      // Third arg is the trim/reverse region — undefined unless this exact
+      // file is the one currently previewed.
+      expect(mockSendSampleToTrack).toHaveBeenCalledWith(expect.stringContaining('kick.wav'), 0, undefined);
     });
   });
 
@@ -288,7 +297,7 @@ describe('SampleBrowser', () => {
     });
 
     // Audio files should have play buttons
-    const playButtons = screen.getAllByLabelText('Preview');
+    const playButtons = screen.getAllByLabelText('Play');
     expect(playButtons.length).toBeGreaterThan(0);
   });
 
@@ -319,12 +328,13 @@ describe('SampleBrowser', () => {
     });
 
     // Click play button on kick.wav
-    const playButtons = screen.getAllByLabelText('Preview');
+    const playButtons = screen.getAllByLabelText('Play');
     fireEvent.click(playButtons[0]);
 
-    // Preview panel should show the waveform (peaks loaded)
+    // Preview panel should open. Asserted via its close button, which is
+    // unique to the panel — every file row also has a Play control now.
     await waitFor(() => {
-      expect(screen.getByLabelText(/Play/i)).toBeDefined();
+      expect(screen.getByLabelText('Close preview')).toBeDefined();
     });
   });
 
@@ -600,7 +610,8 @@ describe('SampleBrowser', () => {
       await waitFor(() => {
         expect(mockSendSampleToTrack).toHaveBeenCalledWith(
           expect.stringContaining('snare.wav'),
-          0
+          0,
+          undefined
         );
       });
     });
@@ -638,9 +649,11 @@ describe('SampleBrowser', () => {
       act(() => { fireEvent.click(screen.getByText('File Info')); });
 
       // File Info modal should appear
+      // The modal shows name / path / type; Size was dropped when the info
+      // payload stopped carrying file sizes.
       await waitFor(() => {
         expect(screen.getByText('Type')).toBeDefined();
-        expect(screen.getByText('Size')).toBeDefined();
+        expect(screen.getByText('Path')).toBeDefined();
       });
 
       // Should show file details
@@ -714,7 +727,7 @@ describe('SampleBrowser', () => {
       );
 
       // Should show the root selector heading
-      expect(screen.getByText('Sample Directories')).toBeDefined();
+      expect(screen.getByText('Directories')).toBeDefined();
 
       // Should show each configured root
       expect(screen.getByText('/samples/drums')).toBeDefined();
@@ -746,7 +759,7 @@ describe('SampleBrowser', () => {
 
       // Should navigate into that directory
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums');
+        expectDirectoryRequested(mockGetDirectory, '/samples/drums');
       });
 
       // Should show directory contents
@@ -820,7 +833,7 @@ describe('SampleBrowser', () => {
       fireEvent.click(drumDir);
 
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums/Drums');
+        expectDirectoryRequested(mockGetDirectory, '/samples/drums/Drums');
       });
 
       // Go up with ..
@@ -908,7 +921,7 @@ describe('SampleBrowser', () => {
       fireEvent.click(screen.getByText('Drums'));
 
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/tmp/Drums');
+        expectDirectoryRequested(mockGetDirectory, '/tmp/Drums');
       });
 
       // Check localStorage was updated
@@ -944,7 +957,7 @@ describe('SampleBrowser', () => {
 
       // Should load the persisted path
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/tmp/Drums');
+        expectDirectoryRequested(mockGetDirectory, '/tmp/Drums');
       });
     });
 
@@ -975,7 +988,7 @@ describe('SampleBrowser', () => {
       fireEvent.click(screen.getByText('Go'));
 
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/home/samples');
+        expectDirectoryRequested(mockGetDirectory, '/home/samples');
       });
 
       // Path should be updated
@@ -1094,7 +1107,7 @@ describe('SampleBrowser', () => {
       );
 
       // Should show root selector initially
-      expect(screen.getByText('Sample Directories')).toBeDefined();
+      expect(screen.getByText('Directories')).toBeDefined();
 
       // Type a search query that should match files across multiple roots
       const searchInput = screen.getByPlaceholderText('Filter files...');
@@ -1102,9 +1115,9 @@ describe('SampleBrowser', () => {
 
       // Should fetch ALL roots
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums');
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/synths');
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/loops');
+        expectDirectoryRequested(mockGetDirectory, '/samples/drums');
+        expectDirectoryRequested(mockGetDirectory, '/samples/synths');
+        expectDirectoryRequested(mockGetDirectory, '/samples/loops');
       });
 
       // Should show matching files from ALL roots
@@ -1242,7 +1255,7 @@ describe('SampleBrowser', () => {
 
       // Should return to root selector view
       await waitFor(() => {
-        expect(screen.getByText('Sample Directories')).toBeDefined();
+        expect(screen.getByText('Directories')).toBeDefined();
       });
     });
 
@@ -1311,7 +1324,7 @@ describe('SampleBrowser', () => {
       fireEvent.click(screen.getByText('/samples/drums'));
 
       await waitFor(() => {
-        expect(mockGetDirectory).toHaveBeenCalledWith('/samples/drums');
+        expectDirectoryRequested(mockGetDirectory, '/samples/drums');
       });
 
       // Clear mocks to reset call tracking
@@ -1500,7 +1513,7 @@ describe('SampleBrowser', () => {
       });
 
       // Select a file by clicking its play button
-      const playButtons = screen.getAllByLabelText('Preview');
+      const playButtons = screen.getAllByLabelText('Play');
       fireEvent.click(playButtons[0]);
 
       // Switch to Session mode

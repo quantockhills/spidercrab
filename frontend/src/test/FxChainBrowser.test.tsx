@@ -7,6 +7,10 @@ import type { Track, FxChainEntry, FxChainSearchResult } from '../hooks/useReape
 
 const TEST_PATH = '/tmp/fx_chains_test';
 
+// Mirrors `pageSize` in FxChainBrowser.tsx. Kept as a literal so that changing
+// the component's page size fails these tests rather than silently passing.
+const SEARCH_PAGE_SIZE = 100;
+
 function createMockTracks(): Track[] {
   return [
     { index: 0, name: 'Kick', trackNumber: 1, selected: true, muted: false, soloed: false, armed: false, volume: 0.8 },
@@ -374,13 +378,15 @@ describe('FxChainBrowser', () => {
     });
   });
 
-  it('calls fxChainSearchRecursive on search (debounced)', async () => {
-    const mockSearch = vi.fn().mockResolvedValue({ query: 'comp', results: [] });
+  // 0bf8bc8 dropped the recursive-search fallback from this component (it now
+  // lives only in FxBrowser) and moved to paged cached search at 100/page.
+  it('calls fxChainSearchCached on search (debounced)', async () => {
+    const mockSearch = vi.fn().mockResolvedValue({ results: [], total: 0, offset: 0, limit: SEARCH_PAGE_SIZE });
     const props = createDefaultProps({
       tracks: [],
       selectedTrack: null,
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
-      fxChainSearchRecursive: mockSearch,
+      fxChainSearchCached: mockSearch,
     });
     render(<FxChainBrowser {...props} />);
 
@@ -392,7 +398,7 @@ describe('FxChainBrowser', () => {
     fireEvent.change(searchInput, { target: { value: 'comp' } });
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('comp', expect.any(String));
+      expect(mockSearch).toHaveBeenCalledWith('comp', expect.any(String), 0, SEARCH_PAGE_SIZE);
     }, { timeout: 2000 });
   });
 
@@ -402,12 +408,14 @@ describe('FxChainBrowser', () => {
       name: 'secret_comp.RfxChain',
       size: 256,
     };
-    const mockSearch = vi.fn().mockResolvedValue({ query: 'comp', results: [remoteResult] });
+    const mockSearch = vi.fn().mockResolvedValue({
+      results: [remoteResult], total: 1, offset: 0, limit: SEARCH_PAGE_SIZE,
+    });
     const props = createDefaultProps({
       tracks: [],
       selectedTrack: null,
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
-      fxChainSearchRecursive: mockSearch,
+      fxChainSearchCached: mockSearch,
     });
     render(<FxChainBrowser {...props} />);
 
@@ -429,7 +437,7 @@ describe('FxChainBrowser', () => {
       tracks: [],
       selectedTrack: null,
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
-      fxChainSearchRecursive: mockSearch,
+      fxChainSearchCached: mockSearch,
     });
     render(<FxChainBrowser {...props} />);
 
@@ -447,14 +455,14 @@ describe('FxChainBrowser', () => {
 
   it('resets remote search results when search is cleared', async () => {
     const mockSearch = vi.fn().mockResolvedValue({
-      query: 'comp',
       results: [{ filePath: '/deep/secret.RfxChain', name: 'secret.RfxChain', size: 256 }],
+      total: 1, offset: 0, limit: SEARCH_PAGE_SIZE,
     });
     const props = createDefaultProps({
       tracks: [],
       selectedTrack: null,
       fxChainGetInfo: vi.fn().mockResolvedValue(null),
-      fxChainSearchRecursive: mockSearch,
+      fxChainSearchCached: mockSearch,
     });
     render(<FxChainBrowser {...props} />);
 
@@ -597,14 +605,14 @@ describe('FxChainBrowser', () => {
 
   it('shows Next button when cached search has more results than page size', async () => {
     const mockSearchCached = vi.fn().mockResolvedValue({
-      results: Array.from({ length: 16 }, (_, i) => ({
+      results: Array.from({ length: SEARCH_PAGE_SIZE }, (_, i) => ({
         filePath: `/deep/chain_${i}.RfxChain`,
         name: `chain_${i}.RfxChain`,
         size: 256,
       })),
-      total: 42,
+      total: SEARCH_PAGE_SIZE + 42,
       offset: 0,
-      limit: 16,
+      limit: SEARCH_PAGE_SIZE,
     });
 
     const props = createDefaultProps({
@@ -623,18 +631,22 @@ describe('FxChainBrowser', () => {
     fireEvent.change(searchInput, { target: { value: 'chain' } });
 
     await waitFor(() => {
-      expect(screen.getByText('Next (26 more)')).toBeDefined();
+      expect(screen.getByText('Next →')).toBeDefined();
     }, { timeout: 2000 });
+    // Range label accompanies the pager
+    expect(screen.getByText(`1–${SEARCH_PAGE_SIZE} of ${SEARCH_PAGE_SIZE + 42}`)).toBeDefined();
   });
 
   it('loads next page of cached results when Next is clicked', async () => {
-    const page1Results = Array.from({ length: 16 }, (_, i) => ({
+    const total = SEARCH_PAGE_SIZE * 2;
+
+    const page1Results = Array.from({ length: SEARCH_PAGE_SIZE }, (_, i) => ({
       filePath: `/deep/page1_${i}.RfxChain`,
       name: `page1_${i}.RfxChain`,
       size: 100,
     }));
 
-    const page2Results = Array.from({ length: 16 }, (_, i) => ({
+    const page2Results = Array.from({ length: SEARCH_PAGE_SIZE }, (_, i) => ({
       filePath: `/deep/page2_${i}.RfxChain`,
       name: `page2_${i}.RfxChain`,
       size: 200,
@@ -643,15 +655,15 @@ describe('FxChainBrowser', () => {
     const mockSearchCached = vi.fn()
       .mockResolvedValueOnce({
         results: page1Results,
-        total: 32,
+        total,
         offset: 0,
-        limit: 16,
+        limit: SEARCH_PAGE_SIZE,
       })
       .mockResolvedValueOnce({
         results: page2Results,
-        total: 32,
-        offset: 16,
-        limit: 16,
+        total,
+        offset: SEARCH_PAGE_SIZE,
+        limit: SEARCH_PAGE_SIZE,
       });
 
     const props = createDefaultProps({
@@ -671,19 +683,21 @@ describe('FxChainBrowser', () => {
 
     // Wait for first page to load
     await waitFor(() => {
-      expect(screen.getByText('Next (16 more)')).toBeDefined();
+      expect(screen.getByText('Next →')).toBeDefined();
     }, { timeout: 2000 });
 
     // Click Next
-    fireEvent.click(screen.getByText('Next (16 more)'));
+    fireEvent.click(screen.getByText('Next →'));
 
-    // Should load second page and show merged results
+    // Paging replaces the visible results rather than appending to them
     await waitFor(() => {
       expect(screen.getByText('page2_0.RfxChain')).toBeDefined();
     });
+    expect(screen.queryByText('page1_0.RfxChain')).toBeNull();
 
-    // Next button should disappear since all 32 results loaded
-    expect(screen.queryByText(/Next/)).toBeNull();
+    // On the last page the pager stays (Prev is live) but Next is disabled
+    expect(screen.getByText('Next →')).toBeDisabled();
+    expect(screen.getByText('← Prev')).not.toBeDisabled();
   });
 
   it('uses cached search when fxChainSearchCached is provided', async () => {
@@ -691,7 +705,7 @@ describe('FxChainBrowser', () => {
       results: [{ filePath: '/deep/found.RfxChain', name: 'found.RfxChain', size: 512 }],
       total: 1,
       offset: 0,
-      limit: 16,
+      limit: SEARCH_PAGE_SIZE,
     });
 
     const props = createDefaultProps({
@@ -713,6 +727,6 @@ describe('FxChainBrowser', () => {
       expect(screen.getByText('found.RfxChain')).toBeDefined();
     }, { timeout: 2000 });
 
-    expect(mockSearchCached).toHaveBeenCalledWith('found', expect.any(String), 0, 16);
+    expect(mockSearchCached).toHaveBeenCalledWith('found', expect.any(String), 0, SEARCH_PAGE_SIZE);
   });
 });

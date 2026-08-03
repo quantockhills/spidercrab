@@ -77,6 +77,25 @@ function clickExpandArrow(fxName: string) {
   fireEvent.click(arrow);
 }
 
+// Helper: find the draggable FX card wrapping a given FX name
+function fxCard(fxName: string): Element {
+  const card = screen.getAllByText(fxName)[0]?.closest('[draggable="true"]');
+  if (!card) throw new Error(`FX card for "${fxName}" not found`);
+  return card;
+}
+
+// Helper: tap an FX card. FX cards use pointer events rather than onClick
+// (34bec3d — draggable={true} suppresses click after a hold gesture), and
+// bypass needs a double-tap within 300ms (624e8d9), so a single click does
+// nothing.
+function tapFxCard(fxName: string, times: number = 1) {
+  const card = fxCard(fxName);
+  for (let i = 0; i < times; i++) {
+    fireEvent.pointerDown(card);
+    fireEvent.pointerUp(card);
+  }
+}
+
 // ── Tests ────────────────────────────────────────────────────
 
 describe('TrackOverview — transport bar', () => {
@@ -420,13 +439,13 @@ describe('TrackOverview — FX grid cards', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Click the ReaEQ card — should toggle bypass
-    fireEvent.click(screen.getByText('ReaEQ'));
+    // Double-tap the ReaEQ card — should toggle bypass
+    tapFxCard('ReaEQ', 2);
 
     await waitFor(() => {
       expect(onToggleBypass).toHaveBeenCalledOnce();
     });
-    expect(onToggleBypass).toHaveBeenCalledWith(0, 0);
+    expect(onToggleBypass).toHaveBeenCalledWith(0, 0, false);
   });
 
   it('opens inline drawer when expand arrow is clicked', async () => {
@@ -947,13 +966,13 @@ describe('TrackOverview — FX bypass and delete', () => {
       expect(screen.getByText('ReaEQ')).toBeDefined();
     });
 
-    // Tap the FX card
-    fireEvent.click(screen.getByText('ReaEQ'));
+    // Double-tap the FX card
+    tapFxCard('ReaEQ', 2);
 
     await waitFor(() => {
       expect(onToggleBypass).toHaveBeenCalledOnce();
     });
-    expect(onToggleBypass).toHaveBeenCalledWith(0, 0);
+    expect(onToggleBypass).toHaveBeenCalledWith(0, 0, false);
   });
 
   it('shows dimmed styling for bypassed FX', async () => {
@@ -1039,8 +1058,10 @@ describe('TrackOverview — FX bypass and delete', () => {
     }, { timeout: 1000 });
     fireEvent.pointerUp(card!);
 
-    // Tap the card again to confirm delete
-    fireEvent.click(screen.getByText('Delete?'));
+    // Tap the card again to confirm delete. The long-press timer has already
+    // fired, so a fresh down/up pair is needed to re-enter the tap handler.
+    // The card shows "Delete?" in place of the FX name while confirming.
+    tapFxCard('Delete?');
 
     await waitFor(() => {
       expect(onDeleteFx).toHaveBeenCalledOnce();
@@ -1708,7 +1729,13 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
   function renderWithChainSearch(props: Partial<Parameters<typeof TrackOverview>[0]> = {}) {
     const enumerateFx = vi.fn().mockResolvedValue(mockEnumerateFx);
     const addFx = vi.fn().mockResolvedValue(0);
-    const searchChains = vi.fn().mockResolvedValue(mockChainResults);
+    // searchChains hits the backend, which does the filtering — so the mock
+    // has to filter too, or every query would appear to match everything.
+    const searchChains = vi.fn().mockImplementation(async (query: string) =>
+      mockChainResults.filter((c) =>
+        c.name.toLowerCase().includes(query.toLowerCase()),
+      ),
+    );
     const loadChain = vi.fn().mockResolvedValue(true);
 
     const utils = renderTrackOverview({
@@ -1735,7 +1762,19 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
     });
   }
 
-  it('calls both enumerateFx and searchChains when search is opened with searchChains prop', async () => {
+  // Chains are fetched per query rather than pre-loaded when the panel opens
+  // (changed in 0bf8bc8), so a search term is needed before any chain result
+  // exists. The default 'a' matches every fixture, FX and chain alike.
+  async function typeSearch(query: string = 'a') {
+    fireEvent.change(screen.getByTestId('inline-fx-search-input'), {
+      target: { value: query },
+    });
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('inline-fx-result').length).toBeGreaterThan(0);
+    });
+  }
+
+  it('calls enumerateFx when search opens, and searchChains once a query is typed', async () => {
     const { enumerateFx, searchChains } = renderWithChainSearch();
 
     await waitFor(() => {
@@ -1744,9 +1783,14 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
 
     await longPressAddFx();
 
-    // Both should have been called
+    // FX are loaded up front; chains are not requested until there's a query
     expect(enumerateFx).toHaveBeenCalledOnce();
-    expect(searchChains).toHaveBeenCalledOnce();
+    expect(searchChains).not.toHaveBeenCalled();
+
+    await typeSearch();
+    await waitFor(() => {
+      expect(searchChains).toHaveBeenCalledOnce();
+    });
   });
 
   it('shows chain results with a 📦 icon in search results', async () => {
@@ -1757,6 +1801,7 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
     });
 
     await longPressAddFx();
+    await typeSearch();
 
     // Chain results should be visible with 📦 indicator
     await waitFor(() => {
@@ -1783,6 +1828,7 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
     });
 
     await longPressAddFx();
+    await typeSearch();
 
     // Wait for chain results to appear
     await waitFor(() => {
@@ -1903,6 +1949,7 @@ describe('TrackOverview — Inline FX Search — Chain Integration', () => {
     });
 
     await longPressAddFx();
+    await typeSearch();
 
     await waitFor(() => {
       expect(screen.getByText('Vocal Chain')).toBeDefined();
