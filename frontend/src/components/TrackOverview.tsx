@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Track, FxInfo, FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
 import type { EnumeratedFx } from '../hooks/useFx';
 import { volumeToDb } from '../utils/volume';
+import { useLiveSlider } from '../hooks/useLiveSlider';
 import type { WsResponse } from '../lib/wsClient';
 import { ParamSlider } from './ParamControl';
 import { ChainCycler } from './ChainCycler';
@@ -56,7 +57,11 @@ interface TrackOverviewProps {
 
 
 /** Interactive volume fader with slider and visual bar */
-function VolumeBar({ volume, onChange }: { volume: number; onChange?: (value: number) => void }) {
+function VolumeBar({ volume, onChange, onRelease }: {
+  volume: number;
+  onChange?: (value: number) => void;
+  onRelease?: () => void;
+}) {
   const pct = Math.min(volume * 100, 100);
   return (
     <div className="relative w-24 h-5">
@@ -78,6 +83,11 @@ function VolumeBar({ volume, onChange }: { volume: number; onChange?: (value: nu
           const val = parseFloat(e.target.value);
           if (onChange) onChange(val);
         }}
+        // End of gesture — hand the value back to REAPER's (Issue #137)
+        onPointerUp={onRelease}
+        onPointerCancel={onRelease}
+        onKeyUp={onRelease}
+        onBlur={onRelease}
         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         aria-label="Track volume"
         data-testid="track-volume-slider"
@@ -87,7 +97,11 @@ function VolumeBar({ volume, onChange }: { volume: number; onChange?: (value: nu
 }
 
 /** Pan control: horizontal slider -1 to 1, with center position indicator */
-function PanBar({ pan, onChange }: { pan: number; onChange?: (value: number) => void }) {
+function PanBar({ pan, onChange, onRelease }: {
+  pan: number;
+  onChange?: (value: number) => void;
+  onRelease?: () => void;
+}) {
   // Normalize -1..1 to 0..100 for bar width
   const pct = Math.round(Math.abs(pan) * 100);
   const isLeft = pan < -0.05;
@@ -137,6 +151,11 @@ function PanBar({ pan, onChange }: { pan: number; onChange?: (value: number) => 
             const val = parseFloat(e.target.value);
             if (onChange) onChange(val);
           }}
+          // End of gesture — hand the value back to REAPER's (Issue #137)
+          onPointerUp={onRelease}
+          onPointerCancel={onRelease}
+          onKeyUp={onRelease}
+          onBlur={onRelease}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           aria-label="Track pan"
           data-testid="track-pan-slider"
@@ -1712,6 +1731,11 @@ function TrackRow({
   onPanChange,
   onOpenFx,
 }: TrackRowProps) {
+  // Faders lead, REAPER follows — see Issue #137. Held here rather than inside
+  // VolumeBar/PanBar so the dB and pan readouts track the finger as well.
+  const vol = useLiveSlider(track.volume, onVolumeChange);
+  const pan = useLiveSlider(track.pan, onPanChange);
+
   return (
     <div
       onClick={onSelect}
@@ -1739,15 +1763,15 @@ function TrackRow({
       </div>
 
       {/* Volume bar */}
-      <VolumeBar volume={track.volume} onChange={onVolumeChange} />
+      <VolumeBar volume={vol.value} onChange={vol.change} onRelease={vol.release} />
 
       {/* Volume dB */}
       <span className="text-[11px] text-[var(--text-secondary)] w-14 text-right tabular-nums">
-        {volumeToDb(track.volume)}
+        {volumeToDb(vol.value)}
       </span>
 
       {/* Pan control */}
-      <PanBar pan={track.pan} onChange={onPanChange} />
+      <PanBar pan={pan.value} onChange={pan.change} onRelease={pan.release} />
 
       {/* Control buttons */}
       <div className="flex gap-1.5 flex-shrink-0">

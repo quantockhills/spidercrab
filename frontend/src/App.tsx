@@ -332,14 +332,23 @@ function AppInner() {
     setActiveTab('tracks');
   }, [selectTrack]);
 
+  // Per-track send counters. A reply that a newer send has already superseded
+  // must not be written back, or the fader jumps to a stale position (#137).
+  const volumeSeqRef = useRef<Record<number, number>>({});
+  const panSeqRef = useRef<Record<number, number>>({});
+
   const handleVolumeChange = useCallback(async (index: number, volume: number) => {
+    const seq = (volumeSeqRef.current[index] ?? 0) + 1;
+    volumeSeqRef.current[index] = seq;
     const ok = await setTrackVolume(index, volume);
-    if (ok) updateTrack(index, { volume });
+    if (ok && volumeSeqRef.current[index] === seq) updateTrack(index, { volume });
   }, [setTrackVolume, updateTrack]);
 
   const handlePanChange = useCallback(async (index: number, pan: number) => {
+    const seq = (panSeqRef.current[index] ?? 0) + 1;
+    panSeqRef.current[index] = seq;
     const ok = await setTrackPan(index, pan);
-    if (ok) updateTrack(index, { pan });
+    if (ok && panSeqRef.current[index] === seq) updateTrack(index, { pan });
   }, [setTrackPan, updateTrack]);
 
   // ── FX / Param navigation ──
