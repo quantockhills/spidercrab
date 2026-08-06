@@ -27,11 +27,22 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      # Gate the release on the unit suite. Deliberately not run on every push
+      # (see windows-build.yml) — only here, so a release can't ship with the
+      # suite broken. Runs before the C++ toolchain setup so it fails in ~1min
+      # rather than ~3. Windows job only: jsdom results don't vary by OS, so
+      # repeating it on the macOS runner would only cost time.
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npx vitest run
+
       - name: Build frontend
         working-directory: frontend
-        run: |
-          npm ci
-          npm run build
+        run: npm run build
 
       # ---- Toolchain: clang-cl inside the MSVC environment (never MinGW) ----
       # The runner image ships LLVM at C:\Program Files\LLVM; we reference

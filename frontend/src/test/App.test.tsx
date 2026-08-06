@@ -3,11 +3,17 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import App from '../App';
 import type { Track, FxInfo } from '../hooks/useReaper';
 import { useReaper } from '../hooks/useReaper';
+import { makeReaperMock } from './reaperMock';
 
 // Mock the useReaper hook
 vi.mock('../hooks/useReaper', () => ({
   useReaper: vi.fn(),
 }));
+
+// Members not named by a test fall back to permissive defaults, so growth in
+// useReaper's surface can't break tests that don't care about it.
+const mockReaper = (values: Record<string, unknown>) =>
+  (useReaper as ReturnType<typeof vi.fn>).mockReturnValue(makeReaperMock(values));
 
 const mockTracks: Track[] = [
   { index: 0, name: 'Kick', trackNumber: 1, selected: true, muted: false, soloed: false, armed: false, volume: 0.8 },
@@ -28,7 +34,7 @@ function setupMockReaper() {
   const mockSetFxParam = vi.fn().mockResolvedValue(true);
   const mockDeleteFx = vi.fn().mockResolvedValue(true);
 
-  (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+  mockReaper({
     connected: true,
     tracks: mockTracks,
     refreshTracks: vi.fn().mockResolvedValue(undefined),
@@ -163,7 +169,7 @@ describe('App — Settings tab', () => {
 
   it('shows disabled button and Refreshing indicator when isRefreshingFx is true', async () => {
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -220,7 +226,7 @@ describe('App — Settings tab', () => {
 
   it('shows Sample Directories section with empty state', async () => {
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -279,7 +285,7 @@ describe('App — Settings tab', () => {
   it('can add a sample directory path', async () => {
     localStorage.clear();
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -360,7 +366,7 @@ describe('App — Settings tab', () => {
     localStorage.setItem('sampleBrowserPaths', JSON.stringify(['/home/user/samples']));
 
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -434,7 +440,7 @@ describe('App — Settings tab', () => {
     localStorage.setItem('sampleBrowserRootPath', '/legacy/path');
 
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -505,7 +511,7 @@ describe('App — Settings tab', () => {
   it('calls refreshFxCache when Refresh Plugin List is clicked', async () => {
     const mockRefreshFxCache = vi.fn();
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -564,7 +570,7 @@ describe('App — Settings tab', () => {
     localStorage.setItem('fxChainPath', '/tmp/chains');
 
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -630,7 +636,7 @@ describe('App — Settings tab', () => {
     localStorage.removeItem('fxChainPath');
 
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -695,7 +701,7 @@ describe('App — Settings tab', () => {
 
     const mockRefreshChains = vi.fn().mockResolvedValue({ refreshed: true, count: 5 });
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -773,7 +779,7 @@ describe('App — Settings tab', () => {
     });
 
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: mockTracks,
       refreshTracks: vi.fn(),
@@ -839,6 +845,12 @@ describe('App — Settings tab', () => {
       expect(screen.getByTestId('inline-fx-search-input')).toBeDefined();
     });
 
+    // Chains are fetched on demand as the query is typed (changed in 0bf8bc8,
+    // which stopped pre-loading every chain when the panel opens).
+    fireEvent.change(screen.getByTestId('inline-fx-search-input'), {
+      target: { value: 'chain' },
+    });
+
     // fxChainSearchCached should have been called via searchChains callback
     await waitFor(() => {
       expect(mockSearchCached).toHaveBeenCalledOnce();
@@ -866,7 +878,7 @@ describe('App — Settings tab', () => {
 describe('App — Drag edge-reached tab switch', () => {
   it('renders DragProvider and DragOverlay without crashing', async () => {
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),
@@ -899,13 +911,14 @@ describe('App — Drag edge-reached tab switch', () => {
 
     const { container } = render(<App />);
 
-    // App should render without crashing
-    expect(container.textContent).toContain('Utpaladeva');
+    // App should render without crashing. (Asserted on the tab bar rather than
+    // the old 'Utpaladeva' branding, which was removed in 4a65ede.)
+    expect(container.textContent).toContain('Tracks');
   });
 });
   it('renders SessionView content when Playtime tab is selected with matrix data', async () => {
     const mockOnEvent = vi.fn().mockReturnValue(vi.fn());
-    (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
+    mockReaper({
       connected: true,
       tracks: [],
       refreshTracks: vi.fn(),

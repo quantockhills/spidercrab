@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import ErrorBoundary from '../components/ErrorBoundary';
 import App from '../App';
 import { useReaper } from '../hooks/useReaper';
+import { makeReaperMock } from './reaperMock';
 
 // Mock the useReaper hook
 vi.mock('../hooks/useReaper', () => ({
@@ -11,30 +12,14 @@ vi.mock('../hooks/useReaper', () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  (useReaper as ReturnType<typeof vi.fn>).mockReturnValue({
-    connected: true,
-    tracks: [],
-    refreshTracks: vi.fn().mockResolvedValue(undefined),
-    toggleTrackMute: vi.fn().mockResolvedValue(undefined),
-    toggleTrackSolo: vi.fn().mockResolvedValue(undefined),
-    toggleTrackArm: vi.fn().mockResolvedValue(undefined),
-    selectTrack: vi.fn().mockResolvedValue(undefined),
+  (useReaper as ReturnType<typeof vi.fn>).mockReturnValue(makeReaperMock({
     enumerateFx: vi.fn().mockResolvedValue([]),
     getTrackFx: vi.fn().mockResolvedValue([]),
     getFxParams: vi.fn().mockResolvedValue([]),
-    setFxParam: vi.fn().mockResolvedValue(true),
-    addFx: vi.fn(),
-    deleteFx: vi.fn().mockResolvedValue(true),
     getDirectory: vi.fn().mockResolvedValue([]),
-    sendSampleToTrack: vi.fn(),
-    isRefreshingFx: false,
-    refreshFxCache: vi.fn(),
-    play: vi.fn(),
-    stop: vi.fn(),
     getTransportState: vi.fn().mockResolvedValue({ playing: false, recording: false }),
     onEvent: vi.fn().mockReturnValue(vi.fn()),
-    updateTrack: vi.fn(),
-  });
+  }));
 });
 
 // ---------------------------------------------------------------------------
