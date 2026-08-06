@@ -399,3 +399,160 @@ TEST(FrameTest, BinaryFrame)
     EXPECT_EQ(parsed.opcode, 0x2);
     EXPECT_EQ(parsed.payload, "\x00\x01\x02\x03\xFF");
 }
+
+// ============================================================
+// Outbound send queue (Issue #136)
+//
+// JNL_Connection::send() is all-or-nothing: hand it more than the
+// socket buffer has free and it writes nothing at all and returns
+// -1. SendFrame used to call it once per frame and discard that
+// return value, so any response larger than the 64KB buffer was
+// silently dropped and the client waited for a reply that never
+// went out. The FX list is the one response big enough to hit it.
+//
+// These exercise WebSocketServer::DrainSendQueue directly, against
+// a sink that models JNL's behaviour.
+// ============================================================
+
+#include "../src/websocket_server.h"
+
+namespace {
+
+// Models a JNL connection: a fixed-size buffer that refuses oversized
+// writes outright, and that only empties when the socket is serviced
+// (once per Run() tick).
+class FakeSink {
+public:
+    explicit FakeSink(int capacity) : m_capacity(capacity) { }
+
+    int freeSpace() const { return m_capacity - (int)m_buffered.size(); }
+
+    void write(const char* p, int n)
+    {
+        // Mirrors JNL: all-or-nothing. A correct caller never trips this.
+        ASSERT_LE(n, freeSpace()) << "wrote more than the sink had room for";
+        m_buffered.append(p, n);
+    }
+
+    // Socket drains the buffer; everything written so far goes on the wire.
+    void tick()
+    {
+        m_received += m_buffered;
+        m_buffered.clear();
+    }
+
+    const std::string& received() const { return m_received; }
+
+private:
+    int         m_capacity;
+    std::string m_buffered;
+    std::string m_received;
+};
+
+// Run the drain loop the way the server does: once per tick, with the
+// socket flushing between ticks. Returns the number of ticks taken.
+int drainFully(std::string& queue, FakeSink& sink, int maxTicks = 1000)
+{
+    int ticks = 0;
+    while (!queue.empty() && ticks < maxTicks) {
+        WebSocketServer::DrainSendQueue(
+            queue,
+            [&sink]() { return sink.freeSpace(); },
+            [&sink](const char* p, int n) { sink.write(p, n); });
+        sink.tick();
+        ticks++;
+    }
+    return ticks;
+}
+
+std::string makePayload(size_t bytes)
+{
+    std::string s;
+    s.reserve(bytes);
+    for (size_t i = 0; i < bytes; i++)
+        s.push_back((char)('a' + (i % 26)));
+    return s;
+}
+
+} // namespace
+
+TEST(SendQueueTest, SmallPayloadGoesOutInOneTick)
+{
+    std::string queue = makePayload(100);
+    const std::string expected = queue;
+
+    FakeSink sink(65536);
+    EXPECT_EQ(drainFully(queue, sink), 1);
+    EXPECT_EQ(sink.received(), expected);
+}
+
+// The actual regression: a response larger than the socket buffer.
+TEST(SendQueueTest, PayloadLargerThanSocketBufferArrivesInFull)
+{
+    std::string queue = makePayload(90 * 1024); // ~a Mac's FX list
+    const std::string expected = queue;
+
+    FakeSink sink(65536);
+    drainFully(queue, sink);
+
+    EXPECT_TRUE(queue.empty()) << "queue not fully drained";
+    EXPECT_EQ(sink.received().size(), expected.size());
+    EXPECT_EQ(sink.received(), expected) << "bytes arrived corrupted or out of order";
+}
+
+TEST(SendQueueTest, VeryLargePayloadArrivesInFull)
+{
+    std::string queue = makePayload(5 * 1024 * 1024);
+    const std::string expected = queue;
+
+    FakeSink sink(65536);
+    drainFully(queue, sink, 200);
+
+    EXPECT_TRUE(queue.empty());
+    EXPECT_EQ(sink.received(), expected);
+}
+
+TEST(SendQueueTest, OrderIsPreservedAcrossManyQueuedFrames)
+{
+    std::string queue;
+    std::string expected;
+    for (int i = 0; i < 500; i++) {
+        const std::string frame = "frame" + std::to_string(i) + ";";
+        queue += frame;
+        expected += frame;
+    }
+
+    FakeSink sink(1024); // deliberately tiny, forces many ticks
+    drainFully(queue, sink);
+
+    EXPECT_EQ(sink.received(), expected);
+}
+
+TEST(SendQueueTest, StopsCleanlyWhenSinkIsFull)
+{
+    std::string queue = makePayload(1000);
+
+    FakeSink sink(400);
+    // One drain pass with no socket flush: takes what fits, leaves the rest.
+    WebSocketServer::DrainSendQueue(
+        queue,
+        [&sink]() { return sink.freeSpace(); },
+        [&sink](const char* p, int n) { sink.write(p, n); });
+
+    EXPECT_EQ(queue.size(), 600u) << "should retain exactly what didn't fit";
+    EXPECT_EQ(sink.freeSpace(), 0);
+}
+
+TEST(SendQueueTest, EmptyQueueIsANoOp)
+{
+    std::string queue;
+    FakeSink sink(65536);
+
+    WebSocketServer::DrainSendQueue(
+        queue,
+        [&sink]() { return sink.freeSpace(); },
+        [&sink](const char* p, int n) { sink.write(p, n); });
+
+    EXPECT_TRUE(queue.empty());
+    EXPECT_TRUE(sink.received().empty());
+}

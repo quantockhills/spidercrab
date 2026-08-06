@@ -64,7 +64,10 @@ void WebSocketServer::Run()
     for (int i = m_clients.GetSize() - 1; i >= 0; i--) {
         Client* c = m_clients.Get(i);
         if (c->conn) {
-            ReadClient(c);
+            // Only flush if the client survived the read — ReadClient may have
+            // removed and freed it.
+            if (ReadClient(c))
+                FlushSendQueue(c);
         }
     }
 
@@ -141,7 +144,7 @@ bool WebSocketServer::HandleUpgrade(Client* client)
     return true;
 }
 
-void WebSocketServer::ReadClient(Client* client)
+bool WebSocketServer::ReadClient(Client* client)
 {
     JNL_IConnection* conn = client->conn;
     conn->run();
@@ -151,7 +154,7 @@ void WebSocketServer::ReadClient(Client* client)
         if (m_disconnectCallback && client->handshakeDone)
             m_disconnectCallback(client->id);
         RemoveClient(client);
-        return;
+        return false;
     }
 
     // Read available data
@@ -171,26 +174,28 @@ void WebSocketServer::ReadClient(Client* client)
             client->recvBuf.erase(client->recvBuf.begin(), client->recvBuf.begin() + headerEnd + 4);
             if (!HandleUpgrade(client)) {
                 RemoveClient(client);
-                return;
+                return false;
             }
             // handshakeDone is now true — fall through to ParseFrames
             // if there's leftover data in recvBuf (same TCP packet)
         } else {
             // Wait for more data
-            return;
+            return true;
         }
     }
 
     // Process any WebSocket frames in the buffer
     // (handles both: leftover data after upgrade, and data from subsequent reads)
     if (client->handshakeDone && !client->recvBuf.empty()) {
-        ParseFrames(client);
+        return ParseFrames(client);
     }
+
+    return true;
 }
 
 const double WebSocketServer::MAX_PARSE_MS_PER_TICK = 5.0;
 
-void WebSocketServer::ParseFrames(Client* client)
+bool WebSocketServer::ParseFrames(Client* client)
 {
     // Drain a bounded burst rather than a single frame per tick. Run() is
     // called ~30x/sec, so one-per-tick capped intake at ~30 messages/sec —
@@ -204,17 +209,22 @@ void WebSocketServer::ParseFrames(Client* client)
     const auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < MAX_FRAMES_PER_TICK; i++) {
-        if (!ParseOneFrame(client))
-            break; // incomplete frame, or client removed — do not touch it again
+        const FrameResult r = ParseOneFrame(client);
+        if (r == FrameResult::ClientRemoved)
+            return false; // client is freed — caller must not touch it
+        if (r == FrameResult::Incomplete)
+            break;
 
         const auto elapsed = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - start).count();
         if (elapsed >= MAX_PARSE_MS_PER_TICK)
             break;
     }
+
+    return true;
 }
 
-bool WebSocketServer::ParseOneFrame(Client* client)
+WebSocketServer::FrameResult WebSocketServer::ParseOneFrame(Client* client)
 {
     std::vector<char>& buf = client->recvBuf;
 
@@ -226,12 +236,12 @@ bool WebSocketServer::ParseOneFrame(Client* client)
         size_t headerSize = 2;
         if (payloadLen == 126) {
             if (buf.size() < 4)
-                return false;
+                return FrameResult::Incomplete;
             payloadLen = ((unsigned char)buf[2] << 8) | (unsigned char)buf[3];
             headerSize = 4;
         } else if (payloadLen == 127) {
             if (buf.size() < 10)
-                return false;
+                return FrameResult::Incomplete;
             payloadLen = 0;
             for (int i = 0; i < 8; i++)
                 payloadLen = (payloadLen << 8) | (unsigned char)buf[2 + i];
@@ -242,7 +252,7 @@ bool WebSocketServer::ParseOneFrame(Client* client)
             headerSize += 4;
 
         if (buf.size() < headerSize + payloadLen)
-            return false;
+            return FrameResult::Incomplete;
 
         // Extract mask key and payload
         unsigned char maskKey[4] = { 0 };
@@ -269,15 +279,15 @@ bool WebSocketServer::ParseOneFrame(Client* client)
             if (m_disconnectCallback)
                 m_disconnectCallback(client->id);
             RemoveClient(client);
-            return false; // client is gone — caller must not touch it again
+            return FrameResult::ClientRemoved;
         }
 
         // Remove consumed bytes
         buf.erase(buf.begin(), buf.begin() + headerSize + payloadLen);
-        return true;
+        return FrameResult::Consumed;
     }
 
-    return false;
+    return FrameResult::Incomplete;
 }
 
 bool WebSocketServer::Send(int clientId, const std::string& message)
@@ -329,8 +339,48 @@ bool WebSocketServer::SendFrame(Client* client, int opcode, const std::string& p
     // Server-to-client frames are not masked
     frame.insert(frame.end(), payload.begin(), payload.end());
 
-    client->conn->send(frame.data(), (int)frame.size());
+    // Queue rather than send. JNL's send() writes nothing at all if the frame
+    // exceeds the socket's free space, and its return value was previously
+    // discarded — so any response over ~64KB vanished silently and the client
+    // waited for a reply that was never put on the wire.
+    if (client->sendQueue.size() + frame.size() > MAX_SEND_QUEUE_BYTES) {
+        fprintf(stderr,
+            "[spidercrab] client %d send queue full (%zu bytes) — dropping a %zu byte frame\n",
+            client->id, client->sendQueue.size(), frame.size());
+        return false;
+    }
+
+    client->sendQueue.append(frame.data(), frame.size());
     return true;
+}
+
+void WebSocketServer::DrainSendQueue(
+    std::string&                                queue,
+    const std::function<int()>&                 freeSpace,
+    const std::function<void(const char*, int)>& write)
+{
+    // Push out as much as the sink will currently accept; whatever is left
+    // goes next tick. Splitting here is safe: this is a TCP byte stream, which
+    // has no notion of our frame boundaries and fragments the data anyway. We
+    // are not splitting the WebSocket frame, only the write.
+    while (!queue.empty()) {
+        const int avail = freeSpace();
+        if (avail <= 0)
+            return; // full — resume on the next tick
+
+        const int n = (int)std::min((size_t)avail, queue.size());
+        write(queue.data(), n);
+        queue.erase(0, n);
+    }
+}
+
+void WebSocketServer::FlushSendQueue(Client* client)
+{
+    JNL_IConnection* conn = client->conn;
+    DrainSendQueue(
+        client->sendQueue,
+        [conn]() { return conn->send_bytes_available(); },
+        [conn](const char* p, int n) { conn->send(p, n); });
 }
 
 void WebSocketServer::RemoveClient(Client* client)

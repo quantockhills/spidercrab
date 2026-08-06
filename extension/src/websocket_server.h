@@ -60,6 +60,7 @@ private:
         int               id;
         JNL_IConnection*  conn;
         std::vector<char> recvBuf;
+        std::string       sendQueue;      // outbound bytes awaiting the socket
         bool              handshakeDone = false;
         int               frameState    = 0; // 0=reading header, 1=reading frame
         std::string       requestHeaders; // for initial HTTP upgrade
@@ -74,6 +75,14 @@ private:
     static const int    MAX_FRAMES_PER_TICK = 16;
     static const double MAX_PARSE_MS_PER_TICK;
 
+    // JNL's send() is all-or-nothing: hand it more than the socket's free
+    // space and it writes nothing at all and returns -1. Outbound frames are
+    // therefore queued here and drained across ticks, so a large response —
+    // the FX list runs well past 64KB on a machine with a real plugin
+    // library — isn't silently dropped. Bounded so a wedged client can't grow
+    // this without limit.
+    static const size_t MAX_SEND_QUEUE_BYTES = 8u * 1024u * 1024u;
+
     int                 m_nextClientId = 1;
     JNL_IListen*        m_listener     = nullptr;
     WDL_PtrList<Client> m_clients;
@@ -87,19 +96,38 @@ private:
     // Accept new connections
     void AcceptNew();
 
-    // Read data from a client and parse frames
-    void ReadClient(Client* client);
+    // Read data from a client and parse frames.
+    // Returns false if the client was removed (it must not be touched again).
+    bool ReadClient(Client* client);
 
     // Handle HTTP upgrade for new WebSocket connections
     bool HandleUpgrade(Client* client);
 
-    // Parse WebSocket frames from buffer
-    void ParseFrames(Client* client);
+    // Parse WebSocket frames from buffer.
+    // Returns false if the client was removed while parsing.
+    bool ParseFrames(Client* client);
 
-    // Parse a single frame. Returns true if one was consumed and it is safe to
-    // look for another; false if the buffer holds no complete frame, or if the
-    // client was removed (in which case it must not be touched again).
-    bool ParseOneFrame(Client* client);
+    // Outcome of attempting to parse a single frame.
+    enum class FrameResult {
+        Consumed,      // a frame was handled; safe to look for another
+        Incomplete,    // no complete frame in the buffer yet
+        ClientRemoved, // client was closed and freed — do not touch it
+    };
+    FrameResult ParseOneFrame(Client* client);
+
+    // Hand queued outbound bytes to the socket, as much as it will accept.
+    void FlushSendQueue(Client* client);
+
+public:
+    // The drain loop behind FlushSendQueue, free of sockets so it can be
+    // tested directly. Hands as much of `queue` to the sink as it reports room
+    // for, in order, erasing what was handed over. `freeSpace` returns the
+    // sink's current capacity; `write` must accept exactly the bytes given.
+    static void DrainSendQueue(std::string&                                queue,
+                               const std::function<int()>&                 freeSpace,
+                               const std::function<void(const char*, int)>& write);
+
+private:
 
     // Send WebSocket frame
     bool SendFrame(Client* client, int opcode, const std::string& payload);
