@@ -417,6 +417,68 @@ describe('ParamControl', () => {
       }
     });
   });
+
+  // A drag used to fire one setFxParam per pointermove — ~120/sec on an iPad,
+  // against an extension that reads ~30/sec, so the backlog kept applying for
+  // seconds after the finger lifted. Sends are now gated to one in flight.
+  it('does not send one command per pointer move during a drag', async () => {
+    let resolveSend: (v: unknown) => void = () => {};
+    const setFxParam = vi.fn().mockImplementation(
+      () => new Promise((res) => { resolveSend = res; }),
+    );
+
+    renderParamControl({ setFxParam });
+
+    await waitFor(() => {
+      expect(screen.getByText('Freq 1')).toBeDefined();
+    });
+
+    const slider = document.querySelector('.cursor-pointer');
+    mockSliderBoundingRect(slider!);
+
+    fireEvent.pointerDown(slider!, { clientX: 30, clientY: 16, button: 0 });
+
+    // Twenty moves while the first send is still unanswered
+    for (let i = 0; i < 20; i++) {
+      fireEvent.pointerMove(window, { clientX: 30 + i * 5, clientY: 16 });
+    }
+
+    await waitFor(() => expect(setFxParam).toHaveBeenCalled());
+    expect(setFxParam).toHaveBeenCalledTimes(1);
+
+    // Once the reply lands, only the newest position goes out
+    await act(async () => { resolveSend({ payload: {} }); });
+    expect(setFxParam).toHaveBeenCalledTimes(2);
+
+    const lastValue = setFxParam.mock.calls[1][3] as number;
+    const expected = 20 + ((30 + 19 * 5) / 300) * (20000 - 20);
+    expect(lastValue).toBeCloseTo(expected, 5);
+  });
+
+  // The gate must never swallow the position the gesture ended on.
+  it('sends the value the drag ended on', async () => {
+    const setFxParam = vi.fn().mockResolvedValue({ payload: {} });
+    renderParamControl({ setFxParam });
+
+    await waitFor(() => {
+      expect(screen.getByText('Freq 1')).toBeDefined();
+    });
+
+    const slider = document.querySelector('.cursor-pointer');
+    mockSliderBoundingRect(slider!);
+
+    fireEvent.pointerDown(slider!, { clientX: 30, clientY: 16, button: 0 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 16 });
+    fireEvent.pointerMove(window, { clientX: 240, clientY: 16 });
+    fireEvent.pointerUp(window, { clientX: 240, clientY: 16 });
+
+    // 240/300 of the 20..20000 range
+    const expected = 20 + 0.8 * (20000 - 20);
+    await waitFor(() => {
+      const sent = setFxParam.mock.calls.map((c) => c[3] as number);
+      expect(sent[sent.length - 1]).toBeCloseTo(expected, 5);
+    });
+  });
 });
 
 // ============================================================

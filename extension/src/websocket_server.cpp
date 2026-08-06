@@ -1,6 +1,7 @@
 #include "websocket_server.h"
 #include "sha1_utils.h"
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -187,12 +188,36 @@ void WebSocketServer::ReadClient(Client* client)
     }
 }
 
+const double WebSocketServer::MAX_PARSE_MS_PER_TICK = 5.0;
+
 void WebSocketServer::ParseFrames(Client* client)
+{
+    // Drain a bounded burst rather than a single frame per tick. Run() is
+    // called ~30x/sec, so one-per-tick capped intake at ~30 messages/sec —
+    // far below what a slider drag produces, so a backlog built up and kept
+    // applying for seconds after the gesture ended.
+    //
+    // This does not reintroduce overlapping REAPER API calls: everything here
+    // runs on the one thread and HandleMessage takes m_apiMutex, so frames are
+    // still handled strictly one after another. The budget below only bounds
+    // how long a single tick may spend, so a flood can't stall REAPER's UI.
+    const auto start = std::chrono::steady_clock::now();
+
+    for (int i = 0; i < MAX_FRAMES_PER_TICK; i++) {
+        if (!ParseOneFrame(client))
+            break; // incomplete frame, or client removed — do not touch it again
+
+        const auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start).count();
+        if (elapsed >= MAX_PARSE_MS_PER_TICK)
+            break;
+    }
+}
+
+bool WebSocketServer::ParseOneFrame(Client* client)
 {
     std::vector<char>& buf = client->recvBuf;
 
-    // Process at most ONE frame per call to prevent Reaper API calls
-    // from overlapping (e.g., track queries during FX enumeration).
     if (buf.size() >= 2) {
         unsigned char opcode     = buf[0] & 0x0F;
         bool          masked     = (buf[1] & 0x80) != 0;
@@ -201,12 +226,12 @@ void WebSocketServer::ParseFrames(Client* client)
         size_t headerSize = 2;
         if (payloadLen == 126) {
             if (buf.size() < 4)
-                return;
+                return false;
             payloadLen = ((unsigned char)buf[2] << 8) | (unsigned char)buf[3];
             headerSize = 4;
         } else if (payloadLen == 127) {
             if (buf.size() < 10)
-                return;
+                return false;
             payloadLen = 0;
             for (int i = 0; i < 8; i++)
                 payloadLen = (payloadLen << 8) | (unsigned char)buf[2 + i];
@@ -217,7 +242,7 @@ void WebSocketServer::ParseFrames(Client* client)
             headerSize += 4;
 
         if (buf.size() < headerSize + payloadLen)
-            return;
+            return false;
 
         // Extract mask key and payload
         unsigned char maskKey[4] = { 0 };
@@ -244,12 +269,15 @@ void WebSocketServer::ParseFrames(Client* client)
             if (m_disconnectCallback)
                 m_disconnectCallback(client->id);
             RemoveClient(client);
-            return;
+            return false; // client is gone — caller must not touch it again
         }
 
         // Remove consumed bytes
         buf.erase(buf.begin(), buf.begin() + headerSize + payloadLen);
+        return true;
     }
+
+    return false;
 }
 
 bool WebSocketServer::Send(int clientId, const std::string& message)

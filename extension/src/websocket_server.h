@@ -67,6 +67,13 @@ private:
 
     static const int MAX_FRAME_SIZE = 1024 * 1024; // 1MB max frame
 
+    // Bounds on how much of a client's backlog one Run() tick may absorb.
+    // A slider drag can queue messages far faster than one-per-tick drains
+    // them, so drain a burst — but cap it, since this runs on REAPER's UI
+    // thread and a long tick would stutter the editor.
+    static const int    MAX_FRAMES_PER_TICK = 16;
+    static const double MAX_PARSE_MS_PER_TICK;
+
     int                 m_nextClientId = 1;
     JNL_IListen*        m_listener     = nullptr;
     WDL_PtrList<Client> m_clients;
@@ -88,6 +95,11 @@ private:
 
     // Parse WebSocket frames from buffer
     void ParseFrames(Client* client);
+
+    // Parse a single frame. Returns true if one was consumed and it is safe to
+    // look for another; false if the buffer holds no complete frame, or if the
+    // client was removed (in which case it must not be touched again).
+    bool ParseOneFrame(Client* client);
 
     // Send WebSocket frame
     bool SendFrame(Client* client, int opcode, const std::string& payload);

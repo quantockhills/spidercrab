@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FxParam, FxPresetInfo, FxPresetNames } from '../hooks/useReaper';
+import { useLiveSlider } from '../hooks/useLiveSlider';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -501,10 +502,14 @@ export interface ParamSliderProps {
 export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSliderProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
-  const [localValue, setLocalValue] = useState(param.value);
 
-  // Use localValue when dragging, server value otherwise
-  const effectiveValue = dragging ? localValue : param.value;
+  // Shows the finger's position while dragging and REAPER's the rest of the
+  // time, and gates sends to one in flight at a time. Previously this fired a
+  // command on every pointermove — ~120/sec on an iPad, against an extension
+  // that reads ~30/sec — so a drag built a backlog that carried on applying
+  // for seconds after the finger lifted.
+  const { value: effectiveValue, change, release } = useLiveSlider(param.value, onChange);
+
   const normalized = (effectiveValue - param.min) / (param.max - param.min);
   const pct = Math.max(0, Math.min(100, normalized * 100));
 
@@ -526,13 +531,16 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
       const rect = slider.getBoundingClientRect();
       let didMove = false;
 
+      const valueAt = (clientX: number) => {
+        const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+        return param.min + (x / rect.width) * (param.max - param.min);
+      };
+
       const handlePointerMove = (ev: PointerEvent) => {
         didMove = true;
-        const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
-        const raw = x / rect.width;
-        const value = param.min + raw * (param.max - param.min);
-        setLocalValue(value);
-        onChange(value);
+        // Always moves the slider; only sends when the previous send has
+        // been answered. The final position is sent regardless.
+        change(valueAt(ev.clientX));
       };
 
       const handlePointerUp = (ev: PointerEvent) => {
@@ -547,27 +555,22 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
         onDragEnd();
 
         // If no movement happened, treat as a tap (jump to position)
-        if (!didMove) {
-          const x = Math.max(0, Math.min(rect.width, ev.clientX - rect.left));
-          const raw = x / rect.width;
-          const value = param.min + raw * (param.max - param.min);
-          setLocalValue(value);
-          onChange(value);
-        }
+        if (!didMove) change(valueAt(ev.clientX));
+        release();
       };
 
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
     },
-    [param.min, param.max, param.index, onChange, onDragStart, onDragEnd],
+    [param.min, param.max, param.index, change, release, onDragStart, onDragEnd],
   );
 
   // Double-tap to reset to mid value
   const handleDoubleTap = useCallback(() => {
     const midValue = param.mid >= param.min && param.mid <= param.max ? param.mid : (param.min + param.max) / 2;
-    setLocalValue(midValue);
-    onChange(midValue);
-  }, [param.mid, param.min, param.max, onChange]);
+    change(midValue);
+    release();
+  }, [param.mid, param.min, param.max, change, release]);
 
   return (
     <div className="space-y-1.5">
