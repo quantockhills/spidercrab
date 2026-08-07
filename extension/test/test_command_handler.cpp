@@ -865,6 +865,28 @@ static std::string jsonExtract(const std::string& json, const char* key)
     return p.getString(key);
 }
 
+// ---- Helper: a filesystem path, safe to drop into a JSON string literal ----
+//
+// Windows paths contain backslashes, which JSON reads as escape sequences —
+// "C:\Users\..." parses as an invalid \U escape, so the path arrives empty and
+// the handler correctly reports a missing parameter. Uses the same escaper the
+// production code does, so these tests encode paths exactly as a real client
+// would. A no-op on POSIX, where paths contain nothing needing escapes.
+static std::string jsonPath(const fs::path& p)
+{
+    return json_escape(p.string());
+}
+
+// ---- Helper: a scratch directory under the platform's temp location ----
+//
+// Tests used to hardcode "/tmp", which is fine on POSIX but resolves to a
+// nonexistent C:\tmp on Windows. SampleCache also normalises the paths it is
+// given, so equality checks against a literal "/tmp" failed there as well.
+static std::string tempScratch(const char* name)
+{
+    return (fs::temp_directory_path() / name).string();
+}
+
 // ---- Tests ----
 
 TEST(FXRoundtripTest, GetTrackFXReturnsSpecificNames)
@@ -2751,44 +2773,6 @@ TEST(MatrixTest, GetAllReturnsStructure)
     EXPECT_EQ(depth, 0);
 }
 
-TEST(MatrixTest, TriggerSlotWithValidParamsReturnsSuccess)
-{
-    // Test that matrix/triggerSlot with valid column and row returns success
-    // and includes the triggered slot coordinates in the response
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    std::string cmd = R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":3,"row":5},"id":"m2"})";
-    handler->HandleMessage(1, cmd);
-
-    ASSERT_EQ(responses.size(), 1u);
-    std::string& resp = responses[0];
-
-    // Verify success
-    EXPECT_NE(resp.find("\"success\":true"), std::string::npos);
-    EXPECT_EQ(resp.find("\"error\""), std::string::npos);
-
-    // Verify slot state response includes coordinates and toggled state
-    EXPECT_NE(resp.find("\"column\":3"), std::string::npos);
-    EXPECT_NE(resp.find("\"row\":5"), std::string::npos);
-    // Slot was empty, after trigger it becomes "playing"
-    EXPECT_NE(resp.find("\"state\":\"playing\""), std::string::npos);
-    // Verify the full slot structure is present (color, name, clipType)
-    EXPECT_NE(resp.find("\"color\""), std::string::npos);
-    EXPECT_NE(resp.find("\"name\""), std::string::npos);
-    EXPECT_NE(resp.find("\"clipType\""), std::string::npos);
-
-    // Verify balanced JSON
-    int depth = 0;
-    for (char c : resp) {
-        if (c == '{') depth++;
-        if (c == '}') depth--;
-    }
-    EXPECT_EQ(depth, 0);
-}
 
 TEST(MatrixTest, TriggerSlotMissingParamsReturnsError)
 {
@@ -3019,71 +3003,16 @@ TEST(MatrixTest, GetAllResponseContentValidation)
 
 // ============================================================
 // Playtime 2 integration tests (Issue #61)
+//
+// The triggerSlot tests were removed. They asserted that triggering a slot
+// toggled its state locally (empty → playing → stopped), which the handler
+// stopped doing when slot state moved to OSC in #98: matrix/triggerSlot now
+// sends OSC to ReaLearn and returns the *current* state, with the real state
+// arriving later as OSC feedback on port 9011. That round trip can't be
+// covered from a unit test — it needs ReaLearn in the loop.
 // ============================================================
 
-TEST(MatrixTest, TriggerSlotTogglesState)
-{
-    // Test that triggering an empty slot sets it to "playing",
-    // and triggering again sets it back to "stopped"
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
 
-    // First trigger: empty → playing
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t1"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
-    EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
-    EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
-
-    // Second trigger: playing → stopped
-    responses.clear();
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t2"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
-    EXPECT_NE(responses[0].find("\"column\":2"), std::string::npos);
-    EXPECT_NE(responses[0].find("\"row\":3"), std::string::npos);
-
-    // Third trigger: stopped → playing
-    responses.clear();
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":3},"id":"t3"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
-}
-
-TEST(MatrixTest, TriggerSlotPreservesOtherSlots)
-{
-    // Test that triggering one slot doesn't affect other slots
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    // Trigger slot (0,0)
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"t1"})");
-    ASSERT_EQ(responses.size(), 1u);
-
-    // Get slot (0,0) — should be playing
-    responses.clear();
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":0},"id":"g1"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
-
-    // Get slot (7,7) — should still be empty
-    responses.clear();
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/getSlot","payload":{"column":7,"row":7},"id":"g2"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"empty\""), std::string::npos);
-}
 
 TEST(MatrixTest, TriggerSceneTogglesEntireRow)
 {
@@ -3222,34 +3151,6 @@ TEST(MatrixTest, BroadcastMatrixEventViaCallback)
     EXPECT_EQ(depth, 0);
 }
 
-TEST(MatrixTest, TriggerSlotBroadcastsEvent)
-{
-    // Test that triggering a slot sends a BroadcastMatrixEvent
-    // via the broadcast callback
-    std::vector<std::string> captured;
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    handler->SetBroadcastCallback([&](const std::string& msg) {
-        captured.push_back(msg);
-    });
-
-    // Also set response callback so we can track
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"t1"})");
-
-    // Should have both a response and a broadcast event
-    ASSERT_EQ(responses.size(), 1u);
-    ASSERT_EQ(captured.size(), 1u);
-
-    // Verify broadcast event structure
-    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
-    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
-    EXPECT_NE(captured[0].find("\"state\":\"playing\""), std::string::npos);
-}
 
 TEST(MatrixTest, TriggerSceneBroadcastsEvents)
 {
@@ -3931,7 +3832,7 @@ TEST(FxChainTest, GetDirectoryListsRfxChainFiles)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":")" + testDir.string() + R"("},"id":"fc1"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":")" + jsonPath(testDir) + R"("},"id":"fc1"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -3959,7 +3860,7 @@ TEST(FxChainTest, GetDirectoryEmptyDir)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":")" + testDir.string() + R"("},"id":"fc2"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/getDirectory","payload":{"path":")" + jsonPath(testDir) + R"("},"id":"fc2"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -4005,7 +3906,7 @@ TEST(FxChainTest, SaveChainCreatesFile)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc4"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + jsonPath(savePath) + R"("},"id":"fc4"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -4018,9 +3919,14 @@ TEST(FxChainTest, SaveChainCreatesFile)
     EXPECT_TRUE(fs::exists(savePath));
     EXPECT_GT(fs::file_size(savePath), 0);
 
-    // Verify file contains FXCHAIN section
-    std::ifstream f(savePath);
-    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    // Verify file contains FXCHAIN section. Scoped so the stream is closed
+    // before the cleanup below — Windows refuses to remove an open file,
+    // where POSIX would happily unlink it.
+    std::string content;
+    {
+        std::ifstream f(savePath);
+        content.assign((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    }
     EXPECT_NE(content.find("<FXCHAIN"), std::string::npos);
     EXPECT_NE(content.find("ReaEQ"), std::string::npos);
     EXPECT_NE(content.find("ReaComp"), std::string::npos);
@@ -4046,7 +3952,7 @@ TEST(FxChainTest, SaveChainOnTrackWithNoFx)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc5"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + jsonPath(savePath) + R"("},"id":"fc5"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -4224,7 +4130,7 @@ TEST(FxChainTest, GetInfoReturnsChainDetails)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/getInfo","payload":{"filePath":")" + chainPath.string() + R"("},"id":"fc9"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/getInfo","payload":{"filePath":")" + jsonPath(chainPath) + R"("},"id":"fc9"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -4254,35 +4160,31 @@ TEST(FxChainTest, SaveAndLoadRoundTrip)
     fs::create_directories(testDir);
     fs::path savePath = testDir / "roundtrip.RfxChain";
 
-    // Track 0 has ReaEQ and ReaComp
+    // Track 0 has ReaEQ. Written in the real <VST ...> entry format: the
+    // FX-entry splitter only recognises those, so a fixture built from <ITEM>
+    // blocks parses as a chain with no entries and appends nothing.
     g_mockChunk = "<TRACK\n  NAME \"Source\"\n"
         "  <FXCHAIN\n"
         "    SHOW 0\n"
-        "    <ITEM\n"
-        "      NAME \"ReaEQ\"\n"
-        "      VST \"VST3: ReaEQ (Cockos)\" ReaEQ 0\n"
+        "    BYPASS 0 0 0\n"
+        "    <VST \"VST3: ReaEQ (Cockos)\" ReaEQ.vst3 0 \"\" 1111{0}\"\"\n"
+        "      CCCC\n"
         "    >\n"
-        "    <ITEM\n"
-        "      NAME \"ReaComp\"\n"
-        "      VST \"VST3: ReaComp (Cockos)\" ReaComp 0 0\n"
-        "    >\n"
+        "    WAK 0 0\n"
         "  >\n"
         ">";
 
     MockState state;
     MockTrack t0, t1;
     t0.fx.push_back({0, "ReaEQ", {}, {}, {}, {}, {}});
-    t0.fx.push_back({1, "ReaComp", {}, {}, {}, {}, {}});
     t1.fx = {}; // Empty
     state.tracks = {t0, t1};
 
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
-    // Reset mock chunk to default
-    g_mockChunk = "";
 
     // Step 1: Save track 0's FX chain
-    std::string saveCmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc_s"})";
+    std::string saveCmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + jsonPath(savePath) + R"("},"id":"fc_s"})";
     handler->HandleMessage(1, saveCmd);
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"saved\":true"), std::string::npos);
@@ -4294,23 +4196,28 @@ TEST(FxChainTest, SaveAndLoadRoundTrip)
     // First, set the chunk for track 1 to something different
     g_mockChunk = "<TRACK\n  NAME \"Dest\"\n  <FXCHAIN\n"
         "    SHOW 0\n"
-        "    <ITEM\n"
-        "      NAME \"ReaDelay\"\n"
-        "      VST \"VST3: ReaDelay (Cockos)\" ReaDelay 0\n"
+        "    BYPASS 0 0 0\n"
+        "    <VST \"VST3: ReaDelay (Cockos)\" ReaDelay.vst3 0 \"\" 2222{0}\"\"\n"
+        "      DDDD\n"
         "    >\n"
+        "    WAK 0 0\n"
         "  >\n"
         ">";
 
     responses.clear();
-    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":1,"filePath":")" + savePath.string() + R"("},"id":"fc_l"})";
+    std::string loadCmd = R"({"type":"command","command":"fxchain/load","payload":{"trackIdx":1,"filePath":")" + jsonPath(savePath) + R"("},"id":"fc_l"})";
     handler->HandleMessage(1, loadCmd);
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"loaded\":true"), std::string::npos);
 
-    // Verify track 1's chunk now has the saved FX (ReaEQ, ReaComp) and not ReaDelay
-    EXPECT_NE(g_mockChunk.find("ReaEQ"), std::string::npos);
-    EXPECT_NE(g_mockChunk.find("ReaComp"), std::string::npos);
-    EXPECT_EQ(g_mockChunk.find("ReaDelay"), std::string::npos);
+    // Loading appends by default now, so track 1 keeps ReaDelay and gains the
+    // saved ReaEQ after it. (This asserted replace semantics — that ReaDelay
+    // was gone — from before append became the default.)
+    size_t posExisting = g_mockChunk.find("ReaDelay");
+    size_t posLoaded   = g_mockChunk.find("ReaEQ");
+    EXPECT_NE(posExisting, std::string::npos) << "Destination FX should remain";
+    EXPECT_NE(posLoaded, std::string::npos) << "Saved FX should be appended";
+    EXPECT_LT(posExisting, posLoaded) << "Loaded FX should come after existing";
 
     fs::remove_all(testDir);
 }
@@ -4343,7 +4250,7 @@ TEST(FxChainTest, SaveChainWithInvalidTrackReturnsError)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + savePath.string() + R"("},"id":"fc11"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/save","payload":{"trackIdx":0,"filePath":")" + jsonPath(savePath) + R"("},"id":"fc11"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -4498,30 +4405,6 @@ TEST(MatrixRecordSlotTest, RecordSlotOnStoppedSlotRestartsRecording)
     EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
 }
 
-TEST(MatrixRecordSlotTest, RecordSlotOnPlayingSlotReportsError)
-{
-    // Test that calling recordSlot on a currently playing slot returns error
-    // (can't record on a playing clip)
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    // First trigger a slot to play
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":1,"row":2},"id":"t1"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
-
-    // Try to record on the playing slot — should error
-    responses.clear();
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":1,"row":2},"id":"rec_bad"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
-    EXPECT_NE(responses[0].find("\"error\""), std::string::npos);
-}
 
 TEST(MatrixRecordSlotTest, RecordSlotMissingParamsReturnsError)
 {
@@ -4658,34 +4541,6 @@ TEST(PlaytimePollTest, PollStateIsRecognizedCommand)
     EXPECT_EQ(responses[0].find("Unknown command"), std::string::npos);
 }
 
-TEST(PlaytimeStateTest, SyncEnqueuedEventsOnStateChange)
-{
-    // Verify that when slot state changes, events are sent via broadcast
-    // This tests the BroadcastMatrixEvent mechanism for recording transitions
-    std::vector<std::string> captured;
-
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    handler->SetBroadcastCallback([&](const std::string& msg) {
-        captured.push_back(msg);
-    });
-
-    std::vector<std::string> responses;
-
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    // Trigger a slot which should broadcast an event
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":0,"row":0},"id":"sync1"})");
-
-    ASSERT_EQ(responses.size(), 1u);
-    ASSERT_GE(captured.size(), 1u);
-
-    // Verify the broadcast event has the right structure
-    EXPECT_NE(captured[0].find("\"type\":\"event\""), std::string::npos);
-    EXPECT_NE(captured[0].find("\"event\":\"matrix/slotStateChanged\""), std::string::npos);
-}
 
 TEST(PlaytimeStateTest, GetAllReflectsRecordingStateChanges)
 {
@@ -4712,35 +4567,6 @@ TEST(PlaytimeStateTest, GetAllReflectsRecordingStateChanges)
     EXPECT_NE(resp.find("\"column\":3,\"row\":5,\"state\":\"recording\""), std::string::npos);
 }
 
-TEST(PlaytimeStateTest, RecordingThenTriggerSlotWorksCorrectly)
-{
-    // Test full lifecycle: record a slot, stop recording, then trigger to play
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    // Step 1: Record slot
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":4},"id":"r1"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
-
-    // Step 2: Stop recording
-    responses.clear();
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":2,"row":4},"id":"r2"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"stopped\""), std::string::npos);
-
-    // Step 3: Trigger to play
-    responses.clear();
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"matrix/triggerSlot","payload":{"column":2,"row":4},"id":"t1"})");
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"state\":\"playing\""), std::string::npos);
-}
 
 // 
 
@@ -4750,7 +4576,7 @@ TEST(PlaytimeStateTest, RecordingThenTriggerSlotWorksCorrectly)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + testDir.string() + R"("},"id":"sr1"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"","rootPath":")" + jsonPath(testDir) + R"("},"id":"sr1"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -4784,7 +4610,7 @@ TEST(FxChainTest, SearchRecursiveFiltersByQuery)
     std::vector<std::string> responses;
     auto handler = MakeMockHandler(&state, &responses);
 
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"reverb","rootPath":")" + testDir.string() + R"("},"id":"sr2"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"reverb","rootPath":")" + jsonPath(testDir) + R"("},"id":"sr2"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -4813,7 +4639,7 @@ TEST(FxChainTest, SearchRecursiveCaseInsensitive)
     auto handler = MakeMockHandler(&state, &responses);
 
     // Query lowercase, file uppercase
-    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"my_chain","rootPath":")" + testDir.string() + R"("},"id":"sr3"})";
+    std::string cmd = R"({"type":"command","command":"fxchain/searchRecursive","payload":{"query":"my_chain","rootPath":")" + jsonPath(testDir) + R"("},"id":"sr3"})";
     handler->HandleMessage(1, cmd);
 
     ASSERT_EQ(responses.size(), 1u);
@@ -5774,6 +5600,12 @@ TEST(MatrixTest, SetSlotReversePreservesSlotName)
 
 // ============================================================
 // Sample audio info command tests (Issue #106)
+//
+// ValidWavFile / LargeWavFile / InvalidFile were removed. They covered a
+// hand-rolled WAV header parser and its "Not a valid PCM WAV file" error;
+// sample/getAudioInfo now delegates to REAPER's PCM_Source_CreateFromFile,
+// which a unit test can't supply, so all three only ever exercised the
+// "API not loaded" path.
 // ============================================================
 
 // Helper: create a minimal valid PCM WAV file at the given path
@@ -5863,83 +5695,8 @@ TEST(SampleAudioInfoTest, FileNotFound)
     EXPECT_NE(responses[0].find("File not found"), std::string::npos);
 }
 
-TEST(SampleAudioInfoTest, InvalidFile)
-{
-    // Create a temp file that is NOT a valid WAV
-    std::string tmpPath = std::string("/tmp/spidercrab_test_notawav_") + std::to_string(rand()) + ".dat";
-    {
-        FILE* f = fopen(tmpPath.c_str(), "w");
-        ASSERT_NE(f, nullptr);
-        fwrite("not a wav file content here", 1, 28, f);
-        fclose(f);
-    }
 
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
 
-    handler->HandleMessage(1,
-        "{\"type\":\"command\",\"command\":\"sample/getAudioInfo\",\"payload\":{\"path\":\"" + tmpPath + "\"},\"id\":\"ai3\"}");
-
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
-    EXPECT_NE(responses[0].find("Not a valid PCM WAV file"), std::string::npos);
-
-    std::remove(tmpPath.c_str());
-}
-
-TEST(SampleAudioInfoTest, ValidWavFile)
-{
-    // Create a real WAV file
-    std::string tmpPath = std::string("/tmp/spidercrab_test_wav_") + std::to_string(rand()) + ".wav";
-    CreateTestWavFile(tmpPath, 4410); // 0.1 seconds of 440 Hz sine
-
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    handler->HandleMessage(1,
-        "{\"type\":\"command\",\"command\":\"sample/getAudioInfo\",\"payload\":{\"path\":\"" + tmpPath + "\"},\"id\":\"ai4\"}");
-
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
-
-    // Verify payload fields
-    std::string& resp = responses[0];
-    EXPECT_NE(resp.find("\"duration\":"), std::string::npos);
-    EXPECT_NE(resp.find("\"sampleRate\":44100"), std::string::npos);
-    EXPECT_NE(resp.find("\"channels\":1"), std::string::npos);
-    EXPECT_NE(resp.find("\"peaks\":["), std::string::npos);
-    EXPECT_NE(resp.find("]"), std::string::npos);
-
-    std::remove(tmpPath.c_str());
-}
-
-TEST(SampleAudioInfoTest, LargeWavFile)
-{
-    // Create a larger WAV file (no 5MB limit anymore)
-    std::string tmpPath = std::string("/tmp/spidercrab_test_largewav_") + std::to_string(rand()) + ".wav";
-    CreateTestWavFile(tmpPath, 44100 * 10); // 10 seconds of audio
-
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    handler->HandleMessage(1,
-        "{\"type\":\"command\",\"command\":\"sample/getAudioInfo\",\"payload\":{\"path\":\"" + tmpPath + "\"},\"id\":\"ai5\"}");
-
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
-    EXPECT_NE(responses[0].find("\"peaks\":["), std::string::npos);
-
-    std::remove(tmpPath.c_str());
-}
 
 // ============================================================
 // Sample preview command tests (Issue #106)
@@ -5986,11 +5743,11 @@ TEST(SamplePreviewTest, ApiNotLoaded)
     });
 
     // Create a temp file (exists but APIs are null)
-    std::string tmpPath = std::string("/tmp/spidercrab_test_preview_") + std::to_string(rand()) + ".wav";
+    std::string tmpPath = tempScratch("spidercrab_test_preview_") + std::to_string(rand()) + ".wav";
     CreateTestWavFile(tmpPath, 4410);
 
     handler->HandleMessage(1,
-        "{\"type\":\"command\",\"command\":\"sample/preview\",\"payload\":{\"path\":\"" + tmpPath + "\"},\"id\":\"sp3\"}");
+        "{\"type\":\"command\",\"command\":\"sample/preview\",\"payload\":{\"path\":\"" + jsonPath(tmpPath) + "\"},\"id\":\"sp3\"}");
 
     ASSERT_EQ(responses.size(), 1u);
     EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
@@ -6001,23 +5758,12 @@ TEST(SamplePreviewTest, ApiNotLoaded)
 
 // ============================================================
 // Sample stop preview command tests (Issue #106)
+//
+// NoActivePreview was removed: it asserted an "alreadyStopped" field that
+// sample/stopPreview no longer returns — the handler now always answers
+// {"stopped":true}. Nothing left here to unit-test.
 // ============================================================
 
-TEST(SampleStopPreviewTest, NoActivePreview)
-{
-    auto handler = std::make_unique<CommandHandler>(nullptr);
-    std::vector<std::string> responses;
-    handler->SetResponseCallback([&](int, const std::string& resp) {
-        responses.push_back(resp);
-    });
-
-    handler->HandleMessage(1,
-        R"({"type":"command","command":"sample/stopPreview","id":"ssp1"})");
-
-    ASSERT_EQ(responses.size(), 1u);
-    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
-    EXPECT_NE(responses[0].find("\"alreadyStopped\":true"), std::string::npos);
-}
 
 // ============================================================
 // SampleCache tests (Issue #107)
@@ -6025,13 +5771,15 @@ TEST(SampleStopPreviewTest, NoActivePreview)
 
 TEST(SampleCacheTest, EmptyBuild)
 {
+    const std::string scratch = tempScratch("spidercrab_empty_build");
+
     SampleCache cache;
     EXPECT_FALSE(cache.IsIndexed("/nonexistent"));
-    EXPECT_FALSE(cache.HasCachedData("/tmp"));
+    EXPECT_FALSE(cache.HasCachedData(scratch));
 
-    auto result = cache.GetDirectory("/tmp");
+    auto result = cache.GetDirectory(scratch);
     EXPECT_TRUE(result.entries.empty());
-    EXPECT_EQ(result.path, "/tmp");
+    EXPECT_EQ(result.path, scratch);
 }
 
 TEST(SampleCacheTest, AudioExtensionCheck)
@@ -6040,7 +5788,7 @@ TEST(SampleCacheTest, AudioExtensionCheck)
     // The cache only indexes audio files during scanning
     
     // Create a temp dir with mix of file types
-    const char* tmpdir = "/tmp/spidercrab_sample_test_ext";
+    const std::string tmpdir = tempScratch("spidercrab_sample_test_ext");
     std::error_code ec;
     fs::remove_all(tmpdir, ec);
     fs::create_directories(tmpdir, ec);
@@ -6120,7 +5868,7 @@ TEST(SampleCacheTest, AudioExtensionCheck)
 
 TEST(SampleCacheTest, BuildIndexFromRealDir)
 {
-    const char* tmpdir = "/tmp/spidercrab_sample_test";
+    const std::string tmpdir = tempScratch("spidercrab_sample_test");
     std::error_code ec;
     fs::remove_all(tmpdir, ec);
     fs::create_directories(tmpdir, ec);
@@ -6181,8 +5929,8 @@ TEST(SampleCacheTest, BuildIndexFromRealDir)
 
 TEST(SampleCacheTest, MultipleRootPaths)
 {
-    const char* dir1 = "/tmp/spidercrab_multi1";
-    const char* dir2 = "/tmp/spidercrab_multi2";
+    const std::string dir1 = tempScratch("spidercrab_multi1");
+    const std::string dir2 = tempScratch("spidercrab_multi2");
     std::error_code ec;
     fs::remove_all(dir1, ec);
     fs::remove_all(dir2, ec);
@@ -6230,7 +5978,7 @@ TEST(SampleCacheTest, MultipleRootPaths)
 
 TEST(SampleCacheTest, ClearAndReindex)
 {
-    const char* tmpdir = "/tmp/spidercrab_clear_test";
+    const std::string tmpdir = tempScratch("spidercrab_clear_test");
     std::error_code ec;
     fs::remove_all(tmpdir, ec);
     fs::create_directories(tmpdir, ec);
@@ -6269,7 +6017,7 @@ TEST(SampleCacheTest, ClearAndReindex)
 TEST(SampleCacheTest, ZeroFilesDir)
 {
     // Directory with no audio files should still be indexed (with 0 files)
-    const char* tmpdir = "/tmp/spidercrab_zero_test";
+    const std::string tmpdir = tempScratch("spidercrab_zero_test");
     std::error_code ec;
     fs::remove_all(tmpdir, ec);
     fs::create_directories(tmpdir, ec);
@@ -6298,7 +6046,7 @@ TEST(SampleCacheTest, NonExistentPath)
 
 TEST(SampleCacheTest, ProgressCallbackCalled)
 {
-    const char* tmpdir = "/tmp/spidercrab_progress_test";
+    const std::string tmpdir = tempScratch("spidercrab_progress_test");
     std::error_code ec;
     fs::remove_all(tmpdir, ec);
     fs::create_directories(tmpdir, ec);
@@ -6338,7 +6086,7 @@ TEST(SampleCacheTest, ProgressCallbackCalled)
 
 TEST(SampleCacheTest, CancelScan)
 {
-    const char* tmpdir = "/tmp/spidercrab_cancel_test";
+    const std::string tmpdir = tempScratch("spidercrab_cancel_test");
     std::error_code ec;
     fs::remove_all(tmpdir, ec);
     fs::create_directories(tmpdir, ec);
@@ -6370,7 +6118,7 @@ TEST(SampleCacheTest, CancelScan)
 
 TEST(SampleCacheTest, ScanProgressQuery)
 {
-    const char* tmpdir = "/tmp/spidercrab_scanprog_test";
+    const std::string tmpdir = tempScratch("spidercrab_scanprog_test");
     std::error_code ec;
     fs::remove_all(tmpdir, ec);
     fs::create_directories(tmpdir, ec);
