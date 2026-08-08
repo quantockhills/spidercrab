@@ -182,7 +182,7 @@ function Device({
           {module.title || cleanFxName(fx.name)}
         </span>
       </header>
-      <div className="flex items-stretch gap-2 p-2 flex-1 min-h-0">
+      <div className="flex items-start gap-2 p-2">
         {module.panels.map((panel) => (
           <Panel
             key={panel.label}
@@ -196,6 +196,19 @@ function Device({
   );
 }
 
+/**
+ * How many rows to stack a panel's controls into before starting a new column.
+ *
+ * A knob with its label and readout is roughly 100px, so three rows is about
+ * as much as the strip's height allows. Small panels stay on one row so they
+ * don't look artificially tall.
+ */
+function rowsFor(count: number): number {
+  if (count <= 3) return 1;
+  if (count <= 8) return 2;
+  return 3;
+}
+
 function Panel({
   panel, params, onChange,
 }: {
@@ -204,17 +217,24 @@ function Panel({
   onChange: (paramIdx: number, value: number) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5 px-2 py-1.5 bg-[var(--bg-tertiary)]/25 ring-1 ring-[var(--border)]/50 min-h-0">
-      <div className="text-[9px] uppercase tracking-widest text-[var(--text-secondary)] flex-shrink-0">
+    <div className="flex flex-col gap-1.5 px-2 py-1.5 bg-[var(--bg-tertiary)]/25 ring-1 ring-[var(--border)]/50">
+      <div className="text-[9px] uppercase tracking-widest text-[var(--text-secondary)]">
         {panel.label}
       </div>
       {/*
-        Controls flow downward and wrap into a new column when they run out of
-        height, rather than sitting in one row with the rest of the panel empty.
-        A panel of eight knobs becomes two short columns instead of a long
-        stripe, which is both denser and closer to how the plugin groups them.
+        Fill downward first, then start a new column — so a panel of eight
+        knobs is two short columns rather than one long stripe.
+
+        Grid with an explicit row count rather than flex column-wrap: wrapping
+        a column-direction flex container needs a definite height *and* a
+        parent willing to grow wider for the extra columns, and without both
+        the columns pile up on top of each other. `grid-auto-flow: column` with
+        fixed rows just works, and the width follows.
       */}
-      <div className="flex flex-col flex-wrap content-start items-start gap-x-4 gap-y-2 flex-1 min-h-0">
+      <div
+        className="grid grid-flow-col gap-x-4 gap-y-2 justify-start items-start"
+        style={{ gridTemplateRows: `repeat(${rowsFor(panel.controls.length)}, min-content)` }}
+      >
         {panel.controls.map((control) => {
           // Resolved by name where possible — a JSFX slider number isn't
           // necessarily REAPER's parameter index.
