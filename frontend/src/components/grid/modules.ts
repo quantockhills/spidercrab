@@ -335,3 +335,37 @@ export function findModule(fxName: string): ModuleDef | null {
   const clean = cleanFxName(fxName);
   return MODULES.find((m) => m.match(clean)) ?? null;
 }
+
+// ── Fallback: auto-generated panels for plugins without a module ──
+
+export function autoControlType(
+  min: number, max: number, step?: number,
+): 'knob' | 'fader' | 'toggle' {
+  if (min === 0 && max === 1 && (step ?? 0.000001) >= 1) return 'toggle';
+  if (max - min <= 1 && (step ?? 0.000001) >= 0.5) return 'toggle';
+  if (max > 2 && min < max) return 'knob';
+  return 'toggle';
+}
+
+/**
+ * Generate panels from a raw parameter list. Used when a plugin has no
+ * hand-authored module — every parameter becomes a control, grouped into
+ * a single panel labelled after the plugin.
+ */
+export function fallbackModule(params: { index: number; name: string; min: number; max: number }[], fxName: string): ModuleDef {
+  const clean = cleanFxName(fxName);
+  return {
+    title: clean,
+    match: () => false,
+    panels: params.length > 0 ? [{
+      label: 'Controls',
+      controls: params.map((p) => {
+        const kind = autoControlType(p.min, p.max);
+        if (kind === 'toggle') {
+          return { kind: 'toggle' as const, slider: p.index + 1, expect: p.name, label: p.name };
+        }
+        return { kind, slider: p.index + 1, expect: p.name, label: p.name };
+      }),
+    }] : [],
+  };
+}

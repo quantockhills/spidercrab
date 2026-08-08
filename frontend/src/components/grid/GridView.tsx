@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   Track, FxInfo, FxParam, FxPresetInfo, FxPresetNames,
 } from '../../hooks/useReaper';
 import type { WsResponse } from '../../lib/wsClient';
 import {
-  findModule, cleanFxName, resolveParam, MODIFIER_KINDS, MODIFIER_LABELS,
+  findModule, cleanFxName, resolveParam, MODIFIER_KINDS, MODIFIER_LABELS, fallbackModule,
   type ModuleDef, type ModulePanel, type ModifierKind,
 } from './modules';
 import { Knob, Fader, Segmented, Toggle, StepGrid, readStepGrid, editStep } from './widgets';
@@ -64,7 +64,7 @@ export function GridView({
 
   const track = tracks.find((t) => t.index === selectedTrack);
   const withModules = (fx ?? [])
-    .map((f) => ({ fx: f, module: findModule(f.name) }))
+    .map((f) => ({ fx: f, module: findModule(f.name) ?? fallbackModule([], f.name) }))
     .filter((e): e is { fx: FxInfo; module: ModuleDef } => e.module !== null);
 
   const { scale, w: contentW, h: contentH, avail } = useFitScale(
@@ -310,10 +310,6 @@ function Device({
   // plugin's own behaviour, and one switch rather than a disclosure control on
   // each of seventy depths.
   const [mode, setMode] = useState<ModifierKind | null>(null);
-  const hasModifiers = module.panels.some(
-    (p) => p.controls.some((c) => c.modifiers?.length),
-  );
-
 
   // Tabs, for modules too wide to pan comfortably. The groups come from the
   // plugin's own layout rows, so a tab is a section of the original rather
@@ -323,9 +319,22 @@ function Device({
   // -1 is the info panel, which every module has whether or not it has tabs.
   const [tab, setTab] = useState(0);
   const showingInfo = tab === INFO_TAB;
-  const panels = tabbed
-    ? module.panels.filter((p) => (p.group ?? 0) === tab)
-    : module.panels;
+
+  // For fallback modules (no hand-authored layout), auto-generate panels
+  // from the live parameter list.
+  const panels = useMemo(() => {
+    if (module.panels.length === 0 && params.length > 0) {
+      return fallbackModule(params as any, fx.name).panels;
+    }
+    return tabbed
+      ? module.panels.filter((p) => (p.group ?? 0) === tab)
+      : module.panels;
+  }, [module, params, tab, tabbed, fx.name]);
+
+  // Modulation mode — only meaningful for modules that define depths.
+  const hasModifiers = panels.some(
+    (p) => p.controls.some((c) => c.modifiers?.length),
+  );
 
   return (
     <section className="flex flex-col bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] flex-shrink-0">
