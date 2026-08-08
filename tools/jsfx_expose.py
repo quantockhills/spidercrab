@@ -133,11 +133,50 @@ def serialized_vars(src):
     return out
 
 
-def plan(src):
+def preset_width(jsfx_path):
+    """
+    Largest number of values any sibling preset library stores.
+
+    Presets are positional: a .rpl entry is a run of slider values, and REAPER
+    applies them from slider 1 upwards. Yutani's own presets were saved against
+    older builds and store anywhere from 65 to 90 values, which is more than it
+    currently declares (71, numbered up to 81).
+
+    That matters because new sliders must not land inside that span. Filling
+    Yutani's unused slots 67-70 and 74-79 looked tidy and would have been
+    silently destructive: loading any preset with 67+ values would write its
+    contents straight into the promoted controls.
+    """
+    import base64
+    directory = os.path.dirname(jsfx_path) or '.'
+    widest = 0
+    for name in os.listdir(directory):
+        if not name.lower().endswith('.rpl'):
+            continue
+        try:
+            txt = read(os.path.join(directory, name))
+        except OSError:
+            continue
+        for m in re.finditer(r'<PRESET `[^`]*`\n((?:\s+[A-Za-z0-9+/=]+\n)+)\s*>', txt):
+            try:
+                raw = base64.b64decode(''.join(m.group(1).split()))
+            except Exception:
+                continue
+            widest = max(widest, len(raw.split(b'\x00')[0].decode('latin-1', 'replace').split()))
+    return widest
+
+
+def plan(src, jsfx_path=None):
     sliders = declared_sliders(src)
     existing_vars = {v for v in sliders.values() if v}
     used = set(sliders)
-    free = (n for n in range(1, MAX_SLIDER + 1) if n not in used)
+
+    # Start above everything already spoken for: the declared sliders, and the
+    # span any existing preset writes into.
+    floor = max(used) if used else 0
+    if jsfx_path:
+        floor = max(floor, preset_width(jsfx_path))
+    free = (n for n in range(floor + 1, MAX_SLIDER + 1) if n not in used)
 
     promote = []
     for var in serialized_vars(src):
@@ -214,7 +253,7 @@ def main():
     a = ap.parse_args()
 
     src = read(a.jsfx)
-    sliders, promote = plan(src)
+    sliders, promote = plan(src, a.jsfx)
 
     print(f'existing parameters : {len(sliders)}')
     print(f'promoting           : {len(promote)}')
@@ -245,6 +284,33 @@ def main():
     io.open(dest, 'w', encoding='utf-8', newline='\n').write(patched)
     print()
     print(f'wrote {dest}')
+
+    # Presets are keyed by the plugin's desc line, so the copy sees none of the
+    # original's. Since the patch only appends sliders, the stored values still
+    # line up — the libraries just need retargeting.
+    old_desc = re.search(r'^desc:\s*(.+)$', src, re.M)
+    new_desc = re.search(r'^desc:\s*(.+)$', patched, re.M)
+    if old_desc and new_desc:
+        directory = os.path.dirname(a.jsfx) or '.'
+        base = os.path.basename(os.path.splitext(a.jsfx)[0])
+        carried = 0
+        for name in sorted(os.listdir(directory)):
+            if not name.lower().endswith('.rpl'):
+                continue
+            lib = read(os.path.join(directory, name))
+            if old_desc.group(1).strip() not in lib:
+                continue
+            out = lib.replace(old_desc.group(1).strip(), new_desc.group(1).strip())
+            target = name.replace(base, base + a.suffix) if base in name \
+                else f'{base}{a.suffix}_{name}'
+            io.open(os.path.join(directory, target), 'w',
+                    encoding='utf-8', newline='\n').write(out)
+            print(f'  presets: {name} -> {target}')
+            carried += 1
+        if not carried:
+            print('  no preset libraries matched this plugin')
+
+    print()
     print('The original is untouched. Imports resolve relative to the file, so')
     print('the copy must stay in the same directory.')
 
