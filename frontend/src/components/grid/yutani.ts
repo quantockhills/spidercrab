@@ -12,9 +12,11 @@ import type { ModuleDef } from './modules';
 export const yutaniModule: ModuleDef = {
   title: 'Yutani',
   match: (n) => n.toLowerCase().includes('yutani'),
+  groups: ['Source', 'Filter', 'Envelopes', 'Mod & FX'],
   panels: [
     {
       label: 'OSCILLATOR 1',
+      group: 0,
       controls: [
         { kind: 'knob', slider: 1, expect: 'Oscillator 1 Gain', label: 'Oscillator 1 Gain', modifiers: [{ kind: 'lfo', slider: 182, expect: 'Amplitude LFO' }, { kind: 'mod', slider: 150, expect: 'Amplitude Mod' }, { kind: 'vel', slider: 114, expect: 'Amplitude Vel' }] },
         { kind: 'knob', slider: 2, expect: 'Oscillator 1 Semitone', label: 'Oscillator 1 Semitone', modifiers: [{ kind: 'lfo', slider: 185, expect: 'Semitones LFO' }, { kind: 'vel', slider: 117, expect: 'Semitones Vel' }] },
@@ -29,6 +31,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'PWM',
+      group: 0,
       controls: [
         { kind: 'knob', slider: 50, expect: 'PWM phase', label: 'PWM phase', modifiers: [{ kind: 'vel', slider: 119, expect: 'PWM Phase Vel' }] },
         { kind: 'knob', slider: 51, expect: 'PWM depth', label: 'PWM depth', modifiers: [{ kind: 'vel', slider: 120, expect: 'PWM Depth Vel' }] },
@@ -37,6 +40,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'OSCILLATOR 2',
+      group: 0,
       controls: [
         { kind: 'segmented', slider: 8, expect: 'Oscillator 2 Shape', label: 'Oscillator 2 Shape', options: [{ value: 0, label: 'Saw' }, { value: 1, label: 'Square' }, { value: 2, label: 'Triangle' }, { value: 3, label: 'Fin' }, { value: 4, label: 'PWM' }, { value: 5, label: 'Comb Sa' }, { value: 6, label: 'Comb Sq' }, { value: 7, label: 'SSaw' }, { value: 8, label: 'Glot' }, { value: 9, label: 'WT' }] },
         { kind: 'knob', slider: 5, expect: 'Oscillator 2 Gain', label: 'Oscillator 2 Gain', modifiers: [{ kind: 'lfo', slider: 183, expect: 'Osc2 Amplitude LFO' }, { kind: 'mod', slider: 151, expect: 'Osc2 Amplitude Mod' }, { kind: 'vel', slider: 115, expect: 'Osc2 Amplitude Vel' }] },
@@ -52,6 +56,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'SUB OSC',
+      group: 0,
       enable: { slider: 163, expect: 'Enable Sub Osc' },
       controls: [
         { kind: 'segmented', slider: 47, expect: 'SubOsc Shape', label: 'SubOsc Shape', options: [{ value: 0, label: 'Sine' }, { value: 1, label: 'Odd' }, { value: 2, label: 'Even' }, { value: 3, label: 'Tri' }, { value: 4, label: 'Mud' }] },
@@ -62,6 +67,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'NOISE',
+      group: 0,
       controls: [
         { kind: 'segmented', slider: 58, expect: 'Noise type', label: 'Noise type', options: [{ value: 0, label: 'Noise' }, { value: 1, label: 'Grating' }, { value: 2, label: 'Digit' }, { value: 3, label: '808' }, { value: 4, label: 'Bell' }] },
         { kind: 'knob', slider: 138, expect: 'Amplitude', label: 'Amplitude', modifiers: [{ kind: 'vel', slider: 141, expect: 'Noise Amplitude Vel' }] },
@@ -73,6 +79,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'DRIVE',
+      group: 1,
       controls: [
         { kind: 'knob', slider: 26, expect: 'Filter Drive (dB)', label: 'Filter Drive (dB)', modifiers: [{ kind: 'vel', slider: 113, expect: 'Drive Vel' }] },
         { kind: 'knob', slider: 27, expect: 'Post Boost (dB)', label: 'Post Boost (dB)', modifiers: [{ kind: 'vel', slider: 116, expect: 'Output Gain Vel' }] },
@@ -80,6 +87,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'FILTER',
+      group: 1,
       controls: [
         { kind: 'segmented', slider: 25, expect: 'Filter type', label: 'Filter type', options: [{ value: 0, label: 'Linear' }, { value: 1, label: 'MS-20' }, { value: 2, label: 'Linear x2' }, { value: 3, label: 'Moog' }, { value: 4, label: 'Ladder' }, { value: 5, label: '303' }, { value: 6, label: 'MS-20 asym' }, { value: 7, label: 'DblRes' }, { value: 8, label: 'DualPeak' }, { value: 9, label: 'TriplePeak' }, { value: 10, label: 'svf nl 2p' }, { value: 11, label: 'svf nl 4p' }, { value: 12, label: 'svf nl 2p inc' }, { value: 13, label: 'svf nl 4p inc' }, { value: 14, label: 'rectified resonance' }, { value: 15, label: 'Steiner' }, { value: 16, label: 'SteinerA' }, { value: 17, label: 'Muck' }, { value: 18, label: 'Pill2p' }, { value: 19, label: 'Pill4p' }, { value: 20, label: 'Pill2p Aggro' }, { value: 21, label: 'Pill4p Aggro' }, { value: 22, label: 'Pill2p Stacc' }, { value: 23, label: 'Pill4p Stacc' }, { value: 24, label: 'Ladder3' }, { value: 25, label: 'Ladder6' }, { value: 26, label: 'HLadder' }, { value: 27, label: 'SVF2' }, { value: 28, label: 'SVF4' }] },
         { kind: 'knob', slider: 28, expect: 'Cutoff', label: 'Cutoff', modifiers: [{ kind: 'lfo', slider: 178, expect: 'Cutoff LFO' }, { kind: 'mod', slider: 146, expect: 'Cutoff Mod' }, { kind: 'vel', slider: 98, expect: 'Cutoff Vel' }] },
@@ -90,6 +98,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'FM',
+      group: 1,
       controls: [
         { kind: 'segmented', slider: 37, expect: 'FM mode', label: 'FM mode', options: [{ value: 0, label: 'MIDI sin' }, { value: 1, label: 'MIDI square' }, { value: 2, label: 'Self' }, { value: 3, label: 'Self Abs' }, { value: 4, label: 'Audio Stereo 3/4' }, { value: 5, label: 'Audio Mono 3/4' }] },
         { kind: 'knob', slider: 38, expect: 'FM level', label: 'FM level' },
@@ -103,12 +112,14 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'VOWEL FILTER',
+      group: 1,
       controls: [
         { kind: 'knob', slider: 177, expect: 'Free LFO Phase', label: 'Free LFO Phase' },
       ],
     },
     {
       label: 'DISTORTION',
+      group: 1,
       enable: { slider: 93, expect: 'Enable Shaper' },
       controls: [
         { kind: 'knob', slider: 48, expect: 'Distortion level [dB]', label: 'Distortion level [dB]' },
@@ -118,6 +129,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'AMP ENV',
+      group: 2,
       controls: [
         { kind: 'knob', slider: 10, expect: 'Amp Accent', label: 'Amp Accent' },
         { kind: 'knob', slider: 11, expect: 'Amp Attack', label: 'Amp Attack', modifiers: [{ kind: 'vel', slider: 106, expect: 'Amp Attack Vel' }] },
@@ -129,6 +141,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'FILTER ENV',
+      group: 2,
       controls: [
         { kind: 'knob', slider: 43, expect: 'Envelope Amount', label: 'Envelope Amount', modifiers: [{ kind: 'vel', slider: 109, expect: '- Amount + Vel' }] },
         { kind: 'knob', slider: 44, expect: 'Cutoff Attack', label: 'Cutoff Attack', modifiers: [{ kind: 'vel', slider: 103, expect: 'Attack Vel' }] },
@@ -140,6 +153,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'CUTOFF LFO',
+      group: 2,
       enable: { slider: 135, expect: 'Enable Cutoff LFO' },
       controls: [
         { kind: 'knob', slider: 34, expect: 'Cutoff LFO amount', label: 'Cutoff LFO amount', modifiers: [{ kind: 'lfo', slider: 188, expect: 'Amount LFO' }, { kind: 'mod', slider: 154, expect: 'Amount Mod' }, { kind: 'vel', slider: 130, expect: 'Amount Vel' }] },
@@ -153,6 +167,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'MORPH LFO',
+      group: 2,
       enable: { slider: 136, expect: 'Enable Morph LFO' },
       controls: [
         { kind: 'knob', slider: 31, expect: 'Morph LFO amount', label: 'Morph LFO amount', modifiers: [{ kind: 'mod', slider: 155, expect: 'Morph LFO Amount Mod' }, { kind: 'vel', slider: 132, expect: 'Morph LFO Amount Vel' }] },
@@ -166,6 +181,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'FEEDBACK',
+      group: 2,
       controls: [
         { kind: 'knob', slider: 53, expect: 'Feedback', label: 'Feedback', modifiers: [{ kind: 'vel', slider: 125, expect: 'Feedback Vel' }] },
         { kind: 'toggle', slider: 124, expect: 'Feedback Mode', label: 'Feedback Mode' },
@@ -173,6 +189,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'FREE LFO',
+      group: 3,
       enable: { slider: 172, expect: 'Enable Free LFO' },
       controls: [
         { kind: 'knob', slider: 59, expect: 'Free LFO amount', label: 'Free LFO amount', modifiers: [{ kind: 'mod', slider: 173, expect: 'Free LFO Amount Mod' }, { kind: 'vel', slider: 174, expect: 'Free LFO Amount Vel' }] },
@@ -184,6 +201,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'PITCH MOD',
+      group: 3,
       controls: [
         { kind: 'knob', slider: 9, expect: 'Glide time', label: 'Glide time' },
         { kind: 'knob', slider: 54, expect: 'Vibrato Amount', label: 'Vibrato Amount', modifiers: [{ kind: 'mod', slider: 152, expect: 'Vibrato Amount Mod' }, { kind: 'vel', slider: 144, expect: 'Vibrato Amount Vel' }] },
@@ -192,6 +210,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'BONUS OSC',
+      group: 3,
       enable: { slider: 165, expect: 'Enable Bonus' },
       controls: [
         { kind: 'knob', slider: 18, expect: 'Active Oscs', label: 'Active Oscs' },
@@ -207,6 +226,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'INHARMONIC',
+      group: 3,
       enable: { slider: 198, expect: 'Enable Inharmonicity' },
       controls: [
         { kind: 'toggle', slider: 199, expect: 'Snap to harmonic ratios', label: 'Snap to harmonic ratios' },
@@ -215,6 +235,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'FX',
+      group: 3,
       controls: [
         { kind: 'knob', slider: 137, expect: 'Analog', label: 'Analog' },
         { kind: 'knob', slider: 158, expect: 'Space', label: 'Space' },
@@ -222,6 +243,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'SMEAR',
+      group: 3,
       controls: [
         { kind: 'knob', slider: 71, expect: 'AP frequency', label: 'AP frequency' },
         { kind: 'knob', slider: 72, expect: 'AP Feedback', label: 'AP Feedback' },
@@ -231,6 +253,7 @@ export const yutaniModule: ModuleDef = {
     },
     {
       label: 'OPTIONS',
+      group: 3,
       controls: [
         { kind: 'toggle', slider: 62, expect: 'Fix DC', label: 'Fix DC' },
         { kind: 'knob', slider: 63, expect: 'Filter Inertia [ms]', label: 'Filter Inertia [ms]' },

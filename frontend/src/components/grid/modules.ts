@@ -117,6 +117,11 @@ export function resolveParam<T extends ResolvableParam>(
 
 export interface ModulePanel {
   label: string;
+  /**
+   * Which tab this panel belongs to, as an index into ModuleDef.groups.
+   * Absent means the module isn't tabbed and every panel is shown at once.
+   */
+  group?: number;
   controls: ModuleControl[];
   /** Lay the panel's controls out in a row (default) or a grid of N columns. */
   columns?: number;
@@ -137,6 +142,16 @@ export interface ModuleDef {
    * by install location.
    */
   match: (cleanName: string) => boolean;
+  /**
+   * Tab names, in order. Present only for modules big enough to need them:
+   * Yutani's 22 panels are several screens wide, and panning through all of
+   * them to reach the filter is worse than one tap.
+   *
+   * The split follows the plugin's own layout rows rather than categories we
+   * invented — Yutani draws its sections in four rows, and those rows already
+   * mean sources, filter, envelopes, modulation.
+   */
+  groups?: string[];
   panels: ModulePanel[];
 }
 

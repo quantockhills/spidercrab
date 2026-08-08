@@ -107,7 +107,7 @@ def widget_for(decl, knobs=()):
     return 'knob'
 
 
-def generate(path, title=None):
+def generate(path, title=None, group_names=None):
     src = io.open(path, encoding='utf-8', errors='replace').read()
     gfx_at = src.find('@gfx')
     if gfx_at < 0:
@@ -130,6 +130,16 @@ def generate(path, title=None):
     marks = [(m.start(), titles.get(m.group(1), m.group(1)))
              for m in re.finditer(r'drawPanel\(\s*(s_[A-Z0-9_]+)', gfx)]
 
+    # Where the layout starts a new row of panels. Yutani advances cY by a
+    # fixed step between rows, which is the plugin's own grouping of its
+    # sections -- sources, then filter, then envelopes, then modulation -- and
+    # a far better basis for tabs than any categories we could invent.
+    row_breaks = [m.start() for m in
+                  re.finditer(r'^\s*cY\s*(?:\+?=)[^;]*;', gfx, re.M)]
+
+    def row_of(pos):
+        return sum(1 for b in row_breaks if b < pos)
+
     panels, claimed = [], set()
     for i, (pos, name) in enumerate(marks):
         end = marks[i + 1][0] if i + 1 < len(marks) else len(gfx)
@@ -150,7 +160,7 @@ def generate(path, title=None):
         fresh = sorted({n for n in found if n not in claimed})
         claimed.update(fresh)
         if fresh:
-            panels.append((name, fresh))
+            panels.append((name, fresh, row_of(pos)))
 
     missing = sorted(set(decls) - claimed)
     knobs = knob_vars(src)
@@ -188,13 +198,25 @@ def generate(path, title=None):
     print('// corrections below the generator can\'t make are marked HAND.')
     print("import type { ModuleDef } from './modules';")
     print()
+    # Renumber the rows that actually hold panels to a dense 0..N-1.
+    used_rows = sorted({r for _, _, r in panels})
+    group_of = {r: i for i, r in enumerate(used_rows)}
+    names = [n for n in (group_names or '').split(',') if n.strip()]
+    labels = [names[i].strip() if i < len(names)
+              else next(nm.strip() for nm, _, r in panels if r == row)
+              for i, row in enumerate(used_rows)]
+
     print(f'export const {title.lower()}Module: ModuleDef = {{')
     print(f'  title: {title!r},')
     print(f'  match: (n) => n.toLowerCase().includes({title.lower()!r}),')
+    if len(labels) > 1:
+        print(f'  groups: [{", ".join(repr(l) for l in labels)}],')
     print('  panels: [')
-    for name, nums in panels:
+    for name, nums, row in panels:
         print('    {')
         print(f'      label: {name.strip()!r},')
+        if len(labels) > 1:
+            print(f'      group: {group_of[row]},')
         for n in nums:
             if n in enable_of:
                 print(f'      enable: {{ slider: {n}, '
@@ -238,5 +260,7 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('jsfx')
     ap.add_argument('--title')
+    ap.add_argument('--group-names',
+                    help='comma-separated tab names, one per row of panels')
     a = ap.parse_args()
-    generate(a.jsfx, a.title)
+    generate(a.jsfx, a.title, a.group_names)

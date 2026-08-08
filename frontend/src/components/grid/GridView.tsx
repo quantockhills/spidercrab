@@ -262,6 +262,17 @@ function Device({
     (p) => p.controls.some((c) => c.modifiers?.length),
   );
 
+
+  // Tabs, for modules too wide to pan comfortably. The groups come from the
+  // plugin's own layout rows, so a tab is a section of the original rather
+  // than a category invented here.
+  const groups = module.groups ?? [];
+  const tabbed = groups.length > 1;
+  const [tab, setTab] = useState(0);
+  const panels = tabbed
+    ? module.panels.filter((p) => (p.group ?? 0) === tab)
+    : module.panels;
+
   return (
     <section className="flex flex-col bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] flex-shrink-0">
       <header className="px-3 py-1.5 border-b border-[var(--border)] flex items-center gap-3">
@@ -271,6 +282,25 @@ function Device({
         >
           {module.title || cleanFxName(fx.name)}
         </span>
+        {tabbed && (
+          <div className="flex gap-1" role="tablist" aria-label="Sections">
+            {groups.map((label, i) => (
+              <button
+                key={label}
+                role="tab"
+                aria-selected={i === tab}
+                onClick={() => setTab(i)}
+                className={`px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+                  i === tab
+                    ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] ring-1 ring-[var(--border)]'
+                    : 'text-[var(--text-secondary)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         {hasModifiers && (
           <div className="flex gap-1" role="group" aria-label="Modulation mode">
             {MODIFIER_KINDS.map((kind) => (
@@ -296,7 +326,7 @@ function Device({
         )}
       </header>
       <div className="flex items-stretch gap-2 p-2">
-        {module.panels.map((panel) => (
+        {panels.map((panel) => (
           <Panel
             key={panel.label}
             panel={panel}

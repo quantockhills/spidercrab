@@ -512,3 +512,53 @@ describe('panel layout', () => {
     }
   });
 });
+
+// ── Section tabs ─────────────────────────────────────────────
+//
+// Yutani's 22 panels run several screens wide, and panning past all of them to
+// reach the filter is worse than one tap. The split follows the plugin's own
+// layout rows — it draws its sections in four, and those rows already mean
+// sources, filter, envelopes, modulation.
+
+describe('Yutani section tabs', () => {
+  it('splits into the plugin’s four layout rows', () => {
+    expect(yutaniModule.groups).toEqual(['Source', 'Filter', 'Envelopes', 'Mod & FX']);
+  });
+
+  it('assigns every panel to a group that exists', () => {
+    for (const p of yutaniModule.panels) {
+      expect(p.group).toBeGreaterThanOrEqual(0);
+      expect(p.group).toBeLessThan(yutaniModule.groups!.length);
+    }
+  });
+
+  it('leaves no group empty', () => {
+    for (let i = 0; i < yutaniModule.groups!.length; i++) {
+      expect(yutaniModule.panels.some((p) => p.group === i)).toBe(true);
+    }
+  });
+
+  it('shows only the selected section, and switches on tap', async () => {
+    renderYutani();
+    await waitFor(() => expect(screen.getByRole('tablist', { name: 'Sections' })).toBeDefined());
+
+    const first = yutaniModule.panels.find((p) => p.group === 0)!;
+    const later = yutaniModule.panels.find((p) => p.group === 2)!;
+
+    expect(screen.getByText(first.label)).toBeDefined();
+    expect(screen.queryByText(later.label)).toBeNull();
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Envelopes' }));
+    expect(screen.getByText(later.label)).toBeDefined();
+    expect(screen.queryByText(first.label)).toBeNull();
+  });
+
+  it('leaves an untabbed module showing everything at once', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    await waitFor(() => expect(screen.getByTestId('grid-device-title')).toBeDefined());
+    expect(screen.queryByRole('tablist')).toBeNull();
+    for (const label of ['Voices', 'Motion', 'Output']) {
+      expect(screen.getByText(label)).toBeDefined();
+    }
+  });
+});
