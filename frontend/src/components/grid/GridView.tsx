@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Track, FxInfo, FxParam } from '../../hooks/useReaper';
 import type { WsResponse } from '../../lib/wsClient';
 import { findModule, cleanFxName, resolveParam, type ModuleDef, type ModulePanel } from './modules';
@@ -34,6 +34,7 @@ export function GridView({
   // without needing to reset state synchronously inside the effect.
   const [loaded, setLoaded] = useState<{ trackIdx: number; fx: FxInfo[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (selectedTrack === null) return;
@@ -52,6 +53,10 @@ export function GridView({
   const withModules = (fx ?? [])
     .map((f) => ({ fx: f, module: findModule(f.name) }))
     .filter((e): e is { fx: FxInfo; module: ModuleDef } => e.module !== null);
+
+  const { scale, w: contentW, h: contentH } = useFitScale(
+    scrollRef, contentRef, withModules.length,
+  );
 
   if (selectedTrack === null) {
     return <Empty icon="🎛️" title="No track selected"
@@ -75,6 +80,7 @@ export function GridView({
         <h2 className="text-sm font-semibold">{track?.name || `Track ${selectedTrack + 1}`}</h2>
         <p className="text-[10px] text-[var(--text-secondary)]">
           {withModules.length} device{withModules.length === 1 ? '' : 's'} · swipe sideways for more
+          {scale < 1 && ` · ${Math.round(scale * 100)}%`}
         </p>
       </div>
 
@@ -89,17 +95,34 @@ export function GridView({
         className="flex-1 overflow-x-auto overflow-y-hidden touch-none"
         data-testid="grid-scroller"
       >
-        <div className="flex items-stretch h-full gap-3 px-3 py-3 w-max">
-          {withModules.map(({ fx: f, module }) => (
-            <Device
-              key={f.index}
-              trackIdx={selectedTrack}
-              fx={f}
-              module={module}
-              getFxParams={getFxParams}
-              setFxParam={setFxParam}
-            />
-          ))}
+        {/*
+          The scaled content keeps its natural layout box, which would leave
+          the scroller measuring the unscaled width. This wrapper carries the
+          scaled size instead, so the scrollbar — and the strip that drives
+          it — track what's actually drawn.
+        */}
+        <div
+          style={{
+            width: contentW ? contentW * scale : undefined,
+            height: contentH ? contentH * scale : undefined,
+          }}
+        >
+          <div
+            ref={contentRef}
+            className="flex items-start gap-3 px-3 py-3 w-max origin-top-left"
+            style={{ transform: scale < 1 ? `scale(${scale})` : undefined }}
+          >
+            {withModules.map(({ fx: f, module }) => (
+              <Device
+                key={f.index}
+                trackIdx={selectedTrack}
+                fx={f}
+                module={module}
+                getFxParams={getFxParams}
+                setFxParam={setFxParam}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
@@ -112,6 +135,54 @@ export function GridView({
       />
     </div>
   );
+}
+
+/**
+ * Scale the device strip down so its whole height fits the space available.
+ *
+ * Devices are laid out at a fixed touchable size, which is the point — but
+ * Yutani stacks three rows of knobs per panel and overflows a landscape iPad.
+ * There's no vertical scroll by design (the strip along the bottom is the only
+ * navigation), so anything past the fold was simply unreachable.
+ *
+ * A CSS transform rather than smaller units: it preserves every panel's
+ * proportions and needs no per-widget sizing. Only ever shrinks — blowing a
+ * two-knob device up to fill the screen would look absurd.
+ */
+function useFitScale(
+  outerRef: React.RefObject<HTMLElement | null>,
+  contentRef: React.RefObject<HTMLElement | null>,
+  // Changes when the scroller mounts or the device list does, so the observers
+  // get attached once the elements actually exist.
+  key: unknown,
+) {
+  const [fit, setFit] = useState({ scale: 1, w: 0, h: 0 });
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const content = contentRef.current;
+    if (!outer || !content) return;
+
+    const measure = () => {
+      const avail = outer.clientHeight;
+      // A transform doesn't affect the layout box, so these read the natural
+      // size however far we've already scaled — no feedback loop.
+      const h = content.offsetHeight;
+      const w = content.offsetWidth;
+      if (!avail || !h) return;
+      const scale = Math.min(1, avail / h);
+      setFit((prev) => (prev.scale === scale && prev.w === w && prev.h === h
+        ? prev : { scale, w, h }));
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(outer);
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [outerRef, contentRef, key]);
+
+  return fit;
 }
 
 function Empty({ icon, title, hint }: { icon: string; title: string; hint: string }) {

@@ -243,10 +243,12 @@ export function Segmented({
 }: Common & { control: SegmentedControl; columns?: number; hideLabel?: boolean }) {
   // Discrete: no drag, no gating needed — one tap, one command.
   const current = Math.round(param.value);
-  // A long list laid out wide eats horizontal room the strip can't spare, and
-  // leaves the panel's height unused. Two columns keeps it tall and narrow,
-  // which is also how the plugin itself arranges its shape selectors.
-  const cols = columns ?? (control.options.length > 6 ? 2 : control.options.length);
+  // Short lists sit on one row. Longer ones wrap to however many columns keep
+  // them within eight rows, which is what stops Yutani's 29 filter types from
+  // running 15 rows deep and pushing the whole device off-screen. It also lands
+  // on the plugin's own arrangement: 10 shapes as 2x5, 29 filters as 4x8.
+  const cols = columns
+    ?? (control.options.length <= 6 ? control.options.length : Math.ceil(control.options.length / 8));
   return (
     <div className="flex flex-col gap-1.5 select-none" role="group" aria-label={control.label}>
       <div
