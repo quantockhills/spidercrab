@@ -3657,6 +3657,37 @@ TEST(FxParamSliderTest, GetParamsReportsDisplayUnitsNotRescaled)
     EXPECT_EQ(resp.find("-772"), std::string::npos) << "rescaled Wet Mix";
 }
 
+// VST and AU parameters arrive as a 0..1 range, and that shape was never
+// affected by the rescaling bug: min + value*(max-min) with min=0 and max=1
+// reduces to value, the identity. So removing the conversion had to leave
+// these untouched. Nothing covered it before, which is why this exists —
+// it's the case most plugins actually use.
+TEST(FxParamSliderTest, GetParamsPassesUnitRangeValuesThroughUnchanged)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "VST3: ReaComp",
+        {"Threshold", "Ratio"},
+        {0.7,  0.25},   // values, already 0..1 as a VST reports them
+        {0.0,  0.0},    // min
+        {1.0,  1.0},    // max
+        {0.5,  0.5} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"unit"})");
+    ASSERT_EQ(responses.size(), 1u);
+    const std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"value\":0.7"), std::string::npos)
+        << "0..1 params must pass through untouched. Got: " << resp;
+    EXPECT_NE(resp.find("\"value\":0.25"), std::string::npos)
+        << "0..1 params must pass through untouched. Got: " << resp;
+}
+
 TEST(FxParamSliderTest, HandleSetFXParamWithEqualMinMaxDoesNotProduceNaN)
 {
     // Some JSFX params report minVal == maxVal (read-only sliders).
