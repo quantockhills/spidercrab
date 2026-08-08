@@ -7,7 +7,7 @@ import {
   findModule, cleanFxName, resolveParam, MODIFIER_KINDS, MODIFIER_LABELS,
   type ModuleDef, type ModulePanel, type ModifierKind,
 } from './modules';
-import { Knob, Fader, Segmented, Toggle } from './widgets';
+import { Knob, Fader, Segmented, Toggle, StepGrid, readStepGrid, editStep } from './widgets';
 import { GridStrip } from './GridStrip';
 import { DeviceInfo } from './DeviceInfo';
 import { PresetPicker } from './PresetPicker';
@@ -546,6 +546,23 @@ function Panel({
           }
           if (control.kind === 'toggle') {
             return <Toggle key={control.slider} param={param} control={control} onChange={handle} />;
+          }
+          if (control.kind === 'stepgrid') {
+            const stepValues = readStepGrid(params, control.stepSliders, control.maxValue, control.steps);
+            const handleStep = (stepIdx: number, val: number) => {
+              const result = editStep(params, control.stepSliders, control.maxValue, stepIdx, val);
+              if (result) onChange(result.slider, result.value);
+            };
+            return (
+              <StepGrid
+                key={control.slider}
+                stepValues={stepValues}
+                maxValue={control.maxValue}
+                onChange={handleStep}
+                label={control.label}
+                enabled={true}
+              />
+            );
           }
           return (
             <Segmented key={control.slider} param={param} control={control}

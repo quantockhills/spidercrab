@@ -3,7 +3,7 @@ import type { FxParam } from '../../hooks/useReaper';
 import { useLiveSlider } from '../../hooks/useLiveSlider';
 import { MODIFIER_KINDS, type ModifierKind } from './modules';
 import type {
-  KnobControl, FaderControl, SegmentedControl, ToggleControl,
+  KnobControl, FaderControl, SegmentedControl, ToggleControl, StepGridControl,
 } from './modules';
 
 // Pixels of vertical travel to move a control across its whole range.
@@ -353,6 +353,150 @@ export function Segmented({
           {control.label}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Step Grid ────────────────────────────────────────────────
+//
+// Reads step values from 8 packed sliders (4 steps per slider) and draws
+// a row of touchable cells. The height of each cell represents the step
+// value. Tap to cycle, drag across to paint.
+//
+// Decoding: each slider packs 4 steps via base-(maxValue+1) encoding.
+//   total = step0 + step1 * R + step2 * R^2 + step3 * R^3
+//   sliderValue = total / maxTotal, where maxTotal = R^4 - 1, R = maxValue+1
+function decodeSteps(sliderValue: number, maxValue: number): number[] {
+  const R = maxValue + 1;
+  const maxTotal = Math.pow(R, 4) - 1;
+  let total = Math.round(sliderValue * maxTotal);
+  const steps: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    steps.push(total % R);
+    total = Math.floor(total / R);
+  }
+  return steps;
+}
+
+function encodeSteps(steps: number[], maxValue: number): number {
+  const R = maxValue + 1;
+  const maxTotal = Math.pow(R, 4) - 1;
+  let total = 0;
+  for (let i = 3; i >= 0; i--) {
+    total = total * R + Math.round(clamp(steps[i], 0, maxValue));
+  }
+  return maxTotal > 0 ? clamp(total / maxTotal, 0, 1) : 0;
+}
+
+/**
+ * Unpack all step values from the 8 step sliders into a flat array.
+ */
+export function readStepGrid(
+  params: FxParam[],
+  stepSliders: [number, number, number, number, number, number, number, number],
+  maxValue: number,
+  count: number,
+): number[] {
+  const out: number[] = [];
+  for (let si = 0; si < 8 && out.length < count; si++) {
+    const p = params.find((pp) => pp.index === stepSliders[si] - 1);
+    const decoded = decodeSteps(p?.value ?? 0, maxValue);
+    for (let i = 0; i < 4 && out.length < count; i++) out.push(decoded[i]);
+  }
+  return out;
+}
+
+/**
+ * Edit one step in a packed step grid. Returns the new slider value for the
+ * slider that contains the edited step.
+ */
+export function editStep(
+  params: FxParam[],
+  stepSliders: [number, number, number, number, number, number, number, number],
+  maxValue: number,
+  stepIndex: number,
+  newValue: number,
+): { slider: number; value: number } | null {
+  const si = Math.floor(stepIndex / 4);
+  if (si >= 8) return null;
+  const sliderIdx = stepSliders[si] - 1;
+  const pi = stepIndex % 4;
+  const p = params.find((pp) => pp.index === sliderIdx);
+  if (!p) return null;
+  const steps = decodeSteps(p.value, maxValue);
+  steps[pi] = clamp(Math.round(newValue), 0, maxValue);
+  return { slider: sliderIdx, value: encodeSteps(steps, maxValue) };
+}
+
+interface StepGridProps {
+  stepValues: number[];
+  maxValue: number;
+  onChange: (stepIndex: number, value: number) => void;
+  label: string;
+  enabled: boolean;
+  cellWidth?: number;
+  cellHeight?: number;
+}
+
+export function StepGrid({
+  stepValues, maxValue, onChange, label, enabled,
+  cellWidth = 20, cellHeight = 40,
+}: StepGridProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const dragStartRef = useRef<{ index: number; value: number } | null>(null);
+
+  const handlePointerDown = useCallback((index: number) => {
+    const current = stepValues[index] ?? 0;
+    const next = current >= maxValue ? 0 : current + 1;
+    dragStartRef.current = { index, value: next };
+    onChange(index, next);
+  }, [stepValues, maxValue, onChange]);
+
+  const handlePointerEnter = useCallback((index: number) => {
+    if (dragStartRef.current) {
+      // Paint the same value as the starting cell
+      onChange(index, dragStartRef.current.value);
+    }
+  }, [onChange]);
+
+  const handlePointerUp = useCallback(() => {
+    dragStartRef.current = null;
+  }, []);
+
+  return (
+    <div className={`flex flex-col gap-1 select-none ${enabled ? '' : 'opacity-40'}`}>
+      <div className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
+        {label}
+      </div>
+      <div
+        ref={ref}
+        className="flex gap-[1px]"
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+      >
+        {stepValues.map((v, i) => (
+          <button
+            key={i}
+            onPointerDown={() => handlePointerDown(i)}
+            onPointerEnter={() => handlePointerEnter(i)}
+            className="relative flex-shrink-0 touch-none"
+            style={{ width: cellWidth, height: cellHeight }}
+            aria-label={`${label} step ${i}`}
+          >
+            {/* Background */}
+            <div className="absolute inset-0 bg-[var(--bg-tertiary)]" />
+            {/* Value bar */}
+            <div
+              className="absolute bottom-0 inset-x-0 bg-[var(--accent-orange)]/60 transition-[height] duration-75"
+              style={{ height: `${maxValue > 0 ? (v / maxValue) * 100 : 0}%` }}
+            />
+            {/* Step number */}
+            <div className="absolute bottom-0.5 inset-x-0 text-[8px] text-center text-[var(--text-secondary)]/50">
+              {i + 1}
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

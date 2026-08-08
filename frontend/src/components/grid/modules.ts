@@ -9,6 +9,7 @@
 // whatever indices REAPER actually reports.
 
 import { yutaniModule } from './yutani';
+import { seqsModule } from './seqs';
 
 /**
  * The three modulation modes, named as the plugin's own buttons are.
@@ -71,8 +72,37 @@ export interface ToggleControl extends ControlBase {
   kind: 'toggle';
 }
 
+/**
+ * A row of step cells for a sequencer pattern.
+ *
+ * Step values are packed into the slider params: 4 steps per slider, each step
+ * occupying 1/4 of the slider's range. The patched JSFX handles the packing
+ * on the @slider side, and this widget handles it on the frontend side.
+ *
+ * Multiple rows stack vertically to form the full sequencer grid, matching
+ * how SEQS draws all effect rows at once.
+ */
+export interface StepGridControl extends ControlBase {
+  kind: 'stepgrid';
+  /** Number of visible steps (3-64, default 32). */
+  steps: number;
+  /** Maximum value a step can hold (varies per effect row). */
+  maxValue: number;
+  /**
+   * 8 slider indices that hold the packed step data.
+   * Each slider packs 4 steps: `step = floor(sliderValue * 4)`.
+   * slider 0 = steps 0-3, slider 1 = steps 4-7, etc.
+   */
+  stepSliders: [number, number, number, number, number, number, number, number];
+  /**
+   * The slider index that controls which effect row is loaded into the step
+   * window sliders. Only used by the row selector at the top of the grid.
+   */
+  rowSelector?: number;
+}
+
 export type ModuleControl =
-  | KnobControl | SegmentedControl | FaderControl | ToggleControl;
+  | KnobControl | SegmentedControl | FaderControl | ToggleControl | StepGridControl;
 
 /** Minimal shape of what the backend reports per parameter. */
 export interface ResolvableParam {
@@ -254,7 +284,7 @@ const stockDelayModule: ModuleDef = {
   ],
 };
 
-const MODULES: ModuleDef[] = [chorus, yutaniModule, stockDelayModule];
+const MODULES: ModuleDef[] = [chorus, yutaniModule, stockDelayModule, seqsModule];
 
 /** Strip REAPER's format prefix, e.g. "JS: Chorus" -> "Chorus". */
 export function cleanFxName(name: string): string {

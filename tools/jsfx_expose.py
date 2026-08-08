@@ -49,21 +49,53 @@ MAX_SLIDER = 256
 #
 # These are the ones no pattern catches, read out of the source by hand:
 MANUAL_RANGES = {
-    # Cycled with += 1 and wrapped at max_lfo_types, which the LFO include
-    # sets to 18.
+    # ── Yutani ────────────────────────────────────────────────
     'c_lfo_type':           (0, 18, 1),
     'm_lfo_type':           (0, 18, 1),
     'f_lfo_type':           (0, 18, 1),
-    # Four selection buttons: Legato, Retrig, ParaLeg, ParaTrig.
     'note_mode':            (0, 3, 1),
-    # blep_type = 2 * toggle, so it is 0 or 2 rather than 0 or 1.
     'blep_type':            (0, 2, 2),
-    # Assigned from a toggle via a _tmp intermediate, so the toggle pattern
-    # doesn't see it.
     'tempo_sync_envelopes': (0, 1, 1),
-    # Knobs clamped with cl01(), i.e. normalised.
     'noise_decay':          (0, 1, 0),
     'noise_cutoff':         (0, 1, 0),
+    # ── SEQS ──────────────────────────────────────────────────
+    # Most are normalized 0-1 controls read through drawAndProcess.
+    'value':                (0, 1, 0),
+    'count':                (0, 1, 0),
+    'validate':             (0, 1, 0),
+    'sample_duration':      (0, 1, 0),
+    'selected_details':     (0, 1, 0),
+    'gate_start':           (0, 1, 0),
+    'gate_stop':            (0, 1, 0),
+    'gate_atk':             (0, 1, 0),
+    'gate_decay':           (0, 1, 0),
+    'gate_sustain':         (0, 1, 0),
+    'verb_diffusion':       (0, 1, 0),
+    'verb_decay':           (0, 1, 0),
+    'verb_mod_depth':       (0, 1, 0),
+    'verb_mod_rate':        (0, 1, 0),
+    'verb_lowpass':         (0, 1, 0),
+    'verb_highpass':        (0, 1, 0),
+    'verb_dry':             (0, 1, 0),
+    'verb_wet':             (0, 1, 0),
+    'verb_gate_atk':        (0, 1, 0),
+    'verb_gate_decay':      (0, 1, 0),
+    'verb_gate_sustain':    (0, 1, 0),
+    'tapestop_decay':       (0, 1, 0),
+    'karplus_feedback':     (-1, 1, 0),
+    'karplus_cutoff':       (0, 1, 0),
+    'karplus_pitch':        (0, 1, 0),
+    'karplus_wet':          (0, 1, 0),
+    'karplus_dry':          (0, 1, 0),
+    'shifter_dry':          (0, 1, 0),
+    'shifter_wet':          (0, 1, 0),
+    'filter2_type':         (0, 27, 1),
+    'loop_point':           (0, 1, 0),
+    'has_samples':          (0, 1, 1),
+    'slowdown_scaling':     (0, 1, 1),
+    'legacy_tapestop':      (0, 1, 1),
+    'randomizing_modulator_a': (0, 1, 1),
+    'randomizing_modulator_b': (0, 1, 1),
 }
 
 
@@ -324,6 +356,12 @@ def infer_ranges(src):
     # Plain knobs, already normalised.
     for v in re.findall(r'(\w+)\s*=\s*(?:cl01\()?\w+\.value\s*[;)]', gfx):
         note(v, 0, 1, 0)
+
+    # SEQS-style drawAndProcess: the 6th argument is the value, always 0..1.
+    # The variable may be dotted (filter.current_cutoff) or prefixed (current_).
+    for v in re.findall(r'\.drawAndProcess\([^,]+,[^,]+,[^,]+,[^,]+,[^,]+,\s*([\w.]+)\s*,', gfx):
+        clean = v.split('.')[-1].removeprefix('current_').removeprefix('tmp_')
+        note(clean, 0, 1, 0)
 
     return out
 
