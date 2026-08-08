@@ -25,7 +25,7 @@ const SHOW_SEQUENCER = false;
 // Grid shows the selected track's plugins as a pannable strip of purpose-built
 // device layouts. Only Chorus has a module so far, and the layout format is
 // still settling — hidden until there's enough there to be useful.
-const SHOW_GRID = false;
+const SHOW_GRID = true;
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'media',   label: 'Media',   icon: '📂' },

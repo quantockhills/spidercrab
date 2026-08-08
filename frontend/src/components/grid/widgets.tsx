@@ -19,7 +19,11 @@ const DRAG_TRAVEL_PX = 190;
  * dragging, and tears down on pointercancel and unmount as well as pointerup —
  * skipping either is what let an abandoned drag follow later gestures (#138).
  */
-function useVerticalDrag(onDelta: (fraction: number) => void, onEnd: () => void) {
+function useVerticalDrag(
+  onStart: () => void,
+  onDrag: (totalFraction: number) => void,
+  onEnd: () => void,
+) {
   const detachRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { detachRef.current?.(); }, []);
 
@@ -29,15 +33,30 @@ function useVerticalDrag(onDelta: (fraction: number) => void, onEnd: () => void)
       detachRef.current?.();
 
       const pointerId = e.pointerId;
-      let lastY = e.clientY;
+      const startY = e.clientY;
+      // Fine-drag shifts the origin so the value doesn't jump when the
+      // modifier is pressed or released mid-gesture.
+      let originY = startY;
+      let originFraction = 0;
+      let fineActive = false;
       let detach = () => {};
+
+      onStart();
 
       const move = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
-        // Up increases. Shift for fine adjustment.
-        const scale = ev.shiftKey ? 0.25 : 1;
-        onDelta(((lastY - ev.clientY) * scale) / DRAG_TRAVEL_PX);
-        lastY = ev.clientY;
+
+        if (ev.shiftKey !== fineActive) {
+          originFraction += ((originY - ev.clientY) * (fineActive ? 0.25 : 1)) / DRAG_TRAVEL_PX;
+          originY = ev.clientY;
+          fineActive = ev.shiftKey;
+        }
+
+        // Total travel since the gesture began, not since the last event —
+        // reporting per-event deltas meant the caller kept re-deriving from
+        // its start value and the control never accumulated past one step.
+        const scale = fineActive ? 0.25 : 1;
+        onDrag(originFraction + ((originY - ev.clientY) * scale) / DRAG_TRAVEL_PX);
       };
 
       const finish = (ev: PointerEvent) => {
@@ -58,8 +77,30 @@ function useVerticalDrag(onDelta: (fraction: number) => void, onEnd: () => void)
       window.addEventListener('pointerup', finish);
       window.addEventListener('pointercancel', finish);
     },
-    [onDelta, onEnd],
+    [onStart, onDrag, onEnd],
   );
+}
+
+/**
+ * Shared drag wiring for the continuous controls. Captures the value the
+ * gesture started from, then maps total travel onto the parameter's range.
+ */
+function useRangeDrag(
+  value: number,
+  min: number,
+  max: number,
+  change: (v: number) => void,
+  release: () => void,
+) {
+  const span = max - min || 1;
+  const startValue = useRef(value);
+
+  const onStart = useCallback(() => { startValue.current = value; }, [value]);
+  const onDrag = useCallback(
+    (total: number) => change(clamp(startValue.current + total * span, min, max)),
+    [change, span, min, max],
+  );
+  return useVerticalDrag(onStart, onDrag, release);
 }
 
 interface Common {
@@ -77,12 +118,7 @@ export function Knob({ param, control, onChange }: Common & { control: KnobContr
   const { value, change, release } = useLiveSlider(param.value, onChange);
   const span = param.max - param.min || 1;
   const norm = clamp((value - param.min) / span, 0, 1);
-
-  const onDelta = useCallback(
-    (f: number) => change(clamp(value + f * span, param.min, param.max)),
-    [change, value, span, param.min, param.max],
-  );
-  const onPointerDown = useVerticalDrag(onDelta, release);
+  const onPointerDown = useRangeDrag(value, param.min, param.max, change, release);
 
   // 270° sweep, gap at the bottom
   const SWEEP = 270, START = 135;
@@ -137,12 +173,7 @@ export function Fader({ param, control, onChange }: Common & { control: FaderCon
   const { value, change, release } = useLiveSlider(param.value, onChange);
   const span = param.max - param.min || 1;
   const norm = clamp((value - param.min) / span, 0, 1);
-
-  const onDelta = useCallback(
-    (f: number) => change(clamp(value + f * span, param.min, param.max)),
-    [change, value, span, param.min, param.max],
-  );
-  const onPointerDown = useVerticalDrag(onDelta, release);
+  const onPointerDown = useRangeDrag(value, param.min, param.max, change, release);
 
   return (
     <div className="flex flex-col items-center gap-1 select-none">

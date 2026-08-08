@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { findModule, cleanFxName } from '../components/grid/modules';
 import { GridView } from '../components/grid/GridView';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
@@ -158,6 +158,47 @@ describe('GridView', () => {
     // touch-none: the strip owns navigation, so a stray swipe here must not
     // scroll the surface out from under a knob mid-drag.
     expect(scroller.className).toContain('touch-none');
+  });
+
+  // A drag arrives as many small pointermove events. The drag handler used to
+  // report per-event deltas while the widget re-derived from its current
+  // value, so each event landed at roughly the same place and the control
+  // never travelled more than a single step — it "barely worked".
+  it('accumulates a multi-event drag rather than applying one step', async () => {
+    const { setFxParam } = renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    const rate = await waitFor(() => screen.getByLabelText('Rate'));
+
+    // Rate spans 0.1–16 from a start of 0.5. Dragging up 95px is half the
+    // 190px travel, so it should land near the middle of the range.
+    fireEvent.pointerDown(rate, { clientX: 0, clientY: 300, pointerId: 1, button: 0 });
+    for (let y = 295; y >= 205; y -= 5) {
+      fireEvent.pointerMove(window, { clientX: 0, clientY: y, pointerId: 1 });
+    }
+    fireEvent.pointerUp(window, { clientX: 0, clientY: 205, pointerId: 1 });
+
+    await waitFor(() => expect(setFxParam).toHaveBeenCalled());
+    const sent = setFxParam.mock.calls.map((c) => c[3] as number);
+    const furthest = Math.max(...sent);
+
+    // Half of 15.9 added to 0.5 is ~8.5. Anything near the 0.5 start means the
+    // drag stopped accumulating.
+    expect(furthest).toBeGreaterThan(6);
+  });
+
+  it('drags the whole range without releasing', async () => {
+    const { setFxParam } = renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    const depth = await waitFor(() => screen.getByLabelText('Depth'));
+
+    // Depth is 0–1, starting at 0.7. A full 190px upward drag must reach the top.
+    fireEvent.pointerDown(depth, { clientX: 0, clientY: 400, pointerId: 1, button: 0 });
+    for (let y = 390; y >= 200; y -= 10) {
+      fireEvent.pointerMove(window, { clientX: 0, clientY: y, pointerId: 1 });
+    }
+    fireEvent.pointerUp(window, { clientX: 0, clientY: 200, pointerId: 1 });
+
+    await waitFor(() => expect(setFxParam).toHaveBeenCalled());
+    const sent = setFxParam.mock.calls.map((c) => c[3] as number);
+    expect(Math.max(...sent)).toBeCloseTo(1, 2);
   });
 
   it('only renders plugins that have a module, ignoring the rest', async () => {
