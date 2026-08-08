@@ -157,37 +157,69 @@ just without auto-derivation.
 
 ## Decided
 
-**The existing generic slider list is left alone.** No changes to how it looks
-or behaves. A module is a separate view, reached by a toggle on the FX screen —
-Sliders ⇄ Module. Plugins without a module only offer the slider view.
+**A new top-level tab: Grid.** Alongside Media, FX, Tracks, Playtime and
+Settings. It shows the selected track's plugin interface in landscape, full
+height, and pans horizontally when it's wider than the screen.
 
-This rules out the "widget inference everywhere" option, which would have
-improved the generic list by rendering enums and toggles properly. Worth
-remembering it's still available later as an independent improvement.
+**The existing generic slider list is left alone.** No changes to how the FX
+tab looks or behaves. Grid is an additional way in, not a replacement, and
+there's no toggle inside the FX view.
 
-## The layout problem
+This rules out the "infer widgets everywhere" option, which would have improved
+the generic list by rendering enums and toggles properly. Still available later
+as an independent improvement.
 
-"Truthful to the original" and "usable with fingers" pull against each other.
+## Why the horizontal strip resolves the layout problem
 
-Yutani's window is 1460×600 with five rows of panels and 35px knobs. An iPad in
-landscape is roughly 1180×820. Reproducing the layout 1:1 means either scaling
-it down — knobs well under the ~44px minimum for reliable touch — or scrolling
-a canvas larger than the screen.
+The earlier worry was that "truthful to the original" fights "usable with
+fingers": Yutani's window is 1460×600 with 35px knobs, an iPad in landscape is
+roughly 1180×820, and reliable touch wants ~44px. Reproducing it 1:1 means
+controls too small to hit.
 
-So a module's layout format needs to describe *structure* (this panel holds
-these controls, in this order, grouped this way) rather than absolute pixel
-positions, and let the renderer lay it out for the screen it's on. Yutani's
-five rows of panels become, say, a set of tabs or a vertical scroll of sections
-— recognisably the same instrument, not a photograph of it.
+Panning sideways removes the conflict. Fix the height to the screen, let the
+width be whatever the controls need at a comfortable size, and swipe right for
+the rest. Nothing gets scaled down. Yutani becomes a wide strip you move along
+rather than a shrunken photograph, which is what Ableton's device view does and
+why it works on small screens.
+
+This also sets the layout format: **fixed height, variable width, ordered
+panels.** A module describes panels left to right, each holding controls in a
+fixed-height arrangement. No absolute pixel positions.
+
+## Where this goes
+
+The tab is called Grid because one plugin is the first case, not the only one.
+The intended end state is Ableton's device chain: every FX on the selected
+track laid out side by side in one continuously pannable strip, so a track's
+whole signal path is one surface. That falls out of the same layout format —
+panels left to right — with device boundaries between plugins.
 
 ## Phasing
 
-1. **Widget kit + renderer + toggle**, proven end-to-end against one simple
-   plugin. Establishes the layout format, the shared widget vocabulary (knob,
-   toggle, segmented, XY) and the Sliders ⇄ Module switch.
+1. **The Grid tab with one plugin.** Widget kit (knob, toggle, segmented, XY),
+   the horizontal-pan container, and a module rendered for a single simple
+   plugin. Establishes the layout format end to end.
 2. **Yutani**, as the stress test: a patched copy exposing its private
-   controls, plus a module definition for its panel structure.
-3. **XY pads and richer widgets**, once the layout format has settled.
+   controls, plus a module definition for its panel structure. 167 drawn
+   widgets across five original panel rows is the real test of whether the
+   format holds up.
+3. **Multiple plugins in one strip** — the actual grid, with device boundaries
+   and the whole chain pannable.
+4. **XY pads and richer widgets**, once the format has settled.
+
+## Implementation notes
+
+- `App.tsx` has a `Tab` union and a `TABS` array; adding one is small. There's
+  a precedent for shipping an unfinished tab hidden behind a flag —
+  `SHOW_SEQUENCER` — worth reusing here while the format is in flux.
+- The data layer already exists: `track/getFx` lists a track's FX,
+  `fx/getParams` returns parameters with ranges and formatted values. Grid
+  needs no new backend commands until modules require parsed JSFX metadata.
+- Nothing in the app pans horizontally yet, so the container is new. It should
+  reuse the pointer-gating work from #138/#140 rather than inventing its own
+  gesture handling — and note that a horizontal pan container sitting under
+  horizontally-dragged knobs is exactly the gesture conflict `touch-action`
+  was added to resolve.
 
 ## Open questions
 
