@@ -29,6 +29,21 @@ const ROWS = [
 
 const ROW_SEL = 251;
 
+function stepgrid(label: string, mem: number, ri: number, mv: number): any {
+  const sliders: [number, number, number, number, number, number, number, number] =
+    [STEP_BASE + ri * 8, STEP_BASE + ri * 8 + 1, STEP_BASE + ri * 8 + 2, STEP_BASE + ri * 8 + 3,
+     STEP_BASE + ri * 8 + 4, STEP_BASE + ri * 8 + 5, STEP_BASE + ri * 8 + 6, STEP_BASE + ri * 8 + 7];
+  return {
+    kind: 'stepgrid' as const,
+    slider: sliders[0],
+    label,
+    steps: 32,
+    maxValue: mv,
+    stepSliders: sliders,
+    rowSelector: ROW_SEL,
+  };
+}
+
 export const seqsModule: ModuleDef = {
   title: 'SEQS',
   match: (n) => n.toLowerCase().includes('seqs'),
@@ -56,33 +71,46 @@ export const seqsModule: ModuleDef = {
     },
 
     // ── Grid (step grid) ───────────────────────────────────
-    ...ROWS.map(([label, mem, ri, mv]) => {
-      const sliders: [number, number, number, number, number, number, number, number] =
-        [STEP_BASE + ri * 8, STEP_BASE + ri * 8 + 1, STEP_BASE + ri * 8 + 2, STEP_BASE + ri * 8 + 3,
-         STEP_BASE + ri * 8 + 4, STEP_BASE + ri * 8 + 5, STEP_BASE + ri * 8 + 6, STEP_BASE + ri * 8 + 7];
-      return {
-        label,
-        group: 1,
-        controls: [
-          {
-            kind: 'stepgrid' as const,
-            slider: sliders[0],
-            expect: undefined,
-            label,
-            steps: 32,
-            maxValue: mv,
-            stepSliders: sliders,
-            rowSelector: ROW_SEL,
-          },
-        ],
-      };
-    }),
-    // Row selector (hidden, controls which row's data is in the step sliders)
+    // Grouped into 4 category panels to save vertical space
     {
-      label: 'Row',
+      label: 'Timing',
       group: 1,
       controls: [
-        { kind: 'knob', slider: ROW_SEL, expect: 'Edit row', label: 'Edit row', format: (v) => `${ROWS[Math.round(v)]?.[0] ?? v.toFixed(0)}` },
+        stepgrid('Reset', 1, 0, 1),
+        stepgrid('Slowdown', 24, 1, 24),
+        stepgrid('Tape Stop', 10, 2, 1),
+        stepgrid('Retrigger', 6, 3, 6),
+      ],
+    },
+    {
+      label: 'Sound',
+      group: 1,
+      controls: [
+        stepgrid('Filter', 7, 7, 1),
+        stepgrid('Filter 2', 21, 12, 1),
+        stepgrid('Gate', 6, 8, 1),
+        stepgrid('Reverb', 8, 9, 1),
+      ],
+    },
+    {
+      label: 'FX',
+      group: 1,
+      controls: [
+        stepgrid('Degrade', 9, 6, 1),
+        stepgrid('Karplus', 11, 10, 1),
+        stepgrid('Pitch', 12, 5, 1),
+        stepgrid('Freq Shift', 26, 15, 1),
+        stepgrid('Delay', 22, 13, 1),
+        stepgrid('Chorus', 23, 14, 1),
+      ],
+    },
+    {
+      label: 'Extras',
+      group: 1,
+      controls: [
+        stepgrid('Reverse', 5, 4, 1),
+        stepgrid('Mod FX', 20, 11, 1),
+        stepgrid('Mod A', 50, 16, 256),
       ],
     },
 
