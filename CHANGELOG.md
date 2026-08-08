@@ -1,4 +1,23 @@
 
+## v0.5.2-beta — 2026-08-08
+
+Bug-fix release, from iPad testing feedback. Everything here is a fix; no new features.
+
+### Highlights
+- **The FX tab loads again on machines with a large plugin library** — `fx/enumerate` timed out after 60s and the list never appeared. The response was built correctly and then thrown away: WDL's `send()` is all-or-nothing, so anything over the 64KB socket buffer was silently dropped, and its return value was being discarded. Outbound frames are now queued and drained across ticks. Roughly 40–45KB on a typical Windows install, which is why it worked there, but past the limit on macOS, where REAPER lists AU and VST3 copies of the same plugin and paths are far longer.
+- **Sliders track your finger and stop when you do** — three separate causes, all fixed. See below.
+
+### Fixes
+- **Sliders no longer overshoot after you let go.** A drag sent one command per pointer event — around 120/sec on an iPad — while the extension read at most one per `Run()` tick, about 30/sec. The backlog kept applying for seconds after the gesture ended, so a parameter appeared to carry on moving by itself. Sends are now gated to one in flight at a time, with the newest value going out when the previous reply lands, and the extension drains a bounded burst per tick instead of a single message.
+- **Volume and pan faders no longer fight your finger.** They were bound directly to server state, so between a change and REAPER's reply React kept snapping the thumb back to the stale value. The control now owns its value for the duration of a gesture and hands back once the last send is answered. Also guards against a late reply overwriting a newer position.
+- **An abandoned slider no longer follows every later drag.** iOS fires `pointercancel`, not `pointerup`, when a scrolling list claims a gesture — that path never detached the drag's listeners, so the slider went on receiving every pointer move on the page. Dragging one slider visibly moved an unrelated one *and wrote it to REAPER*. Drags now tear down on cancel and on unmount, and ignore pointers other than the one that started them, which also makes two-finger use behave.
+- **A drag that drifts vertically no longer gets taken away.** Sliding worked only while the gesture stayed horizontal; the moment it wandered, the browser reclaimed it as a scroll. `touch-action: pan-y` means the browser commits at gesture start — a drag beginning horizontally stays with the slider, while a clearly vertical swipe still scrolls the list.
+
+### Testing / CI
+- **Frontend suite repaired: 49 failures to 0.** Two causes. A second vitest config shadowed the first and had no `setupFiles`, so jest-dom matchers were never registered. And a lot of tests described behaviour the app no longer had, dating to 0bf8bc8. `useReaper`'s surface had been hand-listed in 15 places, so a new dependency broke every one; replaced with a factory that resolves unnamed members to permissive defaults.
+- **C++ suite repaired: 27 failures to 0.** The test binary never called `JNL::open_socketlib()`, so every socket call failed on Windows and the OSC code had no working coverage. Tests also assumed a POSIX filesystem — unescaped Windows backslashes in JSON, hardcoded `/tmp` — now fixed cross-platform. Eleven tests covering since-replaced behaviour were removed, each with a note explaining why.
+- **Release builds now run the frontend suite as a gate**, before the C++ toolchain setup so a failure surfaces in about a minute.
+
 ## v0.5.1-beta — 2026-07-29
 
 ### Highlights
