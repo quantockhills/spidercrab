@@ -477,6 +477,15 @@ function Panel({
   const off = enableParam ? enableParam.value < 0.5 : false;
   const { rows } = shapeFor(panel.controls.length, maxRows);
 
+  // Pagination for paramslider panels: 8 sliders per page.
+  const isSliderPanel = panel.controls[0]?.kind === 'paramslider';
+  const PAGE = 8;
+  const [sliderPage, setSliderPage] = useState(0);
+  const totalPages = isSliderPanel ? Math.ceil(panel.controls.length / PAGE) : 1;
+  const visibleControls = isSliderPanel
+    ? panel.controls.slice(sliderPage * PAGE, (sliderPage + 1) * PAGE)
+    : panel.controls;
+
   return (
     <div className="flex flex-col gap-1.5 px-2 py-1.5 bg-[var(--bg-tertiary)]/25 ring-1 ring-[var(--border)]/50">
       <div className="flex items-center gap-1.5">
@@ -497,21 +506,34 @@ function Panel({
           {panel.label}
         </div>
       </div>
-      {/*
-        ParamSliders stack vertically, taking full width. The Grid's
-        compact knob/fader layout uses a CSS grid with explicit rows.
-      */}
+      {isSliderPanel && totalPages > 1 && (
+        <div className="flex items-center justify-between text-[10px] text-[var(--text-secondary)]">
+          {sliderPage > 0 ? (
+            <button
+              onClick={() => setSliderPage((p) => p - 1)}
+              className="px-2 py-0.5 bg-[var(--bg-tertiary)] active:brightness-95"
+            >← Prev</button>
+          ) : <span />}
+          <span>{sliderPage * PAGE + 1}–{Math.min((sliderPage + 1) * PAGE, panel.controls.length)} of {panel.controls.length}</span>
+          {sliderPage < totalPages - 1 ? (
+            <button
+              onClick={() => setSliderPage((p) => p + 1)}
+              className="px-2 py-0.5 bg-[var(--bg-tertiary)] active:brightness-95"
+            >Next →</button>
+          ) : <span />}
+        </div>
+      )}
       <div
         className={`${
-          panel.controls[0]?.kind === 'paramslider'
+          isSliderPanel
             ? 'flex flex-col gap-2 w-full'
             : `grid grid-flow-col gap-x-4 gap-y-2 justify-start content-center flex-1 transition-opacity ${
               off ? 'opacity-40' : ''
             }`
         }`}
-        style={panel.controls[0]?.kind === 'paramslider' ? {} : { gridTemplateRows: `repeat(${rows}, min-content)` }}
+        style={isSliderPanel ? {} : { gridTemplateRows: `repeat(${rows}, min-content)` }}
       >
-        {panel.controls.map((control) => {
+        {visibleControls.map((control) => {
           // Resolved by name where possible — a JSFX slider number isn't
           // necessarily REAPER's parameter index.
           const param = resolveParam(params, control);
