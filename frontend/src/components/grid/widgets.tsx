@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { FxParam } from '../../hooks/useReaper';
 import { useLiveSlider } from '../../hooks/useLiveSlider';
-import type { KnobControl, FaderControl, SegmentedControl } from './modules';
+import type {
+  KnobControl, FaderControl, SegmentedControl, ToggleControl,
+} from './modules';
 
 // Pixels of vertical travel to move a control across its whole range.
 const DRAG_TRAVEL_PX = 190;
@@ -200,6 +202,35 @@ export function Fader({ param, control, onChange }: Common & { control: FaderCon
       </div>
       <div className="text-[11px] tabular-nums text-[var(--text-primary)]">
         {control.format ? control.format(value) : (param.formatted ?? value.toFixed(1))}
+      </div>
+    </div>
+  );
+}
+
+// ── Toggle ───────────────────────────────────────────────────
+
+export function Toggle({ param, control, onChange }: Common & { control: ToggleControl }) {
+  // A JSFX <0,1,1> parameter. Discrete, so no drag and no send gating.
+  const on = param.value >= 0.5;
+  return (
+    <div className="flex flex-col items-center gap-1 select-none">
+      <button
+        onClick={() => onChange(on ? param.min : param.max)}
+        role="switch"
+        aria-checked={on}
+        aria-label={control.label}
+        className={`w-11 h-11 transition-colors active:brightness-95 ${
+          on
+            ? 'bg-[var(--accent-orange)]/25 ring-1 ring-[var(--accent-orange)]/60'
+            : 'bg-[var(--bg-tertiary)] ring-1 ring-[var(--border)]'
+        }`}
+      >
+        <span className={`block w-3 h-3 mx-auto ${
+          on ? 'bg-[var(--accent-orange)]' : 'bg-[var(--text-secondary)]/40'
+        }`} />
+      </button>
+      <div className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] text-center max-w-16 truncate">
+        {control.label}
       </div>
     </div>
   );

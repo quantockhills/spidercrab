@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { findModule, cleanFxName } from '../components/grid/modules';
+import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../components/grid/modules';
 import { GridView } from '../components/grid/GridView';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
@@ -25,22 +25,21 @@ describe('grid module matching', () => {
     expect(findModule('JS: Chorus-Ensemble Deluxe')).toBeNull();
   });
 
-  // The module is hand-authored against Cockos Chorus's declaration order.
-  // JSFX slider1 is REAPER param 0, so an off-by-one here silently drives the
-  // wrong control — worth pinning.
-  it('maps Chorus parameters to the right indices', () => {
+  // Controls reference JSFX slider numbers, 1-based as declared in the source.
+  // Getting one wrong silently drives a different control, so pin them.
+  it('references the right Chorus sliders', () => {
     const m = findModule('JS: Chorus')!;
-    const byLabel: Record<string, number> = {};
+    const bySlider: Record<string, number> = {};
     for (const panel of m.panels) {
-      for (const c of panel.controls) byLabel[c.label] = c.param;
+      for (const c of panel.controls) bySlider[c.label] = c.slider;
     }
-    expect(byLabel).toEqual({
-      Time: 0,    // slider1 Chorus Length (ms)
-      Voices: 1,  // slider2 Number Of Voices
-      Rate: 2,    // slider3 Rate (Hz)
-      Depth: 3,   // slider4 Pitch Fudge Factor
-      Wet: 4,     // slider5 Wet Mix (dB)
-      Dry: 5,     // slider6 Dry Mix (dB)
+    expect(bySlider).toEqual({
+      Time: 1,    // slider1 Chorus Length (ms)
+      Voices: 2,  // slider2 Number Of Voices
+      Rate: 3,    // slider3 Rate (Hz)
+      Depth: 4,   // slider4 Pitch Fudge Factor
+      Wet: 5,     // slider5 Wet Mix (dB)
+      Dry: 6,     // slider6 Dry Mix (dB)
     });
   });
 
@@ -52,6 +51,52 @@ describe('grid module matching', () => {
     expect(seg).toBeDefined();
     expect(seg!.kind === 'segmented' && seg!.options.map((o) => o.value))
       .toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+});
+
+// ── Parameter resolution ─────────────────────────────────────
+//
+// A JSFX slider number is not necessarily REAPER's parameter index. Yutani
+// declares sliders 1-66, 71-73 and 80-81, so whether REAPER compacts those
+// gaps or preserves them shifts everything past slider 66. The resolver
+// treats the slider number as a guess and confirms it by name.
+
+describe('resolveParam', () => {
+  const ctl = (slider: number, expect_?: string): ModuleControl =>
+    ({ kind: 'knob', slider, expect: expect_, label: 'x' });
+
+  it('uses the slider number when the name confirms it', () => {
+    const params = [
+      { index: 0, name: 'Alpha' }, { index: 1, name: 'Beta' }, { index: 2, name: 'Gamma' },
+    ];
+    expect(resolveParam(params, ctl(2, 'Beta'))?.index).toBe(1);
+  });
+
+  // Gaps preserved: slider 71 sits at index 70.
+  it('finds the parameter by name when the index is shifted', () => {
+    const params = [
+      { index: 0, name: 'Alpha' }, { index: 66, name: 'AP frequency' },
+    ];
+    expect(resolveParam(params, ctl(71, 'AP frequency'))?.index).toBe(66);
+  });
+
+  // Yutani has three parameters called "Detune [semitones]".
+  it('picks the nearest candidate when a label repeats', () => {
+    const params = [
+      { index: 19, name: 'Detune [semitones]' },
+      { index: 21, name: 'Detune [semitones]' },
+      { index: 23, name: 'Detune [semitones]' },
+    ];
+    expect(resolveParam(params, ctl(22, 'Detune [semitones]'))?.index).toBe(21);
+  });
+
+  it('returns nothing when the parameter is absent', () => {
+    expect(resolveParam([{ index: 0, name: 'Alpha' }], ctl(9, 'Missing'))).toBeUndefined();
+  });
+
+  it('falls back to the raw index when no name is given', () => {
+    const params = [{ index: 0, name: 'Alpha' }, { index: 1, name: 'Beta' }];
+    expect(resolveParam(params, ctl(2))?.index).toBe(1);
   });
 });
 

@@ -8,29 +8,85 @@
 // Parameter indices are REAPER's, which are 0-based — a JSFX `slider1:` is
 // param 0.
 
-export interface KnobControl {
-  kind: 'knob';
-  param: number;
+interface ControlBase {
+  /**
+   * The JSFX slider number this control drives, 1-based as declared in the
+   * source. Used as a hint, not a promise: see resolveParam.
+   */
+  slider: number;
+  /**
+   * The parameter name REAPER should report for that slider. Lets the
+   * resolver confirm it found the right one, which matters because slider
+   * numbering and REAPER's parameter indexing don't necessarily agree —
+   * Yutani declares 1-66, 71-73 and 80-81, with gaps.
+   */
+  expect?: string;
   label: string;
-  /** Overrides the plugin's own formatting. `{v}` is the value. */
+}
+
+export interface KnobControl extends ControlBase {
+  kind: 'knob';
+  /** Overrides the plugin's own formatting. */
   format?: (v: number) => string;
 }
 
-export interface SegmentedControl {
+export interface SegmentedControl extends ControlBase {
   kind: 'segmented';
-  param: number;
-  label: string;
   options: { value: number; label: string }[];
 }
 
-export interface FaderControl {
+export interface FaderControl extends ControlBase {
   kind: 'fader';
-  param: number;
-  label: string;
   format?: (v: number) => string;
 }
 
-export type ModuleControl = KnobControl | SegmentedControl | FaderControl;
+export interface ToggleControl extends ControlBase {
+  kind: 'toggle';
+}
+
+export type ModuleControl =
+  | KnobControl | SegmentedControl | FaderControl | ToggleControl;
+
+/** Minimal shape of what the backend reports per parameter. */
+export interface ResolvableParam {
+  index: number;
+  name: string;
+}
+
+/**
+ * Find the parameter a control refers to.
+ *
+ * A JSFX slider number is not necessarily REAPER's parameter index. Yutani
+ * declares sliders 1-66, 71-73 and 80-81, and whether REAPER compacts those
+ * gaps or preserves them changes every index past 66. Rather than depend on
+ * which, this treats the slider number as a starting guess and confirms it
+ * against the name the module expects.
+ *
+ * Falls back to searching by name, preferring the candidate nearest the
+ * expected position when a plugin reuses a label — Yutani has three
+ * parameters called "Detune [semitones]".
+ */
+export function resolveParam<T extends ResolvableParam>(
+  params: T[],
+  control: ModuleControl,
+): T | undefined {
+  const guess = control.slider - 1;
+
+  if (!control.expect) {
+    return params.find((p) => p.index === guess);
+  }
+
+  const atGuess = params.find((p) => p.index === guess);
+  if (atGuess?.name === control.expect) return atGuess;
+
+  const matches = params.filter((p) => p.name === control.expect);
+  if (matches.length === 1) return matches[0];
+  if (matches.length > 1) {
+    return matches.reduce((best, p) =>
+      Math.abs(p.index - guess) < Math.abs(best.index - guess) ? p : best);
+  }
+  return undefined;
+}
 
 export interface ModulePanel {
   label: string;
@@ -72,7 +128,8 @@ const chorus: ModuleDef = {
       controls: [
         {
           kind: 'segmented',
-          param: 1,
+          slider: 2,
+          expect: 'Number Of Voices',
           label: 'Voices',
           options: Array.from({ length: 8 }, (_, i) => ({
             value: i + 1,
@@ -84,16 +141,16 @@ const chorus: ModuleDef = {
     {
       label: 'Motion',
       controls: [
-        { kind: 'knob', param: 2, label: 'Rate', format: (v) => `${v.toFixed(2)} Hz` },
-        { kind: 'knob', param: 3, label: 'Depth', format: (v) => `${Math.round(v * 100)}%` },
-        { kind: 'knob', param: 0, label: 'Time', format: (v) => `${Math.round(v)} ms` },
+        { kind: 'knob', slider: 3, expect: 'Rate (Hz)', label: 'Rate', format: (v) => `${v.toFixed(2)} Hz` },
+        { kind: 'knob', slider: 4, expect: 'Pitch Fudge Factor', label: 'Depth', format: (v) => `${Math.round(v * 100)}%` },
+        { kind: 'knob', slider: 1, expect: 'Chorus Length (ms)', label: 'Time', format: (v) => `${Math.round(v)} ms` },
       ],
     },
     {
       label: 'Output',
       controls: [
-        { kind: 'fader', param: 4, label: 'Wet', format: (v) => `${Math.round(v)} dB` },
-        { kind: 'fader', param: 5, label: 'Dry', format: (v) => `${Math.round(v)} dB` },
+        { kind: 'fader', slider: 5, expect: 'Wet Mix (dB)', label: 'Wet', format: (v) => `${Math.round(v)} dB` },
+        { kind: 'fader', slider: 6, expect: 'Dry Mix (dB)', label: 'Dry', format: (v) => `${Math.round(v)} dB` },
       ],
     },
   ],

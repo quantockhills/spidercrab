@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Track, FxInfo, FxParam } from '../../hooks/useReaper';
 import type { WsResponse } from '../../lib/wsClient';
-import { findModule, cleanFxName, type ModuleDef, type ModulePanel } from './modules';
-import { Knob, Fader, Segmented } from './widgets';
+import { findModule, cleanFxName, resolveParam, type ModuleDef, type ModulePanel } from './modules';
+import { Knob, Fader, Segmented, Toggle } from './widgets';
 import { GridStrip } from './GridStrip';
 
 interface GridViewProps {
@@ -199,24 +199,29 @@ function Panel({
       </div>
       <div className="flex items-start gap-3">
         {panel.controls.map((control) => {
-          const param = params.find((p) => p.index === control.param);
+          // Resolved by name where possible — a JSFX slider number isn't
+          // necessarily REAPER's parameter index.
+          const param = resolveParam(params, control);
           if (!param) {
             return (
-              <div key={`${control.kind}-${control.param}`}
+              <div key={`${control.kind}-${control.slider}`}
                 className="w-16 h-16 flex items-center justify-center">
                 <div className="w-10 h-10 bg-[var(--bg-tertiary)] animate-pulse" />
               </div>
             );
           }
-          const handle = (v: number) => onChange(control.param, v);
+          const handle = (v: number) => onChange(param.index, v);
           if (control.kind === 'knob') {
-            return <Knob key={control.param} param={param} control={control} onChange={handle} />;
+            return <Knob key={control.slider} param={param} control={control} onChange={handle} />;
           }
           if (control.kind === 'fader') {
-            return <Fader key={control.param} param={param} control={control} onChange={handle} />;
+            return <Fader key={control.slider} param={param} control={control} onChange={handle} />;
+          }
+          if (control.kind === 'toggle') {
+            return <Toggle key={control.slider} param={param} control={control} onChange={handle} />;
           }
           return (
-            <Segmented key={control.param} param={param} control={control}
+            <Segmented key={control.slider} param={param} control={control}
               columns={panel.columns} onChange={handle}
               hideLabel={panel.label === control.label} />
           );
