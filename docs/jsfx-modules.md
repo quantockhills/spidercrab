@@ -40,14 +40,17 @@ a `slider_automate` call where `@gfx` writes the variable.
   update overwrites the patch. Mitigation: generate a patched *copy* beside the
   original rather than editing in place, so divergence is explicit and ReaPack
   keeps managing the original.
-- **Preset and project compatibility is the real hazard.** Existing state lives
-  in `@serialize`; adding a slider for the same variable creates two sources of
-  truth, and the precedence is **not documented**. The reference only warns
-  that `@init` may run *after* `@serialize`. Whether `@slider` then overwrites
-  a serialize-restored value needs testing, not assumption — get it wrong and
-  old projects load with settings silently reset. Yutani already has a
-  `VERSION` field and migration branches, which is the hook a patch would use.
 - **Per-plugin effort.** Yutani has 114 plausible controls to promote.
+
+A patched *copy under a new filename* is a different plugin as far as REAPER is
+concerned, which dissolves most of the risk: existing projects go on loading
+the original, untouched, and the copy has no legacy saved state to migrate. So
+the `@serialize`-precedence question doesn't arise for the copy approach — it
+would only matter if we patched a plugin in place, which we won't.
+
+The one thing that doesn't carry over is **presets**: they're stored per
+plugin, so Yutani's `bass_presets.rpl` wouldn't appear in the copy. Converting
+them is possible (they're slider values in a text format) but is its own task.
 
 Measured on Yutani (`Saike_Yutani.jsfx`):
 
@@ -152,16 +155,39 @@ Non-JSFX plugins (VST/AU/CLAP) have no readable source, but REAPER still
 reports parameter names and values — so the manifest path works for them too,
 just without auto-derivation.
 
+## Decided
+
+**The existing generic slider list is left alone.** No changes to how it looks
+or behaves. A module is a separate view, reached by a toggle on the FX screen —
+Sliders ⇄ Module. Plugins without a module only offer the slider view.
+
+This rules out the "widget inference everywhere" option, which would have
+improved the generic list by rendering enums and toggles properly. Worth
+remembering it's still available later as an independent improvement.
+
+## The layout problem
+
+"Truthful to the original" and "usable with fingers" pull against each other.
+
+Yutani's window is 1460×600 with five rows of panels and 35px knobs. An iPad in
+landscape is roughly 1180×820. Reproducing the layout 1:1 means either scaling
+it down — knobs well under the ~44px minimum for reliable touch — or scrolling
+a canvas larger than the screen.
+
+So a module's layout format needs to describe *structure* (this panel holds
+these controls, in this order, grouped this way) rather than absolute pixel
+positions, and let the renderer lay it out for the screen it's on. Yutani's
+five rows of panels become, say, a set of tabs or a vertical scroll of sections
+— recognisably the same instrument, not a photograph of it.
+
 ## Phasing
 
-1. **Widget inference, no manifests.** Parse declarations, render enums as
-   segmented controls and toggles as toggles. Immediate improvement to every
-   JSFX, no per-plugin work. Ships independently of the rest.
-2. **Descriptor command + module view.** `fx/getModule`, a module renderer,
-   and the slider/module toggle.
-3. **Manifests.** Start with two or three plugins to prove the format. Yutani
-   is a good stress test precisely because it is the hard case.
-4. **XY pads and richer widgets**, once the layout format has settled.
+1. **Widget kit + renderer + toggle**, proven end-to-end against one simple
+   plugin. Establishes the layout format, the shared widget vocabulary (knob,
+   toggle, segmented, XY) and the Sliders ⇄ Module switch.
+2. **Yutani**, as the stress test: a patched copy exposing its private
+   controls, plus a module definition for its panel structure.
+3. **XY pads and richer widgets**, once the layout format has settled.
 
 ## Open questions
 
