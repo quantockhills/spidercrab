@@ -448,11 +448,17 @@ static double mock_TrackFX_GetParamEx(
     if (minOut) *minOut = f.paramMins[param];
     if (maxOut) *maxOut = f.paramMaxs[param];
     if (midOut) *midOut = f.paramMids[param];
-    // paramVals stores actual display values.
-    // GetParamEx must return normalized (0-1), so convert (Issue #73).
-    double range = f.paramMaxs[param] - f.paramMins[param];
-    if (range < 1e-15) return 0.0;
-    return (f.paramVals[param] - f.paramMins[param]) / range;
+    // GetParamEx returns the value in display units, the same units it reports
+    // through min/max. The normalized 0-1 form is TrackFX_GetParamNormalized,
+    // a separate API call.
+    //
+    // This mock previously normalized, and the handlers converted back, so the
+    // two agreed with each other and disagreed with REAPER. Measured against a
+    // live REAPER: Chorus's Wet at -6dB over a -100..12 range surfaced as -772,
+    // which is min + (-6 * range) — i.e. GetParamEx had returned -6, not the
+    // normalized 0.839. Its 250ms Time maximum surfaced as 62251 = 1 + 250*249.
+    // Two independent parameters, both matching exactly.
+    return f.paramVals[param];
 }
 
 static bool mock_TrackFX_GetParamName(MediaTrack* track, int fx, int param, char* buf, int buf_sz)
@@ -3616,6 +3622,40 @@ TEST(SequencerConvertTest, ConvertToClipNoTracksReturnsError)
 // ============================================================
 // FX param slider jump fixes (Issue #73)
 // ============================================================
+
+// getParams must report values in display units, exactly as GetParamEx gives
+// them. They used to be rescaled by the range as though GetParamEx returned a
+// normalized 0-1, which squared the value. Pinned with the real numbers that
+// exposed it: Cockos Chorus on an iPad showed Wet as -772 and Time as 62251.
+TEST(FxParamSliderTest, GetParamsReportsDisplayUnitsNotRescaled)
+{
+    MockState state;
+    MockTrack t;
+    t.fx.push_back({ 0, "JS: Chorus",
+        {"Chorus Length (ms)", "Wet Mix (dB)"},
+        {15.0,  -6.0},    // actual values
+        {1.0,   -100.0},  // min
+        {250.0,  12.0},   // max
+        {125.0, -44.0} });
+    state.tracks = { t };
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"fx/getParams","payload":{"trackIdx":0,"fxIdx":0},"id":"units"})");
+    ASSERT_EQ(responses.size(), 1u);
+    const std::string& resp = responses[0];
+
+    EXPECT_NE(resp.find("\"value\":15."), std::string::npos)
+        << "Chorus Length should read back as 15 ms, not 1 + 15*249. Got: " << resp;
+    EXPECT_NE(resp.find("\"value\":-6."), std::string::npos)
+        << "Wet Mix should read back as -6 dB, not -100 + -6*112. Got: " << resp;
+
+    // The specific wrong values, so a regression names itself
+    EXPECT_EQ(resp.find("62251"), std::string::npos) << "rescaled Chorus Length";
+    EXPECT_EQ(resp.find("-772"), std::string::npos) << "rescaled Wet Mix";
+}
 
 TEST(FxParamSliderTest, HandleSetFXParamWithEqualMinMaxDoesNotProduceNaN)
 {
