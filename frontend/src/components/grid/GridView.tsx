@@ -8,6 +8,7 @@ import {
   type ModuleDef, type ModulePanel, type ModifierKind,
 } from './modules';
 import { Knob, Fader, Segmented, Toggle, StepGrid, readStepGrid, editStep } from './widgets';
+import { ParamSlider } from '../ParamControl';
 import { GridStrip } from './GridStrip';
 import { DeviceInfo } from './DeviceInfo';
 import { PresetPicker } from './PresetPicker';
@@ -497,22 +498,18 @@ function Panel({
         </div>
       </div>
       {/*
-        Fill downward first, then start a new column — so a panel of eight
-        knobs is two short columns rather than one long stripe.
-
-        Grid with an explicit row count rather than flex column-wrap: wrapping
-        a column-direction flex container needs a definite height *and* a
-        parent willing to grow wider for the extra columns, and without both
-        the columns pile up on top of each other. `grid-auto-flow: column` with
-        fixed rows just works, and the width follows.
+        ParamSliders stack vertically, taking full width. The Grid's
+        compact knob/fader layout uses a CSS grid with explicit rows.
       */}
-      {/* Centred in whatever height the tallest panel sets, so a short panel
-          sits in the middle of its box rather than clinging to the top. */}
       <div
-        className={`grid grid-flow-col gap-x-4 gap-y-2 justify-start content-center flex-1 transition-opacity ${
-          off ? 'opacity-40' : ''
+        className={`${
+          panel.controls[0]?.kind === 'paramslider'
+            ? 'flex flex-col gap-2 w-full'
+            : `grid grid-flow-col gap-x-4 gap-y-2 justify-start content-center flex-1 transition-opacity ${
+              off ? 'opacity-40' : ''
+            }`
         }`}
-        style={{ gridTemplateRows: `repeat(${rows}, min-content)` }}
+        style={panel.controls[0]?.kind === 'paramslider' ? {} : { gridTemplateRows: `repeat(${rows}, min-content)` }}
       >
         {panel.controls.map((control) => {
           // Resolved by name where possible — a JSFX slider number isn't
@@ -571,6 +568,18 @@ function Panel({
                 label={control.label}
                 enabled={true}
               />
+            );
+          }
+          if (control.kind === 'paramslider') {
+            return (
+              <div key={control.slider} className="w-full min-w-[200px]">
+                <ParamSlider
+                  param={param}
+                  onChange={handle}
+                  onDragStart={() => {}}
+                  onDragEnd={() => {}}
+                />
+              </div>
             );
           }
           return (

@@ -73,6 +73,14 @@ export interface ToggleControl extends ControlBase {
 }
 
 /**
+ * Horizontal slider like the Track Overview's ParamSlider. Used by the
+ * auto-generated fallback panels for plugins without a hand-authored module.
+ */
+export interface ParamSliderControl extends ControlBase {
+  kind: 'paramslider';
+}
+
+/**
  * A row of step cells for a sequencer pattern.
  *
  * Step values are packed into the slider params: 4 steps per slider, each step
@@ -102,7 +110,7 @@ export interface StepGridControl extends ControlBase {
 }
 
 export type ModuleControl =
-  | KnobControl | SegmentedControl | FaderControl | ToggleControl | StepGridControl;
+  | KnobControl | SegmentedControl | FaderControl | ToggleControl | StepGridControl | ParamSliderControl;
 
 /** Minimal shape of what the backend reports per parameter. */
 export interface ResolvableParam {
@@ -340,11 +348,10 @@ export function findModule(fxName: string): ModuleDef | null {
 
 export function autoControlType(
   min: number, max: number, step?: number,
-): 'knob' | 'fader' | 'toggle' {
+): 'paramslider' | 'toggle' {
   if (min === 0 && max === 1 && (step ?? 0.000001) >= 1) return 'toggle';
   if (max - min <= 1 && (step ?? 0.000001) >= 0.5) return 'toggle';
-  if (max > 2 && min < max) return 'knob';
-  return 'toggle';
+  return 'paramslider';
 }
 
 /**
@@ -364,7 +371,7 @@ export function fallbackModule(params: { index: number; name: string; min: numbe
         if (kind === 'toggle') {
           return { kind: 'toggle' as const, slider: p.index + 1, expect: p.name, label: p.name };
         }
-        return { kind, slider: p.index + 1, expect: p.name, label: p.name };
+        return { kind: 'paramslider' as const, slider: p.index + 1, expect: p.name, label: p.name };
       }),
     }] : [],
   };
