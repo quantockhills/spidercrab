@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Track, FxInfo, FxParam } from '../../hooks/useReaper';
 import type { WsResponse } from '../../lib/wsClient';
-import { findModule, cleanFxName, resolveParam, type ModuleDef, type ModulePanel } from './modules';
+import {
+  findModule, cleanFxName, resolveParam, MODIFIER_KINDS, MODIFIER_LABELS,
+  type ModuleDef, type ModulePanel, type ModifierKind,
+} from './modules';
 import { Knob, Fader, Segmented, Toggle } from './widgets';
 import { GridStrip } from './GridStrip';
 
@@ -243,15 +246,46 @@ function Device({
     [trackIdx, fx.index, setFxParam],
   );
 
+  // Which modulation mode is latched. Tap to enter, tap again to leave — the
+  // plugin's own behaviour, and one switch rather than a disclosure control on
+  // each of seventy depths.
+  const [mode, setMode] = useState<ModifierKind | null>(null);
+  const hasModifiers = module.panels.some(
+    (p) => p.controls.some((c) => c.modifiers?.length),
+  );
+
   return (
     <section className="flex flex-col bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] flex-shrink-0">
-      <header className="px-3 py-1.5 border-b border-[var(--border)]">
+      <header className="px-3 py-1.5 border-b border-[var(--border)] flex items-center gap-3">
         <span
           className="text-[11px] font-semibold uppercase tracking-wider"
           data-testid="grid-device-title"
         >
           {module.title || cleanFxName(fx.name)}
         </span>
+        {hasModifiers && (
+          <div className="flex gap-1" role="group" aria-label="Modulation mode">
+            {MODIFIER_KINDS.map((kind) => (
+              <button
+                key={kind}
+                onClick={() => setMode((m) => (m === kind ? null : kind))}
+                aria-pressed={mode === kind}
+                className={`px-2 py-0.5 text-[10px] font-semibold tracking-wider transition-colors ${
+                  mode === kind
+                    ? 'bg-[var(--accent-orange)]/25 text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/60'
+                    : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                }`}
+              >
+                {MODIFIER_LABELS[kind]}
+              </button>
+            ))}
+          </div>
+        )}
+        {mode && (
+          <span className="text-[10px] text-[var(--text-secondary)]">
+            editing {MODIFIER_LABELS[mode]} depth
+          </span>
+        )}
       </header>
       <div className="flex items-start gap-2 p-2">
         {module.panels.map((panel) => (
@@ -259,6 +293,7 @@ function Device({
             key={panel.label}
             panel={panel}
             params={params}
+            mode={mode}
             onChange={commit}
           />
         ))}
@@ -281,16 +316,38 @@ function rowsFor(count: number): number {
 }
 
 function Panel({
-  panel, params, onChange,
+  panel, params, mode, onChange,
 }: {
   panel: ModulePanel;
   params: FxParam[];
+  mode: ModifierKind | null;
   onChange: (paramIdx: number, value: number) => void;
 }) {
+  // The section's own on/off, which the plugin keeps as a few-pixel square in
+  // the panel corner and uses to grey the whole panel out. Too small to hit
+  // with a finger, so it becomes a switch in the header instead.
+  const enableParam = panel.enable ? resolveParam(params, panel.enable) : undefined;
+  const off = enableParam ? enableParam.value < 0.5 : false;
+
   return (
     <div className="flex flex-col gap-1.5 px-2 py-1.5 bg-[var(--bg-tertiary)]/25 ring-1 ring-[var(--border)]/50">
-      <div className="text-[9px] uppercase tracking-widest text-[var(--text-secondary)]">
-        {panel.label}
+      <div className="flex items-center gap-1.5">
+        {enableParam && (
+          <button
+            onClick={() => onChange(
+              enableParam.index, off ? enableParam.max : enableParam.min,
+            )}
+            role="switch"
+            aria-checked={!off}
+            aria-label={`${panel.label} on`}
+            className={`w-2.5 h-2.5 flex-shrink-0 transition-colors ${
+              off ? 'bg-[var(--text-secondary)]/30' : 'bg-[var(--accent-orange)]'
+            }`}
+          />
+        )}
+        <div className="text-[9px] uppercase tracking-widest text-[var(--text-secondary)]">
+          {panel.label}
+        </div>
       </div>
       {/*
         Fill downward first, then start a new column — so a panel of eight
@@ -303,7 +360,9 @@ function Panel({
         fixed rows just works, and the width follows.
       */}
       <div
-        className="grid grid-flow-col gap-x-4 gap-y-2 justify-start items-start"
+        className={`grid grid-flow-col gap-x-4 gap-y-2 justify-start items-start transition-opacity ${
+          off ? 'opacity-40' : ''
+        }`}
         style={{ gridTemplateRows: `repeat(${rowsFor(panel.controls.length)}, min-content)` }}
       >
         {panel.controls.map((control) => {
@@ -320,7 +379,27 @@ function Panel({
           }
           const handle = (v: number) => onChange(param.index, v);
           if (control.kind === 'knob') {
-            return <Knob key={control.slider} param={param} control={control} onChange={handle} />;
+            // Resolve each depth alongside the knob, so a mode can retarget
+            // the same gesture without a second lookup mid-drag.
+            const depths: Partial<Record<ModifierKind, FxParam>> = {};
+            for (const ref of control.modifiers ?? []) {
+              const p = resolveParam(params, ref);
+              if (p) depths[ref.kind] = p;
+            }
+            return (
+              <Knob
+                key={control.slider}
+                param={param}
+                control={control}
+                mode={mode}
+                depths={depths}
+                onDepthChange={(kind, v) => {
+                  const p = depths[kind];
+                  if (p) onChange(p.index, v);
+                }}
+                onChange={handle}
+              />
+            );
           }
           if (control.kind === 'fader') {
             return <Fader key={control.slider} param={param} control={control} onChange={handle} />;

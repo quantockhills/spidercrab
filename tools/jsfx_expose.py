@@ -67,6 +67,235 @@ MANUAL_RANGES = {
 }
 
 
+# What the plugin calls each modulation mode. 1 and 2 are the VEL and MOD
+# buttons on the right edge; 3 is the LINK button inside the Free LFO panel.
+MOD_NAMES = {1: 'Vel', 2: 'Mod', 3: 'LFO'}
+
+
+# Tooltips range from a name to a paragraph. Past this a hint has stopped
+# being a label -- "Enabling this places the amplitude envelope before the
+# filter" is documentation -- so the variable name is prettified instead.
+MAX_LABEL = 26
+
+# Called inside knob_set's arguments; not the variable being displayed.
+FUNCS = {'sprintf', 'floor', 'ceil', 'min', 'max', 'abs', 'exp', 'log',
+         'sqrt', 'pow', 'clamp', 'cl01', 'sin', 'cos', 'strcpy', 'gfx_measurestr'}
+
+
+def _first_line(text):
+    """Hints are multi-line; the first sentence is the name."""
+    return text.split('\\n')[0].strip().rstrip('.').strip()
+
+
+def _split_args(text):
+    """Top-level comma-separated arguments, ignoring nesting and strings."""
+    out, depth, cur, in_str, i = [], 0, [], False, 0
+    while i < len(text):
+        ch = text[i]
+        if in_str:
+            if ch == '\\':
+                cur.append(text[i:i + 2]); i += 2; continue
+            if ch == '"':
+                in_str = False
+            cur.append(ch)
+        elif ch == '"':
+            in_str = True; cur.append(ch)
+        elif ch in '([':
+            depth += 1; cur.append(ch)
+        elif ch in ')]':
+            depth -= 1; cur.append(ch)
+        elif ch == ',' and depth == 0:
+            out.append(''.join(cur)); cur = []
+        else:
+            cur.append(ch)
+        i += 1
+    out.append(''.join(cur))
+    return out
+
+
+def _first_var(expr):
+    """The first thing in an expression that could be a variable."""
+    for var in re.findall(r'[A-Za-z_]\w*', re.sub(r'"[^"]*"', '', expr)):
+        if var not in FUNCS:
+            return var
+    return None
+
+
+def _label_from(text):
+    """A hint is only a label if it's short enough to be one."""
+    first = _first_line(text)
+    return first if 0 < len(first) <= MAX_LABEL else ''
+
+
+def _instance_vars(gfx):
+    """
+    widget instance -> the variable it displays.
+
+    knob_set(displayText, active, normalisedValue) — it's the third argument
+    that carries the variable. The first is a format string that often mentions
+    it too, but not always: knob_set("", !any_non_simple_active, fm_level)
+    would otherwise name the knob after an unrelated flag.
+    """
+    out = {}
+    for inst, args in re.findall(r'(\w+)\.knob_set\((.*?)\);', gfx, re.S):
+        parts = _split_args(args)
+        if len(parts) >= 3:
+            var = _first_var(parts[2])
+            if var:
+                out.setdefault(inst, var)
+
+    # Several knobs skip the setter and assign straight through, which is how
+    # every LFO knob is written, often scaled on the way in:
+    #     cutoffLFOSpeedKnob.value = c_lfo_speed / 20;
+    for inst, expr in re.findall(r'(\w+)\.value\s*=\s*([^;=]+);', gfx):
+        var = _first_var(expr)
+        if var:
+            out.setdefault(inst, var)
+    return out
+
+
+def knob_vars(src):
+    """
+    Variables the GUI draws as a knob, whatever their declaration says.
+
+    Yutani declares `slider17:fm_level=0<0,1,1>` — a step of 1, which reads as
+    a two-position switch — and then draws it as a continuous knob with three
+    modulation depths hanging off it. The drawing is the truth about what the
+    control is; the declared step is a slip in the plugin.
+    """
+    gfx = src[src.find('@gfx'):]
+    drawn = set(re.findall(r'(\w+)\.drawKnob\(', gfx))
+    return {v for i, v in _instance_vars(gfx).items() if i in drawn}
+
+
+def harvest_labels(src, wanted):
+    """
+    variable -> human label, plus variable -> (parent variable, modifier id).
+
+    A promoted variable has no declared label, so the generated declaration
+    would name it after itself and the Grid would draw a knob called
+    `noise_db`. But the plugin does have a name for it — in the drawing code
+    rather than the declarations:
+
+        noiseAmpKnob.knob_set(sprintf(1, "%.1f dB", noise_db - 48), ...);
+        noiseAmpKnob.drawKnob(cX, cY, knobSize, "Amplitude", "Noise level.", 1.0);
+
+    knob_set says which variable the widget shows; drawKnob says what it's
+    called. Joining them on the widget's instance name recovers the label.
+    Where drawKnob has no visible label — the small context-dependent knobs
+    pass "" — the tooltip's first line stands in.
+
+    The same join recovers which knob each modulation depth belongs to, since
+    the depths are edited through their parent widget.
+    """
+    gfx = src[src.find('@gfx'):]
+
+    # instance -> visible label
+    inst_label = {}
+    for inst, label, hint in re.findall(
+            r'(\w+)\.drawKnob\(\s*[^,]+,\s*[^,]+,\s*[^,]+,\s*'
+            r'"([^"]*)"\s*,\s*"((?:[^"\\]|\\.)*)"', gfx):
+        text = label.strip() or _label_from(hint)
+        if text:
+            inst_label.setdefault(inst, text)
+
+    # instance -> the variable it displays. Not restricted to the promoted set:
+    # a knob's base value is usually an already-declared slider, and it's that
+    # join which names the modulation depths hanging off it.
+    inst_var = _instance_vars(gfx)
+
+    labels = {}
+    for inst, var in inst_var.items():
+        if inst in inst_label:
+            labels[var] = inst_label[inst]
+
+    # Toggles carry the variable as their fifth argument and the name in the
+    # trailing hint: drawToggle(x, y, w, h, subosc_enabled, ...8 colours...,
+    # "Enable sub oscillator.\n")
+    for var, rest in re.findall(
+            r'drawToggle\((?:\s*[^,]+,){4}\s*(\w+)\s*,(.*?)\);', gfx, re.S):
+        if var not in wanted or var in labels:
+            continue
+        hints = re.findall(r'"((?:[^"\\]|\\.)*)"', rest)
+        if hints and _label_from(hints[-1]):
+            labels[var] = _label_from(hints[-1])
+
+    # Modulation depths, edited through their parent knob while a mode is held:
+    #   activeModifier == 3 ? ( osc1AmpKnob.knob_modifier_processMouse(
+    #       0, osc1_db_flfo / 48) ? ( osc1_db_flfo = osc1AmpKnob.value * 48; );
+    modifiers = {}
+    for modid, inst, var in re.findall(
+            # Written both as `activeModifier == 3 ?` and `(activeModifier == 3) ?`.
+            r'activeModifier\s*==\s*(\d)\s*\)?\s*\?\s*\(\s*'
+            r'(\w+)\.knob_modifier_processMouse\([^;]*?\(\s*(\w+)\s*=', gfx):
+        parent = inst_var.get(inst)
+        if var in wanted and parent:
+            modifiers[var] = (parent, int(modid))
+            labels.setdefault(
+                var, f'{labels.get(parent, parent)} {MOD_NAMES[int(modid)]}')
+
+    return labels, modifiers
+
+
+def panel_enables(src, wanted):
+    """
+    variable -> True for the flags that switch a whole panel on and off.
+
+        nextPanel = drawPanel(s_SOSC, cX, cY, w, h, subosc_enabled);
+
+    The last argument is the panel's active state, which the plugin uses to
+    dim it. Those belong in a panel header, not in the control list.
+    """
+    gfx = src[src.find('@gfx'):]
+    # Match the call's own argument list only: balanced one level deep, and
+    # never across a statement boundary. A looser pattern picks up the last
+    # argument of whatever call happens to follow.
+    found = set(re.findall(
+        r'drawPanel\((?:[^();]|\([^()]*\))*?,\s*(\w+)\s*\)\s*;', gfx))
+
+    # Yutani's own source has copy-paste slips here: the Free LFO and Smear
+    # panels are both gated on c_lfo_enabled. Their switches still grey out
+    # the section's widgets, which is the other half of the same idiom:
+    #     freeLfoResetToggle.inactive = !f_lfo_enabled;
+    found.update(re.findall(r'\.inactive\s*=\s*!\s*(\w+)\s*;', gfx))
+
+    return {v for v in found if v in wanted}
+
+
+# Word fragments the variable names use, for anything no draw call names.
+PRETTY = {
+    'lfo': 'LFO', 'osc': 'Osc', 'fm': 'FM', 'pwm': 'PWM', 'db': 'Level',
+    'amnt': 'Amount', 'atk': 'Attack', 'vel': 'Velocity', 'flfo': 'Free LFO',
+    'reso': 'Resonance', 'subosc': 'Sub Osc', 'sosc': 'Sub Osc', 'env': 'Env',
+    'pos': 'Position', 'fb': 'Feedback', 'ap': 'Allpass', 'semi': 'Semitones',
+    'blep': 'BLEP', 'dc': 'DC', 'wt': 'Wavetable',
+}
+# The LFOs are addressed by initial: c_ cutoff, m_ morph, f_ free.
+PRETTY_LEAD = {'c': 'Cutoff', 'm': 'Morph', 'f': 'Free'}
+
+
+def prettify(var):
+    """Last resort: make a variable name readable rather than shipping it raw."""
+    parts = var.split('_')
+    if len(parts) > 1 and parts[0] in PRETTY_LEAD and parts[1] == 'lfo':
+        parts[0] = PRETTY_LEAD[parts[0]]
+    return ' '.join(PRETTY.get(p, p.capitalize()) for p in parts)
+
+
+def section_of(var):
+    """
+    The part of the plugin a variable belongs to, for disambiguating names.
+
+    Three LFOs share every control name, and they're told apart in the source
+    only by a leading initial — c_ cutoff, m_ morph, f_ free — so a one-letter
+    qualifier is no use to anyone reading the Grid.
+    """
+    parts = var.split('_')
+    if len(parts) > 1 and parts[0] in PRETTY_LEAD and parts[1] == 'lfo':
+        return f'{PRETTY_LEAD[parts[0]]} LFO'
+    return prettify(parts[0])
+
+
 def infer_ranges(src):
     """
     variable -> (min, max, step) read from how @gfx writes it.
@@ -202,6 +431,52 @@ def ranges_for(src, promote):
     return resolved, unknown
 
 
+def declared_labels(src):
+    """The labels the plugin's own declarations already use."""
+    return {m.group(1).strip() for m in
+            re.finditer(r'^slider\d+:[^<]*<[^>]*>\s*-?(.*)$', src, re.M)
+            if m.group(1).strip()}
+
+
+def label_map(src, promote):
+    """
+    variable -> the label its generated declaration will carry.
+
+    Names are what the host shows, so they have to be both readable and
+    distinct: two parameters sharing a name leaves the Grid's resolver
+    guessing which one a control meant.
+    """
+    wanted = {v for _, v in promote}
+    harvested, modifiers = harvest_labels(src, wanted)
+    enables = panel_enables(src, wanted)
+
+    taken = declared_labels(src)
+    out = {}
+    for _, var in promote:
+        if var in enables:
+            # Named from the section rather than the tooltip. Yutani's own
+            # hints disagree with each other here — f_lfo_enabled is captioned
+            # "Reset LFO on note on." — and three LFOs all captioned "Enable
+            # LFO" would need disambiguating anyway.
+            name = f'Enable {section_of(var)}'
+        else:
+            name = harvested.get(var) or prettify(var)
+        if name in taken:
+            # Several knobs genuinely are called "Amplitude". Qualify with the
+            # section the variable name leads with — which is how the plugin
+            # groups them anyway, so "Noise Amplitude" rather than "Amplitude 2".
+            lead = section_of(var)
+            if not name.startswith(lead):
+                name = f'{lead} {name}'
+        n = 2
+        while name in taken:
+            name = f'{name} {n}' if n == 2 else re.sub(r' \d+$', f' {n}', name)
+            n += 1
+        taken.add(name)
+        out[var] = name
+    return out, modifiers, enables
+
+
 def build(src, promote):
     # Declarations go after the last existing one, keeping the block together.
     last = None
@@ -216,17 +491,21 @@ def build(src, promote):
                  '\nAdd them to MANUAL_RANGES — declaring a wrong range silently '
                  'limits what the control can reach.')
 
+    labels, _, _ = label_map(src, promote)
+
     decls = ['', '// ---- Exposed for host control (generated) ----',
              '// Hidden from this plugin\'s own UI with a leading "-", so it looks',
              '// unchanged in REAPER while these remain automatable. Ranges are',
-             '// taken from how @gfx writes each variable.']
+             '// taken from how @gfx writes each variable, and names from the',
+             '// labels and tooltips its draw calls already carry.']
     for num, var, lo, hi, step in resolved:
         # JSFX zeroes every variable on load, so an unpatched instance starts
         # these at 0. Declaring the minimum as the default would change that —
         # a bipolar control would come up at -1 instead of centred. Use 0
         # wherever the range contains it.
         default = 0 if lo <= 0 <= hi else lo
-        decls.append(f'slider{num}:{var}={default:g}<{fmt_range(lo, hi, step)}>-{var}')
+        decls.append(f'slider{num}:{var}={default:g}'
+                     f'<{fmt_range(lo, hi, step)}>-{labels[var]}')
 
     out = src[:last.end()] + '\n' + '\n'.join(decls) + src[last.end():]
 
@@ -267,10 +546,25 @@ def main():
     if unknown:
         print(f'ranges UNKNOWN      : {len(unknown)} -> {", ".join(unknown)}')
     print()
+    labels, modifiers, enables = label_map(src, promote)
+    named = sum(1 for _, v in promote if v in harvest_labels(src, {v})[0])
+    print(f'names from the GUI  : {named}')
+    print(f'names prettified    : {len(promote) - named}')
+    print(f'modulation depths   : {len(modifiers)}')
+    print(f'panel switches      : {len(enables)}')
+    print()
     for num, var, lo, hi, step in resolved[:10]:
-        print(f'  slider{num}:{var} <{fmt_range(lo, hi, step)}>')
+        print(f'  slider{num}:{var} <{fmt_range(lo, hi, step)}> {labels[var]}')
     if len(resolved) > 10:
         print(f'  ... and {len(resolved) - 10} more')
+
+    if a.dry_run:
+        print()
+        print('all labels:')
+        for _, var in promote:
+            mark = ' [panel]' if var in enables else (
+                ' [mod of %s]' % modifiers[var][0] if var in modifiers else '')
+            print(f'  {var:32} {labels[var]}{mark}')
 
     if a.dry_run:
         return
@@ -295,7 +589,9 @@ def main():
         base = os.path.basename(os.path.splitext(a.jsfx)[0])
         carried = 0
         for name in sorted(os.listdir(directory)):
-            if not name.lower().endswith('.rpl'):
+            # Skip our own output from a previous run, or re-running the tool
+            # stacks the suffix: ..._spidercrab_spidercrab.jsfx.rpl.
+            if not name.lower().endswith('.rpl') or a.suffix in name:
                 continue
             lib = read(os.path.join(directory, name))
             if old_desc.group(1).strip() not in lib:

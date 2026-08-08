@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../components/grid/modules';
+import { yutaniModule } from '../components/grid/yutani';
 import { GridView } from '../components/grid/GridView';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
@@ -315,5 +316,161 @@ describe('GridView', () => {
     expect(screen.getByTestId('grid-device-title').textContent).toBe('Chorus');
     expect(screen.getByText(/1 device/)).toBeDefined();
     expect(screen.queryByText('ReaEQ')).toBeNull();
+  });
+});
+
+// ── Modulation modes and panel switches ──────────────────────
+//
+// Yutani keeps three depths on most knobs — how far velocity, the mod wheel
+// and the free LFO move them — and reaches them by latching a mode and
+// dragging the parent knob. Rendering them as siblings instead tripled the
+// control count and lost which knob each belonged to.
+
+/** Every parameter the Yutani module references, named as it expects. */
+function yutaniParams(): FxParam[] {
+  const out: FxParam[] = [];
+  const add = (slider: number, name: string, value: number, min: number, max: number) => {
+    if (!out.some((p) => p.index === slider - 1)) {
+      out.push({ index: slider - 1, name, value, min, max, mid: (min + max) / 2 });
+    }
+  };
+  for (const panel of yutaniModule.panels) {
+    if (panel.enable) add(panel.enable.slider, panel.enable.expect!, 1, 0, 1);
+    for (const c of panel.controls) {
+      add(c.slider, c.expect!, 0.5, 0, 1);
+      for (const m of c.modifiers ?? []) add(m.slider, m.expect!, 0, -1, 1);
+    }
+  }
+  return out;
+}
+
+function renderYutani() {
+  const params = yutaniParams();
+  const setFxParam = vi.fn().mockResolvedValue({ payload: {} });
+  render(
+    <GridView
+      tracks={tracks}
+      selectedTrack={0}
+      getTrackFx={vi.fn().mockResolvedValue([{ index: 0, name: 'JS: Yutani [Spidercrab]' }])}
+      getFxParams={vi.fn().mockResolvedValue({
+        params, total: params.length, offset: 0, limit: 256,
+      })}
+      setFxParam={setFxParam}
+    />,
+  );
+  return { setFxParam, params };
+}
+
+describe('Yutani modulation depths', () => {
+  const controls = yutaniModule.panels.flatMap((p) => p.controls);
+
+  it('folds depths into the knob they are edited through', () => {
+    const withMods = controls.filter((c) => c.modifiers?.length);
+    expect(withMods.length).toBeGreaterThan(20);
+    // Every modifier hangs off a knob: a depth on a discrete choice is
+    // meaningless, and the drag gesture only exists on continuous controls.
+    expect(withMods.every((c) => c.kind === 'knob')).toBe(true);
+  });
+
+  it('never lists a depth as a control in its own right', () => {
+    const asControl = new Set(controls.map((c) => c.slider));
+    const asDepth = controls.flatMap((c) => c.modifiers ?? []).map((m) => m.slider);
+    expect(asDepth.filter((s) => asControl.has(s))).toEqual([]);
+  });
+
+  it('gives each knob at most one depth per mode', () => {
+    for (const c of controls) {
+      const kinds = (c.modifiers ?? []).map((m) => m.kind);
+      expect(kinds.length).toBe(new Set(kinds).size);
+    }
+  });
+
+  it('keeps section switches out of the control list', () => {
+    const panels = yutaniModule.panels.filter((p) => p.enable);
+    expect(panels.length).toBeGreaterThan(0);
+    for (const p of panels) {
+      expect(p.controls.some((c) => c.slider === p.enable!.slider)).toBe(false);
+    }
+  });
+});
+
+describe('GridView modulation modes', () => {
+  it('offers a mode switch only for devices that have depths', async () => {
+    renderYutani();
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Modulation mode' })).toBeDefined());
+    for (const label of ['VEL', 'MOD', 'LINK']) {
+      expect(screen.getByRole('button', { name: label })).toBeDefined();
+    }
+  });
+
+  it('leaves Chorus without one, having nothing to modulate', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    await waitFor(() => expect(screen.getByTestId('grid-device-title')).toBeDefined());
+    expect(screen.queryByRole('group', { name: 'Modulation mode' })).toBeNull();
+  });
+
+  it('latches on tap and releases on a second tap', async () => {
+    renderYutani();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'VEL' })).toBeDefined());
+    const vel = screen.getByRole('button', { name: 'VEL' });
+
+    expect(vel.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(vel);
+    expect(vel.getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(vel);
+    expect(vel.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('retargets a modulatable knob at its depth while a mode is latched', async () => {
+    renderYutani();
+    const gain = yutaniModule.panels
+      .flatMap((p) => p.controls)
+      .find((c) => c.modifiers?.some((m) => m.kind === 'vel'))!;
+
+    // The mode buttons come from the module and so render before the
+    // parameters arrive; wait for the knob itself, not for the switch.
+    await waitFor(() => expect(screen.getByRole('slider', { name: gain.label })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'VEL' }));
+
+    const knob = screen.getByRole('slider', { name: `${gain.label} vel depth` });
+    // The depth's range, not the parameter's — a depth is bipolar.
+    expect(knob.getAttribute('aria-valuemin')).toBe('-1');
+    expect(knob.getAttribute('aria-valuemax')).toBe('1');
+  });
+
+  it('makes knobs with no depth for that mode inert rather than editable', async () => {
+    renderYutani();
+    const plain = yutaniModule.panels
+      .flatMap((p) => p.controls)
+      .find((c) => c.kind === 'knob' && !c.modifiers?.some((m) => m.kind === 'lfo'))!;
+
+    await waitFor(() => expect(screen.getByRole('slider', { name: plain.label })).toBeDefined());
+    fireEvent.click(screen.getByRole('button', { name: 'LINK' }));
+    expect(screen.getByRole('slider', { name: plain.label }).getAttribute('aria-disabled'))
+      .toBe('true');
+  });
+});
+
+describe('GridView panel switches', () => {
+  it('shows a section switch reflecting the parameter', async () => {
+    renderYutani();
+    const panel = yutaniModule.panels.find((p) => p.enable)!;
+    await waitFor(() => expect(
+      screen.getByRole('switch', { name: `${panel.label} on` }),
+    ).toBeDefined());
+    expect(
+      screen.getByRole('switch', { name: `${panel.label} on` }).getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  it('sends the section switch to its own parameter', async () => {
+    const { setFxParam } = renderYutani();
+    const panel = yutaniModule.panels.find((p) => p.enable)!;
+    await waitFor(() => expect(
+      screen.getByRole('switch', { name: `${panel.label} on` }),
+    ).toBeDefined());
+
+    fireEvent.click(screen.getByRole('switch', { name: `${panel.label} on` }));
+    expect(setFxParam).toHaveBeenCalledWith(0, 0, panel.enable!.slider - 1, 0);
   });
 });

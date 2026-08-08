@@ -10,6 +10,26 @@
 
 import { yutaniModule } from './yutani';
 
+/**
+ * The three modulation modes, named as the plugin's own buttons are.
+ *
+ * Every knob can have a depth per mode: how far velocity, the mod wheel or the
+ * free LFO moves it. Those are separate parameters, but they aren't separate
+ * controls — you reach them by latching a mode and dragging the parent knob.
+ */
+export const MODIFIER_KINDS = ['vel', 'mod', 'lfo'] as const;
+export type ModifierKind = (typeof MODIFIER_KINDS)[number];
+
+export const MODIFIER_LABELS: Record<ModifierKind, string> = {
+  vel: 'VEL', mod: 'MOD', lfo: 'LINK',
+};
+
+export interface ModifierRef {
+  kind: ModifierKind;
+  slider: number;
+  expect?: string;
+}
+
 interface ControlBase {
   /**
    * The JSFX slider number this control drives, 1-based as declared in the
@@ -24,6 +44,11 @@ interface ControlBase {
    */
   expect?: string;
   label: string;
+  /**
+   * Modulation depths edited through this control. Only knobs carry these —
+   * a depth on a discrete choice would mean nothing.
+   */
+  modifiers?: ModifierRef[];
 }
 
 export interface KnobControl extends ControlBase {
@@ -70,7 +95,7 @@ export interface ResolvableParam {
  */
 export function resolveParam<T extends ResolvableParam>(
   params: T[],
-  control: ModuleControl,
+  control: { slider: number; expect?: string },
 ): T | undefined {
   const guess = control.slider - 1;
 
@@ -95,6 +120,12 @@ export interface ModulePanel {
   controls: ModuleControl[];
   /** Lay the panel's controls out in a row (default) or a grid of N columns. */
   columns?: number;
+  /**
+   * The switch that turns the whole section on and off. Shown in the panel's
+   * header and dimming its contents when off, which is what the plugin does
+   * with the same parameter.
+   */
+  enable?: { slider: number; expect?: string };
 }
 
 export interface ModuleDef {

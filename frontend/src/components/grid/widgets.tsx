@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { FxParam } from '../../hooks/useReaper';
 import { useLiveSlider } from '../../hooks/useLiveSlider';
+import { MODIFIER_KINDS, type ModifierKind } from './modules';
 import type {
   KnobControl, FaderControl, SegmentedControl, ToggleControl,
 } from './modules';
@@ -116,45 +117,115 @@ function clamp(v: number, lo: number, hi: number) {
 
 // ── Knob ─────────────────────────────────────────────────────
 
-export function Knob({ param, control, onChange }: Common & { control: KnobControl }) {
-  const { value, change, release } = useLiveSlider(param.value, onChange);
+// The colour each modulation mode draws its depth ring in, matching the
+// plugin's own mod1/mod2/mod3 palette.
+const MOD_COLOR: Record<ModifierKind, string> = {
+  vel: 'var(--accent-blue, #4a9eff)',
+  mod: 'var(--accent-green, #25ec75)',
+  lfo: 'var(--accent-purple, #b57edc)',
+};
+
+export function Knob({
+  param, control, onChange, mode = null, depths = {}, onDepthChange,
+}: Common & {
+  control: KnobControl;
+  /** Which modulation mode is latched, if any. */
+  mode?: ModifierKind | null;
+  /** Current depth per mode, as a fraction of the parameter's range. */
+  depths?: Partial<Record<ModifierKind, { value: number; min: number; max: number }>>;
+  onDepthChange?: (kind: ModifierKind, value: number) => void;
+}) {
+  // In a mode, this knob edits that mode's depth instead of its own value —
+  // exactly as the plugin does, and for the same reason: it keeps one gesture
+  // instead of needing a second way to reach 70 more parameters. Knobs with no
+  // depth for the active mode go inert rather than silently editing the value.
+  const depth = mode ? depths[mode] : undefined;
+  const editing = mode !== null;
+  const inert = editing && !depth;
+
+  const target = depth ?? { value: param.value, min: param.min, max: param.max };
+  const commit = useCallback((v: number) => {
+    if (mode && onDepthChange) onDepthChange(mode, v);
+    else onChange(v);
+  }, [mode, onDepthChange, onChange]);
+
+  const { value, change, release } = useLiveSlider(target.value, commit);
   const span = param.max - param.min || 1;
-  const norm = clamp((value - param.min) / span, 0, 1);
-  const onPointerDown = useRangeDrag(value, param.min, param.max, change, release);
+  // The ring always shows the parameter's own value, even while a depth is
+  // being dragged — otherwise the knob appears to jump when a mode is entered.
+  const shown = editing ? param.value : value;
+  const norm = clamp((shown - param.min) / span, 0, 1);
+  const drag = useRangeDrag(value, target.min, target.max, change, release);
+  const onPointerDown = inert ? undefined : drag;
 
   // 270° sweep, gap at the bottom
   const SWEEP = 270, START = 135;
   const angle = START + norm * SWEEP;
   const r = 26;
-  const polar = (deg: number) => {
+  const polar = (deg: number, radius = r) => {
     const rad = (deg * Math.PI) / 180;
-    return [32 + r * Math.cos(rad), 32 + r * Math.sin(rad)];
+    return [32 + radius * Math.cos(rad), 32 + radius * Math.sin(rad)];
   };
-  const arc = (from: number, to: number) => {
-    const [x1, y1] = polar(from);
-    const [x2, y2] = polar(to);
-    return `M ${x1} ${y1} A ${r} ${r} 0 ${to - from > 180 ? 1 : 0} 1 ${x2} ${y2}`;
+  const arcAt = (from: number, to: number, radius: number) => {
+    const [x1, y1] = polar(from, radius);
+    const [x2, y2] = polar(to, radius);
+    return `M ${x1} ${y1} A ${radius} ${radius} 0 ${to - from > 180 ? 1 : 0} 1 ${x2} ${y2}`;
   };
+  const arc = (from: number, to: number) => arcAt(from, to, r);
   const [px, py] = polar(angle);
 
+  // Depth rings, nested inward one per mode, drawn from the knob's own
+  // position outward by the depth. The plugin does the same with
+  // `r_base = r - 4*modifier`, and it means you can read what's modulated
+  // without entering a mode to look.
+  const rings = MODIFIER_KINDS.map((kind, i) => {
+    const d = depths[kind];
+    if (!d) return null;
+    const dspan = Math.max(Math.abs(d.min), Math.abs(d.max)) || 1;
+    const frac = clamp(d.value / dspan, -1, 1);
+    // Live while this mode is being dragged, so the ring tracks the finger.
+    const live = mode === kind ? clamp(value / dspan, -1, 1) : frac;
+    if (Math.abs(live) < 0.002) return null;
+    const to = clamp(norm + live, 0, 1);
+    const [a, b] = live > 0 ? [norm, to] : [to, norm];
+    return (
+      <path
+        key={kind}
+        d={arcAt(START + a * SWEEP, START + b * SWEEP, r - 5 - i * 4)}
+        fill="none" strokeWidth="2.5" strokeLinecap="round"
+        stroke={MOD_COLOR[kind]}
+        opacity={mode === null || mode === kind ? 0.95 : 0.35}
+      />
+    );
+  });
+
   return (
-    <div className="flex flex-col items-center gap-1 select-none">
+    <div className={`flex flex-col items-center gap-1 select-none transition-opacity ${
+      inert ? 'opacity-30' : ''
+    }`}>
       <div
         onPointerDown={onPointerDown}
-        className="touch-none cursor-ns-resize"
+        className={inert ? 'touch-none' : 'touch-none cursor-ns-resize'}
         role="slider"
-        aria-label={control.label}
-        aria-valuemin={param.min}
-        aria-valuemax={param.max}
+        aria-label={depth ? `${control.label} ${mode} depth` : control.label}
+        aria-valuemin={target.min}
+        aria-valuemax={target.max}
         aria-valuenow={value}
+        aria-disabled={inert || undefined}
       >
         <svg width="64" height="64" viewBox="0 0 64 64">
+          {/* A knob that has a depth for the latched mode is what the plugin
+              calls "lit up" — the cue that this control is modulatable. */}
+          {depth && (
+            <circle cx="32" cy="32" r={r * 0.82} fill={MOD_COLOR[mode!]} opacity="0.12" />
+          )}
           <path d={arc(START, START + SWEEP)} fill="none" strokeWidth="5"
             className="stroke-[var(--bg-tertiary)]" strokeLinecap="round" />
           {norm > 0.001 && (
             <path d={arc(START, angle)} fill="none" strokeWidth="5"
               className="stroke-[var(--accent-orange)]" strokeLinecap="round" />
           )}
+          {rings}
           <line x1="32" y1="32" x2={px} y2={py} strokeWidth="3"
             className="stroke-[var(--text-primary)]" strokeLinecap="round" />
         </svg>
@@ -162,8 +233,12 @@ export function Knob({ param, control, onChange }: Common & { control: KnobContr
       <div className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
         {control.label}
       </div>
-      <div className="text-[11px] tabular-nums text-[var(--text-primary)]">
-        {control.format ? control.format(value) : (param.formatted ?? value.toFixed(2))}
+      <div className="text-[11px] tabular-nums" style={{
+        color: depth ? MOD_COLOR[mode!] : 'var(--text-primary)',
+      }}>
+        {depth
+          ? `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
+          : (control.format ? control.format(value) : (param.formatted ?? value.toFixed(2)))}
       </div>
     </div>
   );
