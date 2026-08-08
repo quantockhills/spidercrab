@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Track, FxInfo, FxParam } from '../../hooks/useReaper';
+import type {
+  Track, FxInfo, FxParam, FxPresetInfo, FxPresetNames,
+} from '../../hooks/useReaper';
 import type { WsResponse } from '../../lib/wsClient';
 import {
   findModule, cleanFxName, resolveParam, MODIFIER_KINDS, MODIFIER_LABELS,
@@ -7,6 +9,8 @@ import {
 } from './modules';
 import { Knob, Fader, Segmented, Toggle } from './widgets';
 import { GridStrip } from './GridStrip';
+import { DeviceInfo } from './DeviceInfo';
+import { PresetPicker } from './PresetPicker';
 
 interface GridViewProps {
   tracks: Track[];
@@ -18,6 +22,11 @@ interface GridViewProps {
   setFxParam: (
     trackIdx: number, fxIdx: number, paramIdx: number, value: number,
   ) => Promise<WsResponse>;
+  getFxPreset?: (trackIdx: number, fxIdx: number) => Promise<FxPresetInfo | null>;
+  setFxPreset?: (
+    trackIdx: number, fxIdx: number, presetIdx: number,
+  ) => Promise<FxPresetInfo | null>;
+  getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
 }
 
 /**
@@ -32,6 +41,7 @@ interface GridViewProps {
  */
 export function GridView({
   tracks, selectedTrack, getTrackFx, getFxParams, setFxParam,
+  getFxPreset, setFxPreset, getAllFxPresetNames,
 }: GridViewProps) {
   // Holds the track it was loaded for, so switching tracks reads as loading
   // without needing to reset state synchronously inside the effect.
@@ -125,6 +135,9 @@ export function GridView({
                 maxRows={maxRows}
                 getFxParams={getFxParams}
                 setFxParam={setFxParam}
+                getFxPreset={getFxPreset}
+                setFxPreset={setFxPreset}
+                getAllFxPresetNames={getAllFxPresetNames}
               />
             ))}
           </div>
@@ -201,6 +214,25 @@ function useFitScale(
   return fit;
 }
 
+function TabButton({
+  label, selected, onClick,
+}: { label: string; selected: boolean; onClick: () => void }) {
+  return (
+    <button
+      role="tab"
+      aria-selected={selected}
+      onClick={onClick}
+      className={`px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
+        selected
+          ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] ring-1 ring-[var(--border)]'
+          : 'text-[var(--text-secondary)]'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function Empty({ icon, title, hint }: { icon: string; title: string; hint: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-2">
@@ -215,6 +247,7 @@ function Empty({ icon, title, hint }: { icon: string; title: string; hint: strin
 
 function Device({
   trackIdx, fx, module, maxRows, getFxParams, setFxParam,
+  getFxPreset, setFxPreset, getAllFxPresetNames,
 }: {
   trackIdx: number;
   fx: FxInfo;
@@ -222,27 +255,40 @@ function Device({
   maxRows: number;
   getFxParams: GridViewProps['getFxParams'];
   setFxParam: GridViewProps['setFxParam'];
+  getFxPreset: GridViewProps['getFxPreset'];
+  setFxPreset: GridViewProps['setFxPreset'];
+  getAllFxPresetNames: GridViewProps['getAllFxPresetNames'];
 }) {
   const [params, setParams] = useState<FxParam[]>([]);
 
+  // Fetch every parameter, not a first page. Yutani's patched copy has 189,
+  // and anything not fetched can't be resolved, so it renders as an empty
+  // placeholder — which is exactly what a fixed limit of 64 produced.
+  const fetchAll = useCallback(async () => {
+    const all: FxParam[] = [];
+    let offset = 0;
+    for (;;) {
+      const page = await getFxParams(trackIdx, fx.index, offset, 128);
+      all.push(...page.params);
+      offset += page.params.length;
+      if (!page.params.length || all.length >= page.total) break;
+    }
+    return all;
+  }, [trackIdx, fx.index, getFxParams]);
+
   useEffect(() => {
     let cancelled = false;
-    // Fetch every parameter, not a first page. Yutani's patched copy has 189,
-    // and anything not fetched can't be resolved, so it renders as an empty
-    // placeholder — which is exactly what a fixed limit of 64 produced.
-    (async () => {
-      const all: FxParam[] = [];
-      let offset = 0;
-      for (;;) {
-        const page = await getFxParams(trackIdx, fx.index, offset, 128);
-        all.push(...page.params);
-        offset += page.params.length;
-        if (!page.params.length || all.length >= page.total) break;
-      }
-      if (!cancelled) setParams(all);
-    })().catch(() => { if (!cancelled) setParams([]); });
+    fetchAll()
+      .then((all) => { if (!cancelled) setParams(all); })
+      .catch(() => { if (!cancelled) setParams([]); });
     return () => { cancelled = true; };
-  }, [trackIdx, fx.index, getFxParams]);
+  }, [fetchAll]);
+
+  // A preset rewrites every parameter at once, so re-read rather than trying
+  // to reconcile — there's no per-parameter notification to lean on.
+  const reload = useCallback(() => {
+    fetchAll().then(setParams).catch(() => {});
+  }, [fetchAll]);
 
   const commit = useCallback(
     async (paramIdx: number, value: number) => {
@@ -274,7 +320,9 @@ function Device({
   // than a category invented here.
   const groups = module.groups ?? [];
   const tabbed = groups.length > 1;
+  // -1 is the info panel, which every module has whether or not it has tabs.
   const [tab, setTab] = useState(0);
+  const showingInfo = tab === INFO_TAB;
   const panels = tabbed
     ? module.panels.filter((p) => (p.group ?? 0) === tab)
     : module.panels;
@@ -288,26 +336,18 @@ function Device({
         >
           {module.title || cleanFxName(fx.name)}
         </span>
-        {tabbed && (
-          <div className="flex gap-1" role="tablist" aria-label="Sections">
-            {groups.map((label, i) => (
-              <button
-                key={label}
-                role="tab"
-                aria-selected={i === tab}
-                onClick={() => setTab(i)}
-                className={`px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors ${
-                  i === tab
-                    ? 'bg-[var(--bg-tertiary)] text-[var(--text-primary)] ring-1 ring-[var(--border)]'
-                    : 'text-[var(--text-secondary)]'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-        {hasModifiers && (
+        <div className="flex gap-1" role="tablist" aria-label="Sections">
+          {tabbed && groups.map((label, i) => (
+            <TabButton key={label} label={label} selected={i === tab}
+              onClick={() => setTab(i)} />
+          ))}
+          <TabButton
+            label="Info"
+            selected={showingInfo}
+            onClick={() => setTab(showingInfo ? 0 : INFO_TAB)}
+          />
+        </div>
+        {hasModifiers && !showingInfo && (
           <div className="flex gap-1" role="group" aria-label="Modulation mode">
             {MODIFIER_KINDS.map((kind) => (
               <button
@@ -325,13 +365,24 @@ function Device({
             ))}
           </div>
         )}
-        {mode && (
+        {mode && !showingInfo && (
           <span className="text-[10px] text-[var(--text-secondary)]">
             editing {MODIFIER_LABELS[mode]} depth
           </span>
         )}
+        <div className="relative ml-auto">
+          <PresetPicker
+            trackIdx={trackIdx}
+            fxIdx={fx.index}
+            getFxPreset={getFxPreset}
+            setFxPreset={setFxPreset}
+            getAllFxPresetNames={getAllFxPresetNames}
+            onChanged={reload}
+          />
+        </div>
       </header>
-      <div className="flex items-stretch gap-2 p-2">
+      {showingInfo && <DeviceInfo module={module} />}
+      <div className={`flex items-stretch gap-2 p-2 ${showingInfo ? 'hidden' : ''}`}>
         {panels.map((panel) => (
           <Panel
             key={panel.label}
@@ -362,6 +413,9 @@ const MAX_SCALE = 1.35;
  * few wasted pixels there and a row that isn't half-hidden on desktop.
  */
 const SCROLLBAR_PX = 14;
+
+/** Sentinel for the info panel, which sits alongside the section tabs. */
+const INFO_TAB = -1;
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));

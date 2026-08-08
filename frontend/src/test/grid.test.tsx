@@ -344,21 +344,36 @@ function yutaniParams(): FxParam[] {
   return out;
 }
 
+const presetNames = ['Init', 'Reese', 'Hoover', 'Sub Rumble'];
+
 function renderYutani() {
   const params = yutaniParams();
   const setFxParam = vi.fn().mockResolvedValue({ payload: {} });
+  const getFxParams = vi.fn().mockResolvedValue({
+    params, total: params.length, offset: 0, limit: 256,
+  });
+  const getFxPreset = vi.fn().mockResolvedValue({
+    presetIndex: 1, presetName: 'Reese', numPresets: presetNames.length,
+  });
+  const setFxPreset = vi.fn().mockImplementation((_t, _f, idx) => Promise.resolve({
+    presetIndex: idx, presetName: presetNames[idx], numPresets: presetNames.length,
+  }));
+  const getAllFxPresetNames = vi.fn().mockResolvedValue({
+    presetNames, currentIndex: 1,
+  });
   render(
     <GridView
       tracks={tracks}
       selectedTrack={0}
       getTrackFx={vi.fn().mockResolvedValue([{ index: 0, name: 'JS: Yutani [Spidercrab]' }])}
-      getFxParams={vi.fn().mockResolvedValue({
-        params, total: params.length, offset: 0, limit: 256,
-      })}
+      getFxParams={getFxParams}
       setFxParam={setFxParam}
+      getFxPreset={getFxPreset}
+      setFxPreset={setFxPreset}
+      getAllFxPresetNames={getAllFxPresetNames}
     />,
   );
-  return { setFxParam, params };
+  return { setFxParam, getFxParams, setFxPreset, getAllFxPresetNames, params };
 }
 
 describe('Yutani modulation depths', () => {
@@ -556,7 +571,9 @@ describe('Yutani section tabs', () => {
   it('leaves an untabbed module showing everything at once', async () => {
     renderGrid([{ index: 0, name: 'JS: Chorus' }]);
     await waitFor(() => expect(screen.getByTestId('grid-device-title')).toBeDefined());
-    expect(screen.queryByRole('tablist')).toBeNull();
+    // Info is always there; what a module without groups must not get is
+    // section tabs that hide half of it.
+    expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(['Info']);
     for (const label of ['Voices', 'Motion', 'Output']) {
       expect(screen.getByText(label)).toBeDefined();
     }
@@ -583,5 +600,100 @@ describe('fit scale', () => {
   it('stays put before it has been measured', () => {
     expect(fitScaleFor(0, 500)).toBe(1);
     expect(fitScaleFor(600, 0)).toBe(1);
+  });
+});
+
+// ── Info panel and presets ───────────────────────────────────
+
+describe('device info', () => {
+  it('is reachable on every device, tabbed or not', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Info' })).toBeDefined());
+  });
+
+  it('replaces the panels rather than sitting alongside them', async () => {
+    renderYutani();
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Source' })).toBeDefined());
+    const panel = yutaniModule.panels.find((p) => p.group === 0)!;
+
+    expect(screen.getByText(panel.label)).toBeDefined();
+    fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+    expect(screen.queryByText(panel.label)).toBeNull();
+    expect(screen.getByText('Modulation')).toBeDefined();
+  });
+
+  it('describes the modes this device actually has', async () => {
+    renderYutani();
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Info' })).toBeDefined());
+    fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+    expect(screen.getByText(/how much playing harder moves the knob/)).toBeDefined();
+  });
+
+  it('says nothing about modulation on a device without any', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Info' })).toBeDefined());
+    fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+    expect(screen.queryByText('Modulation')).toBeNull();
+  });
+
+  it('hides the modulation switch while the info panel is up', async () => {
+    renderYutani();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'VEL' })).toBeDefined());
+    fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
+    expect(screen.queryByRole('button', { name: 'VEL' })).toBeNull();
+  });
+});
+
+describe('preset picker', () => {
+  it('shows the preset the plugin reports', async () => {
+    renderYutani();
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Preset' })).toBeDefined());
+    expect(screen.getByRole('button', { name: 'Preset: Reese' })).toBeDefined();
+  });
+
+  it('steps to the neighbouring preset', async () => {
+    const { setFxPreset } = renderYutani();
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Preset' })).toBeDefined());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next preset' }));
+    expect(setFxPreset).toHaveBeenCalledWith(0, 0, 2);
+  });
+
+  it('wraps around either end rather than stopping', async () => {
+    const { setFxPreset } = renderYutani();
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Preset' })).toBeDefined());
+
+    // Reported index is 1 of 4; two steps back lands on 3, not -1.
+    fireEvent.click(screen.getByRole('button', { name: 'Previous preset' }));
+    await waitFor(() => expect(setFxPreset).toHaveBeenCalledWith(0, 0, 0));
+    fireEvent.click(screen.getByRole('button', { name: 'Previous preset' }));
+    await waitFor(() => expect(setFxPreset).toHaveBeenCalledWith(0, 0, 3));
+  });
+
+  it('fetches the full list only when it is opened', async () => {
+    const { getAllFxPresetNames } = renderYutani();
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Preset' })).toBeDefined());
+    expect(getAllFxPresetNames).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preset: Reese' }));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Hoover' })).toBeDefined());
+    expect(getAllFxPresetNames).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads every parameter after a preset lands', async () => {
+    const { getFxParams, setFxPreset } = renderYutani();
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Preset' })).toBeDefined());
+    const before = getFxParams.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next preset' }));
+    await waitFor(() => expect(setFxPreset).toHaveBeenCalled());
+    // A preset rewrites everything at once and reports no per-parameter change.
+    await waitFor(() => expect(getFxParams.mock.calls.length).toBeGreaterThan(before));
+  });
+
+  it('stays out of the way when the plugin has no presets', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    await waitFor(() => expect(screen.getByTestId('grid-device-title')).toBeDefined());
+    expect(screen.queryByRole('group', { name: 'Preset' })).toBeNull();
   });
 });

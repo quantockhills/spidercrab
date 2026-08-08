@@ -650,6 +650,9 @@ function AppInner() {
             getTrackFx={getTrackFx}
             getFxParams={getFxParams}
             setFxParam={setFxParam}
+            getFxPreset={getFxPreset}
+            setFxPreset={setFxPreset}
+            getAllFxPresetNames={getAllFxPresetNames}
           />
         )}
 
