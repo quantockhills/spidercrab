@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../components/grid/modules';
 import { yutaniModule } from '../components/grid/yutani';
-import { GridView } from '../components/grid/GridView';
+import { GridView, maxRowsFor, shapeFor } from '../components/grid/GridView';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
 // ── Module matching ──────────────────────────────────────────
@@ -472,5 +472,43 @@ describe('GridView panel switches', () => {
 
     fireEvent.click(screen.getByRole('switch', { name: `${panel.label} on` }));
     expect(setFxParam).toHaveBeenCalledWith(0, 0, panel.enable!.slider - 1, 0);
+  });
+});
+
+// ── Fitting the screen ───────────────────────────────────────
+//
+// Yutani's own window is 1444x576 and lays its panels out one row deep. A
+// landscape iPad is far taller in proportion, so a fixed row cap left most of
+// the screen empty and made every device wider than it needed to be.
+
+describe('panel layout', () => {
+  it('takes more rows when there is more height', () => {
+    expect(maxRowsFor(300)).toBeLessThan(maxRowsFor(700));
+  });
+
+  it('never asks for fewer than one row, however cramped', () => {
+    expect(maxRowsFor(1)).toBe(1);
+    expect(maxRowsFor(0)).toBeGreaterThan(0);
+  });
+
+  it('stops growing rows past what a knob column can use', () => {
+    expect(maxRowsFor(100000)).toBe(6);
+  });
+
+  it('balances columns rather than stranding one', () => {
+    // Seven controls in six rows is 4+3, not 6+1.
+    expect(shapeFor(7, 6)).toEqual({ cols: 2, rows: 4 });
+    expect(shapeFor(5, 6)).toEqual({ cols: 1, rows: 5 });
+    expect(shapeFor(12, 4)).toEqual({ cols: 3, rows: 4 });
+  });
+
+  it('always leaves room for every control', () => {
+    for (let count = 1; count <= 40; count++) {
+      for (let rows = 1; rows <= 6; rows++) {
+        const s = shapeFor(count, rows);
+        expect(s.rows * s.cols).toBeGreaterThanOrEqual(count);
+        expect(s.rows).toBeLessThanOrEqual(rows);
+      }
+    }
   });
 });

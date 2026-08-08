@@ -23,8 +23,8 @@ interface GridViewProps {
 /**
  * Grid — the selected track's plugins as a horizontally pannable strip.
  *
- * Panels are a fixed height and run left to right, so a plugin wider than the
- * screen is panned rather than scaled down. That's what keeps controls at a
+ * Panels run left to right and share a height, so a plugin wider than the
+ * screen is panned rather than shrunk. That's what keeps controls at a
  * touchable size on a layout designed for a 1460px desktop window.
  *
  * Only plugins with a hand-authored module appear. The FX tab remains the way
@@ -57,9 +57,10 @@ export function GridView({
     .map((f) => ({ fx: f, module: findModule(f.name) }))
     .filter((e): e is { fx: FxInfo; module: ModuleDef } => e.module !== null);
 
-  const { scale, w: contentW, h: contentH } = useFitScale(
+  const { scale, w: contentW, h: contentH, avail } = useFitScale(
     scrollRef, contentRef, withModules.length,
   );
+  const maxRows = maxRowsFor(avail);
 
   if (selectedTrack === null) {
     return <Empty icon="🎛️" title="No track selected"
@@ -83,7 +84,7 @@ export function GridView({
         <h2 className="text-sm font-semibold">{track?.name || `Track ${selectedTrack + 1}`}</h2>
         <p className="text-[10px] text-[var(--text-secondary)]">
           {withModules.length} device{withModules.length === 1 ? '' : 's'} · swipe sideways for more
-          {scale < 1 && ` · ${Math.round(scale * 100)}%`}
+          {scale !== 1 && ` · ${Math.round(scale * 100)}%`}
         </p>
       </div>
 
@@ -113,7 +114,7 @@ export function GridView({
           <div
             ref={contentRef}
             className="flex items-start gap-3 px-3 py-3 w-max origin-top-left"
-            style={{ transform: scale < 1 ? `scale(${scale})` : undefined }}
+            style={{ transform: scale !== 1 ? `scale(${scale})` : undefined }}
           >
             {withModules.map(({ fx: f, module }) => (
               <Device
@@ -121,6 +122,7 @@ export function GridView({
                 trackIdx={selectedTrack}
                 fx={f}
                 module={module}
+                maxRows={maxRows}
                 getFxParams={getFxParams}
                 setFxParam={setFxParam}
               />
@@ -141,16 +143,17 @@ export function GridView({
 }
 
 /**
- * Scale the device strip down so its whole height fits the space available.
+ * Scale the device strip so its whole height matches the space available.
  *
- * Devices are laid out at a fixed touchable size, which is the point — but
- * Yutani stacks three rows of knobs per panel and overflows a landscape iPad.
- * There's no vertical scroll by design (the strip along the bottom is the only
- * navigation), so anything past the fold was simply unreachable.
+ * There's no vertical scroll by design — the strip along the bottom is the
+ * only navigation — so anything past the fold is unreachable, and anything
+ * short of it is wasted. This corrects in both directions: down when a device
+ * overflows, up when it leaves a void underneath and touch targets smaller
+ * than they need to be.
  *
  * A CSS transform rather than smaller units: it preserves every panel's
- * proportions and needs no per-widget sizing. Only ever shrinks — blowing a
- * two-knob device up to fill the screen would look absurd.
+ * proportions and needs no per-widget sizing. The row budget does the coarse
+ * fitting (see maxRowsFor); this takes up whatever remains.
  */
 function useFitScale(
   outerRef: React.RefObject<HTMLElement | null>,
@@ -159,7 +162,7 @@ function useFitScale(
   // get attached once the elements actually exist.
   key: unknown,
 ) {
-  const [fit, setFit] = useState({ scale: 1, w: 0, h: 0 });
+  const [fit, setFit] = useState({ scale: 1, w: 0, h: 0, avail: 0 });
 
   useLayoutEffect(() => {
     const outer = outerRef.current;
@@ -173,9 +176,13 @@ function useFitScale(
       const h = content.offsetHeight;
       const w = content.offsetWidth;
       if (!avail || !h) return;
-      const scale = Math.min(1, avail / h);
-      setFit((prev) => (prev.scale === scale && prev.w === w && prev.h === h
-        ? prev : { scale, w, h }));
+      // Grows as well as shrinks. A device that only half-fills the screen
+      // left a void underneath it and touch targets smaller than they needed
+      // to be; the cap stops a two-knob Chorus becoming a billboard.
+      const scale = clamp(avail / h, MIN_SCALE, MAX_SCALE);
+      setFit((prev) => (prev.scale === scale && prev.w === w
+        && prev.h === h && prev.avail === avail
+        ? prev : { scale, w, h, avail }));
     };
 
     measure();
@@ -201,11 +208,12 @@ function Empty({ icon, title, hint }: { icon: string; title: string; hint: strin
 // ── One device ───────────────────────────────────────────────
 
 function Device({
-  trackIdx, fx, module, getFxParams, setFxParam,
+  trackIdx, fx, module, maxRows, getFxParams, setFxParam,
 }: {
   trackIdx: number;
   fx: FxInfo;
   module: ModuleDef;
+  maxRows: number;
   getFxParams: GridViewProps['getFxParams'];
   setFxParam: GridViewProps['setFxParam'];
 }) {
@@ -287,13 +295,14 @@ function Device({
           </span>
         )}
       </header>
-      <div className="flex items-start gap-2 p-2">
+      <div className="flex items-stretch gap-2 p-2">
         {module.panels.map((panel) => (
           <Panel
             key={panel.label}
             panel={panel}
             params={params}
             mode={mode}
+            maxRows={maxRows}
             onChange={commit}
           />
         ))}
@@ -302,25 +311,50 @@ function Device({
   );
 }
 
+/** A knob with its label and readout, plus the gap under it. */
+const CELL_PX = 104;
+/** Chrome above and below a panel's controls: device header, panel label, padding. */
+const PANEL_CHROME_PX = 96;
+
+const MIN_SCALE = 0.5;
+const MAX_SCALE = 1.35;
+
+function clamp(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
 /**
- * How many rows to stack a panel's controls into before starting a new column.
+ * How many rows a panel's controls may stack into.
  *
- * A knob with its label and readout is roughly 100px, so three rows is about
- * as much as the strip's height allows. Small panels stay on one row so they
- * don't look artificially tall.
+ * Derived from the height actually available rather than fixed, because the
+ * two shapes differ: Yutani's own window is 1444x576 and lays its panels out
+ * one row deep, while a landscape iPad is far taller in proportion. Capping at
+ * three rows left most of the screen empty and made every device wider than it
+ * needed to be.
  */
-function rowsFor(count: number): number {
-  if (count <= 3) return 1;
-  if (count <= 8) return 2;
-  return 3;
+export function maxRowsFor(avail: number): number {
+  if (!avail) return 3;
+  return clamp(Math.floor((avail - PANEL_CHROME_PX) / CELL_PX), 1, 6);
+}
+
+/**
+ * Split a panel's controls into a balanced grid within that row budget.
+ *
+ * Balanced rather than filling each column in turn: seven controls in a
+ * six-row budget is 4+3, not 6+1, which leaves no stranded column.
+ */
+export function shapeFor(count: number, maxRows: number): { rows: number; cols: number } {
+  const cols = Math.max(1, Math.ceil(count / maxRows));
+  return { cols, rows: Math.ceil(count / cols) };
 }
 
 function Panel({
-  panel, params, mode, onChange,
+  panel, params, mode, maxRows, onChange,
 }: {
   panel: ModulePanel;
   params: FxParam[];
   mode: ModifierKind | null;
+  maxRows: number;
   onChange: (paramIdx: number, value: number) => void;
 }) {
   // The section's own on/off, which the plugin keeps as a few-pixel square in
@@ -328,6 +362,7 @@ function Panel({
   // with a finger, so it becomes a switch in the header instead.
   const enableParam = panel.enable ? resolveParam(params, panel.enable) : undefined;
   const off = enableParam ? enableParam.value < 0.5 : false;
+  const { rows } = shapeFor(panel.controls.length, maxRows);
 
   return (
     <div className="flex flex-col gap-1.5 px-2 py-1.5 bg-[var(--bg-tertiary)]/25 ring-1 ring-[var(--border)]/50">
@@ -359,11 +394,13 @@ function Panel({
         the columns pile up on top of each other. `grid-auto-flow: column` with
         fixed rows just works, and the width follows.
       */}
+      {/* Centred in whatever height the tallest panel sets, so a short panel
+          sits in the middle of its box rather than clinging to the top. */}
       <div
-        className={`grid grid-flow-col gap-x-4 gap-y-2 justify-start items-start transition-opacity ${
+        className={`grid grid-flow-col gap-x-4 gap-y-2 justify-start content-center flex-1 transition-opacity ${
           off ? 'opacity-40' : ''
         }`}
-        style={{ gridTemplateRows: `repeat(${rowsFor(panel.controls.length)}, min-content)` }}
+        style={{ gridTemplateRows: `repeat(${rows}, min-content)` }}
       >
         {panel.controls.map((control) => {
           // Resolved by name where possible — a JSFX slider number isn't

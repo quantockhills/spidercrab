@@ -304,7 +304,9 @@ export function Toggle({ param, control, onChange }: Common & { control: ToggleC
           on ? 'bg-[var(--accent-orange)]' : 'bg-[var(--text-secondary)]/40'
         }`} />
       </button>
-      <div className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] text-center max-w-16 truncate">
+      {/* Wraps to a second line rather than truncating: "Mix sub in before
+          filter" cut to "MIX SUB I…" says nothing at all. */}
+      <div className="text-[10px] leading-tight uppercase tracking-wider text-[var(--text-secondary)] text-center w-20 line-clamp-2">
         {control.label}
       </div>
     </div>
