@@ -626,7 +626,7 @@ describe('device info', () => {
     renderYutani();
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Info' })).toBeDefined());
     fireEvent.click(screen.getByRole('tab', { name: 'Info' }));
-    expect(screen.getByText(/how much playing harder moves the knob/)).toBeDefined();
+    expect(screen.getByText(/velocity of a note moves the knob/)).toBeDefined();
   });
 
   it('says nothing about modulation on a device without any', async () => {
