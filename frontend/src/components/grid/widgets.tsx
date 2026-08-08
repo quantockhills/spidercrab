@@ -9,10 +9,11 @@ const DRAG_TRAVEL_PX = 190;
 /**
  * Vertical drag gesture, shared by every continuous Grid control.
  *
- * Vertical adjusts, horizontal pans the strip — so these carry
- * `touch-action: pan-x`, letting a sideways swipe fall through to the pan
- * container while a vertical drag is captured here. Mirror of the pan-y fix
- * applied to the FX sliders in #138.
+ * Controls carry `touch-action: none` and take the gesture outright. That's
+ * possible because the device surface doesn't pan — navigation lives in the
+ * strip along the bottom — so there's no sideways swipe to share the screen
+ * with. The FX tab's sliders need `pan-y` precisely because they sit in a
+ * scrolling list; here there's nothing to defer to.
  *
  * Listens on window because a finger routinely leaves a small control while
  * dragging, and tears down on pointercancel and unmount as well as pointerup —
@@ -102,7 +103,7 @@ export function Knob({ param, control, onChange }: Common & { control: KnobContr
     <div className="flex flex-col items-center gap-1 select-none">
       <div
         onPointerDown={onPointerDown}
-        className="touch-pan-x cursor-ns-resize"
+        className="touch-none cursor-ns-resize"
         role="slider"
         aria-label={control.label}
         aria-valuemin={param.min}
@@ -147,7 +148,7 @@ export function Fader({ param, control, onChange }: Common & { control: FaderCon
     <div className="flex flex-col items-center gap-1 select-none">
       <div
         onPointerDown={onPointerDown}
-        className="relative w-8 h-28 bg-[var(--bg-tertiary)] overflow-hidden touch-pan-x cursor-ns-resize"
+        className="relative w-8 h-28 bg-[var(--bg-tertiary)] overflow-hidden touch-none cursor-ns-resize"
         role="slider"
         aria-label={control.label}
         aria-valuemin={param.min}

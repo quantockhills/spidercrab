@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Track, FxInfo, FxParam } from '../../hooks/useReaper';
 import type { WsResponse } from '../../lib/wsClient';
 import { findModule, cleanFxName, type ModuleDef, type ModulePanel } from './modules';
 import { Knob, Fader, Segmented } from './widgets';
+import { GridStrip } from './GridStrip';
 
 interface GridViewProps {
   tracks: Track[];
@@ -32,6 +33,7 @@ export function GridView({
   // Holds the track it was loaded for, so switching tracks reads as loading
   // without needing to reset state synchronously inside the effect.
   const [loaded, setLoaded] = useState<{ trackIdx: number; fx: FxInfo[] } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (selectedTrack === null) return;
@@ -76,8 +78,17 @@ export function GridView({
         </p>
       </div>
 
-      {/* The strip. Horizontal pan only; controls capture vertical drags. */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden touch-pan-x">
+      {/*
+        The devices. Deliberately not pannable by touch — navigation lives in
+        the strip below, which leaves the controls free to own their gestures
+        without a sideways swipe to disambiguate against. Still scrollable
+        programmatically, and by wheel or trackpad on desktop.
+      */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-x-auto overflow-y-hidden touch-none"
+        data-testid="grid-scroller"
+      >
         <div className="flex items-stretch h-full gap-3 px-3 py-3 w-max">
           {withModules.map(({ fx: f, module }) => (
             <Device
@@ -91,6 +102,14 @@ export function GridView({
           ))}
         </div>
       </div>
+
+      <GridStrip
+        scrollRef={scrollRef}
+        devices={withModules.map(({ fx: f, module }) => ({
+          key: f.index,
+          label: module.title || cleanFxName(f.name),
+        }))}
+      />
     </div>
   );
 }
@@ -145,7 +164,10 @@ function Device({
   return (
     <section className="flex flex-col bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] flex-shrink-0">
       <header className="px-3 py-1.5 border-b border-[var(--border)]">
-        <span className="text-[11px] font-semibold uppercase tracking-wider">
+        <span
+          className="text-[11px] font-semibold uppercase tracking-wider"
+          data-testid="grid-device-title"
+        >
           {module.title || cleanFxName(fx.name)}
         </span>
       </header>

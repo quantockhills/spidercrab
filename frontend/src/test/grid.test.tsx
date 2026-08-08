@@ -109,7 +109,8 @@ describe('GridView', () => {
 
   it('renders a device for a plugin with a module', async () => {
     renderGrid([{ index: 0, name: 'JS: Chorus' }]);
-    await waitFor(() => expect(screen.getByText('Chorus')).toBeDefined());
+    await waitFor(() =>
+      expect(screen.getByTestId('grid-device-title').textContent).toBe('Chorus'));
     // Panels
     expect(screen.getByText('Voices')).toBeDefined();
     expect(screen.getByText('Motion')).toBeDefined();
@@ -142,13 +143,31 @@ describe('GridView', () => {
     expect(screen.getAllByText('-6 dB')).toHaveLength(2); // wet + dry
   });
 
+  // Navigation lives in the bottom strip rather than the device surface, so
+  // controls don't have to share the screen with a pan gesture.
+  it('provides a strip to navigate between devices', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    await waitFor(() => expect(screen.getByTestId('grid-strip')).toBeDefined());
+    // One chip per device, tappable to jump
+    expect(screen.getByRole('button', { name: 'Chorus' })).toBeDefined();
+  });
+
+  it('does not let the device surface pan by touch', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    const scroller = await waitFor(() => screen.getByTestId('grid-scroller'));
+    // touch-none: the strip owns navigation, so a stray swipe here must not
+    // scroll the surface out from under a knob mid-drag.
+    expect(scroller.className).toContain('touch-none');
+  });
+
   it('only renders plugins that have a module, ignoring the rest', async () => {
     renderGrid([
       { index: 0, name: 'VST3: ReaEQ' },
       { index: 1, name: 'JS: Chorus' },
       { index: 2, name: 'VST3: Pro-Q 3' },
     ]);
-    await waitFor(() => expect(screen.getByText('Chorus')).toBeDefined());
+    await waitFor(() => expect(screen.getAllByTestId('grid-device-title')).toHaveLength(1));
+    expect(screen.getByTestId('grid-device-title').textContent).toBe('Chorus');
     expect(screen.getByText(/1 device/)).toBeDefined();
     expect(screen.queryByText('ReaEQ')).toBeNull();
   });
