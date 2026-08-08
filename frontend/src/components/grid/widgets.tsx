@@ -239,22 +239,26 @@ export function Toggle({ param, control, onChange }: Common & { control: ToggleC
 // ── Segmented ────────────────────────────────────────────────
 
 export function Segmented({
-  param, control, onChange, columns = 4, hideLabel = false,
+  param, control, onChange, columns, hideLabel = false,
 }: Common & { control: SegmentedControl; columns?: number; hideLabel?: boolean }) {
   // Discrete: no drag, no gating needed — one tap, one command.
   const current = Math.round(param.value);
+  // A long list laid out wide eats horizontal room the strip can't spare, and
+  // leaves the panel's height unused. Two columns keeps it tall and narrow,
+  // which is also how the plugin itself arranges its shape selectors.
+  const cols = columns ?? (control.options.length > 6 ? 2 : control.options.length);
   return (
     <div className="flex flex-col gap-1.5 select-none" role="group" aria-label={control.label}>
       <div
         className="grid gap-1"
-        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
         {control.options.map((o) => (
           <button
             key={o.value}
             onClick={() => onChange(o.value)}
             aria-pressed={o.value === current}
-            className={`min-w-11 min-h-11 text-xs font-medium transition-colors active:brightness-95 ${
+            className={`min-w-11 min-h-11 px-1 text-[11px] leading-tight font-medium transition-colors active:brightness-95 ${
               o.value === current
                 ? 'bg-[var(--accent-orange)]/25 text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/50'
                 : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'

@@ -139,9 +139,20 @@ function Device({
 
   useEffect(() => {
     let cancelled = false;
-    getFxParams(trackIdx, fx.index, 0, 64)
-      .then((r) => { if (!cancelled) setParams(r.params); })
-      .catch(() => { if (!cancelled) setParams([]); });
+    // Fetch every parameter, not a first page. Yutani's patched copy has 189,
+    // and anything not fetched can't be resolved, so it renders as an empty
+    // placeholder — which is exactly what a fixed limit of 64 produced.
+    (async () => {
+      const all: FxParam[] = [];
+      let offset = 0;
+      for (;;) {
+        const page = await getFxParams(trackIdx, fx.index, offset, 128);
+        all.push(...page.params);
+        offset += page.params.length;
+        if (!page.params.length || all.length >= page.total) break;
+      }
+      if (!cancelled) setParams(all);
+    })().catch(() => { if (!cancelled) setParams([]); });
     return () => { cancelled = true; };
   }, [trackIdx, fx.index, getFxParams]);
 
@@ -171,7 +182,7 @@ function Device({
           {module.title || cleanFxName(fx.name)}
         </span>
       </header>
-      <div className="flex items-start gap-3 p-3">
+      <div className="flex items-stretch gap-2 p-2 flex-1 min-h-0">
         {module.panels.map((panel) => (
           <Panel
             key={panel.label}
@@ -193,11 +204,17 @@ function Panel({
   onChange: (paramIdx: number, value: number) => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 px-3 py-1 bg-[var(--bg-tertiary)]/25 ring-1 ring-[var(--border)]/50">
-      <div className="text-[9px] uppercase tracking-widest text-[var(--text-secondary)]">
+    <div className="flex flex-col gap-1.5 px-2 py-1.5 bg-[var(--bg-tertiary)]/25 ring-1 ring-[var(--border)]/50 min-h-0">
+      <div className="text-[9px] uppercase tracking-widest text-[var(--text-secondary)] flex-shrink-0">
         {panel.label}
       </div>
-      <div className="flex items-start gap-3">
+      {/*
+        Controls flow downward and wrap into a new column when they run out of
+        height, rather than sitting in one row with the rest of the panel empty.
+        A panel of eight knobs becomes two short columns instead of a long
+        stripe, which is both denser and closer to how the plugin groups them.
+      */}
+      <div className="flex flex-col flex-wrap content-start items-start gap-x-4 gap-y-2 flex-1 min-h-0">
         {panel.controls.map((control) => {
           // Resolved by name where possible — a JSFX slider number isn't
           // necessarily REAPER's parameter index.
