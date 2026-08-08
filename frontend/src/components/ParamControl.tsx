@@ -510,6 +510,13 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
   // for seconds after the finger lifted.
   const { value: effectiveValue, change, release } = useLiveSlider(param.value, onChange);
 
+  // Tears down the active drag's window listeners. Held in a ref so the
+  // unmount cleanup below can reach it — a slider destroyed mid-gesture
+  // (page turned, FX closed, track collapsed) leaks exactly the same way a
+  // cancelled gesture used to.
+  const detachRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { detachRef.current?.(); }, []);
+
   const normalized = (effectiveValue - param.min) / (param.max - param.min);
   const pct = Math.max(0, Math.min(100, normalized * 100));
 
@@ -528,7 +535,12 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
 
       const slider = trackRef.current;
       if (!slider) return;
+
+      // Defensive: never leave two drags running on one slider.
+      detachRef.current?.();
+
       const rect = slider.getBoundingClientRect();
+      const pointerId = e.pointerId;
       let didMove = false;
 
       const valueAt = (clientX: number) => {
@@ -536,7 +548,12 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
         return param.min + (x / rect.width) * (param.max - param.min);
       };
 
+      let detach = () => {};
+
       const handlePointerMove = (ev: PointerEvent) => {
+        // Only the finger that started this drag drives this slider. Without
+        // this, any other pointer on the page moves it too.
+        if (ev.pointerId !== pointerId) return;
         didMove = true;
         // Always moves the slider; only sends when the previous send has
         // been answered. The final position is sent regardless.
@@ -544,9 +561,9 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
       };
 
       const handlePointerUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
         setDragging(false);
-        window.removeEventListener('pointermove', handlePointerMove);
-        window.removeEventListener('pointerup', handlePointerUp);
+        detach();
 
         // Notify parent that drag ended — will schedule cleanup of the
         // drag guard after a short debounce to let the final server response
@@ -559,8 +576,31 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
         release();
       };
 
+      // iOS fires pointercancel — not pointerup — when the scrolling
+      // parameter list claims the gesture. That path used to end the drag
+      // without ever tearing these listeners down, so the abandoned slider
+      // kept receiving every pointermove on the page: drag any other slider
+      // afterwards and this one moved too, sending fx/setParam for a
+      // parameter nobody was touching (#138).
+      const handlePointerCancel = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        setDragging(false);
+        detach();
+        onDragEnd();
+        release();
+      };
+
+      detach = () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerCancel);
+        detachRef.current = null;
+      };
+      detachRef.current = detach;
+
       window.addEventListener('pointermove', handlePointerMove);
       window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerCancel);
     },
     [param.min, param.max, param.index, change, release, onDragStart, onDragEnd],
   );

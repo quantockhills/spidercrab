@@ -479,6 +479,65 @@ describe('ParamControl', () => {
       expect(sent[sent.length - 1]).toBeCloseTo(expected, 5);
     });
   });
+
+  // ── Leaked-drag regression tests (Issue #138) ──
+  //
+  // iOS fires pointercancel rather than pointerup when the scrolling list
+  // claims a gesture. That used to leave the drag's window listeners in place,
+  // so the abandoned slider tracked every later pointermove anywhere in the
+  // app — drag one slider, an unrelated one moved and was written to REAPER.
+
+  it('stops tracking after the gesture is cancelled', async () => {
+    const setFxParam = vi.fn().mockResolvedValue({ payload: {} });
+    renderParamControl({ setFxParam });
+
+    await waitFor(() => {
+      expect(screen.getByText('Freq 1')).toBeDefined();
+    });
+
+    const slider = document.querySelector('.cursor-pointer');
+    mockSliderBoundingRect(slider!);
+
+    fireEvent.pointerDown(slider!, { clientX: 30, clientY: 16, button: 0, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 60, clientY: 16, pointerId: 1 });
+
+    // The browser takes the gesture away — no pointerup ever arrives
+    fireEvent.pointerCancel(window, { clientX: 60, clientY: 16, pointerId: 1 });
+
+    const callsAtCancel = setFxParam.mock.calls.length;
+
+    // Subsequent movement anywhere must not reach this slider any more
+    fireEvent.pointerMove(window, { clientX: 250, clientY: 16, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientX: 280, clientY: 16, pointerId: 2 });
+
+    await waitFor(() => expect(setFxParam).toHaveBeenCalled());
+    expect(setFxParam.mock.calls.length).toBe(callsAtCancel);
+  });
+
+  it('ignores pointers other than the one that started the drag', async () => {
+    const setFxParam = vi.fn().mockResolvedValue({ payload: {} });
+    renderParamControl({ setFxParam });
+
+    await waitFor(() => {
+      expect(screen.getByText('Freq 1')).toBeDefined();
+    });
+
+    const slider = document.querySelector('.cursor-pointer');
+    mockSliderBoundingRect(slider!);
+
+    fireEvent.pointerDown(slider!, { clientX: 30, clientY: 16, button: 0, pointerId: 1 });
+
+    // A second finger moving elsewhere must not drive this slider
+    fireEvent.pointerMove(window, { clientX: 290, clientY: 16, pointerId: 2 });
+    expect(setFxParam).not.toHaveBeenCalled();
+
+    // The original pointer still works
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 16, pointerId: 1 });
+    await waitFor(() => expect(setFxParam).toHaveBeenCalledTimes(1));
+
+    const sent = setFxParam.mock.calls[0][3] as number;
+    expect(sent).toBeCloseTo(20 + 0.5 * (20000 - 20), 5);
+  });
 });
 
 // ============================================================
