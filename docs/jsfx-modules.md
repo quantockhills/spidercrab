@@ -9,18 +9,45 @@ panels look like each other rather than like their plugins.
 The existing generic slider list stays. A module is an alternative view,
 toggled per FX.
 
-## The constraint that shapes everything
+## What is and isn't reachable
 
-**Widget type is our choice. Controllability is not.**
+**Widget type is our choice.** In JSFX, `sliderN:` is a *parameter
+declaration*, not a visual slider — it's the only thing a host reads or
+writes. What the plugin draws in `@gfx` is independent: Yutani renders
+`osc1_db` (slider1) as a knob. So rendering something as a knob, toggle or XY
+pad is entirely up to the module.
 
-In JSFX, `sliderN:` is a *parameter declaration*, not a visual slider. It is
-the only thing a host can read or write. What the plugin draws in `@gfx` is
-independent — Yutani renders `osc1_db` (slider1) as a knob.
+**Controllability is fixable, because JSFX is source.** A control writing to a
+variable that isn't a declared parameter can't be set by any host *as
+shipped* — but the plugin can be patched to expose it. Three facts from the
+[JSFX reference](https://www.reaper.fm/sdk/js/js.php) make this practical:
 
-So "render it as a knob / toggle / XY pad" is entirely up to the module. But
-if a control writes to a variable that isn't a declared parameter, **no host
-can set it** — not REAPER, not Ableton, not us. It only exists inside the
-plugin's own GUI and its `@serialize` block.
+- **256 slider slots.** Yutani uses 71 (indices 1–81), leaving 185 free.
+- **Hidden sliders.** Prefixing a declaration with `-` hides it from the
+  plugin's own UI while keeping it automatable. Internal state can be exposed
+  to the host *without changing how the plugin looks in REAPER*.
+- **`slider_automate(2^index)`** notifies the host when the plugin's own GUI
+  writes a value, so the iPad stays in sync when someone turns a knob in
+  REAPER. (`sliderchange()` refreshes the display but does *not* send
+  automation — the wrong one for this.)
+
+So promoting a control is mechanical: add a hidden slider declaration, and add
+a `slider_automate` call where `@gfx` writes the variable.
+
+### The costs of patching
+
+- **It's a fork.** Yutani is actively maintained and ReaPack-distributed; an
+  update overwrites the patch. Mitigation: generate a patched *copy* beside the
+  original rather than editing in place, so divergence is explicit and ReaPack
+  keeps managing the original.
+- **Preset and project compatibility is the real hazard.** Existing state lives
+  in `@serialize`; adding a slider for the same variable creates two sources of
+  truth, and the precedence is **not documented**. The reference only warns
+  that `@init` may run *after* `@serialize`. Whether `@slider` then overwrites
+  a serialize-restored value needs testing, not assumption — get it wrong and
+  old projects load with settings silently reset. Yutani already has a
+  `VERSION` field and migration branches, which is the hook a patch would use.
+- **Per-plugin effort.** Yutani has 114 plausible controls to promote.
 
 Measured on Yutani (`Saike_Yutani.jsfx`):
 
@@ -43,10 +70,11 @@ The unreachable ones are exactly the enable/disable switches: `c_lfo_enabled`,
 `tempo_sync_envelopes`, and the whole `*_vel` / `*_mod` modulation-depth
 matrix.
 
-**Consequence:** a Yutani module can expose its knobs and shape selectors
-faithfully, but its section on/off switches would be dead controls. A module
-must be able to declare a control as read-only or omit it, and the UI has to
-say why rather than silently doing nothing.
+**Consequence:** an *unpatched* Yutani module gets its knobs and shape
+selectors faithfully, but its section on/off switches are dead. Either the
+module marks them unavailable, or Yutani gets patched with hidden sliders and
+they become live. That's a per-plugin decision, and it means modules need a
+notion of "requires a patched build" alongside plain ones.
 
 ### Yutani is an outlier
 
@@ -137,6 +165,15 @@ just without auto-derivation.
 
 ## Open questions
 
+- **Do we patch, and if so how far?** Exposing internal state means shipping or
+  generating patched copies of other people's plugins. Yutani is MIT so it's
+  permitted, but it's a support burden and a divergence to maintain. A middle
+  path: patch nothing by default, offer a generator for plugins where a module
+  exists and the user opts in.
+- **`@serialize` precedence must be established empirically** before any
+  patching work. Build a two-line JSFX with one variable both serialized and
+  declared as a slider, save a project, reload, and see which value wins. That
+  single experiment decides whether promotion is safe for existing sessions.
 - **Reachability in the UI.** How should a module show a control the host
   cannot set? Omit it, or show it disabled with an explanation? Omitting is
   cleaner; showing it disabled is more honest about the plugin's real surface.
