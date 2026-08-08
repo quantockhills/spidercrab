@@ -88,7 +88,7 @@ function VolumeBar({ volume, onChange, onRelease }: {
         onPointerCancel={onRelease}
         onKeyUp={onRelease}
         onBlur={onRelease}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer touch-pan-y"
         aria-label="Track volume"
         data-testid="track-volume-slider"
       />
@@ -156,7 +156,7 @@ function PanBar({ pan, onChange, onRelease }: {
           onPointerCancel={onRelease}
           onKeyUp={onRelease}
           onBlur={onRelease}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer touch-pan-y"
           aria-label="Track pan"
           data-testid="track-pan-slider"
         />

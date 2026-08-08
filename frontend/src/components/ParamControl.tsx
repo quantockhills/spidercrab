@@ -628,7 +628,7 @@ export function ParamSlider({ param, onChange, onDragStart, onDragEnd }: ParamSl
       <div
         ref={trackRef}
         className={`
-          relative h-8 overflow-hidden cursor-pointer select-none
+          relative h-8 overflow-hidden cursor-pointer select-none touch-pan-y
           transition-shadow
           ${dragging ? 'ring-2 ring-[var(--accent-orange)]/60' : 'ring-1 ring-[var(--border)]'}
           bg-[var(--bg-tertiary)]
