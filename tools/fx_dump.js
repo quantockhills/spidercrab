@@ -13,8 +13,8 @@
  * normalises its header casing gets a 400 rather than an upgrade.
  *
  * Usage:
- *   node tools/fx_dump.js                 # list the selected track's FX
- *   node tools/fx_dump.js <fxIndex>       # dump that FX's parameters
+ *   node tools/fx_dump.js                    # every track and its FX
+ *   node tools/fx_dump.js <track> <fx>       # dump that plugin's parameters
  */
 const net = require('net');
 const crypto = require('crypto');
@@ -94,34 +94,54 @@ function call(conn, command, params = {}) {
     conn.on((text) => {
       let msg;
       try { msg = JSON.parse(text); } catch { return; }
-      if (msg.id !== id) return;
+      if (msg.type !== 'response') return;
+      // Failures come back without the id they are answering, so matching on
+      // id alone waits out the timeout on a typo rather than reporting it.
+      // Only one call is ever in flight here, so an unattributed response is
+      // necessarily ours.
+      if (msg.id !== undefined && msg.id !== id) return;
       clearTimeout(timer);
       msg.success === false
         ? reject(new Error(`${command}: ${JSON.stringify(msg.payload)}`))
         : resolve(msg.payload);
     });
-    conn.send(JSON.stringify({ id, command, params }));
+    // "type" is required, despite the dispatcher reading as though it
+    // tolerates a message without one.
+    //
+    // CRITICAL: params must be spread at the top level, not nested under
+    // "params". The extension's JsonParser is a naive stateful parser that
+    // reads key-value pairs sequentially and can only find keys at the root.
+    // The frontend does `Object.assign({type, command, id}, params)` for the
+    // same reason — see frontend/src/lib/wsClient.ts:154.
+    conn.send(JSON.stringify(Object.assign({}, { id, type: 'command', command }, params)));
   });
 }
 
 (async () => {
   const conn = await open();
-  const tracks = await call(conn, 'tracks/list');
-  const list = tracks.tracks || [];
-  const selected = list.find((t) => t.selected) ?? list[0];
-  if (!selected) throw new Error('no tracks in the project');
+  // The extension caches FX chains, so a plugin added since the last refresh
+  // is invisible until asked for again.
+  await call(conn, 'fx/refreshCache').catch(() => {});
+  const list = (await call(conn, 'track/getAll')).tracks || [];
+  if (!list.length) throw new Error('no tracks in the project');
 
-  const trackIdx = selected.index;
-  const fx = (await call(conn, 'fx/list', { trackIdx })).fx || [];
-
-  if (process.argv[2] === undefined) {
-    console.log(`track ${trackIdx}: ${selected.name}`);
-    fx.forEach((f) => console.log(`  [${f.index}] ${f.name}`));
+  // With no arguments, show the whole project. Hunting for one plugin across
+  // a dozen tracks is the common case, and guessing at "the selected track"
+  // gets it wrong whenever the selection isn't where you were last working.
+  if (process.argv.length < 4) {
+    for (const t of list) {
+      const fx = (await call(conn, 'track/getFx', { trackIdx: t.index })).fx || [];
+      console.log(`track ${t.index}: ${t.name}${t.selected ? '  (selected)' : ''}`);
+      fx.forEach((f) => console.log(`    ${t.index} ${f.index}   ${f.name}`));
+    }
+    console.log('\nDump one with:  node tools/fx_dump.js <trackIdx> <fxIdx>');
     conn.sock.end();
     return;
   }
 
-  const fxIdx = Number(process.argv[2]);
+  const trackIdx = Number(process.argv[2]);
+  const fxIdx = Number(process.argv[3]);
+  const fx = (await call(conn, 'track/getFx', { trackIdx })).fx || [];
   const params = [];
   for (let offset = 0; ;) {
     const page = await call(conn, 'fx/getParams', { trackIdx, fxIdx, offset, limit: 128 });
@@ -130,7 +150,8 @@ function call(conn, command, params = {}) {
     if (!page.params.length || params.length >= page.total) break;
   }
 
-  console.log(`${fx[fxIdx]?.name ?? `fx ${fxIdx}`} — ${params.length} parameters\n`);
+  const found = fx.find((f) => f.index === fxIdx);
+  console.log(`${found?.name ?? `fx ${fxIdx}`} — ${params.length} parameters\n`);
   for (const p of params) {
     console.log(
       `${String(p.index).padStart(3)}  ${String(p.name).padEnd(30)}`

@@ -204,7 +204,57 @@ const chorus: ModuleDef = {
   ],
 };
 
-const MODULES: ModuleDef[] = [chorus, yutaniModule];
+// ── ReaDelay / Stock delay ──────────────────────────────────
+//
+// The classic Cockos multi-tap delay. REAPER exposes its taps as a flat list
+// of parameters with a "N:" prefix, making it hard to see what belongs to
+// which tap and leaving the time mode unlabelled — note divisions and raw
+// milliseconds share the same value range.
+//
+// Layout follows Ableton's Delay: time on the left, character in the middle,
+// mix on the right.
+const stockDelayModule: ModuleDef = {
+  title: 'Stock delay',
+  match: (n) => n.toLowerCase().includes('stock delay'),
+  panels: [
+    {
+      label: 'Time',
+      controls: [
+        { kind: 'knob', slider: 3, expect: '1: Length (time)', label: 'ms', format: (v) => `${Math.round(v * 5000)} ms` },
+        { kind: 'knob', slider: 4, expect: '1: Length (musical)', label: 'Notes' },
+      ],
+    },
+    {
+      label: 'Character',
+      controls: [
+        { kind: 'knob', slider: 5, expect: '1: Feedback', label: 'Feedback', format: (v) => `${Math.round(v * 100)}%` },
+        { kind: 'knob', slider: 6, expect: '1: Lowpass', label: 'Low cut', format: (v) => `${Math.round(v * 20000)} Hz` },
+        { kind: 'knob', slider: 7, expect: '1: Hipass', label: 'High cut', format: (v) => `${Math.round(v * 20000)} Hz` },
+        { kind: 'knob', slider: 8, expect: '1: Resolution', label: 'Bits', format: (v) => `${Math.round(v * 24) || 1} bit` },
+        { kind: 'knob', slider: 9, expect: '1: Stereo width', label: 'Width', format: (v) => `${(v * 100).toFixed(0)}%` },
+      ],
+    },
+    {
+      label: 'Mix',
+      controls: [
+        { kind: 'fader', slider: 0, expect: 'Wet', label: 'Wet', format: (v) => `${Math.round((v - 1) * 100)}%` },
+        { kind: 'fader', slider: 1, expect: 'Dry', label: 'Dry', format: (v) => `${Math.round((v - 1) * 100)}%` },
+        { kind: 'knob', slider: 10, expect: '1: Volume', label: 'Vol', format: (v) => `${Math.round((v - 1) * 100)}%` },
+        { kind: 'knob', slider: 11, expect: '1: Pan', label: 'Pan', format: (v) => `${((v - 0.5) * 2 * 100).toFixed(0)}%` },
+      ],
+    },
+    {
+      label: 'Options',
+      controls: [
+        { kind: 'toggle', slider: 2, expect: '1: Enabled', label: 'Tap on' },
+        { kind: 'toggle', slider: 12, expect: 'Bypass', label: 'Bypass' },
+        { kind: 'fader', slider: 13, expect: 'Wet', label: 'Wet %', format: (v) => `${Math.round(v * 100)}%` },
+      ],
+    },
+  ],
+};
+
+const MODULES: ModuleDef[] = [chorus, yutaniModule, stockDelayModule];
 
 /** Strip REAPER's format prefix, e.g. "JS: Chorus" -> "Chorus". */
 export function cleanFxName(name: string): string {
