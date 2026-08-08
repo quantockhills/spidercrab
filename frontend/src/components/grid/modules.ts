@@ -5,8 +5,10 @@
 // Panels run left to right at a fixed height, so a module that outgrows the
 // screen is panned rather than shrunk.
 //
-// Parameter indices are REAPER's, which are 0-based — a JSFX `slider1:` is
-// param 0.
+// Controls reference JSFX slider numbers; resolveParam maps those onto
+// whatever indices REAPER actually reports.
+
+import { yutaniModule } from './yutani';
 
 interface ControlBase {
   /**
@@ -156,7 +158,7 @@ const chorus: ModuleDef = {
   ],
 };
 
-const MODULES: ModuleDef[] = [chorus];
+const MODULES: ModuleDef[] = [chorus, yutaniModule];
 
 /** Strip REAPER's format prefix, e.g. "JS: Chorus" -> "Chorus". */
 export function cleanFxName(name: string): string {
