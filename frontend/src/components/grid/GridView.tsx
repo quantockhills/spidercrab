@@ -170,7 +170,13 @@ function useFitScale(
     if (!outer || !content) return;
 
     const measure = () => {
-      const avail = outer.clientHeight;
+      // offsetHeight, not clientHeight. clientHeight excludes the horizontal
+      // scrollbar, and the scrollbar's presence depends on the scaled width,
+      // which depends on this measurement — so a device whose width lands near
+      // the scroller's own is bistable and flips between two layouts forever.
+      // offsetHeight is the height the flex parent gave us, independent of
+      // anything we then draw inside it.
+      const avail = outer.offsetHeight - SCROLLBAR_PX;
       // A transform doesn't affect the layout box, so these read the natural
       // size however far we've already scaled — no feedback loop.
       const h = content.offsetHeight;
@@ -179,8 +185,8 @@ function useFitScale(
       // Grows as well as shrinks. A device that only half-fills the screen
       // left a void underneath it and touch targets smaller than they needed
       // to be; the cap stops a two-knob Chorus becoming a billboard.
-      const scale = clamp(avail / h, MIN_SCALE, MAX_SCALE);
-      setFit((prev) => (prev.scale === scale && prev.w === w
+      const scale = fitScaleFor(avail, h);
+      setFit((prev) => (Math.abs(prev.scale - scale) < 0.002 && prev.w === w
         && prev.h === h && prev.avail === avail
         ? prev : { scale, w, h, avail }));
     };
@@ -348,6 +354,14 @@ const PANEL_CHROME_PX = 96;
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 1.35;
+/**
+ * Room left below the devices for a horizontal scrollbar.
+ *
+ * Fixed rather than measured on purpose: measuring it is what caused the
+ * oscillation in the first place. iOS overlays its scrollbars, so this is a
+ * few wasted pixels there and a row that isn't half-hidden on desktop.
+ */
+const SCROLLBAR_PX = 14;
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
@@ -373,6 +387,11 @@ export function maxRowsFor(avail: number): number {
  * Balanced rather than filling each column in turn: seven controls in a
  * six-row budget is 4+3, not 6+1, which leaves no stranded column.
  */
+export function fitScaleFor(avail: number, naturalHeight: number): number {
+  if (!avail || !naturalHeight) return 1;
+  return clamp(avail / naturalHeight, MIN_SCALE, MAX_SCALE);
+}
+
 export function shapeFor(count: number, maxRows: number): { rows: number; cols: number } {
   const cols = Math.max(1, Math.ceil(count / maxRows));
   return { cols, rows: Math.ceil(count / cols) };

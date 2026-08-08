@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../components/grid/modules';
 import { yutaniModule } from '../components/grid/yutani';
-import { GridView, maxRowsFor, shapeFor } from '../components/grid/GridView';
+import { GridView, fitScaleFor, maxRowsFor, shapeFor } from '../components/grid/GridView';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
 // ── Module matching ──────────────────────────────────────────
@@ -560,5 +560,28 @@ describe('Yutani section tabs', () => {
     for (const label of ['Voices', 'Motion', 'Output']) {
       expect(screen.getByText(label)).toBeDefined();
     }
+  });
+});
+
+describe('fit scale', () => {
+  it('fills the height when a device is short of it', () => {
+    expect(fitScaleFor(600, 500)).toBeCloseTo(1.2);
+  });
+
+  it('shrinks a device that overflows', () => {
+    expect(fitScaleFor(600, 900)).toBeCloseTo(2 / 3);
+  });
+
+  it('refuses to blow a small device up without limit', () => {
+    expect(fitScaleFor(900, 100)).toBeLessThanOrEqual(1.35);
+  });
+
+  it('refuses to shrink past legibility', () => {
+    expect(fitScaleFor(100, 5000)).toBeGreaterThanOrEqual(0.5);
+  });
+
+  it('stays put before it has been measured', () => {
+    expect(fitScaleFor(0, 500)).toBe(1);
+    expect(fitScaleFor(600, 0)).toBe(1);
   });
 });
