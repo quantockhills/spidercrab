@@ -284,7 +284,47 @@ const stockDelayModule: ModuleDef = {
   ],
 };
 
-const MODULES: ModuleDef[] = [chorus, yutaniModule, stockDelayModule, seqsModule];
+// ── ReaPitch / Stock pitch shifter ──────────────────────────
+//
+// Pitch, formant, and mix — three panels, no tabs. The pitch section
+// exposes all four shift modes (octaves, semitones, cents, full range)
+// alongside the tap on/off so you can dial in the exact interval and
+// fine-tune it without switching modes.
+const pitchShiftModule: ModuleDef = {
+  title: 'Stock pitch shifter',
+  match: (n) => n.toLowerCase().includes('stock pitch shifter'),
+  panels: [
+    {
+      label: 'Pitch',
+      controls: [
+        { kind: 'knob', slider: 6, expect: '1: Shift (oct)', label: 'Oct', format: (v) => `${Math.round((v - 0.5) * 4)}` },
+        { kind: 'knob', slider: 5, expect: '1: Shift (semitones)', label: 'Semi', format: (v) => `${v >= 0.5 ? '+' : ''}${Math.round((v - 0.5) * 24)}` },
+        { kind: 'knob', slider: 4, expect: '1: Shift (cents)', label: 'Cents', format: (v) => `${v >= 0.5 ? '+' : ''}${Math.round((v - 0.5) * 200)}` },
+        { kind: 'knob', slider: 3, expect: '1: Shift (full range)', label: 'Range', format: (v) => `${v >= 0.5 ? '+' : ''}${Math.round((v - 0.5) * 100)}%` },
+        { kind: 'toggle', slider: 2, expect: '1: Enabled', label: 'On' },
+      ],
+    },
+    {
+      label: 'Formant',
+      controls: [
+        { kind: 'knob', slider: 7, expect: '1: Formant adjust (full range)', label: 'Range', format: (v) => `${v >= 0.5 ? '+' : ''}${Math.round((v - 0.5) * 100)}%` },
+        { kind: 'knob', slider: 8, expect: '1: Formant adjust (cents)', label: 'Cents', format: (v) => `${v >= 0.5 ? '+' : ''}${Math.round((v - 0.5) * 200)}` },
+        { kind: 'knob', slider: 9, expect: '1: Formant adjust (semitones)', label: 'Semi', format: (v) => `${v >= 0.5 ? '+' : ''}${Math.round((v - 0.5) * 24)}` },
+      ],
+    },
+    {
+      label: 'Mix',
+      controls: [
+        { kind: 'fader', slider: 0, expect: 'Wet', label: 'Wet', format: (v) => `${(v >= 1 ? '+' : '')}${Math.round((v - 1) * 100)}%` },
+        { kind: 'fader', slider: 1, expect: 'Dry', label: 'Dry', format: (v) => `${(v >= 1 ? '+' : '')}${Math.round((v - 1) * 100)}%` },
+        { kind: 'knob', slider: 10, expect: '1: Volume', label: 'Vol', format: (v) => `${(v >= 1 ? '+' : '')}${Math.round((v - 1) * 100)}%` },
+        { kind: 'knob', slider: 11, expect: '1: Pan', label: 'Pan', format: (v) => `${((v - 0.5) * 2 * 100).toFixed(0)}%` },
+      ],
+    },
+  ],
+};
+
+const MODULES: ModuleDef[] = [chorus, yutaniModule, stockDelayModule, seqsModule, pitchShiftModule];
 
 /** Strip REAPER's format prefix, e.g. "JS: Chorus" -> "Chorus". */
 export function cleanFxName(name: string): string {
