@@ -440,62 +440,70 @@ interface StepGridProps {
 
 export function StepGrid({
   stepValues, maxValue, onChange, label, enabled,
-  cellWidth = 20, cellHeight = 40,
+  cellWidth = 22, cellHeight = 36,
 }: StepGridProps) {
-  const ref = useRef<HTMLDivElement>(null);
-  const dragStartRef = useRef<{ index: number; value: number } | null>(null);
+  const dragRef = useRef<{ index: number; value: number } | null>(null);
 
   const handlePointerDown = useCallback((index: number) => {
     const current = stepValues[index] ?? 0;
+    // Cycle: 0→1→2→...→maxValue→0
     const next = current >= maxValue ? 0 : current + 1;
-    dragStartRef.current = { index, value: next };
+    dragRef.current = { index, value: next };
     onChange(index, next);
   }, [stepValues, maxValue, onChange]);
 
   const handlePointerEnter = useCallback((index: number) => {
-    if (dragStartRef.current) {
-      // Paint the same value as the starting cell
-      onChange(index, dragStartRef.current.value);
+    if (dragRef.current) {
+      onChange(index, dragRef.current.value);
     }
   }, [onChange]);
 
   const handlePointerUp = useCallback(() => {
-    dragStartRef.current = null;
+    dragRef.current = null;
   }, []);
 
+  const isToggle = maxValue === 1;
+
   return (
-    <div className={`flex flex-col gap-1 select-none ${enabled ? '' : 'opacity-40'}`}>
-      <div className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
+    <div className={`flex flex-col gap-0.5 select-none ${enabled ? '' : 'opacity-40'}`}>
+      <div className="text-[9px] uppercase tracking-wider text-[var(--text-secondary)]">
         {label}
       </div>
       <div
-        ref={ref}
         className="flex gap-[1px]"
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
       >
-        {stepValues.map((v, i) => (
-          <button
-            key={i}
-            onPointerDown={() => handlePointerDown(i)}
-            onPointerEnter={() => handlePointerEnter(i)}
-            className="relative flex-shrink-0 touch-none"
-            style={{ width: cellWidth, height: cellHeight }}
-            aria-label={`${label} step ${i}`}
-          >
-            {/* Background */}
-            <div className="absolute inset-0 bg-[var(--bg-tertiary)]" />
-            {/* Value bar */}
-            <div
-              className="absolute bottom-0 inset-x-0 bg-[var(--accent-orange)]/60 transition-[height] duration-75"
-              style={{ height: `${maxValue > 0 ? (v / maxValue) * 100 : 0}%` }}
-            />
-            {/* Step number */}
-            <div className="absolute bottom-0.5 inset-x-0 text-[8px] text-center text-[var(--text-secondary)]/50">
-              {i + 1}
-            </div>
-          </button>
-        ))}
+        {stepValues.map((v, i) => {
+          const on = v > 0;
+          // Block height proportional to value / maxValue
+          const pct = maxValue > 0 ? (v / maxValue) * 100 : 0;
+          return (
+            <button
+              key={i}
+              onPointerDown={() => handlePointerDown(i)}
+              onPointerEnter={() => handlePointerEnter(i)}
+              className="relative flex-shrink-0 touch-none"
+              style={{ width: cellWidth, height: cellHeight }}
+              aria-label={`${label} step ${i + 1}`}
+            >
+              {/* Background */}
+              <div className={`absolute inset-0 ${on ? 'bg-[var(--accent-orange)]/20' : 'bg-[var(--bg-tertiary)]'}`} />
+              {/* Filled block — height = value / maxValue */}
+              {on && (
+                <div
+                  className="absolute bottom-0 inset-x-0 bg-[var(--accent-orange)]/70"
+                  style={{ height: `${pct}%` }}
+                />
+              )}
+              {/* Value label */}
+              <div className="absolute inset-0 flex items-center justify-center text-[9px] font-medium"
+                style={{ color: on ? 'var(--accent-orange)' : 'var(--text-secondary)/40' }}>
+                {isToggle ? (on ? '•' : '') : v}
+              </div>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

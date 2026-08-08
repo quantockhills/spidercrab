@@ -8,23 +8,23 @@ import type { ModuleDef } from './modules';
 // 17 effect rows, with step window slider indices (8 per row, starting at 115)
 const STEP_BASE = 115;
 const ROWS = [
-  ['Reset',     1,  0],
-  ['Slowdown',  2,  1],
-  ['Tape Stop', 10, 2],
-  ['Retrigger', 4,  3],
-  ['Reverse',   5,  4],
-  ['Pitch',     12, 5],
-  ['Degrade',   9,  6],
-  ['Filter',    7,  7],
-  ['Gate',      6,  8],
-  ['Reverb',    8,  9],
-  ['Karplus',   11, 10],
-  ['Mod FX',    20, 11],
-  ['Filter 2',  21, 12],
-  ['Delay',     22, 13],
-  ['Chorus',    23, 14],
-  ['Freq Shift',26, 15],
-  ['Mod A',     50, 16],
+  ['Reset',     1,  0, 1],
+  ['Slowdown',  2,  1, 24],
+  ['Tape Stop', 10, 2, 1],
+  ['Retrigger', 4,  3, 6],
+  ['Reverse',   5,  4, 1],
+  ['Pitch',     12, 5, 1],
+  ['Degrade',   9,  6, 1],
+  ['Filter',    7,  7, 1],
+  ['Gate',      6,  8, 1],
+  ['Reverb',    8,  9, 1],
+  ['Karplus',   11, 10, 1],
+  ['Mod FX',    20, 11, 1],
+  ['Filter 2',  21, 12, 1],
+  ['Delay',     22, 13, 1],
+  ['Chorus',    23, 14, 1],
+  ['Freq Shift',26, 15, 1],
+  ['Mod A',     50, 16, 256],
 ] as const;
 
 const ROW_SEL = 251;
@@ -56,7 +56,7 @@ export const seqsModule: ModuleDef = {
     },
 
     // ── Grid (step grid) ───────────────────────────────────
-    ...ROWS.map(([label, mem, ri]) => {
+    ...ROWS.map(([label, mem, ri, mv]) => {
       const sliders: [number, number, number, number, number, number, number, number] =
         [STEP_BASE + ri * 8, STEP_BASE + ri * 8 + 1, STEP_BASE + ri * 8 + 2, STEP_BASE + ri * 8 + 3,
          STEP_BASE + ri * 8 + 4, STEP_BASE + ri * 8 + 5, STEP_BASE + ri * 8 + 6, STEP_BASE + ri * 8 + 7];
@@ -70,7 +70,7 @@ export const seqsModule: ModuleDef = {
             expect: undefined,
             label,
             steps: 32,
-            maxValue: 31,
+            maxValue: mv,
             stepSliders: sliders,
             rowSelector: ROW_SEL,
           },
