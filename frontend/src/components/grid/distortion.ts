@@ -44,10 +44,23 @@ export const distortionModule: ModuleDef = {
           mirror: 6,
           points: 12,
         },
+        {
+          kind: 'segmented', slider: 6, expect: 'Curve: Negative half', label: 'Negative',
+          help: 'Whether the Curve shape mirrors its positive half onto negative '
+            + 'inputs, or uses its own points for them. Separate halves give an '
+            + 'asymmetric curve, which adds even harmonics — the difference '
+            + 'between a valve and a transistor. Only affects the Curve shape.',
+          options: [
+            { value: 0, label: 'Separate' },
+            { value: 1, label: 'Mirrored' },
+          ],
+        },
       ],
     },
     {
-      label: 'Shape',
+      // Not "Shape": the selector inside is called that, and a panel titled
+      // with its own control's name prints the word twice.
+      label: 'Shaper',
       controls: [
         {
           kind: 'segmented', slider: 2, expect: 'Shape', label: 'Shape',
@@ -98,22 +111,16 @@ export const distortionModule: ModuleDef = {
       label: 'Fuzz',
       controls: [
         {
-          kind: 'knob', slider: 5, expect: 'Fuzz: Shape', label: 'Shape', format: whole,
-          help: 'How steep the Fuzz curve is near zero. High settings make even '
-            + 'quiet passages distort fully, which is the characteristic fuzz '
-            + 'behaviour — it does not clean up when you play softer. Only '
-            + 'affects the Fuzz shape.',
-        },
-        {
-          kind: 'segmented', slider: 6, expect: 'Curve: Negative half', label: 'Negative',
-          help: 'Whether the Curve shape mirrors its positive half onto negative '
-            + 'inputs, or uses its own points for them. Separate halves give an '
-            + 'asymmetric curve, which adds even harmonics — the difference '
-            + 'between a valve and a transistor. Only affects the Curve shape.',
-          options: [
-            { value: 0, label: 'Separate' },
-            { value: 1, label: 'Mirrored' },
-          ],
+          kind: 'knob', slider: 5, expect: 'Fuzz: Shape', label: 'Sensitivity',
+          format: whole,
+          help: 'How quiet a signal still distorts fully. The Fuzz curve always '
+            + 'heads for the same ceiling; this sets how steeply it leaves zero '
+            + 'to get there, so it is the gain applied to the faintest sound. '
+            + 'At 1 a 40 dB range comes out as 40 dB — near enough clean. At 20 '
+            + 'it comes out as 15 dB. At 300 it comes out as 2 dB, meaning a '
+            + 'whisper and a shout leave as the same square wave. That is what '
+            + 'separates a fuzz from an overdriven amp: it does not clean up '
+            + 'when you play softer. Only affects the Fuzz shape.',
         },
       ],
     },

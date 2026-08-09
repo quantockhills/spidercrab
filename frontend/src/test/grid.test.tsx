@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent, act, within } from '@testing-librar
 import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../components/grid/modules';
 import { yutaniModule } from '../components/grid/yutani';
 import { midiArpModule } from '../components/grid/midiarp';
+import { distortionModule } from '../components/grid/distortion';
 import { GridView, fitScaleFor, maxRowsFor, shapeFor } from '../components/grid/GridView';
 import { NoteGrid, HelpLabel, noteName, shapeSample, Segmented } from '../components/grid/widgets';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
@@ -1517,5 +1518,26 @@ describe('segmented control sizing', () => {
     const grid = screen.getByRole('button', { name: 'Soft' }).parentElement!;
     expect(grid.style.gridTemplateColumns).toContain('max-content');
     expect(grid.className).toContain('w-max');
+  });
+});
+
+describe('Distortion naming and grouping', () => {
+  it('never uses one word for two things', () => {
+    // A knob called Shape two panels from a selector called Shape is how you
+    // end up being asked what it does.
+    const labels = distortionModule.panels
+      .flatMap((p) => p.controls.map((c) => c.label))
+      .concat(distortionModule.panels.map((p) => p.label));
+    expect(labels.length).toBe(new Set(labels).size);
+  });
+
+  it('keeps each shape’s controls with that shape', () => {
+    const panelOf = (label: string) => distortionModule.panels
+      .find((p) => p.controls.some((c) => c.label === label))!.label;
+    // Negative reshapes the drawn curve, so it belongs beside it rather than
+    // under Fuzz, which it does nothing to.
+    expect(panelOf('Negative')).toBe('Curve');
+    expect(panelOf('Sensitivity')).toBe('Fuzz');
+    expect(panelOf('Hardness')).toBe('Soft');
   });
 });
