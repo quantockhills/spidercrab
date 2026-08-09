@@ -115,6 +115,84 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+
+// ── Labels that explain themselves ───────────────────────────
+
+/** How long a press has to last before it counts as asking for help. */
+const HOLD_MS = 450;
+/** Movement past this is a scroll or a drag, not a hold. */
+const HOLD_SLOP_PX = 8;
+
+/**
+ * A control's label, which reveals what the control is for when held.
+ *
+ * On the label rather than the control body: knobs already own press-and-drag,
+ * and a long press there would either fight the gesture or delay it. The label
+ * has no gesture of its own, so holding it is unambiguous.
+ *
+ * The popover is absolutely positioned rather than fixed because the device
+ * strip is CSS-transformed to fit the screen, and a fixed element inside a
+ * transformed ancestor positions against that ancestor anyway — so fixed would
+ * buy nothing and scale differently from everything around it.
+ */
+export function HelpLabel({
+  text, help, className = '',
+}: { text: string; help?: string; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<number | null>(null);
+  const origin = useRef({ x: 0, y: 0 });
+
+  const cancel = useCallback(() => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+  }, []);
+  useEffect(() => cancel, [cancel]);
+
+  if (!help) return <div className={className}>{text}</div>;
+
+  const start = (e: React.PointerEvent) => {
+    origin.current = { x: e.clientX, y: e.clientY };
+    cancel();
+    timer.current = window.setTimeout(() => setOpen(true), HOLD_MS);
+  };
+  const move = (e: React.PointerEvent) => {
+    const d = Math.hypot(e.clientX - origin.current.x, e.clientY - origin.current.y);
+    if (d > HOLD_SLOP_PX) cancel();
+  };
+
+  return (
+    <div className="relative">
+      <div
+        className={`${className} cursor-help underline decoration-dotted decoration-[var(--text-secondary)]/40 underline-offset-2`}
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={cancel}
+        onPointerCancel={cancel}
+        aria-describedby={open ? `help-${text}` : undefined}
+      >
+        {text}
+      </div>
+      {open && (
+        <>
+          {/* Anywhere else dismisses it; there is no room for a close button
+              at this size and nothing else to do with the next tap. */}
+          <div className="fixed inset-0 z-40" onPointerDown={() => setOpen(false)} />
+          <div
+            id={`help-${text}`}
+            role="tooltip"
+            className="absolute z-50 left-1/2 -translate-x-1/2 top-full mt-1 w-56 p-2.5 bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] shadow-xl text-left normal-case tracking-normal"
+          >
+            <div className="text-[10px] font-semibold text-[var(--text-primary)] mb-1">{text}</div>
+            <div className="text-[10px] leading-relaxed text-[var(--text-secondary)]">{help}</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Knob ─────────────────────────────────────────────────────
 
 // The colour each modulation mode draws its depth ring in, matching the
@@ -230,9 +308,8 @@ export function Knob({
             className="stroke-[var(--text-primary)]" strokeLinecap="round" />
         </svg>
       </div>
-      <div className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
-        {control.label}
-      </div>
+      <HelpLabel text={control.label} help={control.help}
+        className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]" />
       <div className="text-[11px] tabular-nums" style={{
         color: depth ? MOD_COLOR[mode!] : 'var(--text-primary)',
       }}>
@@ -272,9 +349,8 @@ export function Fader({ param, control, onChange }: Common & { control: FaderCon
           style={{ bottom: `calc(${norm * 100}% - 1px)` }}
         />
       </div>
-      <div className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]">
-        {control.label}
-      </div>
+      <HelpLabel text={control.label} help={control.help}
+        className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]" />
       <div className="text-[11px] tabular-nums text-[var(--text-primary)]">
         {control.format ? control.format(value) : (param.formatted ?? value.toFixed(1))}
       </div>
@@ -306,9 +382,8 @@ export function Toggle({ param, control, onChange }: Common & { control: ToggleC
       </button>
       {/* Wraps to a second line rather than truncating: "Mix sub in before
           filter" cut to "MIX SUB I…" says nothing at all. */}
-      <div className="text-[10px] leading-tight uppercase tracking-wider text-[var(--text-secondary)] text-center w-20 line-clamp-2">
-        {control.label}
-      </div>
+      <HelpLabel text={control.label} help={control.help}
+        className="text-[10px] leading-tight uppercase tracking-wider text-[var(--text-secondary)] text-center w-20 line-clamp-2" />
     </div>
   );
 }
@@ -349,9 +424,8 @@ export function Segmented({
       </div>
       {/* The panel header already carries this when they match — don't say it twice. */}
       {!hideLabel && (
-        <div className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] text-center">
-          {control.label}
-        </div>
+        <HelpLabel text={control.label} help={control.help}
+          className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)] text-center" />
       )}
     </div>
   );

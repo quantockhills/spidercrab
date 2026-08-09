@@ -654,7 +654,9 @@ function Panel({
           return (
             <Segmented key={control.slider} param={param} control={control}
               columns={panel.columns} onChange={handle}
-              hideLabel={panel.label === control.label} />
+              // Normally the panel title already says this, but a control
+              // carrying help needs its label present to hold.
+              hideLabel={panel.label === control.label && !control.help} />
           );
         })}
       </div>

@@ -47,6 +47,12 @@ interface ControlBase {
   expect?: string;
   label: string;
   /**
+   * What this control is for, in a sentence or two, shown on a long press of
+   * its label. Written for someone who does not already know the plugin —
+   * a label like "CC 1 Number" means nothing without knowing what a CC is.
+   */
+  help?: string;
+  /**
    * Modulation depths edited through this control. Only knobs carry these —
    * a depth on a discrete choice would mean nothing.
    */

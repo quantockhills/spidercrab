@@ -1,10 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../components/grid/modules';
 import { yutaniModule } from '../components/grid/yutani';
 import { midiArpModule } from '../components/grid/midiarp';
 import { GridView, fitScaleFor, maxRowsFor, shapeFor } from '../components/grid/GridView';
-import { NoteGrid } from '../components/grid/widgets';
+import { NoteGrid, HelpLabel } from '../components/grid/widgets';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
 // ── Module matching ──────────────────────────────────────────
@@ -930,5 +930,76 @@ describe('following changes made outside the Grid', () => {
     fire!({ payload: { trackIdx: 0, fxIdx: 7, params: [{ index: gain.slider - 1, value: 0.9 }] } });
     expect(screen.getByRole('slider', { name: gain.label }).getAttribute('aria-valuenow'))
       .toBe(before);
+  });
+});
+
+// ── Help on a long press ─────────────────────────────────────
+//
+// An arp is full of terms that mean nothing until someone says what they are —
+// CC, poly mode, swing. The label alone leaves the reader guessing, and there
+// is no room on screen to explain everything at once.
+
+describe('control help', () => {
+  function hold(el: Element) {
+    fireEvent.pointerDown(el, { clientX: 10, clientY: 10 });
+    act(() => { vi.advanceTimersByTime(600); });
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('says nothing until the label is held', () => {
+    render(<HelpLabel text="Swing" help="Delays every other step." />);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    hold(screen.getByText('Swing'));
+    expect(screen.getByRole('tooltip').textContent).toContain('Delays every other step.');
+  });
+
+  it('treats a short press as a press, not a question', () => {
+    render(<HelpLabel text="Swing" help="Delays every other step." />);
+    fireEvent.pointerDown(screen.getByText('Swing'), { clientX: 10, clientY: 10 });
+    act(() => { vi.advanceTimersByTime(200); });
+    fireEvent.pointerUp(screen.getByText('Swing'));
+    act(() => { vi.advanceTimersByTime(600); });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('abandons the hold if the finger travels — that is a drag', () => {
+    render(<HelpLabel text="Swing" help="Delays every other step." />);
+    const label = screen.getByText('Swing');
+    fireEvent.pointerDown(label, { clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(label, { clientX: 60, clientY: 10 });
+    act(() => { vi.advanceTimersByTime(600); });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('stays a plain label when there is nothing to explain', () => {
+    render(<HelpLabel text="Swing" />);
+    hold(screen.getByText('Swing'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+});
+
+describe('MIDI ARP help text', () => {
+  const controls = midiArpModule.panels.flatMap((p) => p.controls);
+
+  it('explains every control', () => {
+    const bare = controls.filter((c) => !c.help).map((c) => c.label);
+    expect(bare).toEqual([]);
+  });
+
+  it('says what a CC is wherever one is mentioned', () => {
+    const ccControls = controls.filter((c) => /^CC/.test(c.label));
+    expect(ccControls.length).toBeGreaterThan(0);
+    // Naming the acronym is the whole point; "sends CC 3" teaches nobody.
+    expect(ccControls.every((c) => c.help!.includes('Continuous Controller'))).toBe(true);
+  });
+
+  it('puts the lane switches beside the grid they add rows to', () => {
+    const lanes = midiArpModule.panels.find((p) => p.label === 'Lanes')!;
+    expect(lanes.group).toBe(0);
+    const grid = midiArpModule.panels.find(
+      (p) => p.controls.some((c) => c.kind === 'notegrid'))!;
+    expect(grid.group).toBe(0);
   });
 });
