@@ -11,6 +11,7 @@
 import { yutaniModule } from './yutani';
 import { seqsModule } from './seqs';
 import { midiArpModule } from './midiarp';
+import { eosModule } from './eos';
 
 /**
  * The three modulation modes, named as the plugin's own buttons are.
@@ -46,6 +47,17 @@ interface ControlBase {
    */
   expect?: string;
   label: string;
+  /**
+   * Unit to append to the plugin's own formatted value — "ms", "Hz", "%".
+   *
+   * Native VSTs report 0..1 and format the number themselves, correctly and
+   * without drift, but usually without the unit because their own GUI draws it
+   * separately. Taking their string and adding the unit beats rescaling the
+   * raw value, which means guessing the plugin's own mapping.
+   *
+   * Ignored when `format` is given; that replaces the string outright.
+   */
+  unit?: string;
   /**
    * What this control is for, in a sentence or two, shown on a long press of
    * its label. Written for someone who does not already know the plugin —
@@ -390,7 +402,10 @@ const pitchShiftModule: ModuleDef = {
   ],
 };
 
-const MODULES: ModuleDef[] = [chorus, yutaniModule, stockDelayModule, seqsModule, pitchShiftModule, midiArpModule];
+const MODULES: ModuleDef[] = [
+  chorus, yutaniModule, stockDelayModule, seqsModule, pitchShiftModule,
+  midiArpModule, eosModule,
+];
 
 /** Strip REAPER's format prefix, e.g. "JS: Chorus" -> "Chorus". */
 export function cleanFxName(name: string): string {

@@ -1311,3 +1311,63 @@ describe('modules that need a patched copy', () => {
     expect(findModule('VST: Stock delay')?.title).toBe('Stock delay');
   });
 });
+
+// ── Eos Reverb ───────────────────────────────────────────────
+//
+// A native VST: every parameter reports 0..1 and Eos formats the number
+// itself. The module supplies grouping, names and units, and must not invent
+// scaling — its frequency controls are plainly not linear.
+
+describe('Eos module', () => {
+  const eos = findModule('VST: Eos Reverb')!;
+  const controls = eos.panels.flatMap((p) => p.controls);
+
+  /** What the live plugin reports, from tools/fx_dump.js. */
+  const EOS_PARAMS = [
+    'Predelay', 'Size', 'Decay', 'Attack', 'Diffuse', 'Mod Rate', 'Mod Dpth',
+    'Lo Mult', 'Lo Cut', 'Lo Xover', 'Hi Mult', 'Hi Cut', 'Hi Xover',
+    'Type', 'Infinite', 'Mix',
+  ];
+
+  it('matches the plugin as REAPER names it', () => {
+    expect(eos.title).toBe('Eos Reverb');
+  });
+
+  it('points every control at a parameter that exists, at the right index', () => {
+    for (const c of controls) {
+      expect(EOS_PARAMS[c.slider - 1]).toBe(c.expect);
+    }
+  });
+
+  it('covers every parameter the plugin has', () => {
+    const used = new Set(controls.map((c) => c.expect));
+    expect(EOS_PARAMS.filter((n) => !used.has(n))).toEqual([]);
+  });
+
+  it('surfaces the two Eos hides from its own window', () => {
+    // The manual: "tucked them away in a couple of hidden parameters ... not
+    // visible in Eos's window".
+    for (const name of ['Lo Xover', 'Hi Xover']) {
+      expect(controls.some((c) => c.expect === name)).toBe(true);
+    }
+  });
+
+  it('never rescales a value, since the plugin formats its own', () => {
+    // A format function here would be a guess at Eos's mapping. Units only.
+    const scaled = controls.filter((c) => 'format' in c && c.format);
+    expect(scaled).toEqual([]);
+  });
+
+  it('separates the input filters from the tail multipliers', () => {
+    // Eos draws them on one graph because they share it, but the cuts act on
+    // the way in and the multipliers on the tail.
+    const panelOf = (name: string) =>
+      eos.panels.find((p) => p.controls.some((c) => c.expect === name))!.label;
+    expect(panelOf('Lo Cut')).toBe('Input');
+    expect(panelOf('Lo Mult')).toBe('Tail tone');
+  });
+
+  it('explains every control', () => {
+    expect(controls.filter((c) => !c.help).map((c) => c.label)).toEqual([]);
+  });
+});

@@ -115,6 +115,23 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v));
 }
 
+/**
+ * What to print under a control.
+ *
+ * A module's own `format` wins. Otherwise the plugin's formatted string, plus
+ * whatever unit the module says goes with it — VSTs report 0..1 and format the
+ * number themselves, but leave the unit to their own GUI.
+ */
+function formatValue(
+  control: { format?: (v: number) => string; unit?: string },
+  param: FxParam,
+  value: number,
+): string {
+  if (control.format) return control.format(value);
+  const shown = param.formatted ?? value.toFixed(2);
+  return control.unit ? `${shown} ${control.unit}` : shown;
+}
+
 
 // ── Labels that explain themselves ───────────────────────────
 
@@ -315,7 +332,7 @@ export function Knob({
       }}>
         {depth
           ? `${value >= 0 ? '+' : ''}${value.toFixed(2)}`
-          : (control.format ? control.format(value) : (param.formatted ?? value.toFixed(2)))}
+          : formatValue(control, param, value)}
       </div>
     </div>
   );
@@ -352,7 +369,7 @@ export function Fader({ param, control, onChange }: Common & { control: FaderCon
       <HelpLabel text={control.label} help={control.help}
         className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]" />
       <div className="text-[11px] tabular-nums text-[var(--text-primary)]">
-        {control.format ? control.format(value) : (param.formatted ?? value.toFixed(1))}
+        {formatValue(control, param, value)}
       </div>
     </div>
   );
