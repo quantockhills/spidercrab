@@ -653,6 +653,7 @@ function AppInner() {
             getFxPreset={getFxPreset}
             setFxPreset={setFxPreset}
             getAllFxPresetNames={getAllFxPresetNames}
+            onEvent={onEvent}
           />
         )}
 

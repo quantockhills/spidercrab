@@ -858,3 +858,77 @@ describe('note grid', () => {
     expect(screen.getByLabelText('Row 1 step 2').getAttribute('aria-pressed')).toBe('false');
   });
 });
+
+describe('following changes made outside the Grid', () => {
+  it('updates a control when the plugin reports a parameter moved', async () => {
+    const params = yutaniParams();
+    let fire: ((msg: unknown) => void) | null = null;
+    const onEvent = vi.fn((event: string, handler: (msg: unknown) => void) => {
+      if (event === 'event:fx_param_changed') fire = handler;
+      return () => {};
+    });
+
+    render(
+      <GridView
+        tracks={tracks}
+        selectedTrack={0}
+        getTrackFx={vi.fn().mockResolvedValue([{ index: 0, name: 'JS: Yutani [Spidercrab]' }])}
+        getFxParams={vi.fn().mockResolvedValue({
+          params, total: params.length, offset: 0, limit: 256,
+        })}
+        setFxParam={vi.fn().mockResolvedValue({ payload: {} })}
+        onEvent={onEvent}
+      />,
+    );
+
+    const gain = yutaniModule.panels.flatMap((p) => p.controls)
+      .find((c) => c.kind === 'knob')!;
+    await waitFor(() =>
+      expect(screen.getByRole('slider', { name: gain.label })).toBeDefined());
+    expect(fire).not.toBeNull();
+
+    // The plugin's own window moved it; without this path the Grid would go on
+    // showing the value it last fetched.
+    fire!({
+      payload: {
+        trackIdx: 0,
+        fxIdx: 0,
+        params: [{ index: gain.slider - 1, value: 0.75, formatted: '0.75' }],
+      },
+    });
+
+    await waitFor(() => expect(
+      screen.getByRole('slider', { name: gain.label }).getAttribute('aria-valuenow'),
+    ).toBe('0.75'));
+  });
+
+  it('ignores changes reported for a different plugin', async () => {
+    const params = yutaniParams();
+    let fire: ((msg: unknown) => void) | null = null;
+    render(
+      <GridView
+        tracks={tracks}
+        selectedTrack={0}
+        getTrackFx={vi.fn().mockResolvedValue([{ index: 0, name: 'JS: Yutani [Spidercrab]' }])}
+        getFxParams={vi.fn().mockResolvedValue({
+          params, total: params.length, offset: 0, limit: 256,
+        })}
+        setFxParam={vi.fn().mockResolvedValue({ payload: {} })}
+        onEvent={(event, handler) => {
+          if (event === 'event:fx_param_changed') fire = handler;
+          return () => {};
+        }}
+      />,
+    );
+
+    const gain = yutaniModule.panels.flatMap((p) => p.controls)
+      .find((c) => c.kind === 'knob')!;
+    await waitFor(() =>
+      expect(screen.getByRole('slider', { name: gain.label })).toBeDefined());
+    const before = screen.getByRole('slider', { name: gain.label }).getAttribute('aria-valuenow');
+
+    fire!({ payload: { trackIdx: 0, fxIdx: 7, params: [{ index: gain.slider - 1, value: 0.9 }] } });
+    expect(screen.getByRole('slider', { name: gain.label }).getAttribute('aria-valuenow'))
+      .toBe(before);
+  });
+});

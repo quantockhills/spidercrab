@@ -30,6 +30,12 @@ interface GridViewProps {
     trackIdx: number, fxIdx: number, presetIdx: number,
   ) => Promise<FxPresetInfo | null>;
   getAllFxPresetNames?: (trackIdx: number, fxIdx: number) => Promise<FxPresetNames | null>;
+  /**
+   * Subscribe to a backend event. Used to follow parameter changes made
+   * elsewhere — chiefly the plugin's own window, which is the other half of a
+   * two-way pattern grid.
+   */
+  onEvent?: (event: string, handler: (msg: unknown) => void) => () => void;
 }
 
 /**
@@ -44,7 +50,7 @@ interface GridViewProps {
  */
 export function GridView({
   tracks, selectedTrack, getTrackFx, getFxParams, setFxParam,
-  getFxPreset, setFxPreset, getAllFxPresetNames,
+  getFxPreset, setFxPreset, getAllFxPresetNames, onEvent,
 }: GridViewProps) {
   // Holds the track it was loaded for, so switching tracks reads as loading
   // without needing to reset state synchronously inside the effect.
@@ -141,6 +147,7 @@ export function GridView({
                 getFxPreset={getFxPreset}
                 setFxPreset={setFxPreset}
                 getAllFxPresetNames={getAllFxPresetNames}
+                onEvent={onEvent}
               />
             ))}
           </div>
@@ -250,7 +257,7 @@ function Empty({ icon, title, hint }: { icon: string; title: string; hint: strin
 
 function Device({
   trackIdx, fx, module, maxRows, getFxParams, setFxParam,
-  getFxPreset, setFxPreset, getAllFxPresetNames,
+  getFxPreset, setFxPreset, getAllFxPresetNames, onEvent,
 }: {
   trackIdx: number;
   fx: FxInfo;
@@ -261,6 +268,7 @@ function Device({
   getFxPreset: GridViewProps['getFxPreset'];
   setFxPreset: GridViewProps['setFxPreset'];
   getAllFxPresetNames: GridViewProps['getAllFxPresetNames'];
+  onEvent: GridViewProps['onEvent'];
 }) {
   const [params, setParams] = useState<FxParam[]>([]);
 
@@ -297,6 +305,26 @@ function Device({
   const reload = useCallback(() => {
     fetchAll().then(setParams).catch(() => {});
   }, [fetchAll]);
+
+  // Follow changes made outside the Grid. Without this the pattern grid is
+  // one-way: edits drawn in the plugin's own window would never reach the
+  // iPad, and the two would silently disagree.
+  useEffect(() => {
+    if (!onEvent) return;
+    return onEvent('event:fx_param_changed', (msg: unknown) => {
+      const payload = (msg as { payload?: Record<string, unknown> }).payload ?? {};
+      if (payload.trackIdx !== trackIdx || payload.fxIdx !== fx.index) return;
+      const changed = payload.params as Array<Record<string, unknown>> | undefined;
+      if (!Array.isArray(changed) || !changed.length) return;
+      setParams((prev) => prev.map((p) => {
+        const hit = changed.find((c) => c.index === p.index);
+        return hit
+          ? { ...p, value: hit.value as number,
+              formatted: (hit.formatted as string | undefined) ?? p.formatted }
+          : p;
+      }));
+    });
+  }, [onEvent, trackIdx, fx.index]);
 
   const commit = useCallback(
     async (paramIdx: number, value: number) => {
