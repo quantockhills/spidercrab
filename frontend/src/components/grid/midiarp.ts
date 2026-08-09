@@ -75,14 +75,21 @@ export const midiArpModule: ModuleDef = {
           label: 'Pattern',
           help: 'Tap an empty step to start a note. Drag sideways to hold it '
             + 'across several steps. Tap a note to remove it. Each row is one '
-            + 'voice of the chord you play in. Dimmed steps sit past the loop '
-            + 'length and never play — shorten Length for an eight-step pattern.',
+            + 'voice of the chord you play in, labelled with the note it is '
+            + 'currently playing. The outlined step is where the sequencer has '
+            + 'reached. Dimmed steps sit past the loop length and never play — '
+            + 'shorten Length for an eight-step pattern.',
           rows: 5,
           cols: 32,
           firstSlider: 60,
           rowOffsetSlider: 58,
           colPageSlider: 59,
           loopLengthSlider: 39,
+          playheadSlider: 220,
+          noteFirstSlider: 221,
+          // The plugin draws memory row 0 at the bottom, so drawing them in
+          // order would show every pattern upside down.
+          reverseRows: true,
           rowNames: {
             50: 'Mod', 51: 'Vel',
             52: 'CC1', 53: 'CC2', 54: 'CC3', 55: 'CC4',

@@ -608,6 +608,22 @@ const SHAPES: Record<string, (step: number, rows: number) => number | null> = {
   Clear: () => null,
 };
 
+
+/**
+ * A MIDI number as the plugin names it.
+ *
+ * Its own identify_note() counts notes from A rather than C and takes the
+ * octave from `floor((pitch - 12) / 12)`, so 60 reads "C-4". Matching it
+ * matters: a row labelled differently here than in the plugin window is worse
+ * than an unlabelled one.
+ */
+const NOTE_NAMES = ['A-', 'A#', 'B-', 'C-', 'C#', 'D-', 'D#', 'E-', 'F-', 'F#', 'G-', 'G#'];
+
+export function noteName(pitch: number): string {
+  if (pitch <= 0) return '';
+  return `${NOTE_NAMES[((pitch - 21) % 12 + 12) % 12]}${Math.floor((pitch - 12) / 12)}`;
+}
+
 // ── Note grid ────────────────────────────────────────────────
 
 /**
@@ -654,6 +670,14 @@ export function NoteGrid({
     resolveParam(params, { slider: control.colPageSlider ?? -1 })?.value ?? 0);
   // Steps at or past the loop length never play. The plugin greys them out;
   // without that an eight-step pattern looks identical to a thirty-two.
+  const playhead = control.playheadSlider
+    ? Math.round(resolveParam(params, { slider: control.playheadSlider })?.value ?? -1)
+    : -1;
+  const voiceNotes = useMemo(() => {
+    if (!control.noteFirstSlider) return [];
+    return Array.from({ length: 12 }, (_, i) =>
+      byIndex.get(control.noteFirstSlider! - 1 + i)?.value ?? 0);
+  }, [byIndex, control.noteFirstSlider]);
   const loopLength = control.loopLengthSlider
     ? Math.round(resolveParam(params, { slider: control.loopLengthSlider })?.value ?? cols)
     : cols;
@@ -727,9 +751,21 @@ export function NoteGrid({
     }
   }, [cols, rows, write]);
 
+  /** Visual row -> row within the window, flipping when the plugin does. */
+  const rowAt = useCallback(
+    (visual: number) => (control.reverseRows ? rows - 1 - visual : visual),
+    [control.reverseRows, rows],
+  );
+
   const rowLabel = (r: number) => {
     const abs = rowOffset + r;
-    return control.rowNames?.[abs] ?? `${abs}`;
+    const named = control.rowNames?.[abs];
+    if (named) return named;
+    // Note rows are labelled with whatever they are currently playing, as the
+    // plugin labels its own. Empty until a chord is held.
+    const pitch = voiceNotes[abs % 12];
+    if (pitch > 0) return noteName(pitch + 12 * Math.floor(abs / 12));
+    return `${abs}`;
   };
 
   return (
@@ -772,7 +808,9 @@ export function NoteGrid({
           )}
         </div>
       </div>
-      {Array.from({ length: rows }, (_, r) => (
+      {Array.from({ length: rows }, (_, visual) => {
+        const r = rowAt(visual);
+        return (
         <div key={r} className="flex items-center gap-1">
           <div className="w-8 text-[9px] uppercase tracking-wider text-[var(--text-secondary)] text-right">
             {rowLabel(r)}
@@ -784,6 +822,7 @@ export function NoteGrid({
                 && c >= Math.min(drag.from, drag.to) && c <= Math.max(drag.from, drag.to);
               const on = inDrag || v !== 0;
               const past = colPage * cols + c >= loopLength;
+              const playing = colPage * cols + c === playhead;
               // A held cell joins the one before it, so the run reads as a bar.
               const held = inDrag ? c !== Math.min(drag.from, drag.to) : v < 0;
               return (
@@ -795,13 +834,15 @@ export function NoteGrid({
                   className={`h-6 flex-1 min-w-2 transition-colors ${
                     on ? 'bg-[var(--accent-orange)]' : 'bg-[var(--bg-tertiary)]'
                   } ${past ? 'opacity-25' : ''} ${held ? '' : 'ml-px'} ${
-                    c % 4 === 0 && !held ? 'ring-1 ring-inset ring-[var(--border)]' : ''}`}
+                    playing ? 'ring-2 ring-inset ring-[var(--text-primary)]'
+                      : c % 4 === 0 && !held ? 'ring-1 ring-inset ring-[var(--border)]' : ''}`}
                 />
               );
             })}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

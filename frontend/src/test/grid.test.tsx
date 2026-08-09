@@ -4,7 +4,7 @@ import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../co
 import { yutaniModule } from '../components/grid/yutani';
 import { midiArpModule } from '../components/grid/midiarp';
 import { GridView, fitScaleFor, maxRowsFor, shapeFor } from '../components/grid/GridView';
-import { NoteGrid, HelpLabel } from '../components/grid/widgets';
+import { NoteGrid, HelpLabel, noteName } from '../components/grid/widgets';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
 // ── Module matching ──────────────────────────────────────────
@@ -1139,5 +1139,78 @@ describe('loop length in the grid', () => {
     const patternTab = midiArpModule.panels.filter((p) => p.group === 0)
       .flatMap((p) => p.controls).map((c) => c.label);
     expect(patternTab).toContain('Length');
+  });
+});
+
+// ── Reading what the plugin is doing ─────────────────────────
+
+describe('note names', () => {
+  it('names notes the way the plugin does', () => {
+    // identify_note() counts from A and takes the octave from
+    // floor((pitch - 12) / 12), so these are its answers, not the usual ones.
+    expect(noteName(21)).toBe('A-0');
+    expect(noteName(60)).toBe('C-4');
+    expect(noteName(61)).toBe('C#4');
+    expect(noteName(69)).toBe('A-4');
+  });
+
+  it('says nothing for a voice that isn’t playing', () => {
+    expect(noteName(0)).toBe('');
+  });
+});
+
+describe('grid read-outs', () => {
+  const control = midiArpModule.panels.flatMap((p) => p.controls)
+    .find((c) => c.kind === 'notegrid')!;
+
+  function params(extra: Partial<{ playhead: number; notes: number[] }> = {}): FxParam[] {
+    const out: FxParam[] = [
+      { index: 38, name: 'Loop length', value: 32, min: 2, max: 64, mid: 32 },
+      { index: 57, name: 'Grid row offset', value: 0, min: 0, max: 55, mid: 27 },
+      { index: 58, name: 'Grid column page', value: 0, min: 0, max: 1, mid: 0 },
+      { index: 219, name: 'Playhead', value: extra.playhead ?? -1, min: 0, max: 63, mid: 32 },
+    ];
+    for (let i = 0; i < 12; i++) {
+      out.push({
+        index: 220 + i, name: `Voice ${i} note`,
+        value: extra.notes?.[i] ?? 0, min: 0, max: 127, mid: 64,
+      });
+    }
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 32; c++) {
+        out.push({ index: 59 + r * 32 + c, name: `Step ${r},${c}`, value: 0, min: -16, max: 16, mid: 0 });
+      }
+    }
+    return out;
+  }
+
+  it('outlines the step the sequencer has reached', () => {
+    render(<NoteGrid control={control as never} params={params({ playhead: 6 })} onChange={vi.fn()} />);
+    const at = (n: number) => screen.getByLabelText(`Row 0 step ${n}`).className;
+    expect(at(7)).toContain('ring-2');
+    expect(at(8)).not.toContain('ring-2');
+  });
+
+  it('labels a row with the note that row is playing', () => {
+    render(<NoteGrid control={control as never}
+      params={params({ notes: [60, 64, 67, 0, 0] })} onChange={vi.fn()} />);
+    expect(screen.getByText('C-4')).toBeDefined();
+    expect(screen.getByText('E-4')).toBeDefined();
+    expect(screen.getByText('G-4')).toBeDefined();
+  });
+
+  it('falls back to the row number when no chord is held', () => {
+    render(<NoteGrid control={control as never} params={params()} onChange={vi.fn()} />);
+    expect(screen.getByText('0')).toBeDefined();
+  });
+
+  it('draws the lowest row at the bottom, as the plugin does', () => {
+    render(<NoteGrid control={control as never}
+      params={params({ notes: [60, 62, 64, 65, 67] })} onChange={vi.fn()} />);
+    const labels = Array.from(document.querySelectorAll('[data-testid="note-grid"] .w-8'))
+      .map((e) => e.textContent);
+    // Memory row 0 is the lowest voice and belongs at the bottom, so the
+    // labels read downward from the top of the chord.
+    expect(labels).toEqual(['G-4', 'F-4', 'E-4', 'D-4', 'C-4']);
   });
 });

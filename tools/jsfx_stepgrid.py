@@ -60,6 +60,10 @@ MAX_ROW = 60
 # has to be bipolar.
 CELL_MIN, CELL_MAX = -16, 16
 
+# Steps in a pattern, and voices the arp can hold.
+MAX_SEGMENTS = 64
+MAX_NOTES = 12
+
 
 def declared_sliders(src):
     return {int(m.group(1)) for m in re.finditer(r'^slider(\d+):', src, re.M)}
@@ -76,7 +80,13 @@ def build(src):
     row_slider = first
     page_slider = first + 1
     cell_base = first + 2
-    last = cell_base + ROWS * COLS - 1
+    # Read-outs, published by the plugin and never driven from the host: where
+    # the sequencer is, and which note each row is currently playing. Both are
+    # drawn by the plugin's own grid, and without them the copy on the iPad is
+    # a diagram rather than a view of what is happening.
+    play_slider = cell_base + ROWS * COLS
+    note_base = play_slider + 1
+    last = note_base + MAX_NOTES - 1
     if last > 256:
         sys.exit(f'window needs slider {last}, past the 256 limit')
 
@@ -93,6 +103,9 @@ def build(src):
             n = cell_base + r * COLS + c
             decls.append(
                 f'slider{n}:sg_{r}_{c}=0<{CELL_MIN},{CELL_MAX},1>-Step {r},{c}')
+    decls.append(f'slider{play_slider}:sg_play=0<0,{MAX_SEGMENTS - 1},1>-Playhead')
+    for i in range(MAX_NOTES):
+        decls.append(f'slider{note_base + i}:sg_note_{i}=0<0,127,1>-Voice {i} note')
 
     anchor = None
     for m in re.finditer(r'^slider\d+:.*$', src, re.M):
@@ -132,6 +145,24 @@ def build(src):
                 f' slider_automate(sg_{r}_{c}); );')
     sync.append(');')
 
+    sync += [
+        '',
+        '// Read-outs. Published only — anything the host writes here is',
+        '// overwritten on the next block, which is what makes them read-outs.',
+        '_pub_sg_play != sequencer_index ? ('
+        ' sg_play = _pub_sg_play = sequencer_index; slider_automate(sg_play); );',
+        '',
+        '// current_arp is zero until something is played, and reading through',
+        '// a null pointer would publish whatever sits at address zero.',
+        'current_arp ? (',
+    ]
+    for i in range(MAX_NOTES):
+        sync.append(
+            f'  _pub_sg_note_{i} != current_arp[{i}] ? ('
+            f' sg_note_{i} = _pub_sg_note_{i} = current_arp[{i}];'
+            f' slider_automate(sg_note_{i}); );')
+    sync.append(');')
+
     # End of @block, which is where the next section starts.
     start = out.find('\n@block')
     if start < 0:
@@ -139,7 +170,8 @@ def build(src):
     end = min((p for p in (out.find('\n@' + s, start + 1)
                            for s in ('sample', 'gfx', 'serialize', 'init', 'slider'))
                if p > 0), default=len(out))
-    return out[:end] + '\n' + '\n'.join(sync) + out[end:], row_slider, page_slider, cell_base
+    return (out[:end] + '\n' + '\n'.join(sync) + out[end:],
+            row_slider, page_slider, cell_base, play_slider, note_base)
 
 
 def main():
@@ -149,13 +181,15 @@ def main():
     a = ap.parse_args()
 
     src = io.open(a.jsfx, encoding='utf-8', errors='replace').read()
-    patched, row_slider, page_slider, cell_base = build(src)
+    patched, row_slider, page_slider, cell_base, play_slider, note_base = build(src)
 
     print(f'window          : {ROWS} rows x {COLS} steps')
     print(f'row offset      : slider{row_slider}')
     print(f'column page     : slider{page_slider}')
     print(f'cells           : slider{cell_base}-{cell_base + ROWS * COLS - 1}')
-    print(f'total sliders   : {cell_base + ROWS * COLS - 1} of 256')
+    print(f'playhead        : slider{play_slider}')
+    print(f'voice notes     : slider{note_base}-{note_base + MAX_NOTES - 1}')
+    print(f'total sliders   : {note_base + MAX_NOTES - 1} of 256')
 
     if a.dry_run:
         return

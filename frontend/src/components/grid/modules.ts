@@ -115,6 +115,21 @@ export interface NoteGridControl extends ControlBase {
    * where an eight-step pattern stops.
    */
   loopLengthSlider?: number;
+  /** Where the sequencer currently is, so the playing step can be marked. */
+  playheadSlider?: number;
+  /**
+   * First of the parameters holding the note each voice is playing. Row `r`
+   * takes `notes[r % 12] + 12 * floor(r / 12)`, which is how the plugin
+   * labels its own rows.
+   */
+  noteFirstSlider?: number;
+  /**
+   * Draw the window bottom-up. The plugin puts memory row 0 at the bottom —
+   * `process_effect_row(..., current_pattern + (MAX_POLYPHONY * octave +
+   * polyphony - c_idx - 1) * max_segments, ...)` — so drawing rows in memory
+   * order shows the pattern upside down and makes an ascending shape descend.
+   */
+  reverseRows?: boolean;
   /**
    * Names for the pattern's fixed rows, keyed by absolute row index. The arp
    * keeps its modulators at 50-59; everything below is a note line.
