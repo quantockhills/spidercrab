@@ -10,6 +10,7 @@
 
 import { yutaniModule } from './yutani';
 import { seqsModule } from './seqs';
+import { bluearpModule } from './bluearp';
 
 /**
  * The three modulation modes, named as the plugin's own buttons are.
@@ -332,7 +333,7 @@ const pitchShiftModule: ModuleDef = {
   ],
 };
 
-const MODULES: ModuleDef[] = [chorus, yutaniModule, stockDelayModule, seqsModule, pitchShiftModule];
+const MODULES: ModuleDef[] = [chorus, yutaniModule, stockDelayModule, seqsModule, pitchShiftModule, bluearpModule];
 
 /** Strip REAPER's format prefix, e.g. "JS: Chorus" -> "Chorus". */
 export function cleanFxName(name: string): string {
