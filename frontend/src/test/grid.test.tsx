@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react';
 import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../components/grid/modules';
 import { yutaniModule } from '../components/grid/yutani';
 import { midiArpModule } from '../components/grid/midiarp';
@@ -193,6 +193,7 @@ function renderGrid(fx: FxInfo[], selectedTrack: number | null = 0) {
     />,
   );
   return { getTrackFx, getFxParams, setFxParam };
+
 }
 
 describe('GridView', () => {
@@ -259,9 +260,10 @@ describe('GridView', () => {
   // controls don't have to share the screen with a pan gesture.
   it('provides a strip to navigate between devices', async () => {
     renderGrid([{ index: 0, name: 'JS: Chorus' }]);
-    await waitFor(() => expect(screen.getByTestId('grid-strip')).toBeDefined());
-    // One chip per device, tappable to jump
-    expect(screen.getByRole('button', { name: 'Chorus' })).toBeDefined();
+    const strip = await waitFor(() => screen.getByTestId('grid-strip'));
+    // One chip per device, tappable to jump. Scoped to the strip: the device's
+    // own title is a button too, since tapping it claims live updates.
+    expect(within(strip).getByRole('button', { name: 'Chorus' })).toBeDefined();
   });
 
   it('does not let the device surface pan by touch', async () => {
@@ -1212,5 +1214,42 @@ describe('grid read-outs', () => {
     // Memory row 0 is the lowest voice and belongs at the bottom, so the
     // labels read downward from the top of the chord.
     expect(labels).toEqual(['G-4', 'F-4', 'E-4', 'D-4', 'C-4']);
+  });
+});
+
+// ── Which device gets live updates ───────────────────────────
+//
+// The extension watches one FX at a time, and claiming it used to be a side
+// effect of reading parameters — so on a track with several devices the watch
+// landed on whichever finished loading last, which is a race.
+
+describe('device selection', () => {
+  it('selects the first device without being asked', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }, { index: 1, name: 'VST3: ReaEQ' }]);
+    await waitFor(() => expect(screen.getAllByTestId('grid-device-title')).toHaveLength(2));
+    const [first, second] = screen.getAllByTestId('grid-device-title');
+    expect(first.getAttribute('aria-pressed')).toBe('true');
+    expect(second.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('moves the selection when a device name is tapped', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }, { index: 1, name: 'VST3: ReaEQ' }]);
+    await waitFor(() => expect(screen.getAllByTestId('grid-device-title')).toHaveLength(2));
+
+    fireEvent.click(screen.getAllByTestId('grid-device-title')[1]);
+    const [first, second] = screen.getAllByTestId('grid-device-title');
+    expect(first.getAttribute('aria-pressed')).toBe('false');
+    expect(second.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('re-reads the selected device, which is what claims the watch', async () => {
+    const { getFxParams } = renderGrid([
+      { index: 0, name: 'JS: Chorus' }, { index: 1, name: 'VST3: ReaEQ' },
+    ]);
+    await waitFor(() => expect(screen.getAllByTestId('grid-device-title')).toHaveLength(2));
+
+    fireEvent.click(screen.getAllByTestId('grid-device-title')[1]);
+    // A single parameter is enough to say "this one".
+    await waitFor(() => expect(getFxParams).toHaveBeenCalledWith(0, 1, 0, 1));
   });
 });

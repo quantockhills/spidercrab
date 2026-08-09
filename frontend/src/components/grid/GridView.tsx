@@ -57,13 +57,22 @@ export function GridView({
   const [loaded, setLoaded] = useState<{ trackIdx: number; fx: FxInfo[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Which device gets live parameter updates. The extension watches one FX at
+  // a time, and until now that was whichever device happened to finish
+  // loading last — so on a track with more than one, the playhead could end up
+  // reporting for the wrong plugin. Tapping a device's name claims it.
+  const [selectedFx, setSelectedFx] = useState<number | null>(null);
 
   useEffect(() => {
     if (selectedTrack === null) return;
     let cancelled = false;
     const forTrack = selectedTrack;
     getTrackFx(forTrack)
-      .then((list) => { if (!cancelled) setLoaded({ trackIdx: forTrack, fx: list }); })
+      .then((list) => {
+        if (cancelled) return;
+        setLoaded({ trackIdx: forTrack, fx: list });
+        setSelectedFx(null);
+      })
       .catch(() => { if (!cancelled) setLoaded({ trackIdx: forTrack, fx: [] }); });
     return () => { cancelled = true; };
   }, [selectedTrack, getTrackFx]);
@@ -80,6 +89,9 @@ export function GridView({
     scrollRef, contentRef, withModules.length,
   );
   const maxRows = maxRowsFor(avail);
+  // Nothing chosen yet means the first device, so a single-device track needs
+  // no tap at all.
+  const activeFx = selectedFx ?? withModules[0]?.fx.index ?? null;
 
   if (selectedTrack === null) {
     return <Empty icon="🎛️" title="No track selected"
@@ -148,6 +160,8 @@ export function GridView({
                 setFxPreset={setFxPreset}
                 getAllFxPresetNames={getAllFxPresetNames}
                 onEvent={onEvent}
+                selected={f.index === activeFx}
+                onSelect={() => setSelectedFx(f.index)}
               />
             ))}
           </div>
@@ -257,7 +271,7 @@ function Empty({ icon, title, hint }: { icon: string; title: string; hint: strin
 
 function Device({
   trackIdx, fx, module, maxRows, getFxParams, setFxParam,
-  getFxPreset, setFxPreset, getAllFxPresetNames, onEvent,
+  getFxPreset, setFxPreset, getAllFxPresetNames, onEvent, selected, onSelect,
 }: {
   trackIdx: number;
   fx: FxInfo;
@@ -269,6 +283,8 @@ function Device({
   setFxPreset: GridViewProps['setFxPreset'];
   getAllFxPresetNames: GridViewProps['getAllFxPresetNames'];
   onEvent: GridViewProps['onEvent'];
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const [params, setParams] = useState<FxParam[]>([]);
 
@@ -305,6 +321,13 @@ function Device({
   const reload = useCallback(() => {
     fetchAll().then(setParams).catch(() => {});
   }, [fetchAll]);
+
+  // Claiming the watch is a side effect of reading parameters, so read the
+  // cheapest thing there is. One parameter is enough to say "this one".
+  useEffect(() => {
+    if (!selected) return;
+    getFxParams(trackIdx, fx.index, 0, 1).catch(() => {});
+  }, [selected, trackIdx, fx.index, getFxParams]);
 
   // Follow changes made outside the Grid. Without this the pattern grid is
   // one-way: edits drawn in the plugin's own window would never reach the
@@ -375,12 +398,17 @@ function Device({
   return (
     <section className="flex flex-col bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] flex-shrink-0">
       <header className="px-3 py-1.5 border-b border-[var(--border)] flex items-center gap-3">
-        <span
-          className="text-[11px] font-semibold uppercase tracking-wider"
+        <button
+          onClick={onSelect}
+          aria-pressed={selected}
+          title="Tap to receive live updates from this device"
+          className={`text-[11px] font-semibold uppercase tracking-wider transition-colors ${
+            selected ? 'text-[var(--accent-orange)]' : 'text-[var(--text-secondary)]'
+          }`}
           data-testid="grid-device-title"
         >
           {module.title || cleanFxName(fx.name)}
-        </span>
+        </button>
         <div className="flex gap-1" role="tablist" aria-label="Sections">
           {tabbed && groups.map((label, i) => (
             <TabButton key={label} label={label} selected={i === tab}
