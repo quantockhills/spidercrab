@@ -30,10 +30,14 @@ The `*_Dependencies/` and `*_dependencies/` folders are unmodified upstream
 files, included because the patched copy's `import` lines resolve relative to
 it and it will not compile without them.
 
-**These are Joep Vanlier's plugins.** Install them properly from
-[his repository](https://github.com/JoepVanlier/JSFX) via ReaPack — you want
-the originals anyway, and you want his updates. What's here is a derived copy
-for one purpose.
+**These are Joep Vanlier's plugins.** Install them properly via ReaPack — you
+want the originals anyway, and you want his updates. Add this repository:
+
+```
+https://raw.githubusercontent.com/JoepVanlier/JSFX/master/index.xml
+```
+
+What's here is a derived copy for one purpose.
 
 ## Installing
 
@@ -44,8 +48,18 @@ Copy a directory's contents into REAPER's `Effects/` folder, keeping the
 dependency folder beside the `.jsfx`. The copy appears alongside the original,
 with `[Spidercrab]` in its name.
 
-Presets are not included — Yutani's alone are 2.9 MB, and `jsfx_expose.py`
-retargets your existing bank to the patched copy when you run it.
+Yutani's 319 presets come with it, in
+`Yutani/Saike_Yutani_spidercrab.jsfx.rpl`. A preset library is keyed to a
+plugin's description line, so the copy would see none of the original's
+without this — `jsfx_expose.py` retargets the bank, and the result is here so
+that copying the folder in gives you a synth with its presets rather than a
+blank one. The arp and SEQS ship no presets.
+
+The bank is 2.9 MB of the 4 MB here. It stores values positionally, which is
+why `jsfx_expose.py` allocates new sliders above both the highest declared one
+and the widest preset in the library: filling the unused gaps lower down would
+have looked tidy and been silently destructive, with any preset long enough to
+reach them overwriting promoted controls on load.
 
 ## Generating them instead
 

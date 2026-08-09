@@ -12,25 +12,54 @@ Everything else still shows up on the Grid tab, with panels generated from its p
 
 ## What has a layout
 
-| Device | Plugin | Where it comes from | Patched copy |
-|---|---|---|---|
-| **Chorus** | Chorus | ships with REAPER | no |
-| **Stock delay** | ReaDelay | ships with REAPER | no |
-| **Stock pitch shifter** | ReaPitch | ships with REAPER | no |
-| **Eos Reverb** | Eos | [free from Audio Damage](https://www.audiodamage.com/pages/free-and-legacy) | no |
-| **Distortion** | Distortion Workbench | this repository, `jsfx/` | it *is* ours |
-| **Yutani** | Yutani Mono Bass Synth 0.103 | [Joep Vanlier's JSFX](https://github.com/JoepVanlier/JSFX), MIT | yes |
-| **MIDI ARP** | Saike MIDI ARP 0.44 | as above | yes |
-| **SEQS** | Saike SEQS 0.126 | as above | yes |
+Eight so far. Everything here is bundled with REAPER, free, or open source —
+none of it needs a plugin you have to buy.
 
-Everything so far is either bundled with REAPER, free, or open source. Nothing
-here needs a plugin you have to buy.
+### Bundled with REAPER
 
-**Distortion Workbench** is ours: REAPER ships three separate waveshapers —
-Distortion, Distortion (Fuzz) and the Graphical Waveshaper — which are all the
-same thing with a different curve, so `jsfx/spidercrab_distortion.jsfx` offers
-all three around one drive, ceiling and mix, and gives every one of them the
-oversampling only the graphical one had.
+Nothing to install; these are already on your machine.
+
+- **Chorus** — REAPER shows six identical sliders, which hides the shape of the
+  effect. The layout splits it the way Ableton's does: voice count as buttons,
+  rate/depth/time as knobs, the two mixes as faders. "Pitch Fudge Factor" is
+  relabelled Depth, which is what it does.
+- **Stock delay** (ReaDelay) — time and musical length, feedback and filtering,
+  and the mix, grouped rather than listed.
+- **Stock pitch shifter** (ReaPitch) — shift amount and the windowing controls.
+
+### Free downloads
+
+- **Eos Reverb** — Audio Damage's algorithmic reverb, one of
+  [33 legacy plugins they released free](https://www.audiodamage.com/pages/free-and-legacy).
+  Six panels following Ableton's split of a reverb into input, early
+  reflections, tail and output — plus the two crossover frequencies Eos hides
+  from its own window and offers only to a host.
+
+### Open source, via ReaPack
+
+Joep Vanlier's JSFX, all MIT. Add this repository in ReaPack:
+
+```
+https://raw.githubusercontent.com/JoepVanlier/JSFX/master/index.xml
+```
+
+- **Yutani** (0.103) — a mono bass synth with 22 sections. Its knobs each carry
+  three modulation depths, reached through a VEL/MOD/LINK switch exactly as the
+  plugin does it. Needs a [patched copy](#patched-copies); 319 presets come
+  with it.
+- **MIDI ARP** (0.44) — a pattern arpeggiator. The whole point of it is the step
+  grid, which lives in memory and so reaches no host at all until patched. Four
+  tabs, a moving playhead, rows labelled with the note each is playing.
+- **SEQS** (0.126) — sequenced effects. Also needs a patched copy.
+
+### Ours
+
+- **Distortion Workbench** — REAPER ships three separate waveshapers:
+  Distortion, Distortion (Fuzz) and the Graphical Waveshaper. All three are the
+  same thing with a different curve, so
+  [`jsfx/spidercrab_distortion.jsfx`](https://github.com/quantockhills/spidercrab/tree/master/jsfx)
+  offers all three around one drive, ceiling and mix — and gives every one of
+  them the oversampling only the graphical one had. The transfer curve is drawn.
 
 ## Getting around
 
@@ -67,6 +96,8 @@ For those, `tools/jsfx_expose.py` writes a **patched copy** alongside the origin
 Modules that need a patched copy only match the copy. Point one at an original and most of its controls would resolve to nothing.
 
 Ready-made copies live in [`jsfx/vendor/`](https://github.com/quantockhills/spidercrab/tree/master/jsfx/vendor) with their licences and attribution intact, or you can generate your own from whatever version you have installed. Either way they are **not** installed for you: putting somebody else's plugins in your Effects folder unasked is not on. See that folder's README for both routes.
+
+Yutani's presets come with its copy. A preset library is keyed to the plugin's description line, so the patched copy would see none of the original's — `jsfx_expose.py` retargets the bank, and all 319 are there.
 
 A layout pins parameters by position as well as by name, so a later release of the plugin with one extra parameter can shift the rest. Each module records the version it was written against — the device's **Info** tab shows it, and its header counts any controls that go missing. That turns drift into a message rather than a knob that quietly moves the wrong thing.
 
