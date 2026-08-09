@@ -654,6 +654,7 @@ export function NoteGrid({
   // Live preview of the run being dragged, so the cells fill under the finger
   // rather than only on release.
   const [drag, setDrag] = useState<{ row: number; from: number; to: number } | null>(null);
+  const [shapesOpen, setShapesOpen] = useState(false);
   const dragRef = useRef(drag);
   dragRef.current = drag;
 
@@ -726,16 +727,43 @@ export function NoteGrid({
 
   return (
     <div className="flex flex-col gap-1 select-none" data-testid="note-grid">
-      <div className="flex items-center gap-1 pl-9" role="group" aria-label="Pattern shapes">
-        {Object.keys(SHAPES).map((name) => (
+      {/*
+        A menu rather than a row of buttons. Every one of these overwrites the
+        whole window, and a destructive action sitting permanently one tap from
+        the grid is asking to be hit by a stray finger.
+      */}
+      <div className="flex items-center pl-9">
+        <div className="relative">
           <button
-            key={name}
-            onClick={() => applyShape(name)}
+            onClick={() => setShapesOpen((o) => !o)}
+            aria-haspopup="menu"
+            aria-expanded={shapesOpen}
             className="px-2 py-0.5 text-[9px] uppercase tracking-wider bg-[var(--bg-tertiary)] text-[var(--text-secondary)] active:brightness-125"
           >
-            {name}
+            Shape ▾
           </button>
-        ))}
+          {shapesOpen && (
+            <>
+              <div className="fixed inset-0 z-40" onPointerDown={() => setShapesOpen(false)} />
+              <div
+                role="menu"
+                aria-label="Pattern shapes"
+                className="absolute z-50 left-0 top-full mt-1 w-28 bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] shadow-xl"
+              >
+                {Object.keys(SHAPES).map((name) => (
+                  <button
+                    key={name}
+                    role="menuitem"
+                    onClick={() => { applyShape(name); setShapesOpen(false); }}
+                    className="block w-full text-left px-3 py-2 text-[10px] text-[var(--text-secondary)] active:brightness-125"
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
       {Array.from({ length: rows }, (_, r) => (
         <div key={r} className="flex items-center gap-1">

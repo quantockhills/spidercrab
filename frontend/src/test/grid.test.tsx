@@ -1050,9 +1050,27 @@ describe('pattern shapes', () => {
   function apply(name: string) {
     const onChange = vi.fn();
     render(<NoteGrid control={control as never} params={gridParams()} onChange={onChange} />);
-    fireEvent.click(screen.getByRole('button', { name }));
+    fireEvent.click(screen.getByRole('button', { name: /Shape/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name }));
     return onChange;
   }
+
+  it('keeps the shapes behind a menu, not loose above the grid', () => {
+    render(<NoteGrid control={control as never} params={gridParams()} onChange={vi.fn()} />);
+    // Each shape overwrites the window, so none should be one stray tap away.
+    expect(screen.queryByRole('menu')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Shape/ }));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(Object.keys({
+      Up: 1, Down: 1, 'Up/Down': 1, Random: 1, Clear: 1,
+    }).length);
+  });
+
+  it('closes the menu once a shape is chosen', () => {
+    render(<NoteGrid control={control as never} params={gridParams()} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Shape/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Up' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
 
   it('writes an ascending diagonal for Up', () => {
     const placed = rowsWritten(apply('Up'));
