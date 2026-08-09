@@ -31,7 +31,7 @@ const CC_WHAT = 'A CC (Continuous Controller) is a numbered MIDI message that '
 
 const cc = (n: number, choice: number, min: number, max: number) => ({
   label: `CC ${n}`,
-  group: 2,
+  group: 3,
   controls: [
     {
       kind: 'knob' as const, slider: choice, expect: `Assignable CC${n}`,
@@ -62,7 +62,7 @@ const lane = (slider: number, expect: string, label: string, help: string) =>
 export const midiArpModule: ModuleDef = {
   title: 'MIDI ARP',
   match: (n) => n.toLowerCase().includes('midi arp'),
-  groups: ['Pattern', 'Arp', 'Setup'],
+  groups: ['Pattern', 'Arp', 'Setup', 'CC'],
   panels: [
     // ── Pattern: the grid, and everything that changes what it shows ──
     {
@@ -117,9 +117,8 @@ export const midiArpModule: ModuleDef = {
       ],
     },
     {
-      // The plugin adds these with one "CC" button that appends the next lane
-      // and right-click removes the last. Eight parameters, so eight switches
-      // — but they belong beside the grid they add rows to.
+      // Adding a lane puts another row in the grid, so these sit beside it.
+      // The CC lanes live on the CC tab with the assignments they need.
       label: 'Lanes',
       group: 0,
       controls: [
@@ -128,14 +127,6 @@ export const midiArpModule: ModuleDef = {
         lane(43, 'Enable Mod', 'Mod',
           'Adds a row that sends the mod wheel. Whatever the mod wheel moves on '
           + 'your synth, this row can move it per step.'),
-        lane(44, 'Enable Cc1', 'CC 1', `Adds a row that sends CC 1. ${CC_WHAT}`),
-        lane(45, 'Enable Cc2', 'CC 2', `Adds a row that sends CC 2. ${CC_WHAT}`),
-        lane(46, 'Enable Cc3', 'CC 3', `Adds a row that sends CC 3. ${CC_WHAT}`),
-        lane(47, 'Enable Cc4', 'CC 4', `Adds a row that sends CC 4. ${CC_WHAT}`),
-        lane(48, 'Enable Cc5', 'CC 5', `Adds a row that sends CC 5. ${CC_WHAT}`),
-        lane(49, 'Enable Cc6', 'CC 6', `Adds a row that sends CC 6. ${CC_WHAT}`),
-        lane(50, 'Enable Cc7', 'CC 7', `Adds a row that sends CC 7. ${CC_WHAT}`),
-        lane(51, 'Enable Cc8', 'CC 8', `Adds a row that sends CC 8. ${CC_WHAT}`),
       ],
     },
 
@@ -292,6 +283,22 @@ export const midiArpModule: ModuleDef = {
           format: whole,
           help: `Which CC number restarts the pattern. ${CC_WHAT}`,
         },
+      ],
+    },
+    {
+      // A lane is no use without saying what it sends, so the switches sit with
+      // the assignments rather than beside the grid.
+      label: 'Lanes',
+      group: 3,
+      controls: [
+        lane(44, 'Enable Cc1', 'CC 1', `Adds a row that sends CC 1. ${CC_WHAT}`),
+        lane(45, 'Enable Cc2', 'CC 2', `Adds a row that sends CC 2. ${CC_WHAT}`),
+        lane(46, 'Enable Cc3', 'CC 3', `Adds a row that sends CC 3. ${CC_WHAT}`),
+        lane(47, 'Enable Cc4', 'CC 4', `Adds a row that sends CC 4. ${CC_WHAT}`),
+        lane(48, 'Enable Cc5', 'CC 5', `Adds a row that sends CC 5. ${CC_WHAT}`),
+        lane(49, 'Enable Cc6', 'CC 6', `Adds a row that sends CC 6. ${CC_WHAT}`),
+        lane(50, 'Enable Cc7', 'CC 7', `Adds a row that sends CC 7. ${CC_WHAT}`),
+        lane(51, 'Enable Cc8', 'CC 8', `Adds a row that sends CC 8. ${CC_WHAT}`),
       ],
     },
     cc(1, 10, 11, 12),

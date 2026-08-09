@@ -583,6 +583,31 @@ export function StepGrid({
   );
 }
 
+
+/**
+ * The classic arpeggiator shapes, as a row index per step.
+ *
+ * Saike's arp has no style menu: an arpeggio here is something you draw, and
+ * "up" is a diagonal. So rather than a mode, these write the diagonal for you
+ * and leave it editable — which is the same idea Ableton's Style menu gives
+ * you, without taking the grid away afterwards.
+ *
+ * `null` means no note on that step.
+ */
+const SHAPES: Record<string, (step: number, rows: number) => number | null> = {
+  Up: (i, rows) => i % rows,
+  Down: (i, rows) => rows - 1 - (i % rows),
+  // A triangle of period 2*rows-2, so the turning points aren't played twice.
+  'Up/Down': (i, rows) => {
+    if (rows < 2) return 0;
+    const period = 2 * rows - 2;
+    const at = i % period;
+    return at < rows ? at : period - at;
+  },
+  Random: (_i, rows) => Math.floor(Math.random() * rows),
+  Clear: () => null,
+};
+
 // ── Note grid ────────────────────────────────────────────────
 
 /**
@@ -685,6 +710,15 @@ export function NoteGrid({
     window.addEventListener('pointercancel', finish);
   }, [cols, commit]);
 
+  /** Overwrite the whole window with one of the classic shapes. */
+  const applyShape = useCallback((name: string) => {
+    const shape = SHAPES[name];
+    for (let c = 0; c < cols; c++) {
+      const target = shape(c, rows);
+      for (let r = 0; r < rows; r++) write(r, c, r === target ? 1 : 0);
+    }
+  }, [cols, rows, write]);
+
   const rowLabel = (r: number) => {
     const abs = rowOffset + r;
     return control.rowNames?.[abs] ?? `${abs}`;
@@ -692,6 +726,17 @@ export function NoteGrid({
 
   return (
     <div className="flex flex-col gap-1 select-none" data-testid="note-grid">
+      <div className="flex items-center gap-1 pl-9" role="group" aria-label="Pattern shapes">
+        {Object.keys(SHAPES).map((name) => (
+          <button
+            key={name}
+            onClick={() => applyShape(name)}
+            className="px-2 py-0.5 text-[9px] uppercase tracking-wider bg-[var(--bg-tertiary)] text-[var(--text-secondary)] active:brightness-125"
+          >
+            {name}
+          </button>
+        ))}
+      </div>
       {Array.from({ length: rows }, (_, r) => (
         <div key={r} className="flex items-center gap-1">
           <div className="w-8 text-[9px] uppercase tracking-wider text-[var(--text-secondary)] text-right">

@@ -814,7 +814,9 @@ describe('note grid', () => {
 
   it('draws a cell for every step in the window', () => {
     renderNoteGrid();
-    expect(screen.getAllByRole('button')).toHaveLength(ROWS * COLS);
+    // By name, so the shape buttons above the grid aren't counted as cells.
+    expect(screen.getAllByRole('button', { name: /^Row \d+ step \d+$/ }))
+      .toHaveLength(ROWS * COLS);
   });
 
   it('labels rows by their position in the pattern', () => {
@@ -1001,5 +1003,84 @@ describe('MIDI ARP help text', () => {
     const grid = midiArpModule.panels.find(
       (p) => p.controls.some((c) => c.kind === 'notegrid'))!;
     expect(grid.group).toBe(0);
+  });
+});
+
+// ── Arpeggiator shapes ───────────────────────────────────────
+//
+// Saike's arp has no style menu — an arpeggio here is drawn, and "up" is a
+// diagonal. These write the diagonal and leave it editable, which is what a
+// Style menu gives you without taking the grid away afterwards.
+
+describe('pattern shapes', () => {
+  const ROWS = 5;
+  const COLS = 32;
+  const FIRST = 60;
+
+  function gridParams(): FxParam[] {
+    const out: FxParam[] = [
+      { index: 57, name: 'Grid row offset', value: 0, min: 0, max: 55, mid: 27 },
+      { index: 58, name: 'Grid column page', value: 0, min: 0, max: 1, mid: 0 },
+    ];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        out.push({
+          index: FIRST - 1 + r * COLS + c, name: `Step ${r},${c}`,
+          value: 0, min: -16, max: 16, mid: 0,
+        });
+      }
+    }
+    return out;
+  }
+
+  const control = midiArpModule.panels.flatMap((p) => p.controls)
+    .find((c) => c.kind === 'notegrid')!;
+
+  /** Which row each step ends up on, from the writes the shape made. */
+  function rowsWritten(onChange: ReturnType<typeof vi.fn>) {
+    const placed = new Map<number, number>();
+    for (const [index, value] of onChange.mock.calls) {
+      if (value !== 1) continue;
+      const off = index - (FIRST - 1);
+      placed.set(off % COLS, Math.floor(off / COLS));
+    }
+    return placed;
+  }
+
+  function apply(name: string) {
+    const onChange = vi.fn();
+    render(<NoteGrid control={control as never} params={gridParams()} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name }));
+    return onChange;
+  }
+
+  it('writes an ascending diagonal for Up', () => {
+    const placed = rowsWritten(apply('Up'));
+    expect([0, 1, 2, 3, 4, 5, 6].map((c) => placed.get(c)))
+      .toEqual([0, 1, 2, 3, 4, 0, 1]);
+  });
+
+  it('writes a descending diagonal for Down', () => {
+    const placed = rowsWritten(apply('Down'));
+    expect([0, 1, 2, 3, 4, 5].map((c) => placed.get(c)))
+      .toEqual([4, 3, 2, 1, 0, 4]);
+  });
+
+  it('turns around without repeating the end notes for Up/Down', () => {
+    const placed = rowsWritten(apply('Up/Down'));
+    // Period is 2*rows-2, so 4 is played once at the top, not twice.
+    expect([0, 1, 2, 3, 4, 5, 6, 7, 8].map((c) => placed.get(c)))
+      .toEqual([0, 1, 2, 3, 4, 3, 2, 1, 0]);
+  });
+
+  it('puts exactly one note in each step', () => {
+    const onChange = apply('Up');
+    const ones = onChange.mock.calls.filter(([, v]) => v === 1);
+    expect(ones).toHaveLength(COLS);
+  });
+
+  it('leaves nothing behind for Clear', () => {
+    const onChange = apply('Clear');
+    expect(onChange.mock.calls.every(([, v]) => v === 0)).toBe(true);
   });
 });
