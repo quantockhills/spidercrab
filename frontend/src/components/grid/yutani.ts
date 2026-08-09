@@ -8,10 +8,13 @@
 // Regenerate rather than hand-editing wholesale, but the few
 // corrections below the generator can't make are marked HAND.
 import type { ModuleDef } from './modules';
+import { isPatched } from './patched';
 
 export const yutaniModule: ModuleDef = {
   title: 'Yutani',
-  match: (n) => n.toLowerCase().includes('yutani'),
+  // Only the patched copy: this module is built on promoted parameters
+  // the original does not have.
+  match: (n) => isPatched(n) && n.toLowerCase().includes('yutani'),
   groups: ['Source', 'Filter', 'Envelopes', 'Mod & FX'],
   panels: [
     {

@@ -197,6 +197,7 @@ def generate(path, title=None, group_names=None):
     print('// Regenerate rather than hand-editing wholesale, but the few')
     print('// corrections below the generator can\'t make are marked HAND.')
     print("import type { ModuleDef } from './modules';")
+    print("import { isPatched } from './patched';")
     print()
     # Renumber the rows that actually hold panels to a dense 0..N-1.
     used_rows = sorted({r for _, _, r in panels})
@@ -208,7 +209,13 @@ def generate(path, title=None, group_names=None):
 
     print(f'export const {title.lower()}Module: ModuleDef = {{')
     print(f'  title: {title!r},')
-    print(f'  match: (n) => n.toLowerCase().includes({title.lower()!r}),')
+    # This generator only ever reads a patched copy, and the module it emits
+    # references promoted sliders the original does not declare. Matching the
+    # original too would draw a full layout over parameters that aren't there.
+    print('  // Only the patched copy: this module is built on promoted')
+    print('  // parameters the original does not have.')
+    print(f'  match: (n) => isPatched(n) '
+          f'&& n.toLowerCase().includes({title.lower()!r}),')
     if len(labels) > 1:
         print(f'  groups: [{", ".join(repr(l) for l in labels)}],')
     print('  panels: [')

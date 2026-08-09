@@ -1279,3 +1279,35 @@ describe('device sizing', () => {
     expect(section.parentElement?.className).toContain('flex-shrink-0');
   });
 });
+
+// ── Patched copies only ──────────────────────────────────────
+//
+// A module built on promoted parameters must not match the original. Yutani's
+// reaches slider 208 and the original declares 81; MIDI ARP's reaches 232
+// against 40. Matched loosely, the Grid draws a full layout over parameters
+// that mostly don't exist.
+
+describe('modules that need a patched copy', () => {
+  const patched = [
+    ['JS: Saike MIDI ARP (beta) [Spidercrab]', 'MIDI ARP'],
+    ['JS: Yutani Mono Bass Synth [Saike] (BETA) [Spidercrab]', 'Yutani'],
+  ] as const;
+
+  it('matches the patched copy', () => {
+    for (const [name, title] of patched) {
+      expect(findModule(name)?.title).toBe(title);
+    }
+  });
+
+  it('leaves the original alone', () => {
+    expect(findModule('JS: Saike MIDI ARP (beta)')).toBeNull();
+    expect(findModule('JS: Yutani Mono Bass Synth [Saike] (BETA)')).toBeNull();
+    expect(findModule('JS: Saike SEQS (Sequenced FX) (beta)')).toBeNull();
+  });
+
+  it('still matches plugins that need no patching', () => {
+    // Chorus and Stock delay are used as they ship.
+    expect(findModule('JS: Chorus')?.title).toBe('Chorus');
+    expect(findModule('VST: Stock delay')?.title).toBe('Stock delay');
+  });
+});

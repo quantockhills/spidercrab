@@ -4,6 +4,7 @@
 // Regenerate with: tools/jsfx_module_gen.py <path> --title SEQS
 // Then re-apply the step grid rows and HAND corrections.
 import type { ModuleDef } from './modules';
+import { isPatched } from './patched';
 
 // 17 effect rows, with step window slider indices (8 per row, starting at 115)
 const STEP_BASE = 115;
@@ -46,7 +47,9 @@ function stepgrid(label: string, mem: number, ri: number, mv: number): any {
 
 export const seqsModule: ModuleDef = {
   title: 'SEQS',
-  match: (n) => n.toLowerCase().includes('seqs'),
+  // Only the patched copy: this module is built on promoted parameters
+  // the original does not have.
+  match: (n) => isPatched(n) && n.toLowerCase().includes('seqs'),
   groups: ['Transport', 'Grid', 'Effects', 'Modulation'],
   panels: [
     // ── Transport ──────────────────────────────────────────
