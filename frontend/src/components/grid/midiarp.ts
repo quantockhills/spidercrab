@@ -1,33 +1,13 @@
 // MIDI ARP Grid module.
-// 147 parameters: 40 declared + 18 promoted + 88 step window + 1 row selector.
-//
-// Three tabs: Arp (Ableton-style performance controls), Sequencer (step grid),
-// MIDI (I/O and utility).
+// 58 parameters: 40 declared + 18 promoted.
+// The native JSFX GUI handles pattern editing — this module provides
+// real-time parameter control on the iPad.
 import type { ModuleDef } from './modules';
-
-// Step window slider base: 8 sliders per row, 11 rows (Speed, Vel, Mod, CC1-8)
-const STEP_BASE = 59;
-const ROW_SEL = 147;
-
-function stepgrid(label: string, ri: number, mv: number): any {
-  const sliders: [number, number, number, number, number, number, number, number] =
-    [STEP_BASE + ri * 8, STEP_BASE + ri * 8 + 1, STEP_BASE + ri * 8 + 2, STEP_BASE + ri * 8 + 3,
-     STEP_BASE + ri * 8 + 4, STEP_BASE + ri * 8 + 5, STEP_BASE + ri * 8 + 6, STEP_BASE + ri * 8 + 7];
-  return {
-    kind: 'stepgrid' as const,
-    slider: sliders[0],
-    label,
-    steps: 32,
-    maxValue: mv,
-    stepSliders: sliders,
-    rowSelector: ROW_SEL,
-  };
-}
 
 export const midiArpModule: ModuleDef = {
   title: 'MIDI ARP',
   match: (n) => n.toLowerCase().indexOf('midi arp') >= 0,
-  groups: ['Arp', 'Sequencer', 'MIDI'],
+  groups: ['Arp', 'MIDI'],
   panels: [
     // ── Arp tab (Ableton-style) ───────────────────────────
     {
@@ -65,61 +45,30 @@ export const midiArpModule: ModuleDef = {
       ],
     },
 
-    // ── Sequencer tab (step grid) ─────────────────────────
-    {
-      label: 'Steps',
-      group: 1,
-      controls: [
-        stepgrid('Speed', 0, 15),
-        stepgrid('Vel', 1, 127),
-        stepgrid('Mod', 2, 127),
-      ],
-    },
-    {
-      label: 'CC 1-4',
-      group: 1,
-      controls: [
-        stepgrid('CC1', 3, 127),
-        stepgrid('CC2', 4, 127),
-        stepgrid('CC3', 5, 127),
-        stepgrid('CC4', 6, 127),
-      ],
-    },
-    {
-      label: 'CC 5-8',
-      group: 1,
-      controls: [
-        stepgrid('CC5', 7, 127),
-        stepgrid('CC6', 8, 127),
-        stepgrid('CC7', 9, 127),
-        stepgrid('CC8', 10, 127),
-      ],
-    },
-
     // ── MIDI tab ──────────────────────────────────────────
     {
-      label: 'MIDI IO',
-      group: 2,
+      label: 'IO',
+      group: 1,
       controls: [
-        { kind: 'knob', slider: 24, expect: 'In channel', label: 'In', format: (v) => `${Math.round(v)}` },
-        { kind: 'knob', slider: 25, expect: 'Out channel', label: 'Out', format: (v) => `${Math.round(v)}` },
+        { kind: 'knob', slider: 24, expect: 'In channel', label: 'In Ch', format: (v) => `${Math.round(v)}` },
+        { kind: 'knob', slider: 25, expect: 'Out channel', label: 'Out Ch', format: (v) => `${Math.round(v)}` },
         { kind: 'toggle', slider: 54, expect: 'Enable Midi Sort', label: 'Sort' },
         { kind: 'toggle', slider: 53, expect: 'Disable Midi', label: 'Mute' },
       ],
     },
     {
       label: 'Velocity',
-      group: 2,
+      group: 1,
       controls: [
-        { kind: 'knob', slider: 6, expect: 'Minimum Velocity', label: 'Min', format: (v) => `${Math.round(v)}` },
-        { kind: 'knob', slider: 7, expect: 'Maximum Velocity', label: 'Max', format: (v) => `${Math.round(v)}` },
-        { kind: 'knob', slider: 8, expect: 'Minimum Modwheel', label: 'ModMin', format: (v) => `${Math.round(v)}` },
-        { kind: 'knob', slider: 9, expect: 'Maximum Modwheel', label: 'ModMax', format: (v) => `${Math.round(v)}` },
+        { kind: 'knob', slider: 6, expect: 'Minimum Velocity', label: 'Vel Min', format: (v) => `${Math.round(v)}` },
+        { kind: 'knob', slider: 7, expect: 'Maximum Velocity', label: 'Vel Max', format: (v) => `${Math.round(v)}` },
+        { kind: 'knob', slider: 8, expect: 'Minimum Modwheel', label: 'Mod Min', format: (v) => `${Math.round(v)}` },
+        { kind: 'knob', slider: 9, expect: 'Maximum Modwheel', label: 'Mod Max', format: (v) => `${Math.round(v)}` },
       ],
     },
     {
       label: 'CC',
-      group: 2,
+      group: 1,
       controls: [
         { kind: 'knob', slider: 10, expect: 'Assignable CC1', label: 'CC1', format: (v) => `${Math.round(v)}` },
         { kind: 'knob', slider: 11, expect: 'Minimum Assignable CC1', label: 'CC1 Min' },
@@ -129,15 +78,45 @@ export const midiArpModule: ModuleDef = {
         { kind: 'knob', slider: 14, expect: 'Minimum Assignable CC2', label: 'CC2 Min' },
         { kind: 'knob', slider: 15, expect: 'Maximum Assignable CC2', label: 'CC2 Max' },
         { kind: 'toggle', slider: 46, expect: 'Enable Cc2', label: 'CC2 On' },
+        { kind: 'knob', slider: 16, expect: 'Assignable CC3', label: 'CC3' },
+        { kind: 'knob', slider: 17, expect: 'Minimum Assignable CC3', label: 'CC3 Min' },
+        { kind: 'knob', slider: 18, expect: 'Maximum Assignable CC3', label: 'CC3 Max' },
+        { kind: 'toggle', slider: 47, expect: 'Enable Cc3', label: 'CC3 On' },
+        { kind: 'knob', slider: 19, expect: 'Assignable CC4', label: 'CC4' },
+        { kind: 'knob', slider: 20, expect: 'Minimum Assignable CC4', label: 'CC4 Min' },
+        { kind: 'knob', slider: 21, expect: 'Maximum Assignable CC4', label: 'CC4 Max' },
+        { kind: 'toggle', slider: 48, expect: 'Enable Cc4', label: 'CC4 On' },
+      ],
+    },
+    {
+      label: 'CC 2',
+      group: 1,
+      controls: [
+        { kind: 'knob', slider: 26, expect: 'Assignable CC5', label: 'CC5' },
+        { kind: 'knob', slider: 27, expect: 'Minimum Assignable CC5', label: 'CC5 Min' },
+        { kind: 'knob', slider: 28, expect: 'Maximum Assignable CC5', label: 'CC5 Max' },
+        { kind: 'toggle', slider: 49, expect: 'Enable Cc5', label: 'CC5 On' },
+        { kind: 'knob', slider: 29, expect: 'Assignable CC6', label: 'CC6' },
+        { kind: 'knob', slider: 30, expect: 'Minimum Assignable CC6', label: 'CC6 Min' },
+        { kind: 'knob', slider: 31, expect: 'Maximum Assignable CC6', label: 'CC6 Max' },
+        { kind: 'toggle', slider: 50, expect: 'Enable Cc6', label: 'CC6 On' },
+        { kind: 'knob', slider: 32, expect: 'Assignable CC7', label: 'CC7' },
+        { kind: 'knob', slider: 33, expect: 'Minimum Assignable CC7', label: 'CC7 Min' },
+        { kind: 'knob', slider: 34, expect: 'Maximum Assignable CC7', label: 'CC7 Max' },
+        { kind: 'toggle', slider: 51, expect: 'Enable Cc7', label: 'CC7 On' },
+        { kind: 'knob', slider: 35, expect: 'Assignable CC8', label: 'CC8' },
+        { kind: 'knob', slider: 36, expect: 'Minimum Assignable CC8', label: 'CC8 Min' },
+        { kind: 'knob', slider: 37, expect: 'Maximum Assignable CC8', label: 'CC8 Max' },
+        { kind: 'toggle', slider: 52, expect: 'Enable Cc8', label: 'CC8 On' },
       ],
     },
     {
       label: 'Reset',
-      group: 2,
+      group: 1,
       controls: [
         { kind: 'toggle', slider: 58, expect: 'Reset On Cc', label: 'Rst CC' },
         { kind: 'knob', slider: 40, expect: 'CC which resets MIDI position', label: 'Rst Val', format: (v) => `${Math.round(v)}` },
-        { kind: 'knob', slider: 56, expect: 'Viewed Pattern Index', label: 'ViewPat' },
+        { kind: 'knob', slider: 56, expect: 'Viewed Pattern Index', label: 'View Pat' },
         { kind: 'knob', slider: 41, expect: 'File Version', label: 'Ver' },
       ],
     },
