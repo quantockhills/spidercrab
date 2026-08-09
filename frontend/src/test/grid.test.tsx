@@ -1371,3 +1371,40 @@ describe('Eos module', () => {
     expect(controls.filter((c) => !c.help).map((c) => c.label)).toEqual([]);
   });
 });
+
+describe('help popover placement', () => {
+  function hold(el: Element) {
+    fireEvent.pointerDown(el, { clientX: 10, clientY: 10 });
+    act(() => { vi.advanceTimersByTime(600); });
+  }
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  /** Pretend the label sits `fromBottom` pixels above the foot of the window. */
+  function placeLabel(fromBottom: number) {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      bottom: window.innerHeight - fromBottom, top: 0, left: 0, right: 0,
+      width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+  }
+
+  it('drops below the label when there is room', () => {
+    placeLabel(400);
+    render(<HelpLabel text="Decay" help="How long the tail lasts." />);
+    hold(screen.getByText('Decay'));
+    expect(screen.getByRole('tooltip').className).toContain('top-full');
+  });
+
+  it('flips above when the strip would swallow it', () => {
+    // A control near the foot of the device: below is where the navigation
+    // strip is, so the explanation would be unreadable there.
+    placeLabel(20);
+    render(<HelpLabel text="Decay" help="How long the tail lasts." />);
+    hold(screen.getByText('Decay'));
+    expect(screen.getByRole('tooltip').className).toContain('bottom-full');
+  });
+});

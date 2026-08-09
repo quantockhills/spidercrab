@@ -139,6 +139,11 @@ function formatValue(
 const HOLD_MS = 450;
 /** Movement past this is a scroll or a drag, not a hold. */
 const HOLD_SLOP_PX = 8;
+/**
+ * Space a popover needs below a label before it stops flipping above it.
+ * Generous: the text wraps, so the tall case is what matters.
+ */
+const POPOVER_ROOM_PX = 190;
 
 /**
  * A control's label, which reveals what the control is for when held.
@@ -156,8 +161,13 @@ export function HelpLabel({
   text, help, className = '',
 }: { text: string; help?: string; className?: string }) {
   const [open, setOpen] = useState(false);
+  // Below the label normally, above it when there isn't room. A control near
+  // the foot of the device had its explanation land behind the navigation
+  // strip, which is the one place it cannot be read.
+  const [above, setAbove] = useState(false);
   const timer = useRef<number | null>(null);
   const origin = useRef({ x: 0, y: 0 });
+  const anchor = useRef<HTMLDivElement>(null);
 
   const cancel = useCallback(() => {
     if (timer.current !== null) {
@@ -172,7 +182,13 @@ export function HelpLabel({
   const start = (e: React.PointerEvent) => {
     origin.current = { x: e.clientX, y: e.clientY };
     cancel();
-    timer.current = window.setTimeout(() => setOpen(true), HOLD_MS);
+    timer.current = window.setTimeout(() => {
+      const box = anchor.current?.getBoundingClientRect();
+      // Measured against the window rather than the scroller: the strip sits
+      // outside the scroller, so room inside it is not room to be read in.
+      setAbove(!!box && window.innerHeight - box.bottom < POPOVER_ROOM_PX);
+      setOpen(true);
+    }, HOLD_MS);
   };
   const move = (e: React.PointerEvent) => {
     const d = Math.hypot(e.clientX - origin.current.x, e.clientY - origin.current.y);
@@ -180,7 +196,7 @@ export function HelpLabel({
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={anchor}>
       <div
         className={`${className} cursor-help underline decoration-dotted decoration-[var(--text-secondary)]/40 underline-offset-2`}
         onPointerDown={start}
@@ -199,7 +215,9 @@ export function HelpLabel({
           <div
             id={`help-${text}`}
             role="tooltip"
-            className="absolute z-50 left-1/2 -translate-x-1/2 top-full mt-1 w-56 p-2.5 bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] shadow-xl text-left normal-case tracking-normal"
+            className={`absolute z-50 left-1/2 -translate-x-1/2 w-56 p-2.5 bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] shadow-xl text-left normal-case tracking-normal ${
+              above ? 'bottom-full mb-1' : 'top-full mt-1'
+            }`}
           >
             <div className="text-[10px] font-semibold text-[var(--text-primary)] mb-1">{text}</div>
             <div className="text-[10px] leading-relaxed text-[var(--text-secondary)]">{help}</div>
