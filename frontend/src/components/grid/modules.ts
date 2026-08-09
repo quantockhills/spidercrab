@@ -277,6 +277,17 @@ export interface ModuleDef {
    */
   match: (cleanName: string) => boolean;
   /**
+   * The upstream release this layout was written against, for anything whose
+   * parameters we don't control.
+   *
+   * Slider numbers are pinned: midiarp.ts says parameter 220 is the playhead,
+   * which is true of a patched copy generated from arp 0.44 and of nothing
+   * else. One extra slider upstream shifts every number after it, and controls
+   * would resolve onto their neighbours rather than fail loudly. Shown on the
+   * device's Info tab, and quoted when controls fail to resolve.
+   */
+  builtFor?: string;
+  /**
    * Tab names, in order. Present only for modules big enough to need them:
    * Yutani's 22 panels are several screens wide, and panning through all of
    * them to reach the filter is worse than one tap.

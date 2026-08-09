@@ -322,6 +322,18 @@ function Device({
     fetchAll().then(setParams).catch(() => {});
   }, [fetchAll]);
 
+  // Controls whose parameter isn't there. A layout pins slider numbers to one
+  // release of the plugin — midiarp.ts says 220 is the playhead, true of a copy
+  // generated from arp 0.44 and nothing else — so an upstream version with one
+  // extra slider shifts everything after it. Names are checked as well as
+  // numbers (see resolveParam), which turns that into a miss rather than a
+  // control quietly driving its neighbour. Worth saying out loud.
+  const missing = useMemo(() => {
+    if (!params.length) return 0;
+    return module.panels.flatMap((p) => p.controls)
+      .filter((c) => c.expect && !resolveParam(params, c)).length;
+  }, [params, module]);
+
   // Claiming the watch is a side effect of reading parameters, so read the
   // cheapest thing there is. One parameter is enough to say "this one".
   useEffect(() => {
@@ -455,6 +467,18 @@ function Device({
         {mode && !showingInfo && (
           <span className="text-[10px] text-[var(--text-secondary)]">
             editing {MODIFIER_LABELS[mode]} depth
+          </span>
+        )}
+        {missing > 0 && (
+          <span
+            role="status"
+            className="text-[10px] text-[var(--accent-orange)]"
+            title={module.builtFor
+              ? `This layout was written for ${module.builtFor}.`
+              : 'This layout expects parameters this plugin does not have.'}
+          >
+            ⚠ {missing} control{missing === 1 ? '' : 's'} not found
+            {module.builtFor && ` — layout written for ${module.builtFor}`}
           </span>
         )}
         <div className="relative ml-auto">

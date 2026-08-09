@@ -62,6 +62,7 @@ const lane = (slider: number, expect: string, label: string, help: string) =>
 
 export const midiArpModule: ModuleDef = {
   title: 'MIDI ARP',
+  builtFor: 'MIDI ARP 0.44 by Joep Vanlier',
   // Only the patched copy: this module is built on promoted parameters
   // the original does not have.
   match: (n) => isPatched(n) && n.toLowerCase().includes('midi arp'),

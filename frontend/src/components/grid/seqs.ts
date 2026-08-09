@@ -47,6 +47,7 @@ function stepgrid(label: string, mem: number, ri: number, mv: number): any {
 
 export const seqsModule: ModuleDef = {
   title: 'SEQS',
+  builtFor: 'SEQS 0.126 by Joep Vanlier',
   // Only the patched copy: this module is built on promoted parameters
   // the original does not have.
   match: (n) => isPatched(n) && n.toLowerCase().includes('seqs'),

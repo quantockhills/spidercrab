@@ -1541,3 +1541,48 @@ describe('Distortion naming and grouping', () => {
     expect(panelOf('Hardness')).toBe('Soft');
   });
 });
+
+// ── Drift between a layout and its plugin ────────────────────
+//
+// A layout pins slider numbers to one release: midiarp.ts says 220 is the
+// playhead, true of a copy generated from arp 0.44 and of nothing else. An
+// upstream version with one extra parameter shifts everything after it.
+
+describe('version drift', () => {
+  it('records what each patched-copy layout was written against', () => {
+    for (const name of ['JS: Yutani [Spidercrab]', 'JS: SEQS [Spidercrab]',
+      'JS: MIDI ARP [Spidercrab]']) {
+      expect(findModule(name)?.builtFor).toMatch(/\d+\.\d+/);
+    }
+  });
+
+  it('says so in the header when controls cannot be found', async () => {
+    // A plugin reporting nothing the layout expects — which is what a shifted
+    // parameter list looks like from here.
+    const params: FxParam[] = [
+      { index: 0, name: 'Something else', value: 0, min: 0, max: 1, mid: 0.5 },
+    ];
+    render(
+      <GridView
+        tracks={tracks}
+        selectedTrack={0}
+        getTrackFx={vi.fn().mockResolvedValue([
+          { index: 0, name: 'JS: Yutani [Spidercrab]' },
+        ])}
+        getFxParams={vi.fn().mockResolvedValue({
+          params, total: 1, offset: 0, limit: 256,
+        })}
+        setFxParam={vi.fn().mockResolvedValue({ payload: {} })}
+      />,
+    );
+    const warning = await waitFor(() => screen.getByRole('status'));
+    expect(warning.textContent).toMatch(/controls not found/);
+    expect(warning.textContent).toContain('Yutani 0.103');
+  });
+
+  it('stays quiet when everything resolves', async () => {
+    renderYutani();
+    await waitFor(() => expect(screen.getByTestId('grid-device-title')).toBeDefined());
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+});

@@ -12,6 +12,7 @@ import { isPatched } from './patched';
 
 export const yutaniModule: ModuleDef = {
   title: 'Yutani',
+  builtFor: 'Yutani 0.103 by Joep Vanlier',
   // Only the patched copy: this module is built on promoted parameters
   // the original does not have.
   match: (n) => isPatched(n) && n.toLowerCase().includes('yutani'),

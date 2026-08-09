@@ -10,6 +10,28 @@ A plugin either has a layout or it doesn't. In the [FX browser](fx.md) the ones 
 
 Everything else still shows up on the Grid tab, with panels generated from its parameter list. That's plainer than a hand-built layout but better than the plugin being unreachable.
 
+## What has a layout
+
+| Device | Plugin | Where it comes from | Patched copy |
+|---|---|---|---|
+| **Chorus** | Chorus | ships with REAPER | no |
+| **Stock delay** | ReaDelay | ships with REAPER | no |
+| **Stock pitch shifter** | ReaPitch | ships with REAPER | no |
+| **Eos Reverb** | Eos | [free from Audio Damage](https://www.audiodamage.com/pages/free-and-legacy) | no |
+| **Distortion** | Distortion Workbench | this repository, `jsfx/` | it *is* ours |
+| **Yutani** | Yutani Mono Bass Synth 0.103 | [Joep Vanlier's JSFX](https://github.com/JoepVanlier/JSFX), MIT | yes |
+| **MIDI ARP** | Saike MIDI ARP 0.44 | as above | yes |
+| **SEQS** | Saike SEQS 0.126 | as above | yes |
+
+Everything so far is either bundled with REAPER, free, or open source. Nothing
+here needs a plugin you have to buy.
+
+**Distortion Workbench** is ours: REAPER ships three separate waveshapers —
+Distortion, Distortion (Fuzz) and the Graphical Waveshaper — which are all the
+same thing with a different curve, so `jsfx/spidercrab_distortion.jsfx` offers
+all three around one drive, ceiling and mix, and gives every one of them the
+oversampling only the graphical one had.
+
 ## Getting around
 
 - **Tabs** across the top of a device split it into sections. Which sections exist comes from the plugin — the MIDI ARP's four are the four rows its own window draws its panels in.
@@ -43,6 +65,10 @@ Some plugins keep almost everything in internal variables that no host can see. 
 For those, `tools/jsfx_expose.py` writes a **patched copy** alongside the original — same plugin, new filename, with the hidden state declared as parameters. REAPER lists it separately with `[Spidercrab]` after the name, so existing projects keep loading the original untouched, and the copy has no saved state to migrate.
 
 Modules that need a patched copy only match the copy. Point one at an original and most of its controls would resolve to nothing.
+
+Ready-made copies live in [`jsfx/vendor/`](https://github.com/quantockhills/spidercrab/tree/master/jsfx/vendor) with their licences and attribution intact, or you can generate your own from whatever version you have installed. Either way they are **not** installed for you: putting somebody else's plugins in your Effects folder unasked is not on. See that folder's README for both routes.
+
+A layout pins parameters by position as well as by name, so a later release of the plugin with one extra parameter can shift the rest. Each module records the version it was written against — the device's **Info** tab shows it, and its header counts any controls that go missing. That turns drift into a message rather than a knob that quietly moves the wrong thing.
 
 ## Adding a layout
 
