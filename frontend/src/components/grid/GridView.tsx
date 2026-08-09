@@ -8,7 +8,8 @@ import {
   type ModuleDef, type ModulePanel, type ModifierKind,
 } from './modules';
 import {
-  Knob, Fader, Segmented, Toggle, StepGrid, NoteGrid, readStepGrid, editStep,
+  Knob, Fader, Segmented, Toggle, StepGrid, NoteGrid, Curve,
+  readStepGrid, editStep,
 } from './widgets';
 import { ParamSlider } from '../ParamControl';
 import { GridStrip } from './GridStrip';
@@ -613,6 +614,9 @@ function Panel({
         {visibleControls.map((control) => {
           // The note grid spans a block of parameters rather than resolving to
           // one, so it comes before the single-parameter path below.
+          if (control.kind === 'curve') {
+            return <Curve key={control.slider} control={control} params={params} />;
+          }
           if (control.kind === 'notegrid') {
             return (
               <NoteGrid

@@ -4,7 +4,7 @@ import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../co
 import { yutaniModule } from '../components/grid/yutani';
 import { midiArpModule } from '../components/grid/midiarp';
 import { GridView, fitScaleFor, maxRowsFor, shapeFor } from '../components/grid/GridView';
-import { NoteGrid, HelpLabel, noteName } from '../components/grid/widgets';
+import { NoteGrid, HelpLabel, noteName, shapeSample } from '../components/grid/widgets';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
 // ── Module matching ──────────────────────────────────────────
@@ -1406,5 +1406,95 @@ describe('help popover placement', () => {
     render(<HelpLabel text="Decay" help="How long the tail lasts." />);
     hold(screen.getByText('Decay'));
     expect(screen.getByRole('tooltip').className).toContain('bottom-full');
+  });
+});
+
+// ── Distortion, and its curve ────────────────────────────────
+//
+// The three Cockos waveshapers are all memoryless — output depends only on the
+// current input — so the transfer curve can be computed from the parameters
+// rather than measured, and the picture is exact.
+
+describe('shape maths', () => {
+  const soft = { knee: 0.25, hardness: 6, fuzz: 20, mirror: true, points: [] };
+
+  it('leaves Soft alone below the knee', () => {
+    expect(shapeSample(0.1, 0, soft)).toBeCloseTo(0.1);
+    expect(shapeSample(-0.2, 0, soft)).toBeCloseTo(-0.2);
+  });
+
+  it('bends Soft above the knee without clipping flat', () => {
+    // diff/(soft+diff) approaches 1, so it heads for knee+1 rather than a wall.
+    const a = shapeSample(0.5, 0, soft);
+    const b = shapeSample(0.9, 0, soft);
+    expect(a).toBeGreaterThan(0.25);
+    expect(a).toBeLessThan(0.5);
+    expect(b).toBeGreaterThan(a);
+  });
+
+  it('keeps every shape odd-symmetric about zero', () => {
+    // An asymmetric curve adds even harmonics, which none of these should do
+    // unless the Curve shape is given separate halves.
+    for (const shape of [0, 1, 2]) {
+      for (const x of [0.15, 0.4, 0.75, 1]) {
+        const opts = { ...soft, points: Array.from({ length: 64 }, (_, i) =>
+          (i < 32 ? (i + 1) / 32 : -(i - 31) / 32)) };
+        expect(shapeSample(-x, shape, opts)).toBeCloseTo(-shapeSample(x, shape, opts), 6);
+      }
+    }
+  });
+
+  it('passes signal through unchanged when the Curve is left at its default', () => {
+    // The plugin ships the table tracing y = x, so an untouched Curve is clean.
+    const points = Array.from({ length: 64 }, (_, i) =>
+      (i < 32 ? (i + 1) / 32 : -(i - 31) / 32));
+    for (const x of [0.25, 0.5, 0.75, 1]) {
+      expect(shapeSample(x, 2, { ...soft, points })).toBeCloseTo(x, 6);
+    }
+  });
+
+  it('distorts quiet signal with Fuzz, which is the point of it', () => {
+    // Soft leaves a quiet sample alone; Fuzz does not. That difference is why
+    // a fuzz pedal doesn't clean up when you play softer.
+    const quiet = 0.05;
+    expect(shapeSample(quiet, 0, soft)).toBeCloseTo(quiet);
+    expect(shapeSample(quiet, 1, soft)).toBeGreaterThan(quiet * 2);
+  });
+});
+
+describe('Distortion module', () => {
+  const dist = findModule('JS: Distortion Workbench [Spidercrab]')!;
+  const controls = dist.panels.flatMap((p) => p.controls);
+
+  it('needs the patched copy, being a plugin of our own', () => {
+    expect(findModule('JS: Distortion')).not.toBe(dist);
+  });
+
+  it('draws the curve', () => {
+    expect(controls.some((c) => c.kind === 'curve')).toBe(true);
+  });
+
+  it('points the curve at every parameter it depends on', () => {
+    const curve = controls.find((c) => c.kind === 'curve')! as unknown as
+      Record<string, number>;
+    // Slider numbers, matching the plugin's declaration order.
+    expect(curve.drive).toBe(1);
+    expect(curve.shape).toBe(2);
+    expect(curve.knee).toBe(3);
+    expect(curve.hardness).toBe(4);
+    expect(curve.fuzz).toBe(5);
+    expect(curve.mirror).toBe(6);
+    expect(curve.ceiling).toBe(7);
+    expect(curve.points).toBe(12);
+  });
+
+  it('offers the three shapes it was built from', () => {
+    const shape = controls.find((c) => c.label === 'Shape' && c.kind === 'segmented')!;
+    expect((shape as { options: { label: string }[] }).options.map((o) => o.label))
+      .toEqual(['Soft', 'Fuzz', 'Curve']);
+  });
+
+  it('explains every control', () => {
+    expect(controls.filter((c) => !c.help).map((c) => c.label)).toEqual([]);
   });
 });

@@ -1,0 +1,254 @@
+// Spidercrab Distortion — REAPER's three waveshapers as one plugin.
+//
+// License: LGPL - http://www.gnu.org/licenses/lgpl.html
+// Derived from Cockos's Distortion, Distortion (Fuzz) and Graphical
+// Waveshaper, which are LGPL. This file is LGPL for the same reason.
+//
+// All three are memoryless: the output for a sample depends only on that
+// sample, through a curve y = f(x). That is what makes them worth merging
+// rather than chaining — they differ only in the curve, so one plugin can
+// offer all three around a single drive, ceiling and mix.
+//
+//   in → drive → [ oversample: lowpass → curve → lowpass ] → ceiling → mix
+//
+// The oversampling is the real gain from combining them. Only the Graphical
+// Waveshaper had it; the two guitar distortions alias badly and had no
+// defence at all. Here every curve gets it.
+//
+// The curve table is exposed as parameters, one per point, so a host can draw
+// the transfer curve and edit it. That is the other thing the originals could
+// not do: their curve lived in @gfx and no host could see it.
+
+desc:Distortion Workbench [Spidercrab]
+//tags: distortion waveshaper saturation
+//author: Cockos, adapted for Spidercrab
+
+slider1:drive_db=12<0,50,0.1>Drive (dB)
+slider2:shape=0<0,2,1{Soft,Fuzz,Curve}>Shape
+slider3:knee_db=-12<-40,0,0.1>Soft: Knee (dB)
+slider4:hardness=6<1,10,0.1>Soft: Hardness
+slider5:fuzz_shape=20<1,300,1>Fuzz: Shape
+slider6:mirror=1<0,1,1{Separate,Mirrored}>Curve: Negative half
+slider7:ceiling_db=-6<-60,12,0.1>Ceiling (dB)
+slider8:wet_db=0<-120,12,0.1>Wet (dB)
+slider9:dry_db=-120<-120,12,0.1>Dry (dB)
+slider10:oversample=4<1,16,1>Oversampling
+slider11:channels=2<0,2,1{Left,Right,Stereo}>Channels
+
+// The transfer curve, as points. Hidden from this plugin's own UI with a
+// leading "-", since it draws the curve rather than listing 64 numbers.
+// Points run outward from zero: point 1 is the output at input 1/32, point 32
+// the output at input 1. Defaults trace y = x, so an untouched Curve is clean.
+slider12:c_p1=0.03125<-1,1,0.001>-Curve +1
+slider13:c_p2=0.0625<-1,1,0.001>-Curve +2
+slider14:c_p3=0.09375<-1,1,0.001>-Curve +3
+slider15:c_p4=0.125<-1,1,0.001>-Curve +4
+slider16:c_p5=0.15625<-1,1,0.001>-Curve +5
+slider17:c_p6=0.1875<-1,1,0.001>-Curve +6
+slider18:c_p7=0.21875<-1,1,0.001>-Curve +7
+slider19:c_p8=0.25<-1,1,0.001>-Curve +8
+slider20:c_p9=0.28125<-1,1,0.001>-Curve +9
+slider21:c_p10=0.3125<-1,1,0.001>-Curve +10
+slider22:c_p11=0.34375<-1,1,0.001>-Curve +11
+slider23:c_p12=0.375<-1,1,0.001>-Curve +12
+slider24:c_p13=0.40625<-1,1,0.001>-Curve +13
+slider25:c_p14=0.4375<-1,1,0.001>-Curve +14
+slider26:c_p15=0.46875<-1,1,0.001>-Curve +15
+slider27:c_p16=0.5<-1,1,0.001>-Curve +16
+slider28:c_p17=0.53125<-1,1,0.001>-Curve +17
+slider29:c_p18=0.5625<-1,1,0.001>-Curve +18
+slider30:c_p19=0.59375<-1,1,0.001>-Curve +19
+slider31:c_p20=0.625<-1,1,0.001>-Curve +20
+slider32:c_p21=0.65625<-1,1,0.001>-Curve +21
+slider33:c_p22=0.6875<-1,1,0.001>-Curve +22
+slider34:c_p23=0.71875<-1,1,0.001>-Curve +23
+slider35:c_p24=0.75<-1,1,0.001>-Curve +24
+slider36:c_p25=0.78125<-1,1,0.001>-Curve +25
+slider37:c_p26=0.8125<-1,1,0.001>-Curve +26
+slider38:c_p27=0.84375<-1,1,0.001>-Curve +27
+slider39:c_p28=0.875<-1,1,0.001>-Curve +28
+slider40:c_p29=0.90625<-1,1,0.001>-Curve +29
+slider41:c_p30=0.9375<-1,1,0.001>-Curve +30
+slider42:c_p31=0.96875<-1,1,0.001>-Curve +31
+slider43:c_p32=1<-1,1,0.001>-Curve +32
+
+slider44:c_n1=-0.03125<-1,1,0.001>-Curve -1
+slider45:c_n2=-0.0625<-1,1,0.001>-Curve -2
+slider46:c_n3=-0.09375<-1,1,0.001>-Curve -3
+slider47:c_n4=-0.125<-1,1,0.001>-Curve -4
+slider48:c_n5=-0.15625<-1,1,0.001>-Curve -5
+slider49:c_n6=-0.1875<-1,1,0.001>-Curve -6
+slider50:c_n7=-0.21875<-1,1,0.001>-Curve -7
+slider51:c_n8=-0.25<-1,1,0.001>-Curve -8
+slider52:c_n9=-0.28125<-1,1,0.001>-Curve -9
+slider53:c_n10=-0.3125<-1,1,0.001>-Curve -10
+slider54:c_n11=-0.34375<-1,1,0.001>-Curve -11
+slider55:c_n12=-0.375<-1,1,0.001>-Curve -12
+slider56:c_n13=-0.40625<-1,1,0.001>-Curve -13
+slider57:c_n14=-0.4375<-1,1,0.001>-Curve -14
+slider58:c_n15=-0.46875<-1,1,0.001>-Curve -15
+slider59:c_n16=-0.5<-1,1,0.001>-Curve -16
+slider60:c_n17=-0.53125<-1,1,0.001>-Curve -17
+slider61:c_n18=-0.5625<-1,1,0.001>-Curve -18
+slider62:c_n19=-0.59375<-1,1,0.001>-Curve -19
+slider63:c_n20=-0.625<-1,1,0.001>-Curve -20
+slider64:c_n21=-0.65625<-1,1,0.001>-Curve -21
+slider65:c_n22=-0.6875<-1,1,0.001>-Curve -22
+slider66:c_n23=-0.71875<-1,1,0.001>-Curve -23
+slider67:c_n24=-0.75<-1,1,0.001>-Curve -24
+slider68:c_n25=-0.78125<-1,1,0.001>-Curve -25
+slider69:c_n26=-0.8125<-1,1,0.001>-Curve -26
+slider70:c_n27=-0.84375<-1,1,0.001>-Curve -27
+slider71:c_n28=-0.875<-1,1,0.001>-Curve -28
+slider72:c_n29=-0.90625<-1,1,0.001>-Curve -29
+slider73:c_n30=-0.9375<-1,1,0.001>-Curve -30
+slider74:c_n31=-0.96875<-1,1,0.001>-Curve -31
+slider75:c_n32=-1<-1,1,0.001>-Curve -32
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+// Tail: a waveshaper has no memory, but the anti-alias filters do.
+ext_tail_size = -2;
+TABSIZE = 32;
+tab_pos = 0;              // 32 points, input 1/32 .. 1
+tab_neg = TABSIZE;        // 32 points, input -1/32 .. -1
+last_os = -1;
+sspos = 0;
+
+// Sample a point of the curve table, interpolating between neighbours. Input
+// is a magnitude 0..1; the sign is handled by the caller so that "Mirrored"
+// and "Separate" differ only in which table is read.
+function curve_lookup(v, tp) local(sc, wh) (
+  v <= 1/TABSIZE ? tp[0] * v * TABSIZE
+  : v >= 1.0 ? tp[TABSIZE-1]
+  : (
+    sc = v*TABSIZE - 1;
+    wh = sc|0;
+    sc -= wh;
+    tp[wh]*(1.0 - sc) + tp[wh+1]*sc;
+  );
+);
+
+// The three curves, each taking and returning one sample.
+//
+//   Soft — Cockos's Distortion. Linear until the knee, then the excess is
+//   compressed by `diff/(soft+diff)`, which approaches 1, so the output
+//   asymptotes to knee+1 rather than clipping flat.
+//
+//   Fuzz — Cockos's Distortion (Fuzz). A rational curve whose steepness near
+//   zero rises with Shape, so quiet material distorts as hard as loud.
+//
+//   Curve — the Graphical Waveshaper's lookup table, now editable from a host.
+function shape_sample(x) local(t, s, diff, ax, tp) (
+  shape < 0.5 ? (
+    t = abs(x);
+    t > knee ? ( s = sign(x); diff = t - knee; s*(knee + diff/(soft + diff)); ) : x;
+  ) : shape < 1.5 ? (
+    ax = abs(x);
+    x * (ax + fz) / (ax*(ax + fz1) + 1);
+  ) : (
+    x < 0 ? (
+      mirror >= 0.5 ? -curve_lookup(-x, tab_pos) : curve_lookup(-x, tab_neg);
+    ) : curve_lookup(x, tab_pos);
+  );
+);
+
+@slider
+drive   = 10^(drive_db/20);
+knee    = 10^(knee_db/20);
+soft    = 2^hardness;
+ceiling = 10^(ceiling_db/20);
+wet     = 10^(wet_db/20);
+dry     = 10^(dry_db/20);
+// The fuzz curve is written in terms of shape-1, so precompute it.
+fz  = fuzz_shape;
+fz1 = fuzz_shape - 1;
+
+// Copy the point parameters into a table the sample loop can index. Sixty-four
+// named variables cannot be addressed by number, so this is the one place the
+// names appear and everything downstream reads memory.
+tab_pos[0]=c_p1;   tab_pos[1]=c_p2;   tab_pos[2]=c_p3;   tab_pos[3]=c_p4;
+tab_pos[4]=c_p5;   tab_pos[5]=c_p6;   tab_pos[6]=c_p7;   tab_pos[7]=c_p8;
+tab_pos[8]=c_p9;   tab_pos[9]=c_p10;  tab_pos[10]=c_p11; tab_pos[11]=c_p12;
+tab_pos[12]=c_p13; tab_pos[13]=c_p14; tab_pos[14]=c_p15; tab_pos[15]=c_p16;
+tab_pos[16]=c_p17; tab_pos[17]=c_p18; tab_pos[18]=c_p19; tab_pos[19]=c_p20;
+tab_pos[20]=c_p21; tab_pos[21]=c_p22; tab_pos[22]=c_p23; tab_pos[23]=c_p24;
+tab_pos[24]=c_p25; tab_pos[25]=c_p26; tab_pos[26]=c_p27; tab_pos[27]=c_p28;
+tab_pos[28]=c_p29; tab_pos[29]=c_p30; tab_pos[30]=c_p31; tab_pos[31]=c_p32;
+
+tab_neg[0]=c_n1;   tab_neg[1]=c_n2;   tab_neg[2]=c_n3;   tab_neg[3]=c_n4;
+tab_neg[4]=c_n5;   tab_neg[5]=c_n6;   tab_neg[6]=c_n7;   tab_neg[7]=c_n8;
+tab_neg[8]=c_n9;   tab_neg[9]=c_n10;  tab_neg[10]=c_n11; tab_neg[11]=c_n12;
+tab_neg[12]=c_n13; tab_neg[13]=c_n14; tab_neg[14]=c_n15; tab_neg[15]=c_n16;
+tab_neg[16]=c_n17; tab_neg[17]=c_n18; tab_neg[18]=c_n19; tab_neg[19]=c_n20;
+tab_neg[20]=c_n21; tab_neg[21]=c_n22; tab_neg[22]=c_n23; tab_neg[23]=c_n24;
+tab_neg[24]=c_n25; tab_neg[25]=c_n26; tab_neg[26]=c_n27; tab_neg[27]=c_n28;
+tab_neg[28]=c_n29; tab_neg[29]=c_n30; tab_neg[30]=c_n31; tab_neg[31]=c_n32;
+
+// Anti-alias filter, from the Graphical Waveshaper: a second-order Butterworth
+// a little below the oversampled Nyquist, run once on the way in and once on
+// the way out. Distortion generates harmonics above the original Nyquist, and
+// without this they fold back down as inharmonic noise.
+os = max(1, min(16, (oversample + 0.5)|0));
+os != last_os ? (
+  os > 1 ? (
+    Q = 0.707;
+    pos = 0.85/os * $pi;
+    cpos = cos(pos);
+    spos = sin(pos);
+    alpha = spos/(2.0*Q);
+    sc = 1.0/(1 + alpha);
+    b1 = (1 - cpos) * sc;
+    b2 = b0 = b1 * 0.5;
+    a1 = -2 * cpos * sc;
+    a2 = (1 - alpha) * sc;
+  );
+  last_os = os;
+  i0=i1=i2=i3=0; i4=i5=i6=i7=0;
+  o0=o1=o2=o3=0; o4=o5=o6=o7=0;
+);
+
+@sample
+dry0 = spl0;
+dry1 = spl1;
+do_l = channels != 1;
+do_r = channels != 0;
+
+x0 = do_l ? spl0 * drive : spl0;
+x1 = do_r ? spl1 * drive : spl1;
+
+loop(os,
+  os > 1 ? (
+    // Zero-order-hold upsample, band-limited by the input filter.
+    u0 = x0*b0 + i0*b1 + i1*b2 - i2*a1 - i3*a2;
+    i1 = i0; i0 = x0; i3 = i2; i2 = u0;
+    u1 = x1*b0 + i4*b1 + i5*b2 - i6*a1 - i7*a2;
+    i5 = i4; i4 = x1; i7 = i6; i6 = u1;
+  ) : ( u0 = x0; u1 = x1; );
+
+  do_l ? u0 = shape_sample(u0);
+  do_r ? u1 = shape_sample(u1);
+
+  os > 1 ? (
+    d0 = u0*b0 + o0*b1 + o1*b2 - o2*a1 - o3*a2;
+    o1 = o0; o0 = u0; o3 = o2; o2 = d0;
+    d1 = u1*b0 + o4*b1 + o5*b2 - o6*a1 - o7*a2;
+    o5 = o4; o4 = u1; o7 = o6; o6 = d1;
+    // Decimate by keeping the first of each run, as the original does.
+    sspos == 0 ? ( y0 = d0; y1 = d1; );
+    sspos += 1;
+  ) : ( y0 = u0; y1 = u1; );
+);
+sspos = 0;
+
+// One ceiling for every curve, after the shaping. Soft's knee decides where it
+// starts bending; this decides where it stops entirely.
+y0 = max(min(y0, ceiling), -ceiling);
+y1 = max(min(y1, ceiling), -ceiling);
+
+spl0 = do_l ? y0*wet + dry0*dry : dry0;
+spl1 = do_r ? y1*wet + dry1*dry : dry1;

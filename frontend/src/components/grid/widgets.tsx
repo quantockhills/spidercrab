@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FxParam } from '../../hooks/useReaper';
 import { useLiveSlider } from '../../hooks/useLiveSlider';
-import { MODIFIER_KINDS, resolveParam, type ModifierKind, type NoteGridControl } from './modules';
+import {
+  MODIFIER_KINDS, resolveParam,
+  type ModifierKind, type NoteGridControl, type CurveControl,
+} from './modules';
 import type {
   KnobControl, FaderControl, SegmentedControl, ToggleControl, StepGridControl,
 } from './modules';
@@ -878,6 +881,116 @@ export function NoteGrid({
         </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── Transfer curve ───────────────────────────────────────────
+
+/** How many points the plugin's Curve shape holds per side. */
+const CURVE_POINTS = 32;
+
+/**
+ * What the shaper does to one sample, in the same terms the plugin uses.
+ *
+ * Kept in step with jsfx/spidercrab_distortion.jsfx by hand, which is a real
+ * risk — but the alternative is having the plugin publish a sampled curve, and
+ * a memoryless shaper is exactly the case where recomputing is both exact and
+ * free. The formulas are three lines each and came from the Cockos originals.
+ */
+export function shapeSample(
+  x: number,
+  shape: number,
+  opts: { knee: number; hardness: number; fuzz: number;
+    mirror: boolean; points: number[] },
+): number {
+  if (shape < 0.5) {
+    // Soft: linear to the knee, then the excess compressed by diff/(soft+diff),
+    // which approaches 1 — so it bends toward knee+1 rather than clipping flat.
+    const t = Math.abs(x);
+    if (t <= opts.knee) return x;
+    const soft = 2 ** opts.hardness;
+    const diff = t - opts.knee;
+    return Math.sign(x) * (opts.knee + diff / (soft + diff));
+  }
+  if (shape < 1.5) {
+    // Fuzz: a rational curve, steeper near zero as Shape rises.
+    const ax = Math.abs(x);
+    return (x * (ax + opts.fuzz)) / (ax * (ax + opts.fuzz - 1) + 1);
+  }
+  // Curve: the lookup table, interpolated as the plugin interpolates it.
+  const table = (v: number, from: number) => {
+    if (v <= 1 / CURVE_POINTS) return (opts.points[from] ?? 0) * v * CURVE_POINTS;
+    if (v >= 1) return opts.points[from + CURVE_POINTS - 1] ?? 0;
+    const sc = v * CURVE_POINTS - 1;
+    const wh = Math.floor(sc);
+    const f = sc - wh;
+    return (opts.points[from + wh] ?? 0) * (1 - f) + (opts.points[from + wh + 1] ?? 0) * f;
+  };
+  if (x < 0) {
+    return opts.mirror ? -table(-x, 0) : table(-x, CURVE_POINTS);
+  }
+  return table(x, 0);
+}
+
+/**
+ * The shaper's curve, drawn.
+ *
+ * Input across, output up, with the drive applied so the picture shows what
+ * the signal actually meets rather than the curve in the abstract. The
+ * diagonal is what "no distortion" looks like, so how far the curve departs
+ * from it is how much the thing is doing.
+ */
+export function Curve({
+  control, params,
+}: { control: CurveControl; params: FxParam[] }) {
+  const at = useCallback((slider: number) =>
+    resolveParam(params, { slider })?.value ?? 0, [params]);
+
+  const points = useMemo(() => Array.from(
+    { length: CURVE_POINTS * 2 },
+    (_, i) => at(control.points + i),
+  ), [at, control.points]);
+
+  const shape = at(control.shape);
+  const drive = 10 ** (at(control.drive) / 20);
+  const ceiling = 10 ** (at(control.ceiling) / 20);
+  const opts = {
+    knee: 10 ** (at(control.knee) / 20),
+    hardness: at(control.hardness),
+    fuzz: at(control.fuzz),
+    mirror: at(control.mirror) >= 0.5,
+    points,
+  };
+
+  const W = 132;
+  const STEPS = 128;
+  const path = Array.from({ length: STEPS + 1 }, (_, i) => {
+    const x = -1 + (2 * i) / STEPS;
+    const y = clamp(shapeSample(x * drive, shape, opts), -ceiling, ceiling);
+    // Output is clamped to the drawn box: past ±1 there is nothing to see but
+    // a flat line, and the interesting part is always near the origin.
+    return `${((x + 1) / 2) * W},${((1 - clamp(y, -1, 1)) / 2) * W}`;
+  }).join(' ');
+
+  return (
+    <div className="flex flex-col items-center gap-1 select-none">
+      <svg width={W} height={W} viewBox={`0 0 ${W} ${W}`} role="img"
+        aria-label={`${control.label} transfer curve`}>
+        <rect x="0" y="0" width={W} height={W} className="fill-[var(--bg-tertiary)]" />
+        {/* Unity, for comparison: anywhere the curve leaves this line is
+            distortion, and the gap is how much. */}
+        <line x1="0" y1={W} x2={W} y2="0" strokeWidth="1" strokeDasharray="3 3"
+          className="stroke-[var(--text-secondary)]/30" />
+        <line x1="0" y1={W / 2} x2={W} y2={W / 2} strokeWidth="1"
+          className="stroke-[var(--text-secondary)]/20" />
+        <line x1={W / 2} y1="0" x2={W / 2} y2={W} strokeWidth="1"
+          className="stroke-[var(--text-secondary)]/20" />
+        <polyline points={path} fill="none" strokeWidth="2" strokeLinejoin="round"
+          className="stroke-[var(--accent-orange)]" />
+      </svg>
+      <HelpLabel text={control.label} help={control.help}
+        className="text-[10px] uppercase tracking-wider text-[var(--text-secondary)]" />
     </div>
   );
 }

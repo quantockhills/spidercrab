@@ -12,6 +12,7 @@ import { yutaniModule } from './yutani';
 import { seqsModule } from './seqs';
 import { midiArpModule } from './midiarp';
 import { eosModule } from './eos';
+import { distortionModule } from './distortion';
 
 /**
  * The three modulation modes, named as the plugin's own buttons are.
@@ -150,6 +151,31 @@ export interface NoteGridControl extends ControlBase {
 }
 
 /**
+ * The transfer curve of a waveshaper, drawn.
+ *
+ * A waveshaper is memoryless — output depends only on the current input,
+ * through a curve y = f(x) — so the curve can be computed from the parameters
+ * rather than measured. Which means the picture is exact, and costs nothing
+ * but arithmetic.
+ *
+ * The controls it reads are given by slider number rather than resolved by
+ * name inside the widget, so the plugin's naming stays in the module where the
+ * rest of it lives.
+ */
+export interface CurveControl extends ControlBase {
+  kind: 'curve';
+  drive: number;
+  shape: number;
+  knee: number;
+  hardness: number;
+  fuzz: number;
+  ceiling: number;
+  mirror: number;
+  /** First of 32 positive curve points, followed by 32 negative. */
+  points: number;
+}
+
+/**
  * A row of step cells for a sequencer pattern.
  *
  * Step values are packed into the slider params: 4 steps per slider, each step
@@ -180,7 +206,7 @@ export interface StepGridControl extends ControlBase {
 
 export type ModuleControl =
   | KnobControl | SegmentedControl | FaderControl | ToggleControl | StepGridControl
-  | ParamSliderControl | NoteGridControl;
+  | ParamSliderControl | NoteGridControl | CurveControl;
 
 /** Minimal shape of what the backend reports per parameter. */
 export interface ResolvableParam {
@@ -404,7 +430,7 @@ const pitchShiftModule: ModuleDef = {
 
 const MODULES: ModuleDef[] = [
   chorus, yutaniModule, stockDelayModule, seqsModule, pitchShiftModule,
-  midiArpModule, eosModule,
+  midiArpModule, eosModule, distortionModule,
 ];
 
 /** Strip REAPER's format prefix, e.g. "JS: Chorus" -> "Chorus". */
