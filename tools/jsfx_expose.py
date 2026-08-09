@@ -96,6 +96,19 @@ MANUAL_RANGES = {
     'legacy_tapestop':      (0, 1, 1),
     'randomizing_modulator_a': (0, 1, 1),
     'randomizing_modulator_b': (0, 1, 1),
+    # ── MIDI ARP ────────────────────────────────────────────────
+    'file_version':          (0, 1, 0),
+    'enable_cc1':            (0, 1, 1),
+    'enable_cc2':            (0, 1, 1),
+    'enable_cc3':            (0, 1, 1),
+    'enable_cc4':            (0, 1, 1),
+    'enable_cc5':            (0, 1, 1),
+    'enable_cc6':            (0, 1, 1),
+    'enable_cc7':            (0, 1, 1),
+    'enable_cc8':            (0, 1, 1),
+    'disable_midi':          (0, 1, 1),
+    'viewed_pattern_index':  (0, 1, 0),
+    'reset_on_cc':           (0, 1, 1),
 }
 
 
