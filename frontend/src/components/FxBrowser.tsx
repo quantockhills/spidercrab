@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { EnumeratedFx, Track } from '../hooks/useReaper';
 import type { FxTagData, TagTarget } from '../hooks/useFx';
+import { findModule } from './grid/modules';
 
 // ── Chain search types ───────────────────────────────────────
 
@@ -36,6 +37,9 @@ interface FxInfo {
 }
 
 type FormatFilter = 'All' | 'VST' | 'VST3' | 'CLAP' | 'JSFX' | 'AU' | 'DX';
+
+/** Heading for the Grid-module group. Not a format — a capability. */
+const GRID_GROUP = 'Grid layouts';
 
 // ── Constants ─────────────────────────────────────────────────
 
@@ -235,7 +239,12 @@ export function FxBrowser({
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
     });
 
-    return sorted;
+    // Plugins with a hand-authored Grid layout, first and by themselves.
+    // They're a handful among hundreds, and they're the ones worth reaching
+    // for if you intend to play the thing from the iPad rather than set it up
+    // once — so they shouldn't have to be remembered by name.
+    const withGrid = filtered.filter((fx) => findModule(fx.name) !== null);
+    return withGrid.length ? [[GRID_GROUP, withGrid] as const, ...sorted] : sorted;
   }, [allFx, search, formatFilter, selectedTags, tagData]);
 
   // Filter chain results by tags
@@ -511,19 +520,28 @@ export function FxBrowser({
             {groupedFx.length > 0 && groupedFx.map(([format, fxList]) => (
               <div key={format}>
                 <div className="px-2 py-1.5 flex items-center gap-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent-blue)]">
+                  <span className={`text-[11px] font-semibold uppercase tracking-wider ${
+                    format === GRID_GROUP
+                      ? 'text-[var(--accent-orange)]' : 'text-[var(--accent-blue)]'
+                  }`}>
                     {format}
                   </span>
                   <span className="text-[10px] text-[var(--text-secondary)]">
                     ({fxList.length})
                   </span>
+                  {format === GRID_GROUP && (
+                    <span className="text-[10px] text-[var(--text-secondary)]">
+                      — built for touch, on the Grid tab
+                    </span>
+                  )}
                 </div>
 
                 <div className="space-y-1">
                   {fxList.map((fx) => (
                     <FxRow
-                      key={fx.ident || fx.name}
+                      key={`${format}-${fx.ident || fx.name}`}
                       fx={fx}
+                      hasGrid={findModule(fx.name) !== null}
                       selectedTrack={selectedTrack}
                       isAdding={addingName === fx.name}
                       isAdded={addedFx.has(fx.name)}
@@ -680,6 +698,8 @@ function TagBadge({ tag, onClick }: TagBadgeProps) {
 
 interface FxRowProps {
   fx: EnumeratedFx;
+  /** Has a hand-authored Grid layout, so it's worth playing from the iPad. */
+  hasGrid?: boolean;
   selectedTrack: number | null;
   isAdding: boolean;
   isAdded: boolean;
@@ -694,7 +714,7 @@ interface FxRowProps {
   onTagCancel?: () => void;
 }
 
-function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, onEditTags, isEditingTags, tagEditValue, onTagChange, onTagSave, onTagCancel }: FxRowProps) {
+function FxRow({ fx, hasGrid, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, onEditTags, isEditingTags, tagEditValue, onTagChange, onTagSave, onTagCancel }: FxRowProps) {
   const displayName = cleanFxName(fx.name);
 
   if (isEditingTags) {
@@ -733,7 +753,17 @@ function FxRow({ fx, selectedTrack, isAdding, isAdded, onAdd, onSelect, tags, on
         disabled={selectedTrack === null}
         className="flex-1 min-w-0 text-left"
       >
-        <div className="text-sm font-medium truncate">{displayName}</div>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-sm font-medium truncate">{displayName}</span>
+          {hasGrid && (
+            <span
+              title="Has a hand-built layout on the Grid tab"
+              className="flex-shrink-0 text-[9px] font-semibold uppercase tracking-wider px-1 py-px text-[var(--accent-orange)] ring-1 ring-[var(--accent-orange)]/40"
+            >
+              Grid
+            </span>
+          )}
+        </div>
         {fx.ident && (
           <div className="text-[10px] text-[var(--text-secondary)] truncate">{fx.ident}</div>
         )}

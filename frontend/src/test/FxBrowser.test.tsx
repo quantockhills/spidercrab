@@ -620,3 +620,48 @@ describe('FxBrowser', () => {
     expect(loadButton.closest('button')).toBeDisabled();
   });
 });
+
+// ── Grid layouts ─────────────────────────────────────────────
+//
+// A handful of plugins have a hand-built layout on the Grid tab. Among several
+// hundred entries they are impossible to find unless you already know their
+// names, which defeats the point of having built them.
+
+describe('Grid layouts group', () => {
+  const withModules: EnumeratedFx[] = [
+    { index: 0, name: 'ReaEQ', ident: 'VST3:ReaEQ', format: 'VST3' },
+    { index: 1, name: 'VST: Stock delay', ident: 'VST:readelay.dll', format: 'VST2' },
+    { index: 2, name: 'JS: Chorus', ident: 'JS:guitar/chorus', format: 'JSFX' },
+  ];
+
+  it('collects them into a group of their own', async () => {
+    renderFxBrowser({ enumerateFx: vi.fn().mockResolvedValue(withModules) });
+    await waitFor(() => expect(screen.getByText('Grid layouts')).toBeDefined());
+  });
+
+  it('puts that group before the format groups', async () => {
+    renderFxBrowser({ enumerateFx: vi.fn().mockResolvedValue(withModules) });
+    await waitFor(() => expect(screen.getByText('Grid layouts')).toBeDefined());
+
+    const headings = Array.from(document.querySelectorAll('.uppercase.tracking-wider'))
+      .map((e) => e.textContent)
+      .filter((t) => t === 'Grid layouts' || t === 'VST3' || t === 'JSFX');
+    expect(headings[0]).toBe('Grid layouts');
+  });
+
+  it('leaves it out entirely when nothing on offer has one', async () => {
+    const none: EnumeratedFx[] = [
+      { index: 0, name: 'ReaEQ', ident: 'VST3:ReaEQ', format: 'VST3' },
+    ];
+    renderFxBrowser({ enumerateFx: vi.fn().mockResolvedValue(none) });
+    await waitFor(() => expect(screen.getByText('VST3')).toBeDefined());
+    expect(screen.queryByText('Grid layouts')).toBeNull();
+  });
+
+  it('badges them in their format group too, so the grouping is not the only clue', async () => {
+    renderFxBrowser({ enumerateFx: vi.fn().mockResolvedValue(withModules) });
+    await waitFor(() => expect(screen.getByText('Grid layouts')).toBeDefined());
+    // Chorus appears twice — once in each group — and both carry the badge.
+    expect(screen.getAllByText('Grid').length).toBe(4);
+  });
+});
