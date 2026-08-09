@@ -98,3 +98,7 @@ design/original-theme/
 # Stray test artifact with a mangled Windows temp path baked into its
 # filename (accidental, from an old FX-chain-save test run)
 extension/UsersTamuraAppDataLocalTemp_fxchain_save_testsaved_chain.RfxChain
+
+# Upstream plugin sources pulled in to read while writing a layout.
+# The patched copies we actually ship live in jsfx/vendor/.
+docs/research/*.jsfx

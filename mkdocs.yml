@@ -57,6 +57,7 @@ nav:
       - The App at a Glance: features/README.md
       - Tracks & Mixing: features/tracks.md
       - Effects (FX): features/fx.md
+      - Grid: features/grid.md
       - Samples & Media: features/media.md
       - Clip Launcher: features/playtime.md
       - Step Sequencer: features/sequencer.md

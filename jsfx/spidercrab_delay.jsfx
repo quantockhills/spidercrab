@@ -1,0 +1,249 @@
+// Spidercrab Delay — the seven stock Cockos delays as one plugin.
+//
+// License: LGPL - http://www.gnu.org/licenses/lgpl.html
+// Derived from the Cockos delay effects, Copyright (C) 2004 and later
+// Cockos Incorporated, which are LGPL. This file is LGPL for the same reason.
+//
+// REAPER ships seven variations on one delay: Delay, w/Stereo Bounce,
+// w/Chorus, (Lo-Fi), w/Sustain, w/Tone Control and w/LFO-Modulated Length.
+// They share a delay line and an output stage almost line for line; each adds
+// exactly one thing. Kept apart you have to decide up front which single
+// extra you want, and you cannot have tone shaping on a ping-pong.
+//
+// So: one delay line, and each variation becomes a stage you can switch on.
+// With every stage off this is the plain Delay.
+//
+//   input ─┬─────────────────────────────────────────────┐
+//          │                                             │
+//          │   ┌── tap ──► tone ──┬──► write ◄── lo-fi ──┤
+//          │   │                  │      ▲               │
+//          │   │                  │   sustain / ping-pong│
+//          │   └── modulated tap ─┼──┐                   │
+//          │                      │  │                   │
+//          └──────────────► out ◄─┴──┘                   │
+//                                                        │
+//                            delay buffer ───────────────┘
+//
+// The modulated tap covers both w/Chorus and w/LFO-Modulated Length: the
+// former mixes it alongside the straight tap, the latter in place of it, and
+// that is only a question of where you set the two wet levels.
+//
+// Three deliberate departures from the originals, all noted at their site:
+// the ping-pong's output bug is not reproduced, the modulation period means
+// what it says, and gains are read in decibels throughout.
+
+desc:Delay Workbench [Spidercrab]
+//tags: delay echo modulation
+//author: Cockos, adapted for Spidercrab
+
+slider1:delay_ms=300<0,4000,1>Delay (ms)
+slider2:feedback_db=-5<-120,6,0.1>Feedback (dB)
+slider3:mixin_db=0<-120,6,0.1>Mix In (dB)
+slider4:routing=0<0,1,1{Normal,Ping-pong}>Routing
+slider5:resample=0<0,1,1{Off,On}>Resample On Length Change
+
+slider6:tone_on=0<0,1,1{Off,On}>Tone
+slider7:bass_db=0<-60,60,0.1>Bass Gain (dB)
+slider8:bass_hz=200<20,24000,10>Bass Frequency (Hz)
+slider9:treble_db=0<-60,60,0.1>Treble Gain (dB)
+slider10:treble_hz=4000<20,24000,10>Treble Frequency (Hz)
+
+slider11:mod_on=0<0,1,1{Off,On}>Modulation
+slider12:mod_period_ms=1000<1,30000,1>Mod Period (ms)
+slider13:mod_depth_ms=2<0,1000,0.1>Mod Depth (ms)
+slider14:mod_wet_db=-120<-120,6,0.1>Modulated Wet (dB)
+
+slider15:lofi_on=0<0,1,1{Off,On}>Lo-Fi
+slider16:bits=8<1,24,1>Resolution (bits)
+
+slider17:sustain_on=0<0,1,1{Off,On}>Sustain
+slider18:thresh_db=-44<-120,6,0.1>Threshold (dB)
+slider19:attack_ms=10<0,1000,1>Attack (ms)
+slider20:release_ms=10<0,1000,1>Release (ms)
+slider21:maxmix_db=0<-120,0,0.1>Maximum Mixing (dB)
+
+slider22:out_wet_db=-6<-120,6,0.1>Output Wet (dB)
+slider23:out_dry_db=0<-120,6,0.1>Output Dry (dB)
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+delaypos = 0;
+delaylen = 0;
+env = 0;
+lfo_phase = 0;
+// Shelf state, per channel. Bl/Br is the bass biquad, Tl/Tr the treble.
+Bl1 = Bl2 = Br1 = Br2 = 0;
+Tl1 = Tl2 = Tr1 = Tr2 = 0;
+ld1 = ld2 = rd1 = rd2 = 0;
+
+@slider
+odelay = delaylen;
+// At least one sample: a zero-length buffer divides by zero in the resampler
+// and leaves the read and write positions on top of each other.
+delaylen = max(1, min(delay_ms * srate / 1000, 500000));
+
+odelay != delaylen ? (
+  // Resampling the buffer as it grows or shrinks turns a length change into a
+  // tape-style pitch slide instead of a click. Taken from the plain Delay,
+  // which is the only one of the seven to handle both directions.
+  resample && odelay > delaylen ? (
+    rspos = 0; rspos2 = 0;
+    drspos = odelay / delaylen;
+    loop(delaylen,
+      tpos = ((rspos)|0)*2;
+      rspos2[0] = tpos[0];
+      rspos2[1] = tpos[1];
+      rspos2 += 2;
+      rspos += drspos;
+    );
+    delaypos = max(0, (delaypos / drspos)|0);
+  ) : resample && odelay < delaylen && odelay > 0 ? (
+    drspos = odelay / delaylen;
+    rspos = odelay;
+    rspos2 = delaylen*2;
+    loop(delaylen,
+      rspos -= drspos;
+      rspos2 -= 2;
+      tpos = ((rspos)|0)*2;
+      rspos2[0] = tpos[0];
+      rspos2[1] = tpos[1];
+    );
+    delaypos = max(0, (delaypos / drspos)|0);
+  ) : (
+    delaypos >= delaylen || delaypos < 0 ? delaypos = 0;
+  );
+  freembuf(delaylen*2);
+);
+
+// The originals mix 2^(dB/6), which is 6dB-per-doubling rounded. Same thing
+// to within a thirtieth of a decibel, but there's no reason to inherit the
+// approximation.
+feedback = 10^(feedback_db/20);
+mixin    = 10^(mixin_db/20);
+out_wet  = 10^(out_wet_db/20);
+out_dry  = 10^(out_dry_db/20);
+mod_wet  = mod_on ? 10^(mod_wet_db/20) : 0;
+
+// ── Tone: two shelving biquads, from Delay w/Tone Control ────
+width = 1.5;
+arc = bass_hz*$pi/(srate*0.5);
+gain = 10^(bass_db/20);
+a = (sin(arc)*width) * (gain < 1 ? 1 : 0.25);
+tmp = 1/(1+a);
+Bc0 = tmp*a*(gain-1);
+Bc1 = tmp*2*cos(arc);
+Bc2 = tmp*(a-1);
+
+arc = treble_hz*$pi/(srate*0.5);
+gain = 10^(treble_db/20);
+a = (sin(arc)*width) * (gain < 1 ? 1 : 0.25);
+tmp = 1/(1+a);
+Tc0 = tmp*a*(gain-1);
+Tc1 = tmp*2*cos(arc);
+Tc2 = tmp*(a-1);
+
+// ── Modulation, from w/Chorus and w/LFO-Modulated Length ─────
+// A full cycle is 2*pi of phase. Both originals advance by pi per period, so
+// their "Period" slider is half the period you actually hear; this one is not.
+lfo_step = 2*$pi/max(1, mod_period_ms * srate * 0.001);
+// Depth is a fraction of the delay length, since that is what bounds how far
+// back the tap can reach.
+mod_scale = min(max(mod_depth_ms/max(delay_ms,0.0001), 0), 1)*delaylen*0.5 - 1;
+mod_scale = max(mod_scale, 0);
+
+// ── Lo-Fi, from Delay (Lo-Fi) ────────────────────────────────
+resol = 2^((bits|0)-1);
+invresl = 1/resol;
+
+// ── Sustain, from Delay w/Sustain ────────────────────────────
+maxmix = 10^(maxmix_db/20);
+thresh = 10^(thresh_db/20);
+tmp = max(attack_ms*0.001, 0.0001);
+denv = exp(-1/(tmp*srate));
+tmp = max(release_ms*0.001, 0.0001);
+denvr = exp(-1/(tmp*srate));
+
+@sample
+// The straight tap, which every variation begins with.
+wp = delaypos*2;
+os1 = wp[0];
+os2 = wp[1];
+
+// Tone shapes the tap itself, so it colours the feedback path as well as the
+// output — one pass through the shelves per repeat, as in the original.
+tone_on ? (
+  Btmp = Bc0*(os1-ld2) + Bc1*Bl1 + Bc2*Bl2;
+  Ttmp = Tc0*(os1-ld2) + Tc1*Tl1 + Tc2*Tl2;
+  ld2 = ld1; ld1 = os1;
+  Tl2 = Tl1; os1 += (Tl1 = Ttmp);
+  Bl2 = Bl1; os1 += (Bl1 = Btmp);
+
+  Btmp = Bc0*(os2-rd2) + Bc1*Br1 + Bc2*Br2;
+  Ttmp = Tc0*(os2-rd2) + Tc1*Tr1 + Tc2*Tr2;
+  rd2 = rd1; rd1 = os2;
+  Tr2 = Tr1; os2 += (Tr1 = Ttmp);
+  Br2 = Br1; os2 += (Br1 = Btmp);
+);
+
+// A second tap, swept by an LFO and read with linear interpolation. Mixed
+// alongside the straight tap this is the chorus; mixed in its place, with the
+// straight wet at zero, it is the modulated-length delay.
+md1 = md2 = 0;
+mod_on ? (
+  lfo_phase += lfo_step;
+  lfo_phase > 2*$pi ? lfo_phase -= 2*$pi;
+  back = (sin(lfo_phase)+1)*mod_scale;
+  rp = delaypos - back - 1;
+  rp < 0 ? rp += delaylen;
+  ri = rp|0;
+  frac = rp - ri;
+  rj = ri >= (delaylen-1) ? 0 : ri+1;
+  ri += ri;
+  rj += rj;
+  md1 = ri[0]*(1-frac) + rj[0]*frac;
+  md2 = ri[1]*(1-frac) + rj[1]*frac;
+);
+
+// What goes back into the line. Sustain and ping-pong each replace this
+// wholesale rather than layering, because that is what they are.
+sustain_on ? (
+  // An envelope follower opens the feed as the input gets louder, so quiet
+  // passages keep repeating what was already in the line.
+  a = max(abs(spl0), abs(spl1));
+  env = a > env ? env*denv + a*(1-denv) : env*denvr + a*(1-denvr);
+  sc = 0;
+  env > thresh ? sc = min(env/thresh*0.5*maxmix, maxmix);
+  w0 = spl0*sc + os1*(1-sc);
+  w1 = spl1*sc + os2*(1-sc);
+) : routing ? (
+  // Ping-pong: the sum of both inputs enters the left side, and each repeat
+  // hands over to the other channel.
+  //
+  // The original's output stage reads `spl1 = spl0*dry + os2*wet` after spl0
+  // has already been overwritten, which collapses the right channel onto the
+  // left. That is a bug rather than the effect, and it is not reproduced here.
+  w0 = (spl0+spl1)*mixin + os2*feedback;
+  w1 = os1*feedback;
+) : (
+  w0 = spl0*mixin + os1*feedback;
+  w1 = spl1*mixin + os2*feedback;
+);
+
+// Quantising on the way in means each repeat is cruder than the last, which
+// is the point of the Lo-Fi variant.
+lofi_on ? (
+  w0 = ((w0*resol)|0)*invresl;
+  w1 = ((w1*resol)|0)*invresl;
+);
+
+wp[0] = min(max(w0,-4),4);
+wp[1] = min(max(w1,-4),4);
+
+(delaypos += 1) >= delaylen ? delaypos = 0;
+
+spl0 = spl0*out_dry + os1*out_wet + md1*mod_wet;
+spl1 = spl1*out_dry + os2*out_wet + md2*mod_wet;

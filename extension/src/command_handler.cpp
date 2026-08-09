@@ -356,11 +356,13 @@ void CommandHandler::OnFxParamChanged(MediaTrack* track, int fxIdx, int paramIdx
         m_api.TrackFX_GetParamName(track, fxIdx, paramIdx, name, sizeof(name));
     }
 
+    // GetParamEx already reports display units — see HandleGetFXParams. This
+    // used to rescale by the range as though the value were normalized.
     double minVal = 0, maxVal = 0, midVal = 0;
+    double actualVal = value;
     if (m_api.TrackFX_GetParamEx) {
-        m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
+        actualVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &minVal, &maxVal, &midVal);
     }
-    double actualVal = minVal + value * (maxVal - minVal);
 
     char formattedBuf[256] = { 0 };
     bool formattedOk = false;

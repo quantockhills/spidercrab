@@ -28,6 +28,7 @@ Spidercrab adds a touch interface to REAPER that you open on an iPad, or any tab
 - Mix by touch, with volume, pan, mute, solo and record-arm on every track.
 - Play, stop and record, and fire off clips and scenes with Playtime 2.
 - Add effects and effect chains, and tune their parameters on large, finger-friendly sliders.
+- Play a handful of plugins from a hand-built layout instead — knobs where the plugin has knobs, a step grid where it has a sequencer, and a drawn curve where it has a waveshaper.
 - Browse, tag and preview your samples, then send them to a track or a clip.
 - Turn a sample or clip into a playable instrument on a sampler track.
 
@@ -59,7 +60,8 @@ Nothing else is required. No SWS, no scripts, no other REAPER add-ons. The only 
 
 - [Getting Started](https://quantockhills.github.io/spidercrab/getting-started/)
 - [Touch Gestures](https://quantockhills.github.io/spidercrab/gestures/)
-- [A tour of the five tabs](https://quantockhills.github.io/spidercrab/features/)
+- [A tour of the six tabs](https://quantockhills.github.io/spidercrab/features/)
+- [Grid layouts](https://quantockhills.github.io/spidercrab/features/grid/)
 
 Prefer browsing the raw source instead? It's all in [`docs/`](docs/).
 

@@ -96,11 +96,15 @@ void CommandHandler::HandleGetFXParams(
         if (i > offset)
             paramsList += ",";
         double minVal = 0, maxVal = 0, midVal = 0;
-        double val       = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
-        // TrackFX_GetParamEx returns the normalized value (0.0-1.0) but fills
-        // minVal/maxVal with the actual display range (e.g. -150 to 0 for volume).
-        // Convert to the actual display value so the frontend doesn't need to.
-        double actualVal = minVal + val * (maxVal - minVal);
+        // TrackFX_GetParamEx returns the value already in display units, and
+        // fills min/max with the display range. (The normalized 0-1 form is
+        // TrackFX_GetParamNormalized, a separate call.) This used to rescale
+        // it by the range as though it were normalized, which squared the
+        // value: Chorus's Wet at -6dB over a -100..12 range read back as
+        // -100 + (-6 * 112) = -772, and its 250ms max as 1 + (250 * 249) =
+        // 62251. HandleSetFXParam has always passed display units straight
+        // through, so the two directions disagreed.
+        double actualVal = m_api.TrackFX_GetParamEx(track, fxIdx, i, &minVal, &maxVal, &midVal);
         char   name[256] = { 0 };
         m_api.TrackFX_GetParamName(track, fxIdx, i, name, sizeof(name));
 
@@ -174,12 +178,11 @@ void CommandHandler::HandleSetFXParam(
     double range = maxVal - minVal;
     if (range >= 0.0 && range < 1e-15) {
         // Range is effectively zero — return current value.
-        double currentNorm = 0;
+        double currentVal = 0;
         double readMin = 0, readMax = 0, readMid = 0;
         if (m_api.TrackFX_GetParamEx) {
-            currentNorm = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &readMin, &readMax, &readMid);
+            currentVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &readMin, &readMax, &readMid);
         }
-        double currentVal = readMin + currentNorm * (readMax - readMin);
         SendResponse(clientId, id, true,
             "{\"set\":true,"
             "\"value\":" + std::to_string(currentVal) + "}");
@@ -198,8 +201,7 @@ void CommandHandler::HandleSetFXParam(
     double committedVal = value;
     double actualMin = 0, actualMax = 0, actualMid = 0;
     if (success && m_api.TrackFX_GetParamEx) {
-        double normVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &actualMin, &actualMax, &actualMid);
-        committedVal = actualMin + normVal * (actualMax - actualMin);
+        committedVal = m_api.TrackFX_GetParamEx(track, fxIdx, paramIdx, &actualMin, &actualMax, &actualMid);
     }
 
     // Get the formatted value for the committed param (Issue #73)

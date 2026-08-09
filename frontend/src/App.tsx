@@ -8,12 +8,13 @@ import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
+import { GridView } from './components/grid/GridView';
 import ErrorBoundary from './components/ErrorBoundary';
 import SampleIndexProgressBar from './components/SampleIndexProgressBar';
 import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
 import type { DirResult, ReaperLibrary } from './hooks/useSampleBrowser';
 
-type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
+type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'grid' | 'settings';
 type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 
 // The step sequencer is built but not yet working reliably, so it's hidden
@@ -21,11 +22,17 @@ type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 // the Session/Sequencer toggle back once it's verified.
 const SHOW_SEQUENCER = false;
 
+// Grid shows the selected track's plugins as a pannable strip of purpose-built
+// device layouts. Only Chorus has a module so far, and the layout format is
+// still settling — hidden until there's enough there to be useful.
+const SHOW_GRID = true;
+
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'media',   label: 'Media',   icon: '📂' },
   { id: 'fx',      label: 'FX',      icon: '🎛️' },
   { id: 'tracks',  label: 'Tracks',  icon: '🎚️' },
   { id: 'clips',   label: 'Playtime',   icon: '🎹' },
+  ...(SHOW_GRID ? [{ id: 'grid' as Tab, label: 'Grid', icon: '🎹' }] : []),
   { id: 'settings',label: 'Settings',icon: '⚙️' },
 ];
 
@@ -633,6 +640,20 @@ function AppInner() {
               return result.results.map(r => ({ filePath: r.filePath, name: r.name }));
             }}
             loadChain={(trackIdx: number, filePath: string) => fxChainLoad(trackIdx, filePath)}
+          />
+        )}
+
+        {activeTab === 'grid' && (
+          <GridView
+            tracks={tracks}
+            selectedTrack={selectedTrack}
+            getTrackFx={getTrackFx}
+            getFxParams={getFxParams}
+            setFxParam={setFxParam}
+            getFxPreset={getFxPreset}
+            setFxPreset={setFxPreset}
+            getAllFxPresetNames={getAllFxPresetNames}
+            onEvent={onEvent}
           />
         )}
 
