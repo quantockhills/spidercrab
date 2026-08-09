@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../components/grid/modules';
 import { yutaniModule } from '../components/grid/yutani';
+import { midiArpModule } from '../components/grid/midiarp';
 import { GridView, fitScaleFor, maxRowsFor, shapeFor } from '../components/grid/GridView';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
@@ -206,10 +207,15 @@ describe('GridView', () => {
 
   // The FX tab stays the way to reach plugins without a layout, so Grid should
   // say that rather than appear broken.
-  it('explains when a track has FX but none have a module', async () => {
+  // Every plugin now appears: those without a hand-authored module get
+  // panels generated from their parameter list, which is worse than a real
+  // layout but far better than the plugin being unreachable.
+  it('falls back to generated panels for a plugin with no module', async () => {
     renderGrid([{ index: 0, name: 'VST3: ReaEQ' }, { index: 1, name: 'JS: ReaComp' }]);
     await waitFor(() =>
-      expect(screen.getByText(/none with a module yet/)).toBeDefined());
+      expect(screen.getAllByTestId('grid-device-title')).toHaveLength(2));
+    expect(screen.getAllByTestId('grid-device-title').map((e) => e.textContent))
+      .toEqual(['ReaEQ', 'ReaComp']);
   });
 
   it('renders a device for a plugin with a module', async () => {
@@ -306,16 +312,16 @@ describe('GridView', () => {
     expect(Math.max(...sent)).toBeCloseTo(1, 2);
   });
 
-  it('only renders plugins that have a module, ignoring the rest', async () => {
+  it('shows every plugin, titling each by its cleaned name', async () => {
     renderGrid([
       { index: 0, name: 'VST3: ReaEQ' },
       { index: 1, name: 'JS: Chorus' },
       { index: 2, name: 'VST3: Pro-Q 3' },
     ]);
-    await waitFor(() => expect(screen.getAllByTestId('grid-device-title')).toHaveLength(1));
-    expect(screen.getByTestId('grid-device-title').textContent).toBe('Chorus');
-    expect(screen.getByText(/1 device/)).toBeDefined();
-    expect(screen.queryByText('ReaEQ')).toBeNull();
+    await waitFor(() => expect(screen.getAllByTestId('grid-device-title')).toHaveLength(3));
+    expect(screen.getAllByTestId('grid-device-title').map((e) => e.textContent))
+      .toEqual(['ReaEQ', 'Chorus', 'Pro-Q 3']);
+    expect(screen.getByText(/3 devices/)).toBeDefined();
   });
 });
 
@@ -695,5 +701,55 @@ describe('preset picker', () => {
     renderGrid([{ index: 0, name: 'JS: Chorus' }]);
     await waitFor(() => expect(screen.getByTestId('grid-device-title')).toBeDefined());
     expect(screen.queryByRole('group', { name: 'Preset' })).toBeNull();
+  });
+});
+
+// ── MIDI ARP ─────────────────────────────────────────────────
+//
+// The arp declares all 40 of its sliders hidden, so REAPER shows none of them
+// and neither does the plugin — everything is drawn from its @gfx. The module
+// therefore mirrors the control bar the source draws, not the parameter list,
+// which is mostly CC assignment plumbing kept behind a right-click menu.
+
+describe('MIDI ARP module', () => {
+  const controls = midiArpModule.panels.flatMap((p) => p.controls);
+
+  it('leads with the controls the plugin puts on its own bar', () => {
+    const arp = midiArpModule.panels.filter((p) => p.group === 0)
+      .flatMap((p) => p.controls).map((c) => c.label);
+    for (const label of ['Pattern', 'Follow', 'Length', 'Speed', 'Swing',
+      'Voices', 'Octaves', 'Repeat', 'Sort notes']) {
+      expect(arp).toContain(label);
+    }
+  });
+
+  it('keeps CC assignment off the performance tab', () => {
+    const arp = midiArpModule.panels.filter((p) => p.group === 0);
+    expect(arp.some((p) => p.label.startsWith('CC '))).toBe(false);
+    // Still reachable, just not in the way.
+    expect(midiArpModule.panels.filter((p) => p.label.startsWith('CC ')).length).toBe(8);
+  });
+
+  it('offers the three repeat modes the GUI draws, not the six declared', () => {
+    const mode = controls.find((c) => c.label === 'Repeat')!;
+    expect(mode.kind).toBe('segmented');
+    expect((mode as { options: { label: string }[] }).options.map((o) => o.label))
+      .toEqual(['Once', 'Rep', 'Bidi']);
+  });
+
+  it('can reach Free, which the plugin numbers 2 rather than 1', () => {
+    const clock = controls.find((c) => c.label === 'Clock')!;
+    const options = (clock as { options: { value: number; label: string }[] }).options;
+    expect(options.find((o) => o.label === 'Free')!.value).toBe(2);
+    expect(options.find((o) => o.label === 'MIDI')!.value).toBe(1);
+  });
+
+  it('names every control against a parameter', () => {
+    expect(controls.every((c) => c.expect && c.expect.length > 0)).toBe(true);
+  });
+
+  it('never drives the same parameter from two controls', () => {
+    const sliders = controls.map((c) => c.slider);
+    expect(sliders.length).toBe(new Set(sliders).size);
   });
 });
