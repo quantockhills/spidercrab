@@ -23,6 +23,12 @@
 // the input, the multipliers act on the tail, and Eos only draws them together
 // because they share one graph.
 //
+// Names are plain English rather than either plugin's. Eos's LOW MULT is
+// Lexicon-era shorthand and Ableton's equivalent, the Lo Shelf gain, is EQ
+// jargon; both control how long bass rings compared with the rest, so that is
+// what the label says. Each help text names the original so a control here can
+// still be found in Eos's own window.
+//
 // Two of these controls are in no Eos window at all. From its manual:
 //
 //   "If you're particularly technically inclined you might be wondering about
@@ -128,27 +134,30 @@ export const eosModule: ModuleDef = {
       label: 'Tail tone',
       controls: [
         {
-          kind: 'knob', slider: 8, expect: 'Lo Mult', label: 'Low mult', unit: '×',
-          help: 'How much longer or shorter bass rings than the rest, 0.5× to '
-            + '2×. Above 1 the low end hangs on after everything else — the '
-            + '"bloom" of 1980s reverbs.',
+          kind: 'knob', slider: 8, expect: 'Lo Mult', label: 'Bass decay', unit: '×',
+          help: 'How long bass rings compared with everything else, 0.5× to 2×. '
+            + 'Above 1 the low end hangs on after the rest has gone — the '
+            + '"bloom" of 1980s hardware reverbs. Eos calls this LOW MULT; '
+            + 'Ableton does the same job with the Lo Shelf gain.',
         },
         {
-          kind: 'knob', slider: 11, expect: 'Hi Mult', label: 'High mult', unit: '×',
-          help: 'How much faster treble fades than the rest, 0.5× to 1×. Below '
-            + '1 the tail darkens as it dies away, which is what happens in a '
-            + 'room full of soft things.',
+          kind: 'knob', slider: 11, expect: 'Hi Mult', label: 'Treble decay', unit: '×',
+          help: 'How long treble rings compared with everything else, 0.5× to '
+            + '1×. Below 1 the tail darkens as it fades, which is what happens '
+            + 'in a room full of soft things. Eos calls this HI MULT; Ableton '
+            + 'calls it the Hi Shelf gain.',
         },
         {
-          kind: 'knob', slider: 10, expect: 'Lo Xover', label: 'Low from', unit: 'Hz',
-          help: 'Where "low" begins for the multiplier above. Eos hides this in '
-            + 'its own window and only exposes it to the host, so this is a '
-            + 'control you cannot reach from the plugin itself.',
+          kind: 'knob', slider: 10, expect: 'Lo Xover', label: 'Bass below', unit: 'Hz',
+          help: 'Where bass ends and the rest of the sound begins, for the '
+            + 'control above. Eos calls this the low crossover and hides it: it '
+            + 'appears nowhere in the plugin’s own window, only in the list of '
+            + 'parameters it offers a host.',
         },
         {
-          kind: 'knob', slider: 13, expect: 'Hi Xover', label: 'High from', unit: 'Hz',
-          help: 'Where "high" begins for the multiplier above. Also hidden in '
-            + 'Eos’s own window.',
+          kind: 'knob', slider: 13, expect: 'Hi Xover', label: 'Treble above', unit: 'Hz',
+          help: 'Where treble begins, for the control above. Also hidden in '
+            + 'Eos’s own window — this is the high crossover.',
         },
       ],
     },
