@@ -1253,3 +1253,29 @@ describe('device selection', () => {
     await waitFor(() => expect(getFxParams).toHaveBeenCalledWith(0, 1, 0, 1));
   });
 });
+
+// ── Each device sizes itself ─────────────────────────────────
+//
+// One scale for the whole strip meant the tallest device set the size for all
+// of them, so a long plugin beside the arp shrank the arp's grid for no reason
+// of its own.
+
+describe('device sizing', () => {
+  it('scales each device against the same height, not against each other', () => {
+    // A tall device and a short one, given the same budget, land on different
+    // scales — which is the point.
+    expect(fitScaleFor(600, 900)).not.toBe(fitScaleFor(600, 400));
+    expect(fitScaleFor(600, 400)).toBeGreaterThan(1);
+    expect(fitScaleFor(600, 900)).toBeLessThan(1);
+  });
+
+  it('wraps every device so the strip reserves its scaled width', async () => {
+    renderGrid([{ index: 0, name: 'JS: Chorus' }]);
+    await waitFor(() => expect(screen.getByTestId('grid-device-title')).toBeDefined());
+    // A transform leaves the layout box alone, so the section that scales must
+    // sit inside a wrapper carrying the scaled size.
+    const section = screen.getByTestId('grid-device-title').closest('section')!;
+    expect(section.className).toContain('origin-top-left');
+    expect(section.parentElement?.className).toContain('flex-shrink-0');
+  });
+});

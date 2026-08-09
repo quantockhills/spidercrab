@@ -85,9 +85,8 @@ export function GridView({
     .map((f) => ({ fx: f, module: findModule(f.name) ?? fallbackModule([], f.name) }))
     .filter((e): e is { fx: FxInfo; module: ModuleDef } => e.module !== null);
 
-  const { scale, w: contentW, h: contentH, avail } = useFitScale(
-    scrollRef, contentRef, withModules.length,
-  );
+  // Only the height available; each device scales itself against it.
+  const { avail } = useFitScale(scrollRef, contentRef, withModules.length);
   const maxRows = maxRowsFor(avail);
   // Nothing chosen yet means the first device, so a single-device track needs
   // no tap at all.
@@ -115,7 +114,6 @@ export function GridView({
         <h2 className="text-sm font-semibold">{track?.name || `Track ${selectedTrack + 1}`}</h2>
         <p className="text-[10px] text-[var(--text-secondary)]">
           {withModules.length} device{withModules.length === 1 ? '' : 's'} · swipe sideways for more
-          {scale !== 1 && ` · ${Math.round(scale * 100)}%`}
         </p>
       </div>
 
@@ -136,17 +134,7 @@ export function GridView({
           scaled size instead, so the scrollbar — and the strip that drives
           it — track what's actually drawn.
         */}
-        <div
-          style={{
-            width: contentW ? contentW * scale : undefined,
-            height: contentH ? contentH * scale : undefined,
-          }}
-        >
-          <div
-            ref={contentRef}
-            className="flex items-start gap-3 px-3 py-3 w-max origin-top-left"
-            style={{ transform: scale !== 1 ? `scale(${scale})` : undefined }}
-          >
+        <div ref={contentRef} className="flex items-start gap-3 px-3 py-3 w-max">
             {withModules.map(({ fx: f, module }) => (
               <Device
                 key={f.index}
@@ -162,9 +150,9 @@ export function GridView({
                 onEvent={onEvent}
                 selected={f.index === activeFx}
                 onSelect={() => setSelectedFx(f.index)}
+                avail={avail}
               />
             ))}
-          </div>
         </div>
       </div>
 
@@ -180,7 +168,7 @@ export function GridView({
 }
 
 /**
- * Scale the device strip so its whole height matches the space available.
+ * Scale one device so its height matches the space available.
  *
  * There's no vertical scroll by design — the strip along the bottom is the
  * only navigation — so anything past the fold is unreachable, and anything
@@ -188,23 +176,30 @@ export function GridView({
  * overflows, up when it leaves a void underneath and touch targets smaller
  * than they need to be.
  *
- * A CSS transform rather than smaller units: it preserves every panel's
+ * Per device, not per strip. One scale for the whole row meant the tallest
+ * device set the size for every other, so putting a long plugin beside the arp
+ * shrank the arp's grid to a third of the screen for no reason of its own.
+ *
+ * A CSS transform rather than smaller units: it preserves the device's
  * proportions and needs no per-widget sizing. The row budget does the coarse
  * fitting (see maxRowsFor); this takes up whatever remains.
  */
 function useFitScale(
-  outerRef: React.RefObject<HTMLElement | null>,
+  // The element whose height is the budget, or that budget already measured.
+  // GridView measures the scroller once and hands the number to each device,
+  // so every device fits the same space without measuring it again.
+  outer: React.RefObject<HTMLElement | null> | number,
   contentRef: React.RefObject<HTMLElement | null>,
-  // Changes when the scroller mounts or the device list does, so the observers
-  // get attached once the elements actually exist.
+  // Changes when the elements mount or the device list does, so the observers
+  // attach once they actually exist.
   key: unknown,
 ) {
   const [fit, setFit] = useState({ scale: 1, w: 0, h: 0, avail: 0 });
 
   useLayoutEffect(() => {
-    const outer = outerRef.current;
+    const outerEl = typeof outer === 'number' ? null : outer.current;
     const content = contentRef.current;
-    if (!outer || !content) return;
+    if (typeof outer !== 'number' && !outerEl) return;
 
     const measure = () => {
       // offsetHeight, not clientHeight. clientHeight excludes the horizontal
@@ -213,16 +208,17 @@ function useFitScale(
       // the scroller's own is bistable and flips between two layouts forever.
       // offsetHeight is the height the flex parent gave us, independent of
       // anything we then draw inside it.
-      const avail = outer.offsetHeight - SCROLLBAR_PX;
+      const avail = typeof outer === 'number'
+        ? outer : (outerEl!.offsetHeight - SCROLLBAR_PX);
       // A transform doesn't affect the layout box, so these read the natural
       // size however far we've already scaled — no feedback loop.
-      const h = content.offsetHeight;
-      const w = content.offsetWidth;
-      if (!avail || !h) return;
+      const h = content?.offsetHeight ?? 0;
+      const w = content?.offsetWidth ?? 0;
+      if (!avail) return;
       // Grows as well as shrinks. A device that only half-fills the screen
       // left a void underneath it and touch targets smaller than they needed
       // to be; the cap stops a two-knob Chorus becoming a billboard.
-      const scale = fitScaleFor(avail, h);
+      const scale = h ? fitScaleFor(avail, h) : 1;
       setFit((prev) => (Math.abs(prev.scale - scale) < 0.002 && prev.w === w
         && prev.h === h && prev.avail === avail
         ? prev : { scale, w, h, avail }));
@@ -230,10 +226,10 @@ function useFitScale(
 
     measure();
     const ro = new ResizeObserver(measure);
-    ro.observe(outer);
-    ro.observe(content);
+    if (outerEl) ro.observe(outerEl);
+    if (content) ro.observe(content);
     return () => ro.disconnect();
-  }, [outerRef, contentRef, key]);
+  }, [outer, contentRef, key]);
 
   return fit;
 }
@@ -271,7 +267,7 @@ function Empty({ icon, title, hint }: { icon: string; title: string; hint: strin
 
 function Device({
   trackIdx, fx, module, maxRows, getFxParams, setFxParam,
-  getFxPreset, setFxPreset, getAllFxPresetNames, onEvent, selected, onSelect,
+  getFxPreset, setFxPreset, getAllFxPresetNames, onEvent, selected, onSelect, avail,
 }: {
   trackIdx: number;
   fx: FxInfo;
@@ -285,8 +281,11 @@ function Device({
   onEvent: GridViewProps['onEvent'];
   selected: boolean;
   onSelect: () => void;
+  avail: number;
 }) {
   const [params, setParams] = useState<FxParam[]>([]);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const { scale, w: naturalW, h: naturalH } = useFitScale(avail, bodyRef, avail);
 
   // Fetch every parameter, skipping pages that time out (some VSTs have
   // slow parameter ranges, e.g. BlueARP's 586 params).
@@ -396,7 +395,21 @@ function Device({
   );
 
   return (
-    <section className="flex flex-col bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] flex-shrink-0">
+    // A transform leaves the layout box unscaled, so the wrapper carries the
+    // scaled size. Without it the strip reserves the natural width and leaves
+    // a gap beside every device that shrank.
+    <div
+      className="flex-shrink-0"
+      style={{
+        width: naturalW ? naturalW * scale : undefined,
+        height: naturalH ? naturalH * scale : undefined,
+      }}
+    >
+    <section
+      ref={bodyRef}
+      className="inline-flex flex-col bg-[var(--bg-secondary)] ring-1 ring-[var(--border)] origin-top-left"
+      style={{ transform: scale !== 1 ? `scale(${scale})` : undefined }}
+    >
       <header className="px-3 py-1.5 border-b border-[var(--border)] flex items-center gap-3">
         <button
           onClick={onSelect}
@@ -468,6 +481,7 @@ function Device({
         ))}
       </div>
     </section>
+    </div>
   );
 }
 
