@@ -51,27 +51,27 @@ export const bluearpModule: ModuleDef = {
     {
       label: 'Octave',
       group: 1,
-      controls: steps('Octave', 256, 16),
+      controls: steps('Octave', 257, 16),
     },
     {
       label: 'Key',
       group: 1,
-      controls: steps('Key', 320, 16),
+      controls: steps('Key', 321, 16),
     },
     {
       label: 'Type',
       group: 1,
-      controls: steps('StepType', 384, 16),
+      controls: steps('StepType', 385, 16),
     },
     {
       label: 'Gate',
       group: 1,
-      controls: steps('GateStep', 448, 16),
+      controls: steps('GateStep', 449, 16),
     },
     {
       label: 'Velocity',
       group: 1,
-      controls: steps('Velocity', 512, 16),
+      controls: steps('Velocity', 513, 16),
     },
 
     // ── MIDI tab ─────────────────────────────────────────

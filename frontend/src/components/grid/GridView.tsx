@@ -262,17 +262,22 @@ function Device({
 }) {
   const [params, setParams] = useState<FxParam[]>([]);
 
-  // Fetch every parameter, not a first page. Yutani's patched copy has 189,
-  // and anything not fetched can't be resolved, so it renders as an empty
-  // placeholder — which is exactly what a fixed limit of 64 produced.
+  // Fetch every parameter, skipping pages that time out (some VSTs have
+  // slow parameter ranges, e.g. BlueARP's 586 params).
   const fetchAll = useCallback(async () => {
     const all: FxParam[] = [];
     let offset = 0;
     for (;;) {
-      const page = await getFxParams(trackIdx, fx.index, offset, 128);
-      all.push(...page.params);
-      offset += page.params.length;
-      if (!page.params.length || all.length >= page.total) break;
+      try {
+        const page = await getFxParams(trackIdx, fx.index, offset, 64);
+        all.push(...page.params);
+        offset += page.params.length;
+        if (!page.params.length || all.length >= page.total) break;
+      } catch {
+        // Skip pages that fail (timeout) — partial data is better than none.
+        offset += 64;
+        if (offset > 1024) break;
+      }
     }
     return all;
   }, [trackIdx, fx.index, getFxParams]);
