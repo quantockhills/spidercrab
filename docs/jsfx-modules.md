@@ -243,3 +243,30 @@ panels left to right — with device boundaries between plugins.
 - **Where inference lives.** Extension (C++) keeps the frontend thin and gives
   filesystem access; frontend (TS) is faster to iterate on. The descriptor
   boundary means this can be moved later without changing the UI.
+
+## Pattern data: parameters now, `gmem` later
+
+The arp's step grid is mirrored into 160 hidden parameters by
+`tools/jsfx_stepgrid.py`, because parameters are the only channel a JSFX has
+to a host. That works, but it caps what can be shown: a 5x32 window onto a
+60x64 pattern, and 160 of REAPER's 256 parameter slots spent on something
+that isn't automation.
+
+There is a better channel, not yet used. JSFX has `gmem[]` — a shared array
+addressed by namespace, which `options:gmem=name` grows to 8 million entries.
+REAPER exports `gmem_attach`, `gmem_read`, `gmem_write` and `eel_gmem_attach`
+from `reaper.exe`, so the extension can attach to the same namespace and read
+or write it directly. That would remove the parameters entirely and let the
+whole buffer through — all 64 patterns, not a window.
+
+Two things to solve before it is worth doing:
+
+- **Instance collision.** A namespace is per-JSFX, not per-instance, so two
+  copies of the arp share one region. Instances would need to claim a slot at
+  init and the extension address them by index.
+- **No change notification.** `gmem` has no callback, so the extension would
+  poll. Cheap if the JSFX maintains a dirty counter the poll can read first,
+  but it is polling either way.
+
+Neither is hard; both are more than the parameter approach needed. Worth
+revisiting when a second pattern-based plugin wants the same treatment.

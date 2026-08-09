@@ -4,6 +4,7 @@ import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../co
 import { yutaniModule } from '../components/grid/yutani';
 import { midiArpModule } from '../components/grid/midiarp';
 import { GridView, fitScaleFor, maxRowsFor, shapeFor } from '../components/grid/GridView';
+import { NoteGrid } from '../components/grid/widgets';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
 // ── Module matching ──────────────────────────────────────────
@@ -714,17 +715,25 @@ describe('preset picker', () => {
 describe('MIDI ARP module', () => {
   const controls = midiArpModule.panels.flatMap((p) => p.controls);
 
-  it('leads with the controls the plugin puts on its own bar', () => {
-    const arp = midiArpModule.panels.filter((p) => p.group === 0)
+  it('leads with the pattern grid, which is what the plugin is for', () => {
+    const first = midiArpModule.panels.filter((p) => p.group === 0)
+      .flatMap((p) => p.controls);
+    expect(first.some((c) => c.kind === 'notegrid')).toBe(true);
+  });
+
+  it('carries the controls the plugin puts on its own bar', () => {
+    const arp = midiArpModule.panels.filter((p) => p.group === 1)
       .flatMap((p) => p.controls).map((c) => c.label);
-    for (const label of ['Pattern', 'Follow', 'Length', 'Speed', 'Swing',
+    // Pattern selection moved next to the grid it selects; the rest of the
+    // plugin's bar lives here.
+    for (const label of ['Follow', 'Length', 'Speed', 'Swing',
       'Voices', 'Octaves', 'Repeat', 'Sort notes']) {
       expect(arp).toContain(label);
     }
   });
 
   it('keeps CC assignment off the performance tab', () => {
-    const arp = midiArpModule.panels.filter((p) => p.group === 0);
+    const arp = midiArpModule.panels.filter((p) => p.group <= 1);
     expect(arp.some((p) => p.label.startsWith('CC '))).toBe(false);
     // Still reachable, just not in the way.
     expect(midiArpModule.panels.filter((p) => p.label.startsWith('CC ')).length).toBe(8);
@@ -745,11 +754,107 @@ describe('MIDI ARP module', () => {
   });
 
   it('names every control against a parameter', () => {
-    expect(controls.every((c) => c.expect && c.expect.length > 0)).toBe(true);
+    // Except the note grid, which spans a block of them rather than one.
+    const single = controls.filter((c) => c.kind !== 'notegrid');
+    expect(single.every((c) => c.expect && c.expect.length > 0)).toBe(true);
   });
 
   it('never drives the same parameter from two controls', () => {
     const sliders = controls.map((c) => c.slider);
     expect(sliders.length).toBe(new Set(sliders).size);
+  });
+});
+
+// ── Note grid ────────────────────────────────────────────────
+//
+// The plugin stores a note as a run: a positive cell where it starts, then
+// negatives holding it. Getting that encoding wrong produces patterns its own
+// editor cannot make — a tail with no head, or a row of repeats where one long
+// note was meant.
+
+describe('note grid', () => {
+  const ROWS = 5;
+  const COLS = 32;
+  const FIRST = 60;
+
+  /** Parameters for the window, plus the two that position it. */
+  function gridParams(cells: Record<string, number> = {}): FxParam[] {
+    const out: FxParam[] = [
+      { index: 57, name: 'Grid row offset', value: 0, min: 0, max: 55, mid: 27 },
+      { index: 58, name: 'Grid column page', value: 0, min: 0, max: 1, mid: 0 },
+    ];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        out.push({
+          index: FIRST - 1 + r * COLS + c,
+          name: `Step ${r},${c}`,
+          value: cells[`${r},${c}`] ?? 0,
+          min: -16, max: 16, mid: 0,
+        });
+      }
+    }
+    return out;
+  }
+
+  const control = midiArpModule.panels
+    .flatMap((p) => p.controls)
+    .find((c) => c.kind === 'notegrid')!;
+
+  function renderNoteGrid(cells?: Record<string, number>) {
+    const onChange = vi.fn();
+    render(
+      <NoteGrid
+        control={control as never}
+        params={gridParams(cells)}
+        onChange={onChange}
+      />,
+    );
+    return onChange;
+  }
+
+  it('draws a cell for every step in the window', () => {
+    renderNoteGrid();
+    expect(screen.getAllByRole('button')).toHaveLength(ROWS * COLS);
+  });
+
+  it('labels rows by their position in the pattern', () => {
+    renderNoteGrid();
+    expect(screen.getByLabelText('Row 0 step 1')).toBeDefined();
+    expect(screen.getByLabelText('Row 4 step 32')).toBeDefined();
+  });
+
+  it('starts a note on an empty cell', () => {
+    const onChange = renderNoteGrid();
+    const cell = screen.getByLabelText('Row 2 step 5');
+    fireEvent.pointerDown(cell, { pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+    // Row 2, step 5 is index FIRST-1 + 2*COLS + 4.
+    expect(onChange).toHaveBeenCalledWith(FIRST - 1 + 2 * COLS + 4, 1);
+  });
+
+  it('clears the whole note when its head is tapped, not just one cell', () => {
+    // A three-step note: head at step 3, held through 5.
+    const onChange = renderNoteGrid({ '0,2': 1, '0,3': -1, '0,4': -1 });
+    fireEvent.pointerDown(screen.getByLabelText('Row 0 step 3'), { pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    const cleared = onChange.mock.calls.filter((c) => c[1] === 0).map((c) => c[0]);
+    expect(cleared).toEqual([FIRST - 1 + 2, FIRST - 1 + 3, FIRST - 1 + 4]);
+  });
+
+  it('clears the whole note when a held cell is tapped', () => {
+    const onChange = renderNoteGrid({ '0,2': 1, '0,3': -1, '0,4': -1 });
+    fireEvent.pointerDown(screen.getByLabelText('Row 0 step 4'), { pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
+
+    const cleared = onChange.mock.calls.filter((c) => c[1] === 0).map((c) => c[0]);
+    // Walks back to the head rather than leaving a tail with nothing to hold.
+    expect(cleared).toContain(FIRST - 1 + 2);
+  });
+
+  it('marks a filled cell as pressed for assistive tech', () => {
+    renderNoteGrid({ '1,0': 1 });
+    expect(screen.getByLabelText('Row 1 step 1').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByLabelText('Row 1 step 2').getAttribute('aria-pressed')).toBe('false');
   });
 });

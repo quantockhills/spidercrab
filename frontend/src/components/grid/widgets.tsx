@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FxParam } from '../../hooks/useReaper';
 import { useLiveSlider } from '../../hooks/useLiveSlider';
-import { MODIFIER_KINDS, type ModifierKind } from './modules';
+import { MODIFIER_KINDS, resolveParam, type ModifierKind, type NoteGridControl } from './modules';
 import type {
   KnobControl, FaderControl, SegmentedControl, ToggleControl, StepGridControl,
 } from './modules';
@@ -505,6 +505,147 @@ export function StepGrid({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ── Note grid ────────────────────────────────────────────────
+
+/**
+ * The arp's pattern grid: rows of steps, each cell a parameter.
+ *
+ * The plugin's encoding is carried through rather than flattened. A cell is 0
+ * when empty, positive when a note starts there, and negative when it holds
+ * the note before it. So a run of cells is one long note, not several repeats,
+ * and that is what the drag gesture writes — exactly as dragging across the
+ * plugin's own grid does.
+ *
+ * Tapping a filled cell clears the whole note it belongs to, not just the cell,
+ * since clearing a note's head and leaving its tail behind would leave the
+ * pattern in a state the plugin's own editor cannot produce.
+ */
+export function NoteGrid({
+  control, params, onChange,
+}: {
+  control: NoteGridControl;
+  params: FxParam[];
+  onChange: (paramIdx: number, value: number) => void;
+}) {
+  const { rows, cols, firstSlider } = control;
+  const byIndex = useMemo(() => {
+    const m = new Map<number, FxParam>();
+    for (const p of params) m.set(p.index, p);
+    return m;
+  }, [params]);
+
+  // Cells are contiguous from firstSlider, so index arithmetic beats a search
+  // per cell — this runs 160 times per render.
+  const cellParam = useCallback(
+    (r: number, c: number) => byIndex.get(firstSlider - 1 + r * cols + c),
+    [byIndex, firstSlider, cols],
+  );
+  const valueAt = useCallback(
+    (r: number, c: number) => cellParam(r, c)?.value ?? 0,
+    [cellParam],
+  );
+
+  const rowOffset = Math.round(
+    resolveParam(params, { slider: control.rowOffsetSlider })?.value ?? 0);
+
+  // Live preview of the run being dragged, so the cells fill under the finger
+  // rather than only on release.
+  const [drag, setDrag] = useState<{ row: number; from: number; to: number } | null>(null);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
+
+  const write = useCallback((r: number, c: number, v: number) => {
+    const p = cellParam(r, c);
+    if (p && p.value !== v) onChange(p.index, v);
+  }, [cellParam, onChange]);
+
+  /** Clear the note this cell belongs to: its head, and every cell holding it. */
+  const clearNote = useCallback((r: number, c: number) => {
+    let head = c;
+    while (head > 0 && valueAt(r, head) < 0) head -= 1;
+    write(r, head, 0);
+    for (let i = head + 1; i < cols && valueAt(r, i) < 0; i++) write(r, i, 0);
+  }, [valueAt, write, cols]);
+
+  const commit = useCallback((row: number, from: number, to: number) => {
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    // A tap on a filled cell erases; anything else draws.
+    if (lo === hi && valueAt(row, lo) !== 0) {
+      clearNote(row, lo);
+      return;
+    }
+    write(row, lo, 1);
+    for (let c = lo + 1; c <= hi; c++) write(row, c, -1);
+  }, [valueAt, clearNote, write]);
+
+  const onPointerDown = useCallback((e: React.PointerEvent, row: number, col: number) => {
+    e.preventDefault();
+    const pointerId = e.pointerId;
+    const grid = e.currentTarget.parentElement;
+    setDrag({ row, from: col, to: col });
+
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId || !grid) return;
+      // Track by geometry rather than hit-testing: a finger that strays above
+      // or below the row should still extend the run, not jump rows.
+      const box = grid.getBoundingClientRect();
+      const c = clamp(Math.floor(((ev.clientX - box.left) / box.width) * cols), 0, cols - 1);
+      setDrag((d) => (d && d.to !== c ? { ...d, to: c } : d));
+    };
+    const finish = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      const d = dragRef.current;
+      if (d) commit(d.row, d.from, d.to);
+      setDrag(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  }, [cols, commit]);
+
+  const rowLabel = (r: number) => {
+    const abs = rowOffset + r;
+    return control.rowNames?.[abs] ?? `${abs}`;
+  };
+
+  return (
+    <div className="flex flex-col gap-1 select-none" data-testid="note-grid">
+      {Array.from({ length: rows }, (_, r) => (
+        <div key={r} className="flex items-center gap-1">
+          <div className="w-8 text-[9px] uppercase tracking-wider text-[var(--text-secondary)] text-right">
+            {rowLabel(r)}
+          </div>
+          <div className="flex gap-px flex-1 touch-none">
+            {Array.from({ length: cols }, (_, c) => {
+              const v = valueAt(r, c);
+              const inDrag = drag && drag.row === r
+                && c >= Math.min(drag.from, drag.to) && c <= Math.max(drag.from, drag.to);
+              const on = inDrag || v !== 0;
+              // A held cell joins the one before it, so the run reads as a bar.
+              const held = inDrag ? c !== Math.min(drag.from, drag.to) : v < 0;
+              return (
+                <button
+                  key={c}
+                  onPointerDown={(e) => onPointerDown(e, r, c)}
+                  aria-label={`Row ${rowOffset + r} step ${c + 1}`}
+                  aria-pressed={v !== 0}
+                  className={`h-6 flex-1 min-w-2 transition-colors ${
+                    on ? 'bg-[var(--accent-orange)]' : 'bg-[var(--bg-tertiary)]'
+                  } ${held ? '' : 'ml-px'} ${c % 4 === 0 && !held ? 'ring-1 ring-inset ring-[var(--border)]' : ''}`}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

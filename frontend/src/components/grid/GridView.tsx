@@ -7,7 +7,9 @@ import {
   findModule, cleanFxName, resolveParam, MODIFIER_KINDS, MODIFIER_LABELS, fallbackModule,
   type ModuleDef, type ModulePanel, type ModifierKind,
 } from './modules';
-import { Knob, Fader, Segmented, Toggle, StepGrid, readStepGrid, editStep } from './widgets';
+import {
+  Knob, Fader, Segmented, Toggle, StepGrid, NoteGrid, readStepGrid, editStep,
+} from './widgets';
 import { ParamSlider } from '../ParamControl';
 import { GridStrip } from './GridStrip';
 import { DeviceInfo } from './DeviceInfo';
@@ -539,6 +541,18 @@ function Panel({
         style={isSliderPanel ? {} : { gridTemplateRows: `repeat(${rows}, min-content)` }}
       >
         {visibleControls.map((control) => {
+          // The note grid spans a block of parameters rather than resolving to
+          // one, so it comes before the single-parameter path below.
+          if (control.kind === 'notegrid') {
+            return (
+              <NoteGrid
+                key={control.slider}
+                control={control}
+                params={params}
+                onChange={onChange}
+              />
+            );
+          }
           // Resolved by name where possible — a JSFX slider number isn't
           // necessarily REAPER's parameter index.
           const param = resolveParam(params, control);

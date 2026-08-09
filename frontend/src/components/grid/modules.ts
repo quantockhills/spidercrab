@@ -82,6 +82,35 @@ export interface ParamSliderControl extends ControlBase {
 }
 
 /**
+ * A rectangular window onto a pattern buffer — the arp's note grid.
+ *
+ * One parameter per cell, laid out row-major from `firstSlider`. Unpacked, in
+ * contrast to StepGridControl below: packing four steps into one float means a
+ * single rounding anywhere in the host's parameter path corrupts all four, and
+ * there is no need for it when the plugin has sliders to spare.
+ *
+ * Cells carry the plugin's own encoding: 0 is empty, a positive value starts a
+ * note, and negatives continue the note before it. That is what lets a run of
+ * cells read as one held note rather than several repeats.
+ */
+export interface NoteGridControl extends ControlBase {
+  kind: 'notegrid';
+  rows: number;
+  cols: number;
+  /** First cell parameter; cells run row-major from here. */
+  firstSlider: number;
+  /** Scrolls the window over the pattern's rows. */
+  rowOffsetSlider: number;
+  /** Pages the window across columns, for patterns longer than `cols`. */
+  colPageSlider?: number;
+  /**
+   * Names for the pattern's fixed rows, keyed by absolute row index. The arp
+   * keeps its modulators at 50-59; everything below is a note line.
+   */
+  rowNames?: Record<number, string>;
+}
+
+/**
  * A row of step cells for a sequencer pattern.
  *
  * Step values are packed into the slider params: 4 steps per slider, each step
@@ -111,7 +140,8 @@ export interface StepGridControl extends ControlBase {
 }
 
 export type ModuleControl =
-  | KnobControl | SegmentedControl | FaderControl | ToggleControl | StepGridControl | ParamSliderControl;
+  | KnobControl | SegmentedControl | FaderControl | ToggleControl | StepGridControl
+  | ParamSliderControl | NoteGridControl;
 
 /** Minimal shape of what the backend reports per parameter. */
 export interface ResolvableParam {

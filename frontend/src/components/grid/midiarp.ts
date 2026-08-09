@@ -26,7 +26,7 @@ const speed = (v: number) => (v > 0 ? `${Math.round(v)}` : `1/${Math.abs(Math.ro
 
 const cc = (n: number, choice: number, min: number, max: number) => ({
   label: `CC ${n}`,
-  group: 1,
+  group: 2,
   controls: [
     { kind: 'knob' as const, slider: choice, expect: `Assignable CC${n}`, label: 'Number', format: (v: number) => `${Math.round(v)}` },
     { kind: 'knob' as const, slider: min, expect: `Minimum Assignable CC${n}`, label: 'Min', format: (v: number) => `${Math.round(v)}` },
@@ -37,23 +37,62 @@ const cc = (n: number, choice: number, min: number, max: number) => ({
 export const midiArpModule: ModuleDef = {
   title: 'MIDI ARP',
   match: (n) => n.toLowerCase().includes('midi arp'),
-  groups: ['Arp', 'Setup'],
+  groups: ['Pattern', 'Arp', 'Setup'],
   panels: [
-    // ── Arp: the plugin's control bar, in its own order ──────
+    // ── Pattern: the grid the plugin is actually for ─────────
+    //
+    // The pattern lives in JSFX memory, which no host can see, so the patched
+    // copy mirrors a 5x32 window of it into parameters (tools/jsfx_stepgrid.py)
+    // and this reads that window. Rows 50-59 are the modulators; below them
+    // are the note lines.
     {
-      label: 'Pattern',
+      label: 'Steps',
       group: 0,
       controls: [
+        {
+          kind: 'notegrid',
+          slider: 60,
+          label: 'Pattern',
+          rows: 5,
+          cols: 32,
+          firstSlider: 60,
+          rowOffsetSlider: 58,
+          colPageSlider: 59,
+          rowNames: {
+            50: 'Mod', 51: 'Vel',
+            52: 'CC1', 53: 'CC2', 54: 'CC3', 55: 'CC4',
+            56: 'CC5', 57: 'CC6', 58: 'CC7', 59: 'CC8',
+          },
+        },
+      ],
+    },
+    {
+      label: 'View',
+      group: 0,
+      controls: [
+        { kind: 'knob', slider: 58, expect: 'Grid row offset', label: 'Rows from', format: (v) => `${Math.round(v)}` },
+        { kind: 'segmented', slider: 59, expect: 'Grid column page', label: 'Steps', options: [
+          { value: 0, label: '1-32' },
+          { value: 1, label: '33-64' },
+        ] },
         { kind: 'knob', slider: 55, expect: 'Viewed Pattern Index', label: 'Pattern', format: (v) => `${Math.round(v)}` },
-        // Decoupling what you see from what you hear is the point of this
-        // switch, so it belongs next to the pattern it governs.
-        { kind: 'toggle', slider: 56, expect: 'Follow Current Pattern', label: 'Follow' },
+      ],
+    },
+
+    // ── Arp: the plugin's control bar, in its own order ──────
+    {
+      label: 'Loop',
+      group: 1,
+      controls: [
         { kind: 'knob', slider: 39, expect: 'Loop length', label: 'Length', format: (v) => `${Math.round(v)}` },
+        // Decoupling what you see from what you hear is the point of this
+        // switch, so it sits with the pattern controls rather than the clock.
+        { kind: 'toggle', slider: 56, expect: 'Follow Current Pattern', label: 'Follow' },
       ],
     },
     {
       label: 'Speed',
-      group: 0,
+      group: 1,
       controls: [
         { kind: 'knob', slider: 1, expect: 'Current speed', label: 'Speed', format: speed },
         { kind: 'toggle', slider: 38, expect: 'Enable speed override', label: 'Override' },
@@ -62,7 +101,7 @@ export const midiArpModule: ModuleDef = {
     },
     {
       label: 'Clock',
-      group: 0,
+      group: 1,
       controls: [
         // The plugin draws these as Host, Free, MIDI but numbers them 0, 2, 1.
         { kind: 'segmented', slider: 54, expect: 'Time Mode', label: 'Clock', options: [
@@ -74,7 +113,7 @@ export const midiArpModule: ModuleDef = {
     },
     {
       label: 'Notes',
-      group: 0,
+      group: 1,
       controls: [
         { kind: 'knob', slider: 3, expect: 'Max Polyphony', label: 'Voices', format: (v) => `${Math.round(v)}` },
         { kind: 'knob', slider: 5, expect: 'Extra octaves', label: 'Octaves', format: (v) => `${Math.round(v)}` },
@@ -94,7 +133,7 @@ export const midiArpModule: ModuleDef = {
       // really a count — but they are eight parameters, and eight switches is
       // the honest way to drive them from here.
       label: 'Grid rows',
-      group: 0,
+      group: 1,
       controls: [
         { kind: 'toggle', slider: 42, expect: 'Enable Velocity', label: 'Vel' },
         { kind: 'toggle', slider: 43, expect: 'Enable Mod', label: 'Mod' },
@@ -112,7 +151,7 @@ export const midiArpModule: ModuleDef = {
     // ── Setup: what the plugin keeps behind right-click menus ──
     {
       label: 'MIDI',
-      group: 1,
+      group: 2,
       controls: [
         { kind: 'knob', slider: 24, expect: 'In channel', label: 'In', format: (v) => (v < 1 ? 'All' : `${Math.round(v)}`) },
         { kind: 'knob', slider: 25, expect: 'Out channel', label: 'Out', format: (v) => `${Math.round(v)}` },
@@ -121,7 +160,7 @@ export const midiArpModule: ModuleDef = {
     },
     {
       label: 'Ranges',
-      group: 1,
+      group: 2,
       controls: [
         { kind: 'knob', slider: 6, expect: 'Minimum Velocity', label: 'Vel min', format: (v) => `${Math.round(v)}` },
         { kind: 'knob', slider: 7, expect: 'Maximum Velocity', label: 'Vel max', format: (v) => `${Math.round(v)}` },
@@ -131,7 +170,7 @@ export const midiArpModule: ModuleDef = {
     },
     {
       label: 'Reset',
-      group: 1,
+      group: 2,
       controls: [
         { kind: 'toggle', slider: 57, expect: 'Reset On Cc', label: 'On CC' },
         { kind: 'knob', slider: 40, expect: 'CC which resets MIDI position', label: 'CC', format: (v) => `${Math.round(v)}` },
