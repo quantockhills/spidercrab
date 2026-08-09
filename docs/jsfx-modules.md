@@ -270,3 +270,22 @@ Two things to solve before it is worth doing:
 
 Neither is hard; both are more than the parameter approach needed. Worth
 revisiting when a second pattern-based plugin wants the same treatment.
+
+## Parameter ranges differ between JSFX and VST
+
+`TrackFX_GetParamEx` reports a value in the plugin's own range, and what that
+range *is* depends on the format:
+
+- **JSFX** declares it: `slider1:300<0,4000,20>Delay (ms)` reports 0..4000, in
+  milliseconds. A module formats it directly — `${Math.round(v)} ms`.
+- **Native VSTs** commonly expose 0..1 and do their own formatting, so the
+  same call reports 0.06 for the same delay. A module has to scale —
+  `${Math.round(v * 5000)} ms` — and the scale factor is the plugin's, found
+  by reading real values rather than assumed.
+
+Neither needs rescaling by min/max; the ranges are simply different. Assuming
+the first is what made Chorus read 62251 ms. Assuming the second is universal
+is what made a working Stock delay module look broken on inspection.
+
+`tools/fx_dump.js` prints value, range and formatted string side by side,
+which settles it in one command.
