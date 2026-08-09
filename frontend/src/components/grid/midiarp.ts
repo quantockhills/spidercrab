@@ -75,12 +75,14 @@ export const midiArpModule: ModuleDef = {
           label: 'Pattern',
           help: 'Tap an empty step to start a note. Drag sideways to hold it '
             + 'across several steps. Tap a note to remove it. Each row is one '
-            + 'voice of the chord you play in.',
+            + 'voice of the chord you play in. Dimmed steps sit past the loop '
+            + 'length and never play — shorten Length for an eight-step pattern.',
           rows: 5,
           cols: 32,
           firstSlider: 60,
           rowOffsetSlider: 58,
           colPageSlider: 59,
+          loopLengthSlider: 39,
           rowNames: {
             50: 'Mod', 51: 'Vel',
             52: 'CC1', 53: 'CC2', 54: 'CC3', 55: 'CC4',
@@ -114,6 +116,18 @@ export const midiArpModule: ModuleDef = {
             + 'off this is only what you are looking at, not what is playing, so '
             + 'you can write one pattern while another sounds.',
         },
+        {
+          kind: 'knob', slider: 39, expect: 'Loop length', label: 'Length', format: whole,
+          help: 'How many steps the pattern plays before it starts again. Set it to '
+            + '8 for an eight-step pattern; the steps past it dim in the grid and '
+            + 'never sound, but keep whatever you drew there.',
+        },
+        {
+          kind: 'toggle', slider: 56, expect: 'Follow Current Pattern', label: 'Follow',
+          help: 'On, the grid always shows the pattern that is playing. Off, it '
+            + 'stays where you left it, so you can edit one pattern while another '
+            + 'sounds.',
+        },
       ],
     },
     {
@@ -131,23 +145,6 @@ export const midiArpModule: ModuleDef = {
     },
 
     // ── Arp: the rest of the plugin's control bar, in its order ──
-    {
-      label: 'Loop',
-      group: 1,
-      controls: [
-        {
-          kind: 'knob', slider: 39, expect: 'Loop length', label: 'Length', format: whole,
-          help: 'How many steps the pattern plays before it starts again. Shorter '
-            + 'than the pattern you drew simply loops earlier.',
-        },
-        {
-          kind: 'toggle', slider: 56, expect: 'Follow Current Pattern', label: 'Follow',
-          help: 'On, the grid always shows the pattern that is playing. Off, it '
-            + 'stays where you left it, so you can edit one pattern while another '
-            + 'sounds.',
-        },
-      ],
-    },
     {
       label: 'Speed',
       group: 1,

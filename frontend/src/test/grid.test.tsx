@@ -724,9 +724,9 @@ describe('MIDI ARP module', () => {
   it('carries the controls the plugin puts on its own bar', () => {
     const arp = midiArpModule.panels.filter((p) => p.group === 1)
       .flatMap((p) => p.controls).map((c) => c.label);
-    // Pattern selection moved next to the grid it selects; the rest of the
-    // plugin's bar lives here.
-    for (const label of ['Follow', 'Length', 'Speed', 'Swing',
+    // Anything that governs what the grid shows — pattern, length, follow —
+    // moved next to the grid. The rest of the plugin's bar lives here.
+    for (const label of ['Speed', 'Override', 'Swing',
       'Voices', 'Octaves', 'Repeat', 'Sort notes']) {
       expect(arp).toContain(label);
     }
@@ -1100,5 +1100,44 @@ describe('pattern shapes', () => {
   it('leaves nothing behind for Clear', () => {
     const onChange = apply('Clear');
     expect(onChange.mock.calls.every(([, v]) => v === 0)).toBe(true);
+  });
+});
+
+describe('loop length in the grid', () => {
+  const control = midiArpModule.panels.flatMap((p) => p.controls)
+    .find((c) => c.kind === 'notegrid')!;
+
+  function params(loopLength: number): FxParam[] {
+    const out: FxParam[] = [
+      { index: 38, name: 'Loop length', value: loopLength, min: 2, max: 64, mid: 32 },
+      { index: 57, name: 'Grid row offset', value: 0, min: 0, max: 55, mid: 27 },
+      { index: 58, name: 'Grid column page', value: 0, min: 0, max: 1, mid: 0 },
+    ];
+    for (let r = 0; r < 5; r++) {
+      for (let c = 0; c < 32; c++) {
+        out.push({ index: 59 + r * 32 + c, name: `Step ${r},${c}`, value: 0, min: -16, max: 16, mid: 0 });
+      }
+    }
+    return out;
+  }
+
+  const dim = (el: Element) => el.className.includes('opacity-25');
+
+  it('dims the steps an eight-step pattern never reaches', () => {
+    render(<NoteGrid control={control as never} params={params(8)} onChange={vi.fn()} />);
+    expect(dim(screen.getByLabelText('Row 0 step 8'))).toBe(false);
+    expect(dim(screen.getByLabelText('Row 0 step 9'))).toBe(true);
+    expect(dim(screen.getByLabelText('Row 0 step 32'))).toBe(true);
+  });
+
+  it('dims nothing when the loop fills the window', () => {
+    render(<NoteGrid control={control as never} params={params(32)} onChange={vi.fn()} />);
+    expect(dim(screen.getByLabelText('Row 0 step 32'))).toBe(false);
+  });
+
+  it('keeps Length beside the grid rather than a tab away', () => {
+    const patternTab = midiArpModule.panels.filter((p) => p.group === 0)
+      .flatMap((p) => p.controls).map((c) => c.label);
+    expect(patternTab).toContain('Length');
   });
 });

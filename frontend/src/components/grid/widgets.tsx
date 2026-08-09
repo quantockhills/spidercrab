@@ -650,6 +650,13 @@ export function NoteGrid({
 
   const rowOffset = Math.round(
     resolveParam(params, { slider: control.rowOffsetSlider })?.value ?? 0);
+  const colPage = Math.round(
+    resolveParam(params, { slider: control.colPageSlider ?? -1 })?.value ?? 0);
+  // Steps at or past the loop length never play. The plugin greys them out;
+  // without that an eight-step pattern looks identical to a thirty-two.
+  const loopLength = control.loopLengthSlider
+    ? Math.round(resolveParam(params, { slider: control.loopLengthSlider })?.value ?? cols)
+    : cols;
 
   // Live preview of the run being dragged, so the cells fill under the finger
   // rather than only on release.
@@ -776,6 +783,7 @@ export function NoteGrid({
               const inDrag = drag && drag.row === r
                 && c >= Math.min(drag.from, drag.to) && c <= Math.max(drag.from, drag.to);
               const on = inDrag || v !== 0;
+              const past = colPage * cols + c >= loopLength;
               // A held cell joins the one before it, so the run reads as a bar.
               const held = inDrag ? c !== Math.min(drag.from, drag.to) : v < 0;
               return (
@@ -786,7 +794,8 @@ export function NoteGrid({
                   aria-pressed={v !== 0}
                   className={`h-6 flex-1 min-w-2 transition-colors ${
                     on ? 'bg-[var(--accent-orange)]' : 'bg-[var(--bg-tertiary)]'
-                  } ${held ? '' : 'ml-px'} ${c % 4 === 0 && !held ? 'ring-1 ring-inset ring-[var(--border)]' : ''}`}
+                  } ${past ? 'opacity-25' : ''} ${held ? '' : 'ml-px'} ${
+                    c % 4 === 0 && !held ? 'ring-1 ring-inset ring-[var(--border)]' : ''}`}
                 />
               );
             })}

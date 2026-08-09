@@ -110,6 +110,12 @@ export interface NoteGridControl extends ControlBase {
   /** Pages the window across columns, for patterns longer than `cols`. */
   colPageSlider?: number;
   /**
+   * The parameter holding the loop length, so steps past it can be dimmed.
+   * The plugin draws the same overlay; without it there is no way to see
+   * where an eight-step pattern stops.
+   */
+  loopLengthSlider?: number;
+  /**
    * Names for the pattern's fixed rows, keyed by absolute row index. The arp
    * keeps its modulators at 50-59; everything below is a note line.
    */
