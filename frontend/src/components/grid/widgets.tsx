@@ -441,9 +441,15 @@ export function Segmented({
     ?? (control.options.length <= 6 ? control.options.length : Math.ceil(control.options.length / 8));
   return (
     <div className="flex flex-col gap-1.5 select-none" role="group" aria-label={control.label}>
+      {/*
+        Columns sized to their content, floored at a fingertip. 1fr divided a
+        width set by the knobs beside them — about twenty pixels a column —
+        while each button still demanded its 44px minimum, so the buttons
+        overflowed their own cells and printed on top of each other.
+      */}
       <div
-        className="grid gap-1"
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+        className="grid gap-1 w-max"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(2.75rem, max-content))` }}
       >
         {control.options.map((o) => (
           <button

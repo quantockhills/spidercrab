@@ -605,7 +605,9 @@ function Panel({
         className={`${
           isSliderPanel
             ? 'flex flex-col gap-2 w-full'
-            : `grid grid-flow-col gap-x-4 gap-y-2 justify-start content-center flex-1 transition-opacity ${
+            // items-center, not the default stretch: a grid item stretches to
+            // its row, which made a fader twice its own height.
+            : `grid grid-flow-col gap-x-4 gap-y-2 justify-start items-center content-center flex-1 transition-opacity ${
               off ? 'opacity-40' : ''
             }`
         }`}

@@ -4,7 +4,7 @@ import { findModule, cleanFxName, resolveParam, type ModuleControl } from '../co
 import { yutaniModule } from '../components/grid/yutani';
 import { midiArpModule } from '../components/grid/midiarp';
 import { GridView, fitScaleFor, maxRowsFor, shapeFor } from '../components/grid/GridView';
-import { NoteGrid, HelpLabel, noteName, shapeSample } from '../components/grid/widgets';
+import { NoteGrid, HelpLabel, noteName, shapeSample, Segmented } from '../components/grid/widgets';
 import type { Track, FxInfo, FxParam } from '../hooks/useReaper';
 
 // ── Module matching ──────────────────────────────────────────
@@ -1496,5 +1496,26 @@ describe('Distortion module', () => {
 
   it('explains every control', () => {
     expect(controls.filter((c) => !c.help).map((c) => c.label)).toEqual([]);
+  });
+});
+
+describe('segmented control sizing', () => {
+  it('sizes its columns to the labels, not to whatever sits beside it', () => {
+    // 1fr divided a width set by the neighbouring knobs, while each button
+    // still demanded its 44px minimum — so buttons overflowed their own cells
+    // and printed on top of one another.
+    const control = {
+      kind: 'segmented' as const, slider: 1, label: 'Shape',
+      options: [{ value: 0, label: 'Soft' }, { value: 1, label: 'Fuzz' },
+        { value: 2, label: 'Curve' }],
+    };
+    const param: FxParam = {
+      index: 0, name: 'Shape', value: 0, min: 0, max: 2, mid: 1,
+    };
+    render(<Segmented param={param} control={control} onChange={vi.fn()} />);
+
+    const grid = screen.getByRole('button', { name: 'Soft' }).parentElement!;
+    expect(grid.style.gridTemplateColumns).toContain('max-content');
+    expect(grid.className).toContain('w-max');
   });
 });
