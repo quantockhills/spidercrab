@@ -37,7 +37,7 @@ import sys
 # put meaningless parameters in the host and risk the plugin's own state
 # machine being driven from outside.
 SKIP = re.compile(
-    r'^(VERSION|version|has_wavetable_data|microtuned|initialized|'
+    r'^(VERSION|version|file_version|has_wavetable_data|microtuned|initialized|'
     r'estimate_pitch|last_\w+|.*_tmp)$')
 
 MAX_SLIDER = 256
@@ -97,7 +97,10 @@ MANUAL_RANGES = {
     'randomizing_modulator_a': (0, 1, 1),
     'randomizing_modulator_b': (0, 1, 1),
     # ── MIDI ARP ────────────────────────────────────────────────
-    'file_version':          (0, 1, 0),
+    # Nudged by `+= pattern_toggle.change` rather than assigned from a widget,
+    # so nothing infers its bounds. max_stored_patterns is 64; declaring it
+    # 0..1 left the Grid able to reach patterns 0 and 1 and no others.
+    'viewed_pattern_index':  (0, 64, 1),
     'enable_cc1':            (0, 1, 1),
     'enable_cc2':            (0, 1, 1),
     'enable_cc3':            (0, 1, 1),
@@ -107,7 +110,6 @@ MANUAL_RANGES = {
     'enable_cc7':            (0, 1, 1),
     'enable_cc8':            (0, 1, 1),
     'disable_midi':          (0, 1, 1),
-    'viewed_pattern_index':  (0, 1, 0),
     'reset_on_cc':           (0, 1, 1),
 }
 
@@ -357,6 +359,27 @@ def infer_ranges(src):
     # A toggle's value is whatever processMouseToggle returns: 0 or 1.
     for v in re.findall(r'(\w+)\s*=\s*\w+\.processMouseToggle', gfx):
         note(v, 0, 1, 1)
+
+    # A row of selection_button() calls is a discrete choice, and the values
+    # passed name its options:
+    #
+    #     time_mode.selection_button(0, ... "Host" ...);
+    #     time_mode.selection_button(2, ... "Free" ...);
+    #     time_mode.selection_button(1, ... "MIDI" ...);
+    #     time_mode = time_mode.value;
+    #
+    # Written as `X = X.value` that last line is indistinguishable from a
+    # normalised knob, and read as one it becomes a continuous 0..1 control --
+    # which puts Free out of reach and lets the rest land on 0.5. Has to run
+    # before the knob patterns below, which would claim the variable first.
+    buttons = {}
+    for inst, val in re.findall(r'(\w+)\.selection_button\(\s*(-?\d+)', gfx):
+        buttons.setdefault(inst, set()).add(int(val))
+    for v, inst in re.findall(r'(\w+)\s*=\s*(\w+)\.value\s*;', gfx):
+        vals = buttons.get(inst)
+        if vals:
+            # -1 marks a button that toggles rather than selects.
+            note(v, 0, 1 if vals == {-1} else max(vals), 1)
     # Bipolar knobs: X = 2 * knob.value - N
     for v, n in re.findall(r'(\w+)\s*=\s*2\s*\*\s*\w+\.value\s*-\s*([\d.]+)', gfx):
         note(v, -float(n), float(n), 0)
