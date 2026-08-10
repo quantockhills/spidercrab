@@ -54,9 +54,16 @@ export function SequencerView({ tracks }: Props) {
   const [empty, setEmpty] = useState(false);
   const [slot, setSlot] = useState({ col: 0, row: 0 });
   const [sent, setSent] = useState(false);
+  const [autoSend, setAutoSend] = useState(false);
 
   const gridRef = useRef<Grid | null>(null);
   gridRef.current = grid;
+
+  const autoSendRef = useRef(false);
+  autoSendRef.current = autoSend;
+  const slotRef = useRef({ col: 0, row: 0 });
+
+  slotRef.current = slot;
 
   // ── Loading ────────────────────────────────────────────────
 
@@ -106,12 +113,23 @@ export function SequencerView({ tracks }: Props) {
     setBusy(true);
     const notes = gridToNotes(next, pattern.ppqStart, pattern.ppqEnd);
     const ok = await writePattern(trackIdx, itemIdx, notes, pattern.ext);
-    setBusy(false);
     if (!ok) {
+      setBusy(false);
       setError('Write failed — reloading from the item.');
       void load(trackIdx, itemIdx, steps);
+      return;
     }
-  }, [pattern, trackIdx, itemIdx, writePattern, load, steps]);
+
+    // Forward to Playtime if asked. Whether replacing a slot interrupts a clip
+    // that is currently playing is not documented anywhere, which is exactly
+    // why this is a switch rather than always-on: one edit while a clip runs
+    // answers it, and the answer is kept either way.
+    if (autoSendRef.current) {
+      const { col, row } = slotRef.current;
+      await sendToSlot(trackIdx, itemIdx, col, row);
+    }
+    setBusy(false);
+  }, [pattern, trackIdx, itemIdx, writePattern, load, steps, sendToSlot]);
 
   const mutate = useCallback((fn: (cells: Step[][]) => void) => {
     setGrid((g) => {
@@ -316,6 +334,16 @@ export function SequencerView({ tracks }: Props) {
             />
           </div>
           <button
+            onClick={() => setAutoSend((a) => !a)}
+            className={`px-3 py-1.5 text-xs rounded active:brightness-90 ${
+              autoSend
+                ? 'bg-[var(--accent-green)]/25 text-[var(--accent-green)]'
+                : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'}`}
+            title="Send to the slot after every edit"
+          >
+            Auto
+          </button>
+          <button
             onClick={handleSend}
             disabled={busy}
             className={`px-3 py-1.5 text-xs rounded active:brightness-90 disabled:opacity-50
@@ -396,7 +424,7 @@ export function SequencerView({ tracks }: Props) {
           <br />
           <b>Send to Playtime</b> makes it a clip — which loops, launches, and
           plays with the transport stopped. It sends a copy, so send again after
-          editing.
+          editing — or turn <b>Auto</b> on to send after every edit.
         </p>
       </div>
     </div>
