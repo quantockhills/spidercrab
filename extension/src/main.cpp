@@ -62,6 +62,15 @@
 #define REAPERAPI_WANT_GetPlayPosition
 #define REAPERAPI_WANT_CreateNewMIDIItemInProj
 #define REAPERAPI_WANT_MIDI_InsertNote
+#define REAPERAPI_WANT_TakeIsMIDI
+#define REAPERAPI_WANT_MIDI_CountEvts
+#define REAPERAPI_WANT_MIDI_GetNote
+#define REAPERAPI_WANT_MIDI_SetNote
+#define REAPERAPI_WANT_MIDI_DeleteNote
+#define REAPERAPI_WANT_MIDI_Sort
+#define REAPERAPI_WANT_MIDI_GetPPQPosFromProjTime
+#define REAPERAPI_WANT_MIDI_GetProjTimeFromPPQPos
+#define REAPERAPI_WANT_GetSetMediaItemTakeInfo_String
 #define REAPERAPI_WANT_SetMediaItemInfo_Value
 #define REAPERAPI_WANT_GetMediaItemInfo_Value
 #define REAPERAPI_WANT_AddMediaItemToTrack
@@ -611,6 +620,21 @@ static bool InitializeCoreServices()
     api.UpdateArrange               = UpdateArrange;
     api.GetActiveTake               = GetActiveTake;
     api.GetMediaItemTake_Source     = GetMediaItemTake_Source;
+
+    // MIDI. CreateNewMIDIItemInProj and MIDI_InsertNote were declared and
+    // REAPERAPI_WANT-ed but never assigned, so both were null at runtime and
+    // sequencer/convertToClip always failed its own availability guard.
+    api.CreateNewMIDIItemInProj      = CreateNewMIDIItemInProj;
+    api.MIDI_InsertNote              = MIDI_InsertNote;
+    api.TakeIsMIDI                   = TakeIsMIDI;
+    api.MIDI_CountEvts               = MIDI_CountEvts;
+    api.MIDI_GetNote                 = MIDI_GetNote;
+    api.MIDI_SetNote                 = MIDI_SetNote;
+    api.MIDI_DeleteNote              = MIDI_DeleteNote;
+    api.MIDI_Sort                    = MIDI_Sort;
+    api.MIDI_GetPPQPosFromProjTime   = MIDI_GetPPQPosFromProjTime;
+    api.MIDI_GetProjTimeFromPPQPos   = MIDI_GetProjTimeFromPPQPos;
+    api.GetSetMediaItemTakeInfo_String = GetSetMediaItemTakeInfo_String;
     api.Master_GetTempo             = Master_GetTempo;
     api.GetSetMediaItemTakeInfo     = GetSetMediaItemTakeInfo;
     api.GetMediaFileMetadata        = GetMediaFileMetadata;

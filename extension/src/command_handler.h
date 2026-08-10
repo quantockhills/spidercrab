@@ -103,6 +103,26 @@ struct ReaperAPI {
     // MIDI item creation functions (Issue #92 — convert sequencer to clip)
     MediaItem* (*CreateNewMIDIItemInProj)(MediaTrack* track, double starttime, double endtime, const bool* qnInOptional) = nullptr;
     bool (*MIDI_InsertNote)(MediaItem_Take* take, bool selected, bool muted, double startppqpos, double endppqpos, int chan, int pitch, int vel, const bool* noSortInOptional) = nullptr;
+
+    // Reading MIDI back. The extension could previously only write it, so a
+    // pattern baked into an item was invisible from then on.
+    //
+    // MIDI_SetNote's own header warns that moving several notes at once is
+    // safer done by deleting and re-inserting; and deleting renumbers every
+    // note after the one removed, so batch deletes must walk backwards.
+    bool (*TakeIsMIDI)(MediaItem_Take* take) = nullptr;
+    int  (*MIDI_CountEvts)(MediaItem_Take* take, int* notecntOut, int* ccevtcntOut, int* textsyxevtcntOut) = nullptr;
+    bool (*MIDI_GetNote)(MediaItem_Take* take, int noteidx, bool* selectedOut, bool* mutedOut, double* startppqposOut, double* endppqposOut, int* chanOut, int* pitchOut, int* velOut) = nullptr;
+    bool (*MIDI_SetNote)(MediaItem_Take* take, int noteidx, const bool* selectedInOptional, const bool* mutedInOptional, const double* startppqposInOptional, const double* endppqposInOptional, const int* chanInOptional, const int* pitchInOptional, const int* velInOptional, const bool* noSortInOptional) = nullptr;
+    bool (*MIDI_DeleteNote)(MediaItem_Take* take, int noteidx) = nullptr;
+    void (*MIDI_Sort)(MediaItem_Take* take) = nullptr;
+    double (*MIDI_GetPPQPosFromProjTime)(MediaItem_Take* take, double projtime) = nullptr;
+    double (*MIDI_GetProjTimeFromPPQPos)(MediaItem_Take* take, double ppqpos) = nullptr;
+
+    // Take ext data — where the per-step detail that MIDI cannot express
+    // (probability, ratchets, per-row length) is stored, alongside the notes
+    // that actually play. This is the convention MPL's RS5k sequencer uses.
+    bool (*GetSetMediaItemTakeInfo_String)(MediaItem_Take* tk, const char* parmname, char* stringNeedBig, bool setNewValue) = nullptr;
     bool (*SetMediaItemInfo_Value)(MediaItem* item, const char* parmname, double newvalue) = nullptr;
     double (*GetMediaItemInfo_Value)(MediaItem* item, const char* parmname) = nullptr;
     MediaItem* (*AddMediaItemToTrack)(MediaTrack* tr) = nullptr;
@@ -318,6 +338,10 @@ private:
     void HandleSampleGetCachedPaths(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsGetAll(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsSet(int clientId, const std::string& id, const std::string& params);
+    // Reading patterns back out of MIDI items.
+    void HandleSeqListItems(int clientId, const std::string& id, const std::string& params);
+    void HandleSeqReadPattern(int clientId, const std::string& id, const std::string& params);
+
     // Global ext state — the only channel into a Lua script with its own GUI.
     void HandleExtStateGet(int clientId, const std::string& id, const std::string& params);
     void HandleExtStateGetMany(int clientId, const std::string& id, const std::string& params);

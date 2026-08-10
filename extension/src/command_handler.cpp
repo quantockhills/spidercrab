@@ -60,6 +60,8 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/getCacheStatus"]  = &CommandHandler::HandleSampleGetCacheStatus;
     m_commandMap["sample/getAllCached"]    = &CommandHandler::HandleSampleGetAllCached;
     m_commandMap["sample/getCachedPaths"] = &CommandHandler::HandleSampleGetCachedPaths;
+    m_commandMap["seq/listItems"]                 = &CommandHandler::HandleSeqListItems;
+    m_commandMap["seq/readPattern"]               = &CommandHandler::HandleSeqReadPattern;
     m_commandMap["extstate/get"]                  = &CommandHandler::HandleExtStateGet;
     m_commandMap["extstate/getMany"]              = &CommandHandler::HandleExtStateGetMany;
     m_commandMap["extstate/set"]                  = &CommandHandler::HandleExtStateSet;
