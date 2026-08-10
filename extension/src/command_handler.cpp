@@ -77,13 +77,6 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["matrix/clearSlot"]        = &CommandHandler::HandleMatrixClearSlot;
     m_commandMap["matrix/pollState"]        = &CommandHandler::HandleMatrixPollState;
     m_commandMap["matrix/setSlotReverse"]    = &CommandHandler::HandleMatrixSetSlotReverse;
-    m_commandMap["sequencer/getAll"]        = &CommandHandler::HandleSequencerGetAll;
-    m_commandMap["sequencer/toggleStep"]    = &CommandHandler::HandleSequencerToggleStep;
-    m_commandMap["sequencer/setStep"]       = &CommandHandler::HandleSequencerSetStep;
-    m_commandMap["sequencer/clearAll"]      = &CommandHandler::HandleSequencerClearAll;
-    m_commandMap["sequencer/setLength"]     = &CommandHandler::HandleSequencerSetLength;
-    m_commandMap["sequencer/setBaseNote"]   = &CommandHandler::HandleSequencerSetBaseNote;
-    m_commandMap["sequencer/getPlayhead"]   = &CommandHandler::HandleSequencerGetPlayhead;
     m_commandMap["fxchain/getDirectory"]    = &CommandHandler::HandleFxChainGetDirectory;
     m_commandMap["fxchain/save"]            = &CommandHandler::HandleFxChainSave;
     m_commandMap["fxchain/load"]            = &CommandHandler::HandleFxChainLoad;
@@ -97,7 +90,6 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fx/getPreset"]            = &CommandHandler::HandleGetFxPreset;
     m_commandMap["fx/setPreset"]            = &CommandHandler::HandleSetFxPreset;
     m_commandMap["fx/getAllPresetNames"]    = &CommandHandler::HandleGetAllFxPresetNames;
-    m_commandMap["sequencer/convertToClip"] = &CommandHandler::HandleSequencerConvertToClip;
     m_commandMap["midi/event"]              = &CommandHandler::HandleMidiEvent;
     m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
     m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;

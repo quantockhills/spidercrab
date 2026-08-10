@@ -24,8 +24,6 @@ export type { DirEntry } from './useSampleBrowser';
 export { usePlaytime } from './usePlaytime';
 export type { ClipSlot, MatrixData } from './usePlaytime';
 
-export { useSequencer } from './useSequencer';
-export type { StepData, SequencerData } from './useSequencer';
 
 // ── Backward-compat composite ──
 export { useReaper } from './useReaper';

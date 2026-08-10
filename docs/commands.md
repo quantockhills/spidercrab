@@ -92,17 +92,24 @@ Responses come back keyed by `id`. Grouped by namespace below.
 | `matrix/clearSlot` | Clear a slot (OSC → Playtime ClearSlot) |
 | `matrix/setSlotReverse` | Reverse a clip in a slot |
 
-## sequencer/  (step sequencer)
+## seq/  (step sequencer)
+Patterns live in MIDI items, not in the extension. See
+[issue #141](https://github.com/quantockhills/spidercrab/issues/141).
+
 | Command | Purpose |
 |---------|---------|
-| `sequencer/getAll` | Read the grid |
-| `sequencer/getPlayhead` | Current step position |
-| `sequencer/toggleStep` | Toggle a step |
-| `sequencer/setStep` | Set a step (with velocity) |
-| `sequencer/setLength` | Set pattern length |
-| `sequencer/setBaseNote` | Set the base MIDI note |
-| `sequencer/clearAll` | Clear the pattern |
-| `sequencer/convertToClip` | Bake the pattern into a Playtime clip |
+| `seq/listItems` | MIDI items on a track, with take names |
+| `seq/readPattern` | Notes and per-step ext data for one item |
+
+## extstate/  (REAPER's shared key/value store)
+The only channel into a Lua script that draws its own window — such a script
+owns no track and no FX slot, so nothing else reaches it.
+
+| Command | Purpose |
+|---------|---------|
+| `extstate/get` | One key, with `exists` alongside the value |
+| `extstate/getMany` | A batch of keys, returned as an object |
+| `extstate/set` | Write a key (not persisted unless asked) |
 
 ## playtime/
 | Command | Purpose |

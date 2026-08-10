@@ -21,7 +21,7 @@ The app opens on the **Tracks** tab. You can move the tab bar to the top or bott
 - **Got a plugin with a proper layout?** → [Grid](grid.md)
 - **Want to work with samples?** → [Samples & Media](media.md)
 - **Want to launch loops?** → [Clip Launcher](playtime.md)
-- *(A [step sequencer](sequencer.md) exists but is hidden in the current release.)*
+- *(The [step sequencer](sequencer.md) is being rebuilt — the old one could not save a pattern anywhere it would survive.)*
 
 ## A note on staying in sync
 

@@ -6,7 +6,6 @@ import { FxBrowser } from './components/FxBrowser';
 import { ParamControl } from './components/ParamControl';
 import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
-import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
 import { GridView } from './components/grid/GridView';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -20,7 +19,6 @@ type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 // The step sequencer is built but not yet working reliably, so it's hidden
 // from the UI for now. All of its code is intact — flip this to true to bring
 // the Session/Sequencer toggle back once it's verified.
-const SHOW_SEQUENCER = false;
 
 // Grid shows the selected track's plugins as a pannable strip of purpose-built
 // device layouts. Only Chorus has a module so far, and the layout format is
@@ -95,18 +93,10 @@ function AppInner() {
     samplerFromSlot,
     samplerFromPath,
     samplerSetReverse,
-    sequencer,
-    getSequencer,
-    toggleStep,
-    setStep,
-    seqClearAll,
-    seqSetLength,
-    seqSetBaseNote,
     getFxTags,
     setFxTags,
     launchPlaytime,
     checkPlaytimeAvailable,
-    convertToClip,
   } = useReaper();
 
   const { preference, isDark, setTheme } = useTheme();
@@ -122,7 +112,6 @@ function AppInner() {
   useEffect(() => {
     localStorage.setItem('navPosition', navPosition);
   }, [navPosition]);
-  const [sessionMode, setSessionMode] = useState<'session' | 'sequencer'>('session');
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
 
   // Sample directory paths (Issue #101)
@@ -485,34 +474,8 @@ function AppInner() {
 
         {activeTab === 'clips' && (
           <div className="flex flex-col h-full min-h-0">
-            {/* Mode toggle — hidden while the sequencer is disabled */}
-            {SHOW_SEQUENCER && (
-            <div className="flex border-b border-[var(--border)]">
-              <button
-                onClick={() => setSessionMode('session')}
-                className={`flex-1 py-2 text-xs font-medium transition-colors ${
-                  sessionMode === 'session'
-                    ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
-                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
-                }`}
-              >
-                Session
-              </button>
-              <button
-                onClick={() => setSessionMode('sequencer')}
-                className={`flex-1 py-2 text-xs font-medium transition-colors ${
-                  sessionMode === 'sequencer'
-                    ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
-                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]'
-                }`}
-              >
-                Sequencer
-              </button>
-            </div>
-            )}
             <div className="flex-1 overflow-hidden min-h-0">
-              {(sessionMode === 'session' || !SHOW_SEQUENCER) ? (
-                <SessionView
+              <SessionView
                   matrix={matrix}
                   tracks={tracks}
                   getMatrix={getMatrix}
@@ -537,19 +500,6 @@ function AppInner() {
                   onToggleRecordMode={handleToggleRecordMode}
                   onNavigateToTrack={handleNavigateToTrack}
                 />
-              ) : (
-                <SequencerView
-                  sequencer={sequencer}
-                  getSequencer={getSequencer}
-                  toggleStep={toggleStep}
-                  setStep={setStep}
-                  clearAll={seqClearAll}
-                  setLength={seqSetLength}
-                  setBaseNote={seqSetBaseNote}
-                  convertToClip={convertToClip}
-                  onSwitchToSession={() => setSessionMode('session')}
-                />
-              )}
             </div>
           </div>
         )}

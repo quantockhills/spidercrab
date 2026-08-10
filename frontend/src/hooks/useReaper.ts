@@ -24,7 +24,6 @@ import { useFx } from './useFx';
 import { useFxChains } from './useFxChains';
 import { useSampleBrowser } from './useSampleBrowser';
 import { usePlaytime } from './usePlaytime';
-import { useSequencer } from './useSequencer';
 
 // Re-export all types for backward compatibility
 export type { Track } from './useTrackState';
@@ -32,7 +31,6 @@ export type { FxInfo, EnumeratedFx, FxParam, FxPresetInfo, FxPresetNames } from 
 export type { DirEntry, SampleTagData } from './useSampleBrowser';
 export type { FxChainEntry, FxChainInfo, FxChainSearchResult, FxChainCachedSearchResult } from './useFxChains';
 export type { ClipSlot, MatrixData } from './usePlaytime';
-export type { StepData, SequencerData } from './useSequencer';
 
 export interface UseReaperOptions {
   host?: string;
@@ -49,7 +47,6 @@ export function useReaper(_opts?: UseReaperOptions) {
   const fxChains = useFxChains();
   const sampleBrowser = useSampleBrowser();
   const playtime = usePlaytime();
-  const sequencer = useSequencer();
 
   // Generic sendCommand for hooks that need raw access (e.g. useAudioPreview)
   const sendCommand = useCallback(
@@ -84,12 +81,9 @@ export function useReaper(_opts?: UseReaperOptions) {
     // From usePlaytime
     ...playtime,
 
-    // From useSequencer
-    ...sequencer,
 
     // Stubs for features not yet in domain hooks
     fxChainCycle: useCallback(async (_trackIdx: number, _dir: 'next' | 'prev', _chainPath?: string) => ({ success: false as boolean }), []),
-    convertToClip: useCallback(async (): Promise<{success: boolean; error?: string}> => ({ success: false, error: 'not implemented' }), []),
 
     // Low-level access (kept for backward compat)
     clientRef,

@@ -7,7 +7,6 @@
 #include "playtime_midi.h"
 #include "osc_sender.h"
 #include "osc_receiver.h"
-#include "sequencer_state.h"
 #include "fx_tags.h"
 #include "settings_store.h"
 #include "sample_tags.h"
@@ -266,7 +265,6 @@ private:
     OscReceiver   m_oscReceiver;
 
     // Step sequencer state (Issue #63)
-    SequencerState m_sequencerState;
 
     // Track the last param we set ourselves, so we can suppress
     // REAPER's OnFxParamChanged talkback (Issue #73)
@@ -405,13 +403,6 @@ private:
     void HandleMatrixSetSlotReverse(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — step sequencer (Issue #63)
-    void HandleSequencerGetAll(int clientId, const std::string& id, const std::string& params);
-    void HandleSequencerToggleStep(int clientId, const std::string& id, const std::string& params);
-    void HandleSequencerSetStep(int clientId, const std::string& id, const std::string& params);
-    void HandleSequencerClearAll(int clientId, const std::string& id, const std::string& params);
-    void HandleSequencerSetLength(int clientId, const std::string& id, const std::string& params);
-    void HandleSequencerSetBaseNote(int clientId, const std::string& id, const std::string& params);
-    void HandleSequencerGetPlayhead(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — Playtime 2 (Issue #81)
     void HandlePlaytimeIsAvailable(int clientId, const std::string& id, const std::string& params);
@@ -420,7 +411,6 @@ private:
     void HandlePlaytimeLaunch(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — sequencer convert to clip (Issue #92)
-    void HandleSequencerConvertToClip(int clientId, const std::string& id, const std::string& params);
 
     // Command handlers — chain search (Issue #103)
     void HandleFxChainSearchCached(int clientId, const std::string& id, const std::string& params);
