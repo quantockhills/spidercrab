@@ -296,3 +296,86 @@ void CommandHandler::HandleSeqWritePattern(
     payload += "}";
     SendResponse(clientId, id, true, payload);
 }
+
+// ------------------------------------------------------------
+// Creating somewhere to sequence.
+//
+// The point of the Steps tab is to get a pattern going quickly, and telling
+// someone "make a MIDI item first" is the app asking the user to do its job.
+// This makes the track and the item so that tapping a step is the first thing
+// that happens, not the fourth.
+//
+// It deliberately does NOT add an instrument. ReaSamplOmatic5000 with no
+// sample loaded is exactly as silent as no plugin at all, so adding one would
+// look like progress while changing nothing. Choosing sounds is a separate
+// job.
+// ------------------------------------------------------------
+
+void CommandHandler::HandleSeqCreateTrack(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.InsertTrackAtIndex || !m_api.CountTracks || !m_api.GetTrack
+        || !m_api.CreateNewMIDIItemInProj || !m_api.GetTrackMediaItem) {
+        SendResponse(clientId, id, false, "{\"error\":\"Required track APIs not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    std::string name = p1.getString("name");
+    JsonParser  p2(payloadStr);
+    const int   barsIn = atoi(p2.getString("bars").c_str());
+
+    if (name.empty())
+        name = "Steps";
+    const int bars = (barsIn > 0 && barsIn <= 64) ? barsIn : 2;
+
+    if (m_api.Undo_BeginBlock2)
+        m_api.Undo_BeginBlock2(nullptr);
+
+    const int trackIdx = m_api.CountTracks(nullptr);
+    m_api.InsertTrackAtIndex(trackIdx, true);
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        if (m_api.Undo_EndBlock2)
+            m_api.Undo_EndBlock2(nullptr, "Create sequencer track", 1 /* UNDO_STATE_TRACKCFG */);
+        SendResponse(clientId, id, false, "{\"error\":\"Track was not created\"}");
+        return;
+    }
+
+    if (m_api.GetSetMediaTrackInfo_String) {
+        std::vector<char> buf(name.begin(), name.end());
+        buf.push_back('\0');
+        m_api.GetSetMediaTrackInfo_String(track, "P_NAME", buf.data(), true);
+    }
+
+    // Four beats to the bar. REAPER can hold any time signature, but reading
+    // it back for one default-length item is more machinery than the guess is
+    // worth — the item can be dragged, and the grid divides whatever it finds.
+    const double bpm = m_api.Master_GetTempo ? m_api.Master_GetTempo() : 120.0;
+    const double barSeconds = (bpm > 0.0) ? (4.0 * 60.0 / bpm) : 2.0;
+    m_api.CreateNewMIDIItemInProj(track, 0.0, bars * barSeconds, nullptr);
+
+    // Report the item's index rather than assuming zero, so the caller can go
+    // straight to it.
+    int itemIdx = 0;
+    if (m_api.CountTrackMediaItems)
+        itemIdx = m_api.CountTrackMediaItems(track) - 1;
+    if (itemIdx < 0)
+        itemIdx = 0;
+
+    if (m_api.Undo_EndBlock2)
+        m_api.Undo_EndBlock2(nullptr, "Create sequencer track", 4 | 1);
+
+    if (m_api.UpdateArrange)
+        m_api.UpdateArrange();
+
+    std::string payload = "{";
+    payload += json_string("trackIdx") + ":" + std::to_string(trackIdx) + ",";
+    payload += json_string("itemIdx") + ":" + std::to_string(itemIdx) + ",";
+    payload += json_string("name") + ":" + json_string(name) + ",";
+    payload += json_string("bars") + ":" + std::to_string(bars);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}

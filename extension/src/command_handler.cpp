@@ -63,6 +63,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["seq/listItems"]                 = &CommandHandler::HandleSeqListItems;
     m_commandMap["seq/readPattern"]               = &CommandHandler::HandleSeqReadPattern;
     m_commandMap["seq/writePattern"]               = &CommandHandler::HandleSeqWritePattern;
+    m_commandMap["seq/createTrack"]                = &CommandHandler::HandleSeqCreateTrack;
     m_commandMap["extstate/get"]                  = &CommandHandler::HandleExtStateGet;
     m_commandMap["extstate/getMany"]              = &CommandHandler::HandleExtStateGetMany;
     m_commandMap["extstate/set"]                  = &CommandHandler::HandleExtStateSet;

@@ -346,6 +346,7 @@ private:
     void HandleSeqListItems(int clientId, const std::string& id, const std::string& params);
     void HandleSeqReadPattern(int clientId, const std::string& id, const std::string& params);
     void HandleSeqWritePattern(int clientId, const std::string& id, const std::string& params);
+    void HandleSeqCreateTrack(int clientId, const std::string& id, const std::string& params);
 
     // Global ext state — the only channel into a Lua script with its own GUI.
     void HandleExtStateGet(int clientId, const std::string& id, const std::string& params);

@@ -41,7 +41,7 @@ interface Props {
  * reading any numbers.
  */
 export function SequencerView({ tracks }: Props) {
-  const { listItems, readPattern, writePattern } = useSeqPattern();
+  const { listItems, readPattern, writePattern, createTrack } = useSeqPattern();
 
   const [trackIdx, setTrackIdx] = useState<number | null>(null);
   const [items, setItems] = useState<SeqItem[]>([]);
@@ -51,6 +51,7 @@ export function SequencerView({ tracks }: Props) {
   const [steps, setSteps] = useState(16);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [empty, setEmpty] = useState(false);
 
   const gridRef = useRef<Grid | null>(null);
   gridRef.current = grid;
@@ -72,7 +73,7 @@ export function SequencerView({ tracks }: Props) {
           return;
         }
       }
-      setError('No MIDI items in this project. Make one on a track to sequence it.');
+      setEmpty(true);
     })();
     return () => { cancelled = true; };
   }, [tracks, trackIdx, listItems]);
@@ -202,6 +203,39 @@ export function SequencerView({ tracks }: Props) {
   }, [commit]);
 
   // ── Render ─────────────────────────────────────────────────
+
+  const makeTrack = useCallback(async () => {
+    setBusy(true);
+    const made = await createTrack();
+    setBusy(false);
+    if (!made) { setError('Could not create a track.'); return; }
+    setEmpty(false);
+    setItems(await listItems(made.trackIdx));
+    setTrackIdx(made.trackIdx);
+    setItemIdx(made.itemIdx);
+  }, [createTrack, listItems]);
+
+  if (empty) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 px-8 text-center">
+        <p className="text-sm text-[var(--text-secondary)] max-w-xs">
+          Nothing to sequence yet.
+        </p>
+        <button
+          onClick={makeTrack}
+          disabled={busy}
+          className="px-5 py-3 text-sm rounded-lg bg-[var(--accent-green)]/20
+                     text-[var(--accent-green)] active:brightness-90 disabled:opacity-50"
+        >
+          {busy ? 'Creating…' : 'Create a sequencer track'}
+        </button>
+        <p className="text-[11px] text-[var(--text-secondary)]/60 max-w-xs">
+          Makes a two-bar MIDI item you can start tapping into. You will need an
+          instrument on the track to hear it.
+        </p>
+      </div>
+    );
+  }
 
   if (error && !grid) {
     return (

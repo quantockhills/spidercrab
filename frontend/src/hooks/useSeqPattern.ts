@@ -66,5 +66,20 @@ export function useSeqPattern() {
       return resp.success;
     }, [send]);
 
-  return { listItems, readPattern, writePattern };
+  /**
+   * Make a track with an empty MIDI item on it.
+   *
+   * An empty project should not be a dead end with instructions in it. The
+   * point of this tab is to get a pattern going quickly, so the first tap
+   * should be a step, not a trip to REAPER.
+   */
+  const createTrack = useCallback(
+    async (name = 'Steps', bars = 2): Promise<{ trackIdx: number; itemIdx: number } | null> => {
+      const resp = await send('seq/createTrack', { name, bars });
+      if (!resp.success) return null;
+      const p = resp.payload as unknown as { trackIdx: number; itemIdx: number };
+      return { trackIdx: p.trackIdx, itemIdx: p.itemIdx };
+    }, [send]);
+
+  return { listItems, readPattern, writePattern, createTrack };
 }
