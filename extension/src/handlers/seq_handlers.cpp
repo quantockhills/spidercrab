@@ -1,5 +1,6 @@
 #include "command_handler.h"
 #include "command_handler_helpers.h"
+#include "seq_notes.h"
 
 #include <string>
 #include <vector>
@@ -182,6 +183,116 @@ void CommandHandler::HandleSeqReadPattern(
     payload += json_string("noteCount") + ":" + std::to_string(noteCount) + ",";
     payload += json_string("notes") + ":" + notes + ",";
     payload += json_string("ext") + ":" + json_string(ext);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
+
+// ------------------------------------------------------------
+// Writing a pattern back.
+//
+// A write replaces every note in the take rather than patching individual
+// ones. That sounds heavy and is the right call: note indices are positional
+// and shift under you the moment anything is deleted, so incremental edits
+// would need index bookkeeping that survives concurrent changes from the MIDI
+// editor. Replacing wholesale has no such state, and a pattern is a few dozen
+// notes.
+//
+// Notes arrive as a compact string rather than JSON. The parser in this
+// codebase reads flat objects only, and hand-rolling one for an array of
+// objects is more failure surface than the format is worth — the same reason
+// slot sources are stored as "col|row|path" lines.
+//
+//   pitch:startPpq:endPpq:velocity:channel , ...
+//
+// Every record must have all five fields. A malformed one rejects the whole
+// write, so a pattern is never left half-applied.
+// ------------------------------------------------------------
+
+
+void CommandHandler::HandleSeqWritePattern(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrack || !m_api.GetTrackMediaItem || !m_api.GetActiveTake
+        || !m_api.TakeIsMIDI || !m_api.MIDI_CountEvts || !m_api.MIDI_DeleteNote
+        || !m_api.MIDI_InsertNote || !m_api.MIDI_Sort) {
+        SendResponse(clientId, id, false, "{\"error\":\"Required MIDI APIs not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    const int   trackIdx = atoi(p1.getString("trackIdx").c_str());
+    JsonParser  p2(payloadStr);
+    const int   itemIdx = atoi(p2.getString("itemIdx").c_str());
+    JsonParser  p3(payloadStr);
+    const std::string notesStr = p3.getString("notes");
+    JsonParser  p4(payloadStr);
+    const std::string ext = p4.getString("ext");
+
+    std::vector<scrb::ParsedNote> notes;
+    if (!scrb::parseNotes(notesStr, notes)) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Malformed notes — expected pitch:start:end:vel:chan records\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"No such track\"}");
+        return;
+    }
+    MediaItem* item = m_api.GetTrackMediaItem(track, itemIdx);
+    if (!item) {
+        SendResponse(clientId, id, false, "{\"error\":\"No such item\"}");
+        return;
+    }
+    MediaItem_Take* take = m_api.GetActiveTake(item);
+    if (!take || !m_api.TakeIsMIDI(take)) {
+        SendResponse(clientId, id, false, "{\"error\":\"Item is not MIDI\"}");
+        return;
+    }
+
+    if (m_api.Undo_BeginBlock2)
+        m_api.Undo_BeginBlock2(nullptr);
+
+    int existing = 0;
+    m_api.MIDI_CountEvts(take, &existing, nullptr, nullptr);
+
+    // Backwards. Deleting renumbers every note after the one removed, so a
+    // forward loop would skip every second note.
+    for (int i = existing - 1; i >= 0; --i)
+        m_api.MIDI_DeleteNote(take, i);
+
+    const bool noSort = true;
+    int        written = 0;
+    for (const scrb::ParsedNote& n : notes) {
+        if (m_api.MIDI_InsertNote(take, false, false, n.start, n.end,
+                                  n.chan, n.pitch, n.vel, &noSort))
+            ++written;
+    }
+    m_api.MIDI_Sort(take);
+
+    // The per-step detail that the notes cannot carry. An empty string is a
+    // legitimate value — it means "this pattern has no extra detail" — so it
+    // is written rather than skipped, otherwise stale data would survive a
+    // caller that meant to clear it.
+    if (m_api.GetSetMediaItemTakeInfo_String) {
+        std::vector<char> buf(ext.begin(), ext.end());
+        buf.push_back('\0');
+        m_api.GetSetMediaItemTakeInfo_String(take, EXT_KEY, buf.data(), true);
+    }
+
+    if (m_api.Undo_EndBlock2)
+        m_api.Undo_EndBlock2(nullptr, "Edit step pattern", 4 /* UNDO_STATE_ITEMS */);
+
+    if (m_api.UpdateArrange)
+        m_api.UpdateArrange();
+
+    std::string payload = "{";
+    payload += json_string("trackIdx") + ":" + std::to_string(trackIdx) + ",";
+    payload += json_string("itemIdx") + ":" + std::to_string(itemIdx) + ",";
+    payload += json_string("removed") + ":" + std::to_string(existing) + ",";
+    payload += json_string("written") + ":" + std::to_string(written);
     payload += "}";
     SendResponse(clientId, id, true, payload);
 }

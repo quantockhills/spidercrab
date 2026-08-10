@@ -134,6 +134,12 @@ struct ReaperAPI {
     bool (*DeleteTrackMediaItem)(MediaTrack* tr, MediaItem* it) = nullptr;
     void (*UpdateArrange)() = nullptr;
 
+    // Undo. Every pattern edit is wrapped in a block so Ctrl+Z behaves the
+    // way it does for any other item edit, rather than the sequencer being a
+    // hole in the project's history.
+    void (*Undo_BeginBlock2)(ReaProject* proj) = nullptr;
+    void (*Undo_EndBlock2)(ReaProject* proj, const char* descchange, int extraflags) = nullptr;
+
     // Tempo matching for slot import
     double (*Master_GetTempo)() = nullptr;
     void* (*GetSetMediaItemTakeInfo)(MediaItem_Take* tk, const char* parmname, void* setNewValue) = nullptr;
@@ -339,6 +345,7 @@ private:
     // Reading patterns back out of MIDI items.
     void HandleSeqListItems(int clientId, const std::string& id, const std::string& params);
     void HandleSeqReadPattern(int clientId, const std::string& id, const std::string& params);
+    void HandleSeqWritePattern(int clientId, const std::string& id, const std::string& params);
 
     // Global ext state — the only channel into a Lua script with its own GUI.
     void HandleExtStateGet(int clientId, const std::string& id, const std::string& params);

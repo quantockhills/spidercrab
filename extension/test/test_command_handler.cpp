@@ -5808,3 +5808,96 @@ TEST(SampleCacheTest, ScanProgressQuery)
     
     fs::remove_all(tmpdir, ec);
 }
+
+// ============================================================
+// Step pattern note wire format (#141)
+//
+// The parser is all-or-nothing on purpose: a single bad record must fail the
+// whole write, because a half-applied pattern is worse than a rejected one.
+// ============================================================
+
+#include "seq_notes.h"
+
+using scrb::parseNotes;
+using scrb::ParsedNote;
+
+TEST(SeqNotesTest, ParsesASingleNote)
+{
+    std::vector<ParsedNote> out;
+    ASSERT_TRUE(parseNotes("36:0:120:100:0", out));
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0].pitch, 36);
+    EXPECT_DOUBLE_EQ(out[0].start, 0.0);
+    EXPECT_DOUBLE_EQ(out[0].end, 120.0);
+    EXPECT_EQ(out[0].vel, 100);
+    EXPECT_EQ(out[0].chan, 0);
+}
+
+TEST(SeqNotesTest, ParsesSeveralNotes)
+{
+    std::vector<ParsedNote> out;
+    ASSERT_TRUE(parseNotes("36:0:120:100:0,38:240:360:90:1,42:480:500:64:9", out));
+    ASSERT_EQ(out.size(), 3u);
+    EXPECT_EQ(out[1].pitch, 38);
+    EXPECT_DOUBLE_EQ(out[1].start, 240.0);
+    EXPECT_EQ(out[2].chan, 9);
+}
+
+TEST(SeqNotesTest, EmptyStringIsAnEmptyPattern)
+{
+    // Clearing every note is a legitimate edit, not an error.
+    std::vector<ParsedNote> out;
+    ASSERT_TRUE(parseNotes("", out));
+    EXPECT_TRUE(out.empty());
+}
+
+TEST(SeqNotesTest, ToleratesTrailingAndDoubledCommas)
+{
+    std::vector<ParsedNote> out;
+    ASSERT_TRUE(parseNotes("36:0:120:100:0,,38:240:360:90:0,", out));
+    EXPECT_EQ(out.size(), 2u);
+}
+
+TEST(SeqNotesTest, RejectsTooFewFields)
+{
+    std::vector<ParsedNote> out;
+    EXPECT_FALSE(parseNotes("36:0:120:100", out));
+}
+
+TEST(SeqNotesTest, RejectsTooManyFields)
+{
+    std::vector<ParsedNote> out;
+    EXPECT_FALSE(parseNotes("36:0:120:100:0:7", out));
+}
+
+TEST(SeqNotesTest, RejectsEmptyField)
+{
+    std::vector<ParsedNote> out;
+    EXPECT_FALSE(parseNotes("36::120:100:0", out));
+}
+
+TEST(SeqNotesTest, RejectsOutOfRangeValues)
+{
+    std::vector<ParsedNote> out;
+    EXPECT_FALSE(parseNotes("200:0:120:100:0", out)) << "pitch above 127";
+    EXPECT_FALSE(parseNotes("-1:0:120:100:0", out)) << "negative pitch";
+    EXPECT_FALSE(parseNotes("36:0:120:0:0", out)) << "velocity 0 is a note-off";
+    EXPECT_FALSE(parseNotes("36:0:120:128:0", out)) << "velocity above 127";
+    EXPECT_FALSE(parseNotes("36:0:120:100:16", out)) << "channel above 15";
+    EXPECT_FALSE(parseNotes("36:-5:120:100:0", out)) << "negative start";
+}
+
+TEST(SeqNotesTest, RejectsZeroAndNegativeLength)
+{
+    std::vector<ParsedNote> out;
+    EXPECT_FALSE(parseNotes("36:120:120:100:0", out)) << "zero length is silent";
+    EXPECT_FALSE(parseNotes("36:240:120:100:0", out)) << "end before start";
+}
+
+TEST(SeqNotesTest, OneBadRecordRejectsTheWholeWrite)
+{
+    // The point of the all-or-nothing rule: the two good notes either side
+    // must not be applied.
+    std::vector<ParsedNote> out;
+    EXPECT_FALSE(parseNotes("36:0:120:100:0,200:240:360:90:0,42:480:500:64:0", out));
+}

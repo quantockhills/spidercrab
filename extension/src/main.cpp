@@ -62,6 +62,8 @@
 #define REAPERAPI_WANT_GetPlayPosition
 #define REAPERAPI_WANT_CreateNewMIDIItemInProj
 #define REAPERAPI_WANT_MIDI_InsertNote
+#define REAPERAPI_WANT_Undo_BeginBlock2
+#define REAPERAPI_WANT_Undo_EndBlock2
 #define REAPERAPI_WANT_TakeIsMIDI
 #define REAPERAPI_WANT_MIDI_CountEvts
 #define REAPERAPI_WANT_MIDI_GetNote
@@ -626,6 +628,8 @@ static bool InitializeCoreServices()
     // sequencer/convertToClip always failed its own availability guard.
     api.CreateNewMIDIItemInProj      = CreateNewMIDIItemInProj;
     api.MIDI_InsertNote              = MIDI_InsertNote;
+    api.Undo_BeginBlock2             = Undo_BeginBlock2;
+    api.Undo_EndBlock2               = Undo_EndBlock2;
     api.TakeIsMIDI                   = TakeIsMIDI;
     api.MIDI_CountEvts               = MIDI_CountEvts;
     api.MIDI_GetNote                 = MIDI_GetNote;
