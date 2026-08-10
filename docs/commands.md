@@ -101,6 +101,8 @@ Patterns live in MIDI items, not in the extension. See
 | `seq/listItems` | MIDI items on a track, with take names |
 | `seq/readPattern` | Notes and per-step ext data for one item |
 | `seq/writePattern` | Replace an item's notes and ext data, in one undo block |
+| `seq/createTrack` | Make a track with an empty MIDI item to sequence |
+| `seq/sendToSlot` | Hand the pattern to a Playtime slot, via ReaLearn |
 
 ## extstate/  (REAPER's shared key/value store)
 The only channel into a Lua script that draws its own window — such a script

@@ -379,3 +379,89 @@ void CommandHandler::HandleSeqCreateTrack(
     payload += "}";
     SendResponse(clientId, id, true, payload);
 }
+
+// ------------------------------------------------------------
+// Handing a pattern to Playtime.
+//
+// A MIDI item only sounds when the playhead crosses it, which is no use for
+// jamming — and looping it via the time selection would hijack the global
+// transport. Making it a Playtime clip solves both at once: Playtime plays
+// with the transport stopped, loops, launches from the matrix, and is in
+// phase with every other clip. Not because two clocks were bridged, but
+// because there is only one clock. It *is* a Playtime clip.
+//
+// Nothing new is needed to do it. ReaLearn's PlaytimeSlotManagementAction
+// already answers on OSC addresses the shipped preset defines, and the sample
+// browser already uses the same route for audio:
+//
+//   /playtime/slot/COL/ROW/clear   -> ClearSlot
+//   /playtime/slot/COL/ROW/import  -> FillSlotWithSelectedItem
+//
+// An item is an item; the MIDI one travels the same road as the audio one.
+// Clear runs first so re-sending an edited pattern replaces the old clip
+// rather than being refused or stacked on top of it.
+//
+// This is a copy, not a live link. Edit the grid afterwards and the slot
+// holds the older take until it is sent again — the same bargain as
+// consolidating a clip.
+// ------------------------------------------------------------
+
+void CommandHandler::HandleSeqSendToSlot(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.GetTrack || !m_api.GetTrackMediaItem || !m_api.SetMediaItemSelected
+        || !m_api.CountTracks || !m_api.CountTrackMediaItems) {
+        SendResponse(clientId, id, false, "{\"error\":\"Required item APIs not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    const int   trackIdx = atoi(p1.getString("trackIdx").c_str());
+    JsonParser  p2(payloadStr);
+    const int   itemIdx = atoi(p2.getString("itemIdx").c_str());
+    JsonParser  p3(payloadStr);
+    const int   col = atoi(p3.getString("col").c_str());
+    JsonParser  p4(payloadStr);
+    const int   row = atoi(p4.getString("row").c_str());
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"No such track\"}");
+        return;
+    }
+    MediaItem* item = m_api.GetTrackMediaItem(track, itemIdx);
+    if (!item) {
+        SendResponse(clientId, id, false, "{\"error\":\"No such item\"}");
+        return;
+    }
+
+    // FillSlotWithSelectedItem takes whatever is selected, so anything else
+    // left selected would be swept into the slot alongside ours.
+    const int trackCount = m_api.CountTracks(nullptr);
+    for (int t = 0; t < trackCount; ++t) {
+        MediaTrack* tr = m_api.GetTrack(nullptr, t);
+        if (!tr) continue;
+        const int n = m_api.CountTrackMediaItems(tr);
+        for (int i = 0; i < n; ++i) {
+            MediaItem* it = m_api.GetTrackMediaItem(tr, i);
+            if (it) m_api.SetMediaItemSelected(it, false);
+        }
+    }
+    m_api.SetMediaItemSelected(item, true);
+    if (m_api.UpdateArrange)
+        m_api.UpdateArrange();
+
+    const bool cleared  = m_oscSender.sendClearSlot(col, row);
+    const bool imported = m_oscSender.sendImportSlot(col, row);
+
+    // OSC is fire-and-forget over UDP, so "sent" is the strongest claim
+    // available here — whether ReaLearn is listening is not knowable from
+    // this side.
+    std::string payload = "{";
+    payload += json_string("col") + ":" + std::to_string(col) + ",";
+    payload += json_string("row") + ":" + std::to_string(row) + ",";
+    payload += json_string("sent") + ":" + std::string(cleared && imported ? "true" : "false");
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}

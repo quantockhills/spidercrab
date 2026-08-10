@@ -81,5 +81,22 @@ export function useSeqPattern() {
       return { trackIdx: p.trackIdx, itemIdx: p.itemIdx };
     }, [send]);
 
-  return { listItems, readPattern, writePattern, createTrack };
+  /**
+   * Hand the pattern to a Playtime slot.
+   *
+   * A MIDI item only sounds when the playhead crosses it. A Playtime clip
+   * plays with the transport stopped, loops, launches from the matrix and is
+   * in phase with every other clip — not because two clocks were bridged, but
+   * because there is only one.
+   *
+   * The item stays the editable original; the slot holds a copy. Send again
+   * after editing to replace it.
+   */
+  const sendToSlot = useCallback(
+    async (trackIdx: number, itemIdx: number, col: number, row: number): Promise<boolean> => {
+      const resp = await send('seq/sendToSlot', { trackIdx, itemIdx, col, row });
+      return resp.success;
+    }, [send]);
+
+  return { listItems, readPattern, writePattern, createTrack, sendToSlot };
 }

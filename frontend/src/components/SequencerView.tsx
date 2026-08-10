@@ -41,7 +41,7 @@ interface Props {
  * reading any numbers.
  */
 export function SequencerView({ tracks }: Props) {
-  const { listItems, readPattern, writePattern, createTrack } = useSeqPattern();
+  const { listItems, readPattern, writePattern, createTrack, sendToSlot } = useSeqPattern();
 
   const [trackIdx, setTrackIdx] = useState<number | null>(null);
   const [items, setItems] = useState<SeqItem[]>([]);
@@ -52,6 +52,8 @@ export function SequencerView({ tracks }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [empty, setEmpty] = useState(false);
+  const [slot, setSlot] = useState({ col: 0, row: 0 });
+  const [sent, setSent] = useState(false);
 
   const gridRef = useRef<Grid | null>(null);
   gridRef.current = grid;
@@ -193,6 +195,16 @@ export function SequencerView({ tracks }: Props) {
     window.addEventListener('pointercancel', finish);
   }, [mutate, commit]);
 
+  const handleSend = useCallback(async () => {
+    if (trackIdx === null || itemIdx === null) return;
+    setBusy(true);
+    const ok = await sendToSlot(trackIdx, itemIdx, slot.col, slot.row);
+    setBusy(false);
+    if (!ok) { setError('Could not reach Playtime.'); return; }
+    setSent(true);
+    window.setTimeout(() => setSent(false), 2000);
+  }, [trackIdx, itemIdx, slot, sendToSlot]);
+
   const clearAll = useCallback(() => {
     const g = gridRef.current;
     if (!g) return;
@@ -285,13 +297,42 @@ export function SequencerView({ tracks }: Props) {
           ))}
         </div>
 
-        <button
-          onClick={clearAll}
-          className="ml-auto px-3 py-1.5 text-xs rounded bg-[var(--bg-tertiary)]
-                     text-[var(--text-secondary)] active:brightness-90"
-        >
-          Clear
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {/* Which slot the pattern goes to. Playtime owns playback once it
+              lands there, which is how this plays with the transport stopped. */}
+          <div className="flex items-center gap-1 text-xs text-[var(--text-secondary)]">
+            <span>slot</span>
+            <input
+              type="number" min={1} max={8} value={slot.col + 1}
+              onChange={(e) => setSlot((s2) => ({ ...s2, col: Math.max(0, Number(e.target.value) - 1) }))}
+              className="w-11 px-1 py-1 text-center bg-[var(--bg-tertiary)] rounded
+                         text-[var(--text-primary)] border-none"
+            />
+            <input
+              type="number" min={1} max={8} value={slot.row + 1}
+              onChange={(e) => setSlot((s2) => ({ ...s2, row: Math.max(0, Number(e.target.value) - 1) }))}
+              className="w-11 px-1 py-1 text-center bg-[var(--bg-tertiary)] rounded
+                         text-[var(--text-primary)] border-none"
+            />
+          </div>
+          <button
+            onClick={handleSend}
+            disabled={busy}
+            className={`px-3 py-1.5 text-xs rounded active:brightness-90 disabled:opacity-50
+                        ${sent
+                          ? 'bg-[var(--accent-green)]/25 text-[var(--accent-green)]'
+                          : 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)]'}`}
+          >
+            {sent ? 'Sent ✓' : 'Send to Playtime'}
+          </button>
+          <button
+            onClick={clearAll}
+            className="px-3 py-1.5 text-xs rounded bg-[var(--bg-tertiary)]
+                       text-[var(--text-secondary)] active:brightness-90"
+          >
+            Clear
+          </button>
+        </div>
         {busy && <span className="text-xs text-[var(--text-secondary)]">saving…</span>}
       </div>
 
@@ -352,6 +393,10 @@ export function SequencerView({ tracks }: Props) {
         <p className="mt-4 text-[11px] text-[var(--text-secondary)]/70 max-w-md">
           Tap a step to turn it on. Drag sideways to fill or wipe a run.
           Drag up or down on a step to set how hard it hits.
+          <br />
+          <b>Send to Playtime</b> makes it a clip — which loops, launches, and
+          plays with the transport stopped. It sends a copy, so send again after
+          editing.
         </p>
       </div>
     </div>
