@@ -60,6 +60,9 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/getCacheStatus"]  = &CommandHandler::HandleSampleGetCacheStatus;
     m_commandMap["sample/getAllCached"]    = &CommandHandler::HandleSampleGetAllCached;
     m_commandMap["sample/getCachedPaths"] = &CommandHandler::HandleSampleGetCachedPaths;
+    m_commandMap["extstate/get"]                  = &CommandHandler::HandleExtStateGet;
+    m_commandMap["extstate/getMany"]              = &CommandHandler::HandleExtStateGetMany;
+    m_commandMap["extstate/set"]                  = &CommandHandler::HandleExtStateSet;
     m_commandMap["settings/get"]                  = &CommandHandler::HandleSettingsGet;
     m_commandMap["settings/setFxChainPath"]       = &CommandHandler::HandleSettingsSetFxChainPath;
     m_commandMap["settings/setSampleFolders"]     = &CommandHandler::HandleSettingsSetSampleFolders;

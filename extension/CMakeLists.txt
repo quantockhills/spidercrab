@@ -48,6 +48,7 @@ set(EXTENSION_SOURCES
     src/handlers/transport_handlers.cpp
     src/handlers/matrix_handlers.cpp
     src/handlers/playtime_handlers.cpp
+    src/handlers/extstate_handlers.cpp
     src/handlers/settings_handlers.cpp
     ${WDL_SOURCES}
 )
@@ -68,6 +69,7 @@ set(TEST_SOURCES
     src/handlers/transport_handlers.cpp
     src/handlers/matrix_handlers.cpp
     src/handlers/playtime_handlers.cpp
+    src/handlers/extstate_handlers.cpp
     src/handlers/settings_handlers.cpp
     ${WDL_SOURCES}
     test/test_main.cpp

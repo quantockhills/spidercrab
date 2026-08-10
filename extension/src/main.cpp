@@ -41,6 +41,10 @@
 #define REAPERAPI_WANT_GetPlayState
 #define REAPERAPI_WANT_GetProjExtState
 #define REAPERAPI_WANT_SetProjExtState
+#define REAPERAPI_WANT_GetExtState
+#define REAPERAPI_WANT_SetExtState
+#define REAPERAPI_WANT_HasExtState
+#define REAPERAPI_WANT_DeleteExtState
 #define REAPERAPI_WANT_EnumProjects
 #define REAPERAPI_WANT_InsertMedia
 #define REAPERAPI_WANT_EnumerateFiles
@@ -582,6 +586,10 @@ static bool InitializeCoreServices()
     api.TrackFX_GetNamedConfigParm = TrackFX_GetNamedConfigParm;
     api.GetProjExtState = GetProjExtState;
     api.SetProjExtState = SetProjExtState;
+    api.GetExtState     = GetExtState;
+    api.SetExtState     = SetExtState;
+    api.HasExtState     = HasExtState;
+    api.DeleteExtState  = DeleteExtState;
     api.EnumInstalledFX             = EnumInstalledFX;
     api.GetTrackStateChunk          = GetTrackStateChunk;
     api.SetTrackStateChunk          = SetTrackStateChunk;

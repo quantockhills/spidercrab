@@ -127,6 +127,14 @@ struct ReaperAPI {
     // Project ext state (persist slot source paths across sessions)
     int (*GetProjExtState)(ReaProject* proj, const char* extname, const char* key, char* valOutNeedBig, int valOutNeedBig_sz) = nullptr;
     int (*SetProjExtState)(ReaProject* proj, const char* extname, const char* key, const char* value) = nullptr;
+
+    // Global (not project-scoped) ext state. This is the channel Lua
+    // scripts with their own GUI use to keep settings between runs, and
+    // therefore the only way to reach one from outside.
+    const char* (*GetExtState)(const char* section, const char* key) = nullptr;
+    void (*SetExtState)(const char* section, const char* key, const char* value, bool persist) = nullptr;
+    bool (*HasExtState)(const char* section, const char* key) = nullptr;
+    void (*DeleteExtState)(const char* section, const char* key, bool persist) = nullptr;
 };
 
 class CommandHandler {
@@ -310,6 +318,11 @@ private:
     void HandleSampleGetCachedPaths(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsGetAll(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsSet(int clientId, const std::string& id, const std::string& params);
+    // Global ext state — the only channel into a Lua script with its own GUI.
+    void HandleExtStateGet(int clientId, const std::string& id, const std::string& params);
+    void HandleExtStateGetMany(int clientId, const std::string& id, const std::string& params);
+    void HandleExtStateSet(int clientId, const std::string& id, const std::string& params);
+
     void HandleSettingsGet(int clientId, const std::string& id, const std::string& params);
     void HandleSettingsSetFxChainPath(int clientId, const std::string& id, const std::string& params);
     void HandleSettingsSetSampleFolders(int clientId, const std::string& id, const std::string& params);
