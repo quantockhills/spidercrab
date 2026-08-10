@@ -6,6 +6,7 @@ import { FxBrowser } from './components/FxBrowser';
 import { ParamControl } from './components/ParamControl';
 import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
+import { SequencerView } from './components/SequencerView';
 import { FxChainBrowser } from './components/FxChainBrowser';
 import { GridView } from './components/grid/GridView';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -13,7 +14,7 @@ import SampleIndexProgressBar from './components/SampleIndexProgressBar';
 import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
 import type { DirResult, ReaperLibrary } from './hooks/useSampleBrowser';
 
-type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'grid' | 'settings';
+type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'grid' | 'seq' | 'settings';
 type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 
 // The step sequencer is built but not yet working reliably, so it's hidden
@@ -31,6 +32,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'tracks',  label: 'Tracks',  icon: '🎚️' },
   { id: 'clips',   label: 'Playtime',   icon: '🎹' },
   ...(SHOW_GRID ? [{ id: 'grid' as Tab, label: 'Grid', icon: '🎹' }] : []),
+  { id: 'seq',     label: 'Steps',   icon: '▦' },
   { id: 'settings',label: 'Settings',icon: '⚙️' },
 ];
 
@@ -605,6 +607,10 @@ function AppInner() {
             getAllFxPresetNames={getAllFxPresetNames}
             onEvent={onEvent}
           />
+        )}
+
+        {activeTab === 'seq' && (
+          <SequencerView tracks={tracks} />
         )}
 
         {activeTab === 'settings' && (

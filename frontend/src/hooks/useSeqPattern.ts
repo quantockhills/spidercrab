@@ -1,0 +1,70 @@
+import { useCallback } from 'react';
+import { useReaperClient } from './useReaperClient';
+import { encodeNotes, type SeqNote } from '../lib/seqPattern';
+
+// ── Public types ─────────────────────────────────────────────
+
+export interface SeqItem {
+  itemIdx: number;
+  name: string;
+  position: number;
+  length: number;
+}
+
+export interface SeqPattern {
+  trackIdx: number;
+  itemIdx: number;
+  position: number;
+  length: number;
+  /** PPQ bounds of the item, which is what note positions are measured against. */
+  ppqStart: number;
+  ppqEnd: number;
+  notes: SeqNote[];
+  /** Per-step detail the notes cannot carry. Empty is normal. */
+  ext: string;
+}
+
+// ── Hook ─────────────────────────────────────────────────────
+
+/**
+ * Reading and writing a pattern that lives in a MIDI item.
+ *
+ * There is no local copy of the pattern here on purpose. The item is the
+ * pattern; anything cached would be a second answer to the same question,
+ * and would go stale the moment someone edited the part in REAPER.
+ */
+export function useSeqPattern() {
+  const { send } = useReaperClient();
+
+  const listItems = useCallback(async (trackIdx: number): Promise<SeqItem[]> => {
+    const resp = await send('seq/listItems', { trackIdx });
+    if (!resp.success) return [];
+    const payload = resp.payload as { items?: SeqItem[] } | undefined;
+    return payload?.items ?? [];
+  }, [send]);
+
+  const readPattern = useCallback(
+    async (trackIdx: number, itemIdx: number): Promise<SeqPattern | null> => {
+      const resp = await send('seq/readPattern', { trackIdx, itemIdx });
+      if (!resp.success) return null;
+      return resp.payload as unknown as SeqPattern;
+    }, [send]);
+
+  /**
+   * Replace the item's notes.
+   *
+   * Whole-pattern replacement rather than per-note edits: note indices are
+   * positional and shift under any deletion, so incremental writes would need
+   * bookkeeping that survives someone editing the same item in REAPER's own
+   * MIDI editor. The extension wraps this in a single undo block.
+   */
+  const writePattern = useCallback(
+    async (trackIdx: number, itemIdx: number, notes: SeqNote[], ext = ''): Promise<boolean> => {
+      const resp = await send('seq/writePattern', {
+        trackIdx, itemIdx, notes: encodeNotes(notes), ext,
+      });
+      return resp.success;
+    }, [send]);
+
+  return { listItems, readPattern, writePattern };
+}
