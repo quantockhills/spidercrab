@@ -266,6 +266,16 @@ private:
 
     // Playtime 2 clip launcher state (Issues #61)
     PlaytimeState m_playtimeState;
+
+    // Cached Playtime column -> track mapping.
+    //
+    // Working it out means reading and decoding the Helgobox plugin's whole
+    // saved chunk, and matrix/getAll is polled once a second. The mapping
+    // changes only when a column or a track is added or removed, so it is
+    // recomputed when the track count moves and otherwise reused.
+    std::vector<std::pair<int, int>> m_columnTracks;  // (column, track index)
+    int  m_columnTracksTrackCount = -1;               // track count when last built
+    bool m_columnTracksValid      = false;
     PlaytimeMidi  m_playtimeMidi;
     OscSender     m_oscSender;
     OscReceiver   m_oscReceiver;

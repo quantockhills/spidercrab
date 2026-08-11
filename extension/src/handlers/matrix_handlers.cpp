@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <cmath>
 
 void CommandHandler::HandleMatrixGetAll(
@@ -40,10 +41,19 @@ void CommandHandler::HandleMatrixGetAll(
     // Scanned rather than parsed: only one field is needed, from a known
     // shape, and a JSON parser for the whole of Helgobox's state would be a
     // much larger thing to keep working.
+    //
+    // Cached, because this reads and decodes the whole Helgobox chunk and
+    // matrix/getAll is polled once a second. The mapping only moves when a
+    // column or a track appears or disappears, so the track count is enough
+    // to know when to look again.
+    const int liveTrackCount = m_api.CountTracks ? m_api.CountTracks(nullptr) : 0;
+    const bool needRebuild = !m_columnTracksValid
+                          || liveTrackCount != m_columnTracksTrackCount;
+
     std::vector<std::pair<int, std::string>> columnGuids;  // (column, track GUID)
-    if (m_api.CountTracks && m_api.GetTrack && m_api.TrackFX_GetCount
+    if (needRebuild && m_api.CountTracks && m_api.GetTrack && m_api.TrackFX_GetCount
         && m_api.TrackFX_GetFXName && m_api.TrackFX_GetNamedConfigParm) {
-        const int trackCount = m_api.CountTracks(nullptr);
+        const int trackCount = liveTrackCount;
         std::string chunk;
 
         for (int t = 0; t < trackCount && chunk.empty(); ++t) {
@@ -64,12 +74,24 @@ void CommandHandler::HandleMatrixGetAll(
                 // Helgobox ships as a VSTi here, but ask for both so a CLAP
                 // build is not silently unsupported.
                 for (const char* parm : {"vst_chunk", "clap_chunk"}) {
-                    std::vector<char> buf(4 * 1024 * 1024, 0);
-                    if (m_api.TrackFX_GetNamedConfigParm(tr, f, parm, buf.data(), (int)buf.size())
-                        && buf[0]) {
-                        chunk = base64_decode(std::string(buf.data()));
-                        if (!chunk.empty()) break;
+                    // Start small and grow. REAPER does not report how much
+                    // room it needed, it just truncates — so a result that
+                    // exactly fills the buffer is treated as "probably cut
+                    // short" and retried. A matrix of a few columns is around
+                    // 7 KB, and asking for megabytes up front would mean
+                    // zeroing them on every poll.
+                    for (size_t cap = 64 * 1024; cap <= 8 * 1024 * 1024; cap *= 4) {
+                        std::vector<char> buf(cap, 0);
+                        if (!m_api.TrackFX_GetNamedConfigParm(
+                                tr, f, parm, buf.data(), (int)buf.size()))
+                            break;
+                        if (!buf[0]) break;
+                        const size_t got = strlen(buf.data());
+                        if (got >= cap - 1) continue;  // very likely truncated
+                        chunk = base64_decode(std::string(buf.data(), got));
+                        break;
                     }
+                    if (!chunk.empty()) break;
                 }
             }
         }
@@ -120,31 +142,42 @@ void CommandHandler::HandleMatrixGetAll(
         return out;
     };
 
-    std::vector<std::pair<int, int>> columnTracks;  // (column, track index)
-    if (!columnGuids.empty() && m_api.CountTracks && m_api.GetTrack
-        && m_api.GetSetMediaTrackInfo_String) {
-        const int trackCount = m_api.CountTracks(nullptr);
-        std::vector<std::pair<std::string, int>> trackGuids;
-        for (int t = 0; t < trackCount; ++t) {
-            MediaTrack* tr = m_api.GetTrack(nullptr, t);
-            if (!tr) continue;
-            std::vector<char> g(128, 0);
-            if (m_api.GetSetMediaTrackInfo_String(tr, "GUID", g.data(), false))
-                trackGuids.emplace_back(bare(g.data()), t);
-        }
-        for (const auto& cg : columnGuids) {
-            const std::string want = bare(cg.second);
-            for (const auto& tg : trackGuids) {
-                if (tg.first == want) { columnTracks.emplace_back(cg.first, tg.second); break; }
+    if (needRebuild) {
+        std::vector<std::pair<int, int>> built;
+        if (!columnGuids.empty() && m_api.GetTrack && m_api.GetSetMediaTrackInfo_String) {
+            std::vector<std::pair<std::string, int>> trackGuids;
+            for (int t = 0; t < liveTrackCount; ++t) {
+                MediaTrack* tr = m_api.GetTrack(nullptr, t);
+                if (!tr) continue;
+                char g[128] = {0};
+                if (m_api.GetSetMediaTrackInfo_String(tr, "GUID", g, false))
+                    trackGuids.emplace_back(bare(g), t);
+            }
+            for (const auto& cg : columnGuids) {
+                const std::string want = bare(cg.second);
+                for (const auto& tg : trackGuids) {
+                    if (tg.first == want) { built.emplace_back(cg.first, tg.second); break; }
+                }
             }
         }
+
+        // Only replace a good mapping with another good one. A transient
+        // failure to read the chunk should not throw away a mapping that
+        // was working a second ago.
+        if (!built.empty() || !m_columnTracksValid) {
+            m_columnTracks            = built;
+            m_columnTracksValid       = true;
+            m_columnTracksTrackCount  = liveTrackCount;
+        }
+
+        // Draw as many columns as the matrix actually has. The size used to be
+        // fixed at 8x8, so a larger matrix was truncated and a smaller one
+        // drew columns that do not exist.
+        if (!columnGuids.empty())
+            m_playtimeState.resize((int)columnGuids.size(), m_playtimeState.rows());
     }
 
-    // Draw as many columns as the matrix actually has. The size used to be
-    // fixed at 8x8, so a larger matrix was truncated and a smaller one drew
-    // columns that do not exist.
-    if (!columnGuids.empty())
-        m_playtimeState.resize((int)columnGuids.size(), m_playtimeState.rows());
+    const std::vector<std::pair<int, int>>& columnTracks = m_columnTracks;
 
     int      columns = m_playtimeState.columns();
     int      rows    = m_playtimeState.rows();
