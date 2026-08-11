@@ -97,6 +97,34 @@ public:
     int columns() const { return m_columns; }
     int rows() const { return m_rows; }
 
+    /// Resize the grid to match the matrix actually in the project.
+    ///
+    /// The size used to be fixed at 8x8, so a matrix with more columns was
+    /// silently truncated and one with fewer drew columns that do not exist.
+    /// Slot state is optimistic mirroring rather than anything authoritative,
+    /// so it is rebuilt empty rather than being carried across.
+    void resize(int cols, int rows)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (cols < 1 || rows < 1) return;
+        if (cols == m_columns && rows == m_rows) return;
+
+        m_columns = cols;
+        m_rows    = rows;
+        m_slots.clear();
+        m_slots.reserve(m_columns * m_rows);
+        for (int r = 0; r < m_rows; r++) {
+            for (int c = 0; c < m_columns; c++) {
+                SlotState st;
+                st.column   = c;
+                st.row      = r;
+                st.state    = "empty";
+                st.clipType = "none";
+                m_slots.push_back(st);
+            }
+        }
+    }
+
     // Get a copy of a single slot (thread-safe)
     SlotState getSlot(int col, int row) const
     {

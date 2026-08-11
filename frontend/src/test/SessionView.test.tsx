@@ -372,6 +372,60 @@ describe('SessionView', () => {
 
   // ── Column header tests (Issue #40) ──
 
+  // ── Column mapping (reported by the extension) ──
+  //
+  // Playtime names each column's track "Column 1", "Column 2" and so on. The
+  // extension reads those names and reports the mapping; the frontend used to
+  // guess it by excluding anything that looked like Helgobox, which treated
+  // every unrelated track in the project as a column.
+
+  it('maps columns using the mapping the extension reports, not track order', async () => {
+    const matrix = makeEmptyMatrix();
+    // Deliberately out of order and interleaved with unrelated tracks: the
+    // whole point is that a column's place in the track list is not its place
+    // in the matrix.
+    matrix.columnTracks = [
+      { column: 0, number: 1, trackIdx: 3 },
+      { column: 1, number: 2, trackIdx: 1 },
+    ];
+    const mockTracks = [
+      { index: 0, name: 'meedee', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 1, name: 'Column 2', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 2, name: 'Some Bus', trackNumber: 3, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 3, name: 'Column 1', trackNumber: 4, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+    ];
+
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Column 1: Column 1')).toBeDefined();
+      expect(screen.getByLabelText('Column 2: Column 2')).toBeDefined();
+    });
+    // "meedee" is track 0 but is not a column, so it must not appear as one.
+    expect(screen.queryByLabelText('Column 1: meedee')).toBeNull();
+  });
+
+  it('draws only as many columns as the matrix actually has', async () => {
+    // The grid was fixed at 8x8 regardless of the real matrix, so a smaller
+    // one drew columns that do not exist.
+    const matrix = makeEmptyMatrix();
+    matrix.columnTracks = [
+      { column: 0, number: 1, trackIdx: 0 },
+      { column: 1, number: 2, trackIdx: 1 },
+    ];
+    const mockTracks = [
+      { index: 0, name: 'Column 1', trackNumber: 1, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+      { index: 1, name: 'Column 2', trackNumber: 2, selected: false, muted: false, soloed: false, armed: false, volume: 0.75, pan: 0 },
+    ];
+
+    renderSessionView({ matrix, tracks: mockTracks });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Column 2: Column 2')).toBeDefined();
+    });
+    expect(screen.queryByLabelText(/^Column 3:/)).toBeNull();
+  });
+
   it('renders column headers with track names when tracks prop is provided', async () => {
     const matrix = makeEmptyMatrix();
     const mockTracks = [

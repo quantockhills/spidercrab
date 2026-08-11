@@ -24,3 +24,14 @@ void sha1_hash(const unsigned char* data, size_t len, unsigned char out[20]);
 
 // Minimal Base64 encoding (RFC 4648)
 std::string base64_encode(const unsigned char* data, size_t len);
+
+/// Decode base64 into bytes.
+///
+/// Needed to read plugin state: REAPER hands a plugin's saved chunk over as
+/// base64 through TrackFX_GetNamedConfigParm("vst_chunk"/"clap_chunk"), and
+/// for Helgobox that chunk carries Playtime's clip matrix as plain JSON.
+///
+/// Whitespace and newlines are skipped, since REAPER wraps long chunks.
+/// Characters outside the alphabet end the decode rather than being guessed
+/// at, so a truncated chunk yields a short result instead of nonsense.
+std::string base64_decode(const std::string& in);

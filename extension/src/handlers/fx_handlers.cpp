@@ -694,3 +694,63 @@ void CommandHandler::HandleFxTagsSet(
 
     SendResponse(clientId, id, true, "{\"saved\":true}");
 }
+
+// ------------------------------------------------------------
+// Reading a plugin's named configuration values.
+//
+// REAPER exposes a long list of these per FX — "fx_type", "pdc", "fx_ident",
+// and notably "vst_chunk" and "clap_chunk", which hand over a plugin's entire
+// saved state as base64. That last one is the only route to state a plugin
+// keeps to itself: Playtime, for instance, records which REAPER track plays
+// each of its columns, and that mapping exists nowhere a host can otherwise
+// see.
+//
+// Deliberately generic rather than a purpose-built Playtime reader. The value
+// is a string whatever it is, and a caller that knows what it asked for knows
+// how to read the answer.
+// ------------------------------------------------------------
+
+void CommandHandler::HandleFxGetNamedConfigParm(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.TrackFX_GetNamedConfigParm || !m_api.GetTrack) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"TrackFX_GetNamedConfigParm not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    const int   trackIdx = atoi(p1.getString("trackIdx").c_str());
+    JsonParser  p2(payloadStr);
+    const int   fxIdx = atoi(p2.getString("fxIdx").c_str());
+    JsonParser  p3(payloadStr);
+    const std::string parm = p3.getString("parm");
+
+    if (parm.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"parm is required\"}");
+        return;
+    }
+
+    MediaTrack* track = m_api.GetTrack(nullptr, trackIdx);
+    if (!track) {
+        SendResponse(clientId, id, false, "{\"error\":\"No such track\"}");
+        return;
+    }
+
+    // A plugin chunk can be very large, and REAPER truncates into whatever
+    // buffer it is given rather than reporting that it needed more.
+    std::vector<char> buf(4 * 1024 * 1024, 0);
+    const bool ok = m_api.TrackFX_GetNamedConfigParm(
+        track, fxIdx, parm.c_str(), buf.data(), (int)buf.size());
+
+    std::string value = ok ? std::string(buf.data()) : std::string();
+
+    std::string payload = "{";
+    payload += json_string("parm") + ":" + json_string(parm) + ",";
+    payload += json_string("ok") + ":" + std::string(ok ? "true" : "false") + ",";
+    payload += json_string("length") + ":" + std::to_string(value.size()) + ",";
+    payload += json_string("value") + ":" + json_string(value);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}

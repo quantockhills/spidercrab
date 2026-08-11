@@ -367,15 +367,35 @@ export function SessionView({
     slotMap.set(`${slot.column},${slot.row}`, slot);
   }
 
-  // Matrix column N is NOT the same thing as REAPER track index N — the
-  // Helgobox/ReaLearn/Playtime control track sits in the track list too, but
-  // isn't itself a matrix column. Build the list of real column tracks by
-  // excluding it first, so column 0 correctly lines up with the first real
-  // track, column 1 with the second, and so on.
-  const musicTracks = (tracks ?? []).filter(
+  // Matrix column N is not REAPER track index N. Playtime names each column's
+  // track "Column 1", "Column 2" and so on, and the extension now reports that
+  // mapping directly rather than the frontend guessing at it.
+  //
+  // The guess it replaces excluded any track whose name looked like Helgobox
+  // and treated whatever was left as the columns — so an ordinary track in the
+  // project became column 0, and every column action pointed somewhere wrong.
+  const columnTracks = matrix.columnTracks ?? [];
+
+  // Fallback for an extension that does not report the mapping: exclude
+  // anything that looks like the Helgobox control track and take what is left
+  // positionally. That is a guess — it treats every unrelated track in the
+  // project as a column — which is why the reported mapping wins whenever it
+  // is available.
+  const fallbackTracks = (tracks ?? []).filter(
     (t) => !/helgobox|realearn|playtime/i.test(t.name ?? ''),
   );
-  const visibleColumns = Array.from({ length: cols }, (_, col) => col);
+
+  const trackForColumn = (col: number): Track | undefined => {
+    if (columnTracks.length) {
+      const mapped = columnTracks.find((c) => c.column === col);
+      return mapped ? (tracks ?? []).find((t) => t.index === mapped.trackIdx) : undefined;
+    }
+    return fallbackTracks[col];
+  };
+
+  // Draw only the columns Playtime actually has, when we know what they are.
+  const visibleColumns = Array.from(
+    { length: columnTracks.length || cols }, (_, col) => col);
 
   return (
     <div className="flex flex-col h-full">
@@ -484,7 +504,7 @@ export function SessionView({
           <div className="px-3 pt-2 border-b border-[var(--border)]">
             <div className="flex gap-px">
               {visibleColumns.map((col) => {
-                const track = musicTracks[col];
+                const track = trackForColumn(col);
                 const trackName = track?.name || `Track ${col + 1}`;
                 const isArmed = track?.armed ?? false;
                 const isMuted = track?.muted ?? false;

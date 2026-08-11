@@ -1,5 +1,10 @@
 #include "command_handler.h"
 #include "command_handler_helpers.h"
+
+#include "sha1_utils.h"
+
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 
 void CommandHandler::HandleMatrixGetAll(
@@ -14,6 +19,132 @@ void CommandHandler::HandleMatrixGetAll(
         if (m_api.GetProjExtState(nullptr, "SPIDERCRAB", "slotSources", srcBuf.data(), (int)srcBuf.size()) > 0)
             m_playtimeState.loadSources(srcBuf.data());
     }
+
+    // Which tracks are Playtime's columns.
+    //
+    // Playtime keeps its clip matrix inside the Helgobox plugin's own state,
+    // and hands it to REAPER as base64 through the "vst_chunk" config value.
+    // Inside is plain JSON:
+    //
+    //   "clipMatrix":{"columns":[
+    //     {"id":"...","clip_play_settings":{...,"track":"E39C43C0-....",...}},
+    //     ...]}
+    //
+    // The array order IS the matrix order, and each column names the GUID of
+    // the REAPER track that plays it. That is authoritative and survives the
+    // user renaming a track — unlike matching on the name "Column 1", and
+    // unlike the frontend's previous guess, which excluded anything looking
+    // like Helgobox and treated whatever remained as the columns, so an
+    // unrelated track became column 0 and every column action went astray.
+    //
+    // Scanned rather than parsed: only one field is needed, from a known
+    // shape, and a JSON parser for the whole of Helgobox's state would be a
+    // much larger thing to keep working.
+    std::vector<std::pair<int, std::string>> columnGuids;  // (column, track GUID)
+    if (m_api.CountTracks && m_api.GetTrack && m_api.TrackFX_GetCount
+        && m_api.TrackFX_GetFXName && m_api.TrackFX_GetNamedConfigParm) {
+        const int trackCount = m_api.CountTracks(nullptr);
+        std::string chunk;
+
+        for (int t = 0; t < trackCount && chunk.empty(); ++t) {
+            MediaTrack* tr = m_api.GetTrack(nullptr, t);
+            if (!tr) continue;
+            const int fxCount = m_api.TrackFX_GetCount(tr);
+            for (int f = 0; f < fxCount && chunk.empty(); ++f) {
+                char nameBuf[512] = {0};
+                if (!m_api.TrackFX_GetFXName(tr, f, nameBuf, sizeof(nameBuf))) continue;
+                std::string fxName(nameBuf);
+                std::string lower;
+                for (char c : fxName) lower += (char)tolower((unsigned char)c);
+                if (lower.find("helgobox") == std::string::npos
+                    && lower.find("playtime") == std::string::npos
+                    && lower.find("realearn") == std::string::npos)
+                    continue;
+
+                // Helgobox ships as a VSTi here, but ask for both so a CLAP
+                // build is not silently unsupported.
+                for (const char* parm : {"vst_chunk", "clap_chunk"}) {
+                    std::vector<char> buf(4 * 1024 * 1024, 0);
+                    if (m_api.TrackFX_GetNamedConfigParm(tr, f, parm, buf.data(), (int)buf.size())
+                        && buf[0]) {
+                        chunk = base64_decode(std::string(buf.data()));
+                        if (!chunk.empty()) break;
+                    }
+                }
+            }
+        }
+
+        size_t cols = chunk.find("\"columns\"");
+        if (cols != std::string::npos) {
+            size_t arr = chunk.find('[', cols);
+            if (arr != std::string::npos) {
+                // Walk the array one column object at a time, taking the first
+                // "track" inside each. Depth tracking keeps a nested object
+                // from being mistaken for the next column.
+                int    depth = 0;
+                size_t i     = arr;
+                size_t objStart = std::string::npos;
+                int    colIdx = 0;
+                for (; i < chunk.size(); ++i) {
+                    const char c = chunk[i];
+                    if (c == '[' && depth == 0) { depth = 0; continue; }
+                    if (c == '{') { if (depth == 0) objStart = i; ++depth; }
+                    else if (c == '}') {
+                        --depth;
+                        if (depth == 0 && objStart != std::string::npos) {
+                            const std::string obj = chunk.substr(objStart, i - objStart + 1);
+                            const std::string key = "\"track\":\"";
+                            size_t k = obj.find(key);
+                            if (k != std::string::npos) {
+                                size_t vs = k + key.size();
+                                size_t ve = obj.find('"', vs);
+                                if (ve != std::string::npos)
+                                    columnGuids.emplace_back(colIdx, obj.substr(vs, ve - vs));
+                            }
+                            ++colIdx;
+                            objStart = std::string::npos;
+                        }
+                    }
+                    else if (c == ']' && depth == 0) break;
+                }
+            }
+        }
+    }
+
+    // Resolve each GUID to a track index. REAPER returns GUIDs wrapped in
+    // braces; Playtime stores them bare, so both sides are normalised.
+    auto bare = [](std::string g) {
+        std::string out;
+        for (char c : g)
+            if (c != '{' && c != '}') out += (char)toupper((unsigned char)c);
+        return out;
+    };
+
+    std::vector<std::pair<int, int>> columnTracks;  // (column, track index)
+    if (!columnGuids.empty() && m_api.CountTracks && m_api.GetTrack
+        && m_api.GetSetMediaTrackInfo_String) {
+        const int trackCount = m_api.CountTracks(nullptr);
+        std::vector<std::pair<std::string, int>> trackGuids;
+        for (int t = 0; t < trackCount; ++t) {
+            MediaTrack* tr = m_api.GetTrack(nullptr, t);
+            if (!tr) continue;
+            std::vector<char> g(128, 0);
+            if (m_api.GetSetMediaTrackInfo_String(tr, "GUID", g.data(), false))
+                trackGuids.emplace_back(bare(g.data()), t);
+        }
+        for (const auto& cg : columnGuids) {
+            const std::string want = bare(cg.second);
+            for (const auto& tg : trackGuids) {
+                if (tg.first == want) { columnTracks.emplace_back(cg.first, tg.second); break; }
+            }
+        }
+    }
+
+    // Draw as many columns as the matrix actually has. The size used to be
+    // fixed at 8x8, so a larger matrix was truncated and a smaller one drew
+    // columns that do not exist.
+    if (!columnGuids.empty())
+        m_playtimeState.resize((int)columnGuids.size(), m_playtimeState.rows());
 
     int      columns = m_playtimeState.columns();
     int      rows    = m_playtimeState.rows();
@@ -50,7 +181,20 @@ void CommandHandler::HandleMatrixGetAll(
     std::string payload = "{";
     payload += json_string("columns") + ":" + std::to_string(columns) + ",";
     payload += json_string("rows") + ":" + std::to_string(rows) + ",";
-    payload += json_string("slots") + ":" + m_playtimeState.getAllSlots();
+    payload += json_string("slots") + ":" + m_playtimeState.getAllSlots() + ",";
+
+    // The track behind each column, so the frontend addresses column actions
+    // by fact rather than by inference.
+    payload += json_string("columnTracks") + ":[";
+    for (size_t i = 0; i < columnTracks.size(); ++i) {
+        if (i > 0) payload += ",";
+        payload += "{";
+        payload += json_string("column") + ":" + std::to_string(columnTracks[i].first) + ",";
+        payload += json_string("number") + ":" + std::to_string(columnTracks[i].first + 1) + ",";
+        payload += json_string("trackIdx") + ":" + std::to_string(columnTracks[i].second);
+        payload += "}";
+    }
+    payload += "]";
     payload += "}";
 
     SendResponse(clientId, id, true, payload);

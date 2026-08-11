@@ -131,3 +131,37 @@ std::string base64_encode(const unsigned char* data, size_t len)
     }
     return out;
 }
+
+
+
+std::string base64_decode(const std::string& in)
+{
+    static const char* kAlphabet =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    int table[256];
+    for (int i = 0; i < 256; ++i) table[i] = -1;
+    for (int i = 0; i < 64; ++i) table[(unsigned char)kAlphabet[i]] = i;
+
+    std::string out;
+    out.reserve(in.size() * 3 / 4);
+
+    int val  = 0;
+    int bits = -8;
+    for (unsigned char c : in) {
+        if (c == '=') break;
+        // REAPER wraps long chunks, so newlines are expected rather than an error.
+        if (c == '\n' || c == '\r' || c == ' ' || c == '\t') continue;
+        const int d = table[c];
+        // Anything outside the alphabet ends the decode. A truncated chunk
+        // then yields a short result instead of plausible-looking nonsense.
+        if (d < 0) break;
+        val = (val << 6) | d;
+        bits += 6;
+        if (bits >= 0) {
+            out.push_back((char)((val >> bits) & 0xFF));
+            bits -= 8;
+        }
+    }
+    return out;
+}

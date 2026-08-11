@@ -44,6 +44,7 @@ Responses come back keyed by `id`. Grouped by namespace below.
 | `fx/getParams` | Read FX parameters |
 | `fx/setParam` | Set a parameter value |
 | `fx/getPreset` / `fx/setPreset` | Read / apply a preset |
+| `fx/getNamedConfigParm` | Read a per-FX config value (fx_type, pdc, vst_chunk, clap_chunk) |
 | `fx/getAllPresetNames` | List a plugin's presets |
 | `fx/refreshCache` | Rebuild the plugin index |
 | `fx/tags/getAll` / `fx/tags/set` | Read / write FX tags |

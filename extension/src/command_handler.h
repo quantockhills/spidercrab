@@ -343,6 +343,8 @@ private:
     void HandleSampleTagsGetAll(int clientId, const std::string& id, const std::string& params);
     void HandleSampleTagsSet(int clientId, const std::string& id, const std::string& params);
     // Reading patterns back out of MIDI items.
+    void HandleFxGetNamedConfigParm(int clientId, const std::string& id, const std::string& params);
+
     void HandleSeqListItems(int clientId, const std::string& id, const std::string& params);
     void HandleSeqReadPattern(int clientId, const std::string& id, const std::string& params);
     void HandleSeqWritePattern(int clientId, const std::string& id, const std::string& params);

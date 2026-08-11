@@ -15,10 +15,25 @@ export interface ClipSlot {
   hasSource?: boolean;
 }
 
+/** Which REAPER track sits behind a matrix column. */
+export interface ColumnTrack {
+  /** Matrix column index, 0-based. */
+  column: number;
+  /** The number in the track's name — "Column 3" is 3. */
+  number: number;
+  trackIdx: number;
+}
+
 export interface MatrixData {
   columns: number;
   rows: number;
   slots: ClipSlot[];
+  /**
+   * Reported by the extension, which reads the track names. Previously the
+   * frontend inferred this by excluding anything that looked like Helgobox,
+   * so every unrelated track in the project was treated as a column.
+   */
+  columnTracks?: ColumnTrack[];
 }
 
 export interface PlaytimeState {
