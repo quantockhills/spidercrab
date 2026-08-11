@@ -2,6 +2,8 @@
 #include "command_handler_helpers.h"
 #include "seq_notes.h"
 
+#include <algorithm>
+
 #include <string>
 #include <vector>
 
@@ -464,4 +466,134 @@ void CommandHandler::HandleSeqSendToSlot(
     payload += json_string("sent") + ":" + std::string(cleared && imported ? "true" : "false");
     payload += "}";
     SendResponse(clientId, id, true, payload);
+}
+
+// ------------------------------------------------------------
+// Finding a drum rack built by MPL's RS5k manager.
+//
+// The sequencer's rows are currently guesses: whatever pitches happen to be
+// in the item, or a default General MIDI drum set when it is empty. So a row
+// is labelled "C1" rather than "Kick", and nothing is bound to it.
+//
+// A rack fixes that, because in a rack a row IS a sound. The manager builds a
+// parent track holding the pattern and a child track per pad, each with a
+// ReaSamplOmatic5000 and a sample, and marks all of it in track ext data:
+//
+//   parent   P_EXT:MPLRS5KMAN
+//   child    P_EXT:MPLRS5KMAN_CHILD_PARENTGUID   links a pad to its rack
+//            P_EXT:MPLRS5KMAN_NOTE               the note the pad answers to
+//
+// Marked rather than named, so this needs no guessing at all — unlike the
+// Playtime column mapping, which had to be dug out of a plugin chunk.
+//
+// Read-only. Building a rack is the manager's job and it does it well; this
+// only reads what it left behind, so a rack made before Spidercrab existed
+// works exactly as well as one made this morning.
+// ------------------------------------------------------------
+
+void CommandHandler::HandleSeqListRacks(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+
+    if (!m_api.CountTracks || !m_api.GetTrack || !m_api.GetSetMediaTrackInfo_String) {
+        SendResponse(clientId, id, false, "{\"error\":\"Required track APIs not loaded\"}");
+        return;
+    }
+
+    // GUIDs are compared with braces stripped and case folded, because REAPER
+    // hands them back braced and other things store them bare.
+    auto bare = [](const char* g) {
+        std::string out;
+        for (const char* p = g; p && *p; ++p)
+            if (*p != '{' && *p != '}') out += (char)toupper((unsigned char)*p);
+        return out;
+    };
+
+    auto trackExt = [&](MediaTrack* tr, const char* key, std::string& out) {
+        std::vector<char> buf(4096, 0);
+        if (!m_api.GetSetMediaTrackInfo_String(tr, key, buf.data(), false)) return false;
+        out = buf.data();
+        return !out.empty();
+    };
+
+    const int trackCount = m_api.CountTracks(nullptr);
+
+    struct Pad { int note; int trackIdx; std::string name; };
+    struct Rack { int trackIdx; std::string name; std::vector<Pad> pads; };
+
+    std::vector<std::pair<std::string, int>> guidToTrack;  // (bare GUID, index)
+    std::vector<std::pair<std::string, Rack>> racks;       // keyed by parent GUID
+
+    for (int t = 0; t < trackCount; ++t) {
+        MediaTrack* tr = m_api.GetTrack(nullptr, t);
+        if (!tr) continue;
+        std::vector<char> g(128, 0);
+        if (m_api.GetSetMediaTrackInfo_String(tr, "GUID", g.data(), false))
+            guidToTrack.emplace_back(bare(g.data()), t);
+    }
+
+    for (int t = 0; t < trackCount; ++t) {
+        MediaTrack* tr = m_api.GetTrack(nullptr, t);
+        if (!tr) continue;
+
+        std::string parentGuid;
+        if (!trackExt(tr, "P_EXT:MPLRS5KMAN_CHILD_PARENTGUID", parentGuid))
+            continue;  // not a pad
+
+        std::string noteStr;
+        if (!trackExt(tr, "P_EXT:MPLRS5KMAN_NOTE", noteStr))
+            continue;  // a pad with no note cannot be a row
+
+        std::string name;
+        std::vector<char> nb(512, 0);
+        if (m_api.GetSetMediaTrackInfo_String(tr, "P_NAME", nb.data(), false))
+            name = nb.data();
+
+        const std::string key = bare(parentGuid.c_str());
+        auto it = std::find_if(racks.begin(), racks.end(),
+                               [&](const std::pair<std::string, Rack>& r) { return r.first == key; });
+        if (it == racks.end()) {
+            Rack r;
+            r.trackIdx = -1;
+            for (const auto& gt : guidToTrack)
+                if (gt.first == key) { r.trackIdx = gt.second; break; }
+            if (r.trackIdx >= 0) {
+                MediaTrack* pt = m_api.GetTrack(nullptr, r.trackIdx);
+                std::vector<char> pn(512, 0);
+                if (pt && m_api.GetSetMediaTrackInfo_String(pt, "P_NAME", pn.data(), false))
+                    r.name = pn.data();
+            }
+            racks.emplace_back(key, r);
+            it = racks.end() - 1;
+        }
+        it->second.pads.push_back({atoi(noteStr.c_str()), t, name});
+    }
+
+    // Highest note first, matching the order a piano roll draws rows.
+    for (auto& r : racks)
+        std::sort(r.second.pads.begin(), r.second.pads.end(),
+                  [](const Pad& a, const Pad& b) { return a.note > b.note; });
+
+    std::string out = "[";
+    for (size_t i = 0; i < racks.size(); ++i) {
+        const Rack& r = racks[i].second;
+        if (i > 0) out += ",";
+        out += "{";
+        out += json_string("trackIdx") + ":" + std::to_string(r.trackIdx) + ",";
+        out += json_string("name") + ":" + json_string(r.name) + ",";
+        out += json_string("pads") + ":[";
+        for (size_t p = 0; p < r.pads.size(); ++p) {
+            if (p > 0) out += ",";
+            out += "{";
+            out += json_string("note") + ":" + std::to_string(r.pads[p].note) + ",";
+            out += json_string("trackIdx") + ":" + std::to_string(r.pads[p].trackIdx) + ",";
+            out += json_string("name") + ":" + json_string(r.pads[p].name);
+            out += "}";
+        }
+        out += "]}";
+    }
+    out += "]";
+
+    SendResponse(clientId, id, true, "{\"racks\":" + out + "}");
 }

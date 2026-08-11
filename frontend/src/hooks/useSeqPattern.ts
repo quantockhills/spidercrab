@@ -11,6 +11,20 @@ export interface SeqItem {
   length: number;
 }
 
+/** One pad of a drum rack: a sound, and the note that fires it. */
+export interface RackPad {
+  note: number;
+  trackIdx: number;
+  /** The child track's name, which the RS5k manager sets to the sample. */
+  name: string;
+}
+
+export interface SeqRack {
+  trackIdx: number;
+  name: string;
+  pads: RackPad[];
+}
+
 export interface SeqPattern {
   trackIdx: number;
   itemIdx: number;
@@ -98,5 +112,21 @@ export function useSeqPattern() {
       return resp.success;
     }, [send]);
 
-  return { listItems, readPattern, writePattern, createTrack, sendToSlot };
+  /**
+   * Drum racks built by MPL's RS5k manager.
+   *
+   * Without one, a row is a guess — a note number with nothing bound to it,
+   * labelled "C1". With one, a row is a sound: a child track carrying an RS5k
+   * and a sample, named after that sample.
+   *
+   * Read-only. Building a rack is the manager's job, and it is good at it.
+   */
+  const listRacks = useCallback(async (): Promise<SeqRack[]> => {
+    const resp = await send('seq/listRacks');
+    if (!resp.success) return [];
+    const p = resp.payload as unknown as { racks?: SeqRack[] };
+    return p.racks ?? [];
+  }, [send]);
+
+  return { listItems, readPattern, writePattern, createTrack, sendToSlot, listRacks };
 }

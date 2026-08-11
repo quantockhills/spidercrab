@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSeqPattern, type SeqItem, type SeqPattern } from '../hooks/useSeqPattern';
+import { useSeqPattern, type SeqItem, type SeqPattern, type SeqRack } from '../hooks/useSeqPattern';
 import { noteName } from './grid/widgets';
 import {
   notesToGrid, gridToNotes, emptyCells, rowsFromNotes,
@@ -41,7 +41,7 @@ interface Props {
  * reading any numbers.
  */
 export function SequencerView({ tracks }: Props) {
-  const { listItems, readPattern, writePattern, createTrack, sendToSlot } = useSeqPattern();
+  const { listItems, readPattern, writePattern, createTrack, sendToSlot, listRacks } = useSeqPattern();
 
   const [trackIdx, setTrackIdx] = useState<number | null>(null);
   const [items, setItems] = useState<SeqItem[]>([]);
@@ -55,6 +55,7 @@ export function SequencerView({ tracks }: Props) {
   const [slot, setSlot] = useState({ col: 0, row: 0 });
   const [sent, setSent] = useState(false);
   const [autoSend, setAutoSend] = useState(false);
+  const [rack, setRack] = useState<SeqRack | null>(null);
 
   const gridRef = useRef<Grid | null>(null);
   gridRef.current = grid;
@@ -87,18 +88,35 @@ export function SequencerView({ tracks }: Props) {
     return () => { cancelled = true; };
   }, [tracks, trackIdx, listItems]);
 
-  const load = useCallback(async (tIdx: number, iIdx: number, stepCount: number) => {
+  // A rack makes each row a sound rather than a bare note number. Looked up
+  // once; adding pads is a deliberate act in the manager, not something that
+  // happens while you are tapping steps.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const found = await listRacks();
+      if (!cancelled && found.length) setRack(found[0]);
+    })();
+    return () => { cancelled = true; };
+  }, [listRacks]);
+
+  const load = useCallback(async (tIdx: number, iIdx: number, stepCount: number,
+                                  r: SeqRack | null) => {
     const p = await readPattern(tIdx, iIdx);
     if (!p) { setError('Could not read that item.'); return; }
     setError(null);
     setPattern(p);
-    setGrid(notesToGrid(p.notes, p.ppqStart, p.ppqEnd, stepCount));
+    // Rows come from the rack's pads when there is one, so every row is a pad
+    // whether or not it currently has any steps. Falling back to the pitches
+    // present in the item means an empty item shows a guessed drum set.
+    const rows = r?.pads.length ? r.pads.map((pd) => pd.note) : undefined;
+    setGrid(notesToGrid(p.notes, p.ppqStart, p.ppqEnd, stepCount, rows));
   }, [readPattern]);
 
   useEffect(() => {
     if (trackIdx === null || itemIdx === null) return;
-    void load(trackIdx, itemIdx, steps);
-  }, [trackIdx, itemIdx, steps, load]);
+    void load(trackIdx, itemIdx, steps, rack);
+  }, [trackIdx, itemIdx, steps, rack, load]);
 
   // ── Writing ────────────────────────────────────────────────
 
@@ -116,7 +134,7 @@ export function SequencerView({ tracks }: Props) {
     if (!ok) {
       setBusy(false);
       setError('Write failed — reloading from the item.');
-      void load(trackIdx, itemIdx, steps);
+      void load(trackIdx, itemIdx, steps, rack);
       return;
     }
 
@@ -129,7 +147,7 @@ export function SequencerView({ tracks }: Props) {
       await sendToSlot(trackIdx, itemIdx, col, row);
     }
     setBusy(false);
-  }, [pattern, trackIdx, itemIdx, writePattern, load, steps, sendToSlot]);
+  }, [pattern, trackIdx, itemIdx, writePattern, load, steps, rack, sendToSlot]);
 
   const mutate = useCallback((fn: (cells: Step[][]) => void) => {
     setGrid((g) => {
@@ -231,6 +249,10 @@ export function SequencerView({ tracks }: Props) {
     gridRef.current = next;
     void commit(next);
   }, [commit]);
+
+  /** A pad's name, when the row is backed by one. */
+  const padName = (note: number): string =>
+    rack?.pads.find((p) => p.note === note)?.name ?? '';
 
   // ── Render ─────────────────────────────────────────────────
 
@@ -384,9 +406,10 @@ export function SequencerView({ tracks }: Props) {
         <div className="flex flex-col gap-1 w-max">
           {grid.rows.map((pitch, r) => (
             <div key={pitch} className="flex items-center gap-2">
-              <div className="w-14 shrink-0 text-right text-xs tabular-nums
-                              text-[var(--text-secondary)] select-none">
-                {noteName(pitch)}
+              <div className="w-24 shrink-0 text-right text-xs truncate
+                              text-[var(--text-secondary)] select-none"
+                   title={`${noteName(pitch)}${padName(pitch) ? ' — ' + padName(pitch) : ''}`}>
+                {padName(pitch) || noteName(pitch)}
               </div>
 
               <div className="flex gap-1">
