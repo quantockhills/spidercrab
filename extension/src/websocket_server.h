@@ -55,6 +55,10 @@ public:
     // Returns true if at least one WebSocket client is connected
     bool HasClients() const;
 
+    // Resolve a client's peer IP address (the device running the browser).
+    // Returns false when the client id is unknown.
+    bool GetClientIp(int clientId, std::string& ipOut);
+
 private:
     struct Client {
         int               id;

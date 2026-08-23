@@ -1,5 +1,6 @@
 # Build artifacts
 extension/build/
+extension/build-win/
 extension/build-cmake/
 extension/cmake-build*/
 /build_win.bat

@@ -51,6 +51,9 @@ set(EXTENSION_SOURCES
     src/handlers/extstate_handlers.cpp
     src/handlers/seq_handlers.cpp
     src/handlers/settings_handlers.cpp
+    src/handlers/applemidi_handlers.cpp
+    src/apple_midi.cpp
+    src/fast_midi_server.cpp
     ${WDL_SOURCES}
 )
 
@@ -73,6 +76,9 @@ set(TEST_SOURCES
     src/handlers/extstate_handlers.cpp
     src/handlers/seq_handlers.cpp
     src/handlers/settings_handlers.cpp
+    src/handlers/applemidi_handlers.cpp
+    src/apple_midi.cpp
+    src/fast_midi_server.cpp
     ${WDL_SOURCES}
     test/test_main.cpp
     test/test_command_handler.cpp
@@ -80,6 +86,8 @@ set(TEST_SOURCES
     test/test_sha1_utils.cpp
     test/test_websocket.cpp
     test/test_osc.cpp
+    test/test_apple_midi.cpp
+    test/test_fast_midi.cpp
 )
 
 # ============================================================
@@ -158,7 +166,11 @@ if(UNIX)
 elseif(WIN32)
     target_link_libraries(reaper-ipad-test PRIVATE ws2_32)
 endif()
-target_compile_options(reaper-ipad-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+if(MSVC)
+    target_compile_options(reaper-ipad-test PRIVATE /W4 /wd4100)
+else()
+    target_compile_options(reaper-ipad-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+endif()
 
 # Register test with CTest
 include(CTest)

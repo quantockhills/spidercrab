@@ -102,6 +102,7 @@
 #define REAPERAPI_WANT_InsertTrackAtIndex
 #define REAPERAPI_WANT_DeleteTrack
 #define REAPERAPI_WANT_SetOnlyTrackSelected
+#define REAPERAPI_WANT_StuffMIDIMessage
 
 // CRITICAL: Include winsock2.h BEFORE reaper_plugin.h (which includes windows.h).
 // Without this, SOCKET type is undefined and winsock1 vs winsock2 conflicts occur.
@@ -272,6 +273,12 @@ public:
 
         // Process next batch of sample cache scan (incremental, ~100 files/tick)
         if (g_cmdHandler) g_cmdHandler->TickSampleCache();
+
+        // AppleMIDI: drain UDP sockets + session timers
+        if (g_cmdHandler) g_cmdHandler->PollAppleMidi();
+
+        // Publish the selected track for the fast MIDI thread (1ms)
+        if (g_cmdHandler) g_cmdHandler->TickMidiRouting();
 
         // Retry Playtime API resolution if it wasn't available at init time.
         // helgobox may register its API functions after our extension starts.
@@ -656,6 +663,7 @@ static bool InitializeCoreServices()
     api.SetMediaTrackInfo_Value     = SetMediaTrackInfo_Value;
     api.SetMediaItemInfo_Value      = SetMediaItemInfo_Value;
     api.GetMediaItemInfo_Value      = GetMediaItemInfo_Value;
+    api.StuffMIDIMessage            = StuffMIDIMessage;
     g_cmdHandler->SetApi(api);
 
     // Pre-cache FX list at startup, before any WebSocket client
@@ -729,6 +737,10 @@ static bool InitializeCoreServices()
         }
     });
 
+    // AppleMIDI (RTP-MIDI) server — receives the iPad keyboard's MIDI
+    // stream from its CoreMIDI Network Session over WiFi.
+    g_cmdHandler->InitAppleMidi();
+
     return true;
 }
 
@@ -756,6 +768,12 @@ static bool StartNetworkServers()
         fprintf(stderr, "[reaper-ipad] WebSocket server started on port %d\n", g_port);
     } else {
         fprintf(stderr, "[reaper-ipad] Failed to start WebSocket server\n");
+    }
+
+    // Low-latency MIDI note endpoint (main port+1). Notes cannot wait for
+    // the ~30Hz Run() dispatch, so this runs its own 1ms thread.
+    if (g_cmdHandler) {
+        g_cmdHandler->StartFastMidi(g_port + 1);
     }
 
     // Start HTTP server for frontend

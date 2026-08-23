@@ -307,6 +307,21 @@ bool WebSocketServer::HasClients() const
     return m_clients.GetSize() > 0;
 }
 
+bool WebSocketServer::GetClientIp(int clientId, std::string& ipOut)
+{
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    for (int i = 0; i < m_clients.GetSize(); i++) {
+        Client* c = m_clients.Get(i);
+        if (c->id == clientId && c->conn) {
+            char buf[64];
+            JNL::addr_to_ipstr(c->conn->get_remote(), buf, sizeof(buf));
+            ipOut = buf;
+            return !ipOut.empty();
+        }
+    }
+    return false;
+}
+
 void WebSocketServer::Broadcast(const std::string& message)
 {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);

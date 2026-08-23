@@ -115,6 +115,13 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/purgeStaleCache"]       = &CommandHandler::HandleSamplePurgeStaleCache;
     m_commandMap["sampler/create"]               = &CommandHandler::HandleSamplerCreate;
     m_commandMap["sampler/setReverse"]           = &CommandHandler::HandleSamplerSetReverse;
+    m_commandMap["applemidi/connect"]            = &CommandHandler::HandleApplemidiConnect;
+    m_commandMap["applemidi/disconnect"]         = &CommandHandler::HandleApplemidiDisconnect;
+    m_commandMap["applemidi/status"]             = &CommandHandler::HandleApplemidiStatus;
+    m_commandMap["applemidi/setRouting"]         = &CommandHandler::HandleApplemidiSetRouting;
+    m_commandMap["midi/noteOn"]                  = &CommandHandler::HandleMidiNoteOn;
+    m_commandMap["midi/noteOff"]                 = &CommandHandler::HandleMidiNoteOff;
+    m_commandMap["midi/setFastPath"]             = &CommandHandler::HandleMidiSetFastPath;
 }
 
 CommandHandler::~CommandHandler() { }

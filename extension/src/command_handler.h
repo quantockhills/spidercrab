@@ -7,9 +7,12 @@
 #include "playtime_midi.h"
 #include "osc_sender.h"
 #include "osc_receiver.h"
+#include "apple_midi.h"
+#include "fast_midi_server.h"
 #include "fx_tags.h"
 #include "settings_store.h"
 #include "sample_tags.h"
+#include <atomic>
 #include <functional>
 #include <map>
 #include <mutex>
@@ -165,6 +168,12 @@ struct ReaperAPI {
     int (*GetProjExtState)(ReaProject* proj, const char* extname, const char* key, char* valOutNeedBig, int valOutNeedBig_sz) = nullptr;
     int (*SetProjExtState)(ReaProject* proj, const char* extname, const char* key, const char* value) = nullptr;
 
+    // Live MIDI input (AppleMIDI "direct to selected track"). StuffMIDIMessage
+    // pushes a 3-byte message into the Virtual MIDI Keyboard queue, which is
+    // how a track whose input is set to the VKB hears our note stream. mode=0
+    // for VKB, 1 for the MIDI-as-control queue, 16+ for external outputs.
+    void (*StuffMIDIMessage)(int mode, int msg1, int msg2, int msg3) = nullptr;
+
     // Global (not project-scoped) ext state. This is the channel Lua
     // scripts with their own GUI use to keep settings between runs, and
     // therefore the only way to reach one from outside.
@@ -203,6 +212,41 @@ public:
 
     // Poll the OSC receiver for incoming feedback
     void PollOscReceiver() { m_oscReceiver.poll(); }
+
+    // Access the AppleMIDI (RTP-MIDI) server
+    AppleMidiServer& GetAppleMidi() { return m_appleMidi; }
+
+    // Wire AppleMIDI callbacks and bind the UDP ports. Called once at startup.
+    void InitAppleMidi();
+
+    // Drain AppleMIDI sockets + timers. Called from Run() each cycle.
+    void PollAppleMidi()
+    {
+        m_appleMidi.poll();
+        m_appleMidi.tick();
+    }
+
+    // Route one received AppleMIDI MIDI message into REAPER (VKB queue,
+    // routed to the selected track). Called from the AppleMIDI callback.
+    void HandleAppleMidiMessage(int status, int d1, int d2);
+
+    // Toggle "direct to selected track" routing. Disabling restores the
+    // tracks' previous input/monitor settings and sends note-offs.
+    void SetAppleMidiRouting(bool enabled);
+    bool AppleMidiRoutingEnabled() const { return m_appleMidiRouting; }
+
+    // Low-latency note path. REAPER's Run() is ~30Hz, so notes cannot ride
+    // the main WebSocket server's dispatch without ~17ms of polling delay.
+    // StartFastMidi spins up a dedicated 1ms-thread listener (main port+1)
+    // whose frames land in HandleFastMidiMessage, which only reads an
+    // atomically-published selected-track pointer and calls
+    // StuffMIDIMessage — no REAPER project APIs on the fast thread.
+    void StartFastMidi(int port);
+    void HandleFastMidiMessage(int status, int d1, int d2);
+    // Main-thread refresh (Run()): resolve + route the selected track and
+    // publish it for the fast thread. Called every Run() cycle.
+    void TickMidiRouting();
+    bool FastMidiEnabled() const { return m_fastMidiEnabled; }
 
     // Access the FX tag storage (for testing)
     FxTagStorage& GetFxTagStorage() { return m_fxTagStorage; }
@@ -291,6 +335,27 @@ private:
     PlaytimeMidi  m_playtimeMidi;
     OscSender     m_oscSender;
     OscReceiver   m_oscReceiver;
+    AppleMidiServer m_appleMidi;
+
+    // AppleMIDI "direct to selected track" routing state.
+    // When a note arrives, the selected track's input is pointed at the
+    // Virtual MIDI Keyboard (I_RECINPUT = 4096 | 62<<5 | 0), armed and
+    // monitored — but only once per track, and the previous values are
+    // saved so SetAppleMidiRouting(false) can restore them.
+    struct TrackRouteSave { int input = -1; int arm = -1; int mon = -1; };
+    std::atomic<bool> m_appleMidiRouting{true};
+    std::map<void*, TrackRouteSave> m_appleMidiRouted;   // track ptr -> saved state
+    std::vector<std::pair<int, int>> m_appleMidiHeldNotes; // (channel, note) held
+
+    void EnsureTrackRouted(MediaTrack* tr);
+    void PanicHeldNotes();
+
+    // Fast-thread note path state. The target track is published by
+    // TickMidiRouting on the main thread; the fast thread only reads it.
+    FastMidiServer m_fastMidi;
+    std::atomic<MediaTrack*> m_fastMidiTarget{nullptr};
+    std::atomic<bool> m_fastMidiEnabled{true};
+    std::mutex m_fastMidiMutex; // guards m_appleMidiHeldNotes across threads
 
     // Step sequencer state (Issue #63)
 
@@ -459,4 +524,15 @@ private:
     // Command handlers — chain search (Issue #103)
     void HandleFxChainSearchCached(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainRefreshCache(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — AppleMIDI (RTP-MIDI / iPad keyboard)
+    void HandleApplemidiConnect(int clientId, const std::string& id, const std::string& params);
+    void HandleApplemidiDisconnect(int clientId, const std::string& id, const std::string& params);
+    void HandleApplemidiStatus(int clientId, const std::string& id, const std::string& params);
+    void HandleApplemidiSetRouting(int clientId, const std::string& id, const std::string& params);
+
+    // Command handlers — live MIDI notes (main-server fallback + tests)
+    void HandleMidiNoteOn(int clientId, const std::string& id, const std::string& params);
+    void HandleMidiNoteOff(int clientId, const std::string& id, const std::string& params);
+    void HandleMidiSetFastPath(int clientId, const std::string& id, const std::string& params);
 };

@@ -309,6 +309,7 @@ struct MockTrack {
     int         selected = 0;
     int         recMode = 0; // I_RECMODE: 0=input, 7=MIDI overdub, 8=MIDI replace
     int         recInput = 0; // I_RECINPUT: 0=mono audio, 6112=all MIDI all channels
+    int         recMon = 0; // I_RECMON: 0=off, 1=normal monitoring, 2=tape style
     struct MockFX {
         int                    idx;
         std::string            name;
@@ -661,7 +662,66 @@ static void* mock_GetSetMediaTrackInfo(MediaTrack* trackPtr, const char* parmnam
         if (setNewValue) t.recInput = *(int*)setNewValue;
         return &t.recInput;
     }
+    if (name == "I_RECMON") {
+        if (setNewValue) t.recMon = *(int*)setNewValue;
+        return &t.recMon;
+    }
     return nullptr;
+}
+
+// SetMediaTrackInfo_Value returns only success; the previous values are
+// read through GetSetMediaTrackInfo, like the real REAPER pair.
+static bool mock_SetMediaTrackInfo_Value(MediaTrack* trackPtr, const char* parmname, double newvalue)
+{
+    if (!g_mock || !parmname) return false;
+    int idx = static_cast<int>(reinterpret_cast<uintptr_t>(trackPtr)) - 1;
+    if (idx < 0 || idx >= (int)g_mock->tracks.size()) return false;
+    auto& t = g_mock->tracks[idx];
+    const std::string name(parmname);
+    if (name == "I_RECARM") {
+        t.armed = (int)newvalue;
+        return true;
+    }
+    if (name == "I_RECMON") {
+        t.recMon = (int)newvalue;
+        return true;
+    }
+    return false;
+}
+
+// GetSelectedTrack(proj, idx): idx-th selected track, or null
+static MediaTrack* mock_GetSelectedTrack(ReaProject*, int idx)
+{
+    if (!g_mock || idx < 0) return nullptr;
+    int found = 0;
+    for (size_t i = 0; i < g_mock->tracks.size(); ++i) {
+        if (g_mock->tracks[i].selected) {
+            if (found == idx)
+                return reinterpret_cast<MediaTrack*>(static_cast<uintptr_t>(i + 1));
+            found++;
+        }
+    }
+    return nullptr;
+}
+
+// ---- Mock StuffMIDIMessage (AppleMIDI -> VKB queue) ----
+
+struct StuffedMidi {
+    int mode;
+    int m1;
+    int m2;
+    int m3;
+};
+static std::vector<StuffedMidi> g_mockStuffed;
+
+static void mock_StuffMIDIMessage(int mode, int m1, int m2, int m3)
+{
+    g_mockStuffed.push_back({mode, m1, m2, m3});
+}
+
+static void ResetStuffedMidi()
+{
+    g_mockStuffed.clear();
 }
 
 static bool mock_GetSetMediaTrackInfo_String(MediaTrack* trackPtr, const char* parmname, char* setNewValue, bool setNewValue_isAllowed)
@@ -850,6 +910,9 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.CountTrackMediaItems      = mock_CountTrackMediaItems;
     api.GetSetMediaTrackInfo = mock_GetSetMediaTrackInfo;
     api.GetSetMediaTrackInfo_String = mock_GetSetMediaTrackInfo_String;
+    api.SetMediaTrackInfo_Value = mock_SetMediaTrackInfo_Value;
+    api.GetSelectedTrack = mock_GetSelectedTrack;
+    api.StuffMIDIMessage = mock_StuffMIDIMessage;
     api.EnumInstalledFX      = mock_EnumInstalledFX;
     api.GetTrackStateChunk   = mock_GetTrackStateChunk;
     api.SetTrackStateChunk   = mock_SetTrackStateChunk;
@@ -5900,4 +5963,339 @@ TEST(SeqNotesTest, OneBadRecordRejectsTheWholeWrite)
     // must not be applied.
     std::vector<ParsedNote> out;
     EXPECT_FALSE(parseNotes("36:0:120:100:0,200:240:360:90:0,42:480:500:64:0", out));
+}
+
+// ============================================================
+// AppleMIDI direct-to-selected-track routing (Issue: iPad keyboard)
+// ============================================================
+
+TEST(AppleMidiRoutingTest, NoteOnRoutesToSelectedTrackAndStuffsVkb)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    t0.recInput = 0;  // mono audio input
+    t0.armed = 0;
+    t0.recMon = 0;
+    MockTrack t1;
+    t1.idx = 1;
+    t1.name = "Drums";
+    state.tracks = {t0, t1};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    ResetStuffedMidi();
+
+    handler->HandleAppleMidiMessage(0x90, 60, 100);
+
+    ASSERT_EQ(g_mockStuffed.size(), 1u);
+    EXPECT_EQ(g_mockStuffed[0].mode, 0) << "VKB queue";
+    EXPECT_EQ(g_mockStuffed[0].m1, 0x90);
+    EXPECT_EQ(g_mockStuffed[0].m2, 60);
+    EXPECT_EQ(g_mockStuffed[0].m3, 100);
+
+    // Track routed to VKB: 4096 | 62<<5 | 0 = 6080, armed, monitored
+    EXPECT_EQ(state.tracks[0].recInput, 6080) << "VKB input, all channels";
+    EXPECT_EQ(state.tracks[0].armed, 1);
+    EXPECT_EQ(state.tracks[0].recMon, 1);
+    EXPECT_EQ(state.tracks[1].recInput, 0) << "other track untouched";
+}
+
+TEST(AppleMidiRoutingTest, AlreadyRoutedTrackIsNotRewritten)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    t0.recInput = 6080; // already VKB
+    state.tracks = {t0};
+
+    auto handler = MakeMockHandler(&state, nullptr);
+    ResetStuffedMidi();
+
+    handler->HandleAppleMidiMessage(0x90, 60, 100);
+    handler->HandleAppleMidiMessage(0x80, 60, 0);
+
+    EXPECT_EQ(state.tracks[0].recInput, 6080);
+    ASSERT_EQ(g_mockStuffed.size(), 2u);
+    EXPECT_EQ(g_mockStuffed[1].m1, 0x80);
+}
+
+TEST(AppleMidiRoutingTest, NoteWithoutSelectedTrackIsDropped)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 0; // nothing selected
+    state.tracks = {t0};
+
+    auto handler = MakeMockHandler(&state, nullptr);
+    ResetStuffedMidi();
+
+    handler->HandleAppleMidiMessage(0x90, 60, 100);
+
+    EXPECT_TRUE(g_mockStuffed.empty());
+    EXPECT_EQ(state.tracks[0].recInput, 0);
+}
+
+TEST(AppleMidiRoutingTest, DisableRestoresTrackAndPanicsHeldNotes)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    t0.recInput = 512; // user's original input
+    t0.armed = 0;
+    t0.recMon = 0;
+    state.tracks = {t0};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    ResetStuffedMidi();
+
+    handler->HandleAppleMidiMessage(0x90, 60, 100);
+    ASSERT_EQ(g_mockStuffed.size(), 1u);
+
+    handler->SetAppleMidiRouting(false);
+
+    // Restored original input; monitor off; panic note-off sent
+    EXPECT_EQ(state.tracks[0].recInput, 512);
+    EXPECT_EQ(state.tracks[0].recMon, 0);
+    ASSERT_EQ(g_mockStuffed.size(), 2u);
+    EXPECT_EQ(g_mockStuffed[1].mode, 0);
+    EXPECT_EQ(g_mockStuffed[1].m1, 0x80);
+    EXPECT_EQ(g_mockStuffed[1].m2, 60);
+
+    // Notes after disabling go nowhere
+    handler->HandleAppleMidiMessage(0x90, 62, 100);
+    EXPECT_EQ(g_mockStuffed.size(), 2u);
+}
+
+TEST(AppleMidiRoutingTest, ReleasedNoteIsNotPanicked)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    state.tracks = {t0};
+
+    auto handler = MakeMockHandler(&state, nullptr);
+    ResetStuffedMidi();
+
+    handler->HandleAppleMidiMessage(0x90, 60, 100);
+    handler->HandleAppleMidiMessage(0x80, 60, 0);
+    handler->SetAppleMidiRouting(false);
+
+    // Only the on/off pair � no extra panic note-off
+    ASSERT_EQ(g_mockStuffed.size(), 2u);
+    EXPECT_EQ(g_mockStuffed[0].m1, 0x90);
+    EXPECT_EQ(g_mockStuffed[1].m1, 0x80);
+}
+
+TEST(AppleMidiRoutingTest, SetRoutingCommandDispatch)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    t0.recInput = 777;
+    state.tracks = {t0};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    ResetStuffedMidi();
+
+    handler->HandleAppleMidiMessage(0x90, 60, 100);
+    EXPECT_EQ(state.tracks[0].recInput, 6080);
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"applemidi/setRouting","payload":{"enabled":"false"},"id":"r_1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"routing\":false"), std::string::npos);
+    EXPECT_EQ(state.tracks[0].recInput, 777) << "restored via command";
+}
+
+TEST(AppleMidiRoutingTest, StatusCommandReportsStateAndRouting)
+{
+    MockState state;
+    auto handler = MakeMockHandler(&state, nullptr);
+
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&responses](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"applemidi/status","id":"s_1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"state\":"), std::string::npos);
+    EXPECT_NE(responses[0].find("\"routing\":true"), std::string::npos);
+}
+
+TEST(AppleMidiRoutingTest, ConnectWithoutHostFailsCleanly)
+{
+    MockState state;
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+
+    // No WebSocketServer in tests, so no peer IP is discoverable
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"applemidi/connect","payload":{},"id":"c_1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":false"), std::string::npos);
+    EXPECT_NE(responses[0].find("No host"), std::string::npos);
+}
+
+// ============================================================
+// Fast MIDI path (low-latency note endpoint)
+// ============================================================
+
+TEST(FastMidiPathTest, NoteOnCommandRoutesToSelectedTrack)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    t0.recInput = 0;
+    state.tracks = {t0};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    ResetStuffedMidi();
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"midi/noteOn","note":60,"velocity":100,"id":"n_1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"success\":true"), std::string::npos);
+
+    ASSERT_EQ(g_mockStuffed.size(), 1u);
+    EXPECT_EQ(g_mockStuffed[0].mode, 0);
+    EXPECT_EQ(g_mockStuffed[0].m1, 0x90);
+    EXPECT_EQ(g_mockStuffed[0].m2, 60);
+    EXPECT_EQ(g_mockStuffed[0].m3, 100);
+    EXPECT_EQ(state.tracks[0].recInput, 6080) << "routed to VKB";
+}
+
+TEST(FastMidiPathTest, NoteOffCommand)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    t0.recInput = 6080;
+    state.tracks = {t0};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    ResetStuffedMidi();
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"midi/noteOff","note":60,"id":"n_2"})");
+    ASSERT_EQ(g_mockStuffed.size(), 1u);
+    EXPECT_EQ(g_mockStuffed[0].m1, 0x80);
+    EXPECT_EQ(g_mockStuffed[0].m2, 60);
+}
+
+TEST(FastMidiPathTest, TickRoutingPublishesTargetThenFastDispatch)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    t0.recInput = 512; // user's original input
+    state.tracks = {t0};
+
+    auto handler = MakeMockHandler(&state, nullptr);
+    ResetStuffedMidi();
+
+    // Main thread: Run() publishes the selected track and routes it
+    handler->TickMidiRouting();
+
+    // Fast thread: note lands without any track API calls
+    handler->HandleFastMidiMessage(0x90, 60, 100);
+
+    ASSERT_EQ(g_mockStuffed.size(), 1u);
+    EXPECT_EQ(g_mockStuffed[0].m1, 0x90);
+    EXPECT_EQ(state.tracks[0].recInput, 6080) << "routing done on main-thread tick";
+    EXPECT_EQ(state.tracks[0].armed, 1);
+}
+
+TEST(FastMidiPathTest, FastDispatchWithoutSelectedTrackDrops)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 0;
+    state.tracks = {t0};
+
+    auto handler = MakeMockHandler(&state, nullptr);
+    ResetStuffedMidi();
+
+    handler->TickMidiRouting();
+    handler->HandleFastMidiMessage(0x90, 60, 100);
+
+    EXPECT_TRUE(g_mockStuffed.empty());
+}
+
+TEST(FastMidiPathTest, FastPathDisabledFallsBackToMainThread)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    state.tracks = {t0};
+
+    std::vector<std::string> responses;
+    auto handler = MakeMockHandler(&state, &responses);
+    ResetStuffedMidi();
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"midi/setFastPath","enabled":"false","id":"f_1"})");
+    EXPECT_FALSE(handler->FastMidiEnabled());
+
+    // Fast-thread entry point: must not dispatch directly, but queue
+    handler->HandleFastMidiMessage(0x90, 60, 100);
+    EXPECT_TRUE(g_mockStuffed.empty());
+
+    // The main thread drains the queue and plays the note
+    handler->DrainPendingOps();
+    ASSERT_EQ(g_mockStuffed.size(), 1u);
+    EXPECT_EQ(g_mockStuffed[0].m1, 0x90);
+}
+
+TEST(FastMidiPathTest, HeldNotesSurviveAcrossThreadsForPanic)
+{
+    MockState state;
+    MockTrack t0;
+    t0.idx = 0;
+    t0.name = "Synth";
+    t0.selected = 1;
+    t0.recInput = 6080;
+    state.tracks = {t0};
+
+    auto handler = MakeMockHandler(&state, nullptr);
+    ResetStuffedMidi();
+
+    handler->TickMidiRouting();
+    handler->HandleFastMidiMessage(0x90, 60, 100); // fast thread: hold
+    handler->HandleFastMidiMessage(0x90, 64, 100); // fast thread: hold
+
+    // Main thread: routing toggle off panics everything
+    handler->SetAppleMidiRouting(false);
+    ASSERT_EQ(g_mockStuffed.size(), 4u); // 2 ons + 2 panic offs
+    EXPECT_EQ(g_mockStuffed[2].m1, 0x80);
+    EXPECT_EQ(g_mockStuffed[2].m2, 60);
 }
