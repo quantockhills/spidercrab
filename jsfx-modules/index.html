@@ -10,13 +10,9 @@
       
       
       
-        <link rel="canonical" href="https://quantockhills.github.io/spidercrab/gestures/">
+        <link rel="canonical" href="https://quantockhills.github.io/spidercrab/jsfx-modules/">
       
       
-        <link rel="prev" href="../features/settings/">
-      
-      
-        <link rel="next" href="../commands/">
       
       
         
@@ -27,7 +23,7 @@
     
     
       
-        <title>Touch Gestures - Spidercrab</title>
+        <title>JSFX Modules — design notes - Spidercrab</title>
       
     
     
@@ -78,7 +74,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#touch-gestures" class="md-skip">
+        <a href="#jsfx-modules-design-notes" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +110,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Touch Gestures
+              JSFX Modules — design notes
             
           </span>
         </div>
@@ -596,37 +592,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Touch Gestures
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../gestures/" class="md-nav__link">
         
   
   
@@ -642,142 +611,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#the-four-moves" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The four moves
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#at-a-glance" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        At a glance
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#a-little-more-detail" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        A little more detail
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="A little more detail">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#effect-knobs" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Effect knobs
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#effects-on-a-track" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Effects on a track
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#add-fx" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Add FX
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#clip-slots" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Clip slots
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#keys-pads-playtime-keys" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Keys pads (Playtime → Keys)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#samples" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Samples
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sequencer-steps-hidden-in-the-current-release" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Sequencer steps (hidden in the current release)
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -896,44 +729,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#the-four-moves" class="md-nav__link">
+  <a href="#what-is-and-isnt-reachable" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The four moves
+        What is and isn't reachable
       
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#at-a-glance" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        At a glance
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#a-little-more-detail" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        A little more detail
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="A little more detail">
+    <nav class="md-nav" aria-label="What is and isn&#39;t reachable">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#effect-knobs" class="md-nav__link">
+  <a href="#the-costs-of-patching" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Effect knobs
+        The costs of patching
       
     </span>
   </a>
@@ -941,65 +752,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#effects-on-a-track" class="md-nav__link">
+  <a href="#yutani-is-an-outlier" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Effects on a track
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#add-fx" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Add FX
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#clip-slots" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Clip slots
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#keys-pads-playtime-keys" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Keys pads (Playtime → Keys)
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#samples" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Samples
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#sequencer-steps-hidden-in-the-current-release" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Sequencer steps (hidden in the current release)
+        Yutani is an outlier
       
     </span>
   </a>
@@ -1008,6 +764,116 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-can-be-derived-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What can be derived automatically
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#proposed-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Proposed architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#decided" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decided
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-the-horizontal-strip-resolves-the-layout-problem" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Why the horizontal strip resolves the layout problem
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-this-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where this goes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phasing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phasing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-questions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open questions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#pattern-data-parameters-now-gmem-later" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pattern data: parameters now, gmem later
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#parameter-ranges-differ-between-jsfx-and-vst" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter ranges differ between JSFX and VST
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1031,131 +897,326 @@
   
 
 
-<h1 id="touch-gestures">Touch Gestures<a class="headerlink" href="#touch-gestures" title="Permanent link">&para;</a></h1>
-<p>Everything in Spidercrab happens by touch, and a <strong>tap</strong>, a <strong>double-tap</strong>, and a <strong>hold</strong> each do something different. Nothing on screen spells that out — so this page is your cheat sheet. It's worth two minutes; it makes the whole app click.</p>
-<h2 id="the-four-moves">The four moves<a class="headerlink" href="#the-four-moves" title="Permanent link">&para;</a></h2>
+<h1 id="jsfx-modules-design-notes">JSFX Modules — design notes<a class="headerlink" href="#jsfx-modules-design-notes" title="Permanent link">&para;</a></h1>
+<p>Purpose: give a JSFX effect a real interface on the iPad — knobs, toggles,
+segmented selectors, XY pads — laid out the way the plugin actually presents
+itself, instead of the flat list of generic sliders the FX tab shows today.
+Consistent visual language across every module, the way Ableton's device
+panels look like each other rather than like their plugins.</p>
+<p>The existing generic slider list stays. A module is an alternative view,
+toggled per FX.</p>
+<h2 id="what-is-and-isnt-reachable">What is and isn't reachable<a class="headerlink" href="#what-is-and-isnt-reachable" title="Permanent link">&para;</a></h2>
+<p><strong>Widget type is our choice.</strong> In JSFX, <code>sliderN:</code> is a <em>parameter
+declaration</em>, not a visual slider — it's the only thing a host reads or
+writes. What the plugin draws in <code>@gfx</code> is independent: Yutani renders
+<code>osc1_db</code> (slider1) as a knob. So rendering something as a knob, toggle or XY
+pad is entirely up to the module.</p>
+<p><strong>Controllability is fixable, because JSFX is source.</strong> A control writing to a
+variable that isn't a declared parameter can't be set by any host <em>as
+shipped</em> — but the plugin can be patched to expose it. Three facts from the
+<a href="https://www.reaper.fm/sdk/js/js.php">JSFX reference</a> make this practical:</p>
 <ul>
-<li><strong>Tap</strong> — a quick press. The everyday action: launch, select, toggle.</li>
-<li><strong>Double-tap</strong> — two quick taps within 300ms. Usually "reset to default" — except on an effect, where it means "bypass."</li>
-<li><strong>Hold</strong> — press and keep your finger down for about half a second. This reveals extra options like delete or search.</li>
-<li><strong>Long hold (2 seconds)</strong> — one special case: holding a <strong>chain block's header</strong> for two full seconds cycles it to the next chain.</li>
-<li><strong>Drag</strong> — press and slide. For sliders, reordering, and moving things around.</li>
+<li><strong>256 slider slots.</strong> Yutani uses 71 (indices 1–81), leaving 185 free.</li>
+<li><strong>Hidden sliders.</strong> Prefixing a declaration with <code>-</code> hides it from the
+  plugin's own UI while keeping it automatable. Internal state can be exposed
+  to the host <em>without changing how the plugin looks in REAPER</em>.</li>
+<li><strong><code>slider_automate(2^index)</code></strong> notifies the host when the plugin's own GUI
+  writes a value, so the iPad stays in sync when someone turns a knob in
+  REAPER. (<code>sliderchange()</code> refreshes the display but does <em>not</em> send
+  automation — the wrong one for this.)</li>
 </ul>
-<blockquote>
-<p><strong>Tip:</strong> A hold only counts if you keep still. If you start sliding, it becomes a drag instead.</p>
-</blockquote>
-<h2 id="at-a-glance">At a glance<a class="headerlink" href="#at-a-glance" title="Permanent link">&para;</a></h2>
+<p>So promoting a control is mechanical: add a hidden slider declaration, and add
+a <code>slider_automate</code> call where <code>@gfx</code> writes the variable.</p>
+<h3 id="the-costs-of-patching">The costs of patching<a class="headerlink" href="#the-costs-of-patching" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>It's a fork.</strong> Yutani is actively maintained and ReaPack-distributed; an
+  update overwrites the patch. Mitigation: generate a patched <em>copy</em> beside the
+  original rather than editing in place, so divergence is explicit and ReaPack
+  keeps managing the original.</li>
+<li><strong>Per-plugin effort.</strong> Yutani has 114 plausible controls to promote.</li>
+</ul>
+<p>A patched <em>copy under a new filename</em> is a different plugin as far as REAPER is
+concerned, which dissolves most of the risk: existing projects go on loading
+the original, untouched, and the copy has no legacy saved state to migrate. So
+the <code>@serialize</code>-precedence question doesn't arise for the copy approach — it
+would only matter if we patched a plugin in place, which we won't.</p>
+<p>The one thing that doesn't carry over is <strong>presets</strong>: they're stored per
+plugin, so Yutani's <code>bass_presets.rpl</code> wouldn't appear in the copy. Converting
+them is possible (they're slider values in a text format) but is its own task.</p>
+<p>Measured on Yutani (<code>Saike_Yutani.jsfx</code>):</p>
 <table>
 <thead>
 <tr>
-<th>Where you are</th>
-<th>Tap</th>
-<th>Double-tap</th>
-<th>Hold</th>
-<th>Drag</th>
+<th></th>
+<th></th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Effect knob / slider</strong></td>
-<td>Jump to that spot</td>
-<td>Reset to default</td>
-<td>—</td>
-<td>Slide the value</td>
+<td>Host-visible parameters (<code>sliderN:</code>)</td>
+<td>71</td>
 </tr>
 <tr>
-<td><strong>Effect on a track</strong></td>
-<td>—</td>
-<td>Bypass</td>
-<td>Confirm to remove</td>
-<td>Reorder it</td>
+<td>Variables persisted in <code>@serialize</code></td>
+<td>122</td>
 </tr>
 <tr>
-<td><strong>Effect's ▼ corner</strong></td>
-<td>Open its knobs</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td><strong>Chain block header</strong></td>
-<td>—</td>
-<td>—</td>
-<td><em>2s: Chain Cycler</em></td>
-<td>Reorder the whole block</td>
-</tr>
-<tr>
-<td><strong>Add FX button</strong></td>
-<td>Add an effect</td>
-<td>—</td>
-<td>Open search</td>
-<td>—</td>
-</tr>
-<tr>
-<td><strong>Clip slot</strong></td>
-<td>Launch (or record)</td>
-<td>—</td>
-<td>Actions: sampler / delete</td>
-<td>—</td>
-</tr>
-<tr>
-<td><strong>Keys pad</strong></td>
-<td>Play the note</td>
-<td>—</td>
-<td>—</td>
-<td>Slide = glissando</td>
-</tr>
-<tr>
-<td><strong>Clip's ↻ corner button</strong></td>
-<td>Reverse the clip</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td><strong>Sample</strong></td>
-<td>Preview it</td>
-<td>—</td>
-<td>Open its menu</td>
-<td>Pick it up</td>
-</tr>
-<tr>
-<td><strong>Sequencer step</strong> <em>(hidden for now)</em></td>
-<td>Turn it on/off</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
-</tr>
-<tr>
-<td><strong>Track buttons</strong></td>
-<td>Mute / solo / arm</td>
-<td>—</td>
-<td>—</td>
-<td>—</td>
+<td>Persisted variables that are <em>not</em> parameters</td>
+<td>122</td>
 </tr>
 </tbody>
 </table>
-<h2 id="a-little-more-detail">A little more detail<a class="headerlink" href="#a-little-more-detail" title="Permanent link">&para;</a></h2>
-<h3 id="effect-knobs">Effect knobs<a class="headerlink" href="#effect-knobs" title="Permanent link">&para;</a></h3>
-<p>Slide to dial a value in — you'll hear it change as you move. Tap anywhere to jump straight there. Double-tap to snap back to the default.</p>
-<h3 id="effects-on-a-track">Effects on a track<a class="headerlink" href="#effects-on-a-track" title="Permanent link">&para;</a></h3>
-<p><strong>Double-tap</strong> an effect to bypass it (it dims and greys out while off). Tap its small <strong>▼</strong> corner to open its parameters in an inline drawer. <strong>Hold</strong> the card to arm it for deletion — it flips to a red "Delete?" confirmation, tap it again to actually delete, or tap elsewhere to back out. Drag a single effect to reorder it, or drag a whole chain block by its green header to move every effect in it together. Holding a <strong>chain block's header for two seconds</strong> opens the <strong>Chain Cycler</strong>, where you step ◀ / ▶ through the other chains in that folder and swap the whole thing out.</p>
-<h3 id="add-fx">Add FX<a class="headerlink" href="#add-fx" title="Permanent link">&para;</a></h3>
-<p>Tap to add an effect. <strong>Hold</strong> it to open a search box: start typing and it finds both plugins and your saved effect chains — tap a result to drop it on the track.</p>
-<h3 id="clip-slots">Clip slots<a class="headerlink" href="#clip-slots" title="Permanent link">&para;</a></h3>
-<p>Tap to launch the clip. If you've armed recording first, tapping an empty slot <strong>records into it</strong> instead — tap again to stop. With a <strong>Count-in</strong> set, the slot shows a red countdown and recording starts on the next bar boundary + N bars. Each clip has a small <strong>↻ button in its corner</strong> to reverse it. Hold a slot that has a clip to open its actions — <strong>send to sampler</strong> (turn it into a playable instrument) and <strong>delete</strong>.</p>
-<h3 id="keys-pads-playtime-keys">Keys pads (Playtime → Keys)<a class="headerlink" href="#keys-pads-playtime-keys" title="Permanent link">&para;</a></h3>
+<p>And by drawn widget:</p>
+<table>
+<thead>
+<tr>
+<th>Widget in <code>@gfx</code></th>
+<th>Count</th>
+<th>Reachable?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Knobs</td>
+<td>77</td>
+<td>mostly yes — they write to declared params</td>
+</tr>
+<tr>
+<td>Selection buttons</td>
+<td>56</td>
+<td>mostly yes — they write slider values (<code>OSC1_SELECT = 4</code> → slider4)</td>
+</tr>
+<tr>
+<td>Toggles</td>
+<td>34</td>
+<td><strong>3 of 32 backed variables are params; 29 are not</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The unreachable ones are exactly the enable/disable switches: <code>c_lfo_enabled</code>,
+<code>allpass_enabled</code>, <code>bonus_enabled</code>, <code>amp_before_filter</code>, <code>cutoff_reset</code>,
+<code>tempo_sync_envelopes</code>, and the whole <code>*_vel</code> / <code>*_mod</code> modulation-depth
+matrix.</p>
+<p><strong>Consequence:</strong> an <em>unpatched</em> Yutani module gets its knobs and shape
+selectors faithfully, but its section on/off switches are dead. Either the
+module marks them unavailable, or Yutani gets patched with hidden sliders and
+they become live. That's a per-plugin decision, and it means modules need a
+notion of "requires a patched build" alongside plain ones.</p>
+<h3 id="yutani-is-an-outlier">Yutani is an outlier<a class="headerlink" href="#yutani-is-an-outlier" title="Permanent link">&para;</a></h3>
+<p>Across the 346 JSFX in this library that declare parameters:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Total host-visible parameters</td>
+<td>3,776</td>
+</tr>
+<tr>
+<td>Plugins using <code>@serialize</code> at all</td>
+<td>35 of 346</td>
+</tr>
+<tr>
+<td>Internal-only variables across those 35</td>
+<td>365</td>
+</tr>
+</tbody>
+</table>
+<p>So <strong>311 of 346 plugins have no hidden state</strong> — everything they draw is
+reachable. Yutani is among the most complex JSFX in existence; it is the hard
+case, not the typical one.</p>
+<h2 id="what-can-be-derived-automatically">What can be derived automatically<a class="headerlink" href="#what-can-be-derived-automatically" title="Permanent link">&para;</a></h2>
+<p>The parameter declarations carry more than the current UI uses:</p>
+<div class="highlight"><pre><span></span><code>slider4:osc1_shape=0&lt;0,9,1{Saw,Square,Triangle,Fin,PWM,...}&gt;-Oscillator 1 Shape
+slider3:free_osc=0&lt;0, 1, 1&gt;-Reset Osc on note
+slider26:drive=0&lt;-32,48,1&gt;-Filter Drive (dB)
+slider43:env_amnt=0&lt;-1,1,.0001&gt;-Envelope Amount
+</code></pre></div>
+<p>Inference rules:</p>
+<table>
+<thead>
+<tr>
+<th>Pattern</th>
+<th>Widget</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{a,b,c}</code> enum list</td>
+<td>segmented control or dropdown, with real option names</td>
+</tr>
+<tr>
+<td><code>&lt;0,1,1&gt;</code></td>
+<td>toggle</td>
+</tr>
+<tr>
+<td>range centred on 0 (<code>&lt;-1,1,…&gt;</code>, <code>&lt;-12,12,…&gt;</code>)</td>
+<td>bipolar knob, detented at centre</td>
+</tr>
+<tr>
+<td>unit in the label (<code>dB</code>, <code>Hz</code>, <code>ms</code>, <code>%</code>)</td>
+<td>knob with unit-aware formatting</td>
+</tr>
+<tr>
+<td>everything else</td>
+<td>knob or slider, module's choice</td>
+</tr>
+</tbody>
+</table>
+<p>Across the library that means <strong>603 enums (15%) and 150 toggles (3%) currently
+render as generic continuous sliders</strong> — 18% of all parameters are the wrong
+control type today. Fixing that alone is a large win and needs no per-plugin
+work.</p>
+<p>What cannot be derived: <strong>grouping and layout</strong>. Yutani's "Oscillator 1",
+"Filter", "Amp Envelope" panels exist only as imperative drawing code in
+<code>@gfx</code> — ~1,000 lines of <code>drawPanel</code> / <code>drawKnob</code> calls with computed
+coordinates, spread across 13 imported <code>.jsfx-inc</code> files. Parsing that
+faithfully is not realistic.</p>
+<h2 id="proposed-architecture">Proposed architecture<a class="headerlink" href="#proposed-architecture" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>  .jsfx source ──► extension parses ──► descriptor (auto)
+                                            │
+                   module manifest (hand-authored, optional)
+                                            │
+                                            ▼
+                              frontend renders with the design system
+</code></pre></div>
+<p><strong>Descriptor (automatic).</strong> New command <code>fx/getModule</code>. The extension already
+gets the JSFX path from <code>EnumInstalledFX</code>'s ident, so it can read the source,
+parse the <code>sliderN:</code> declarations, and return typed parameter descriptors:
+index, name, range, step, default, enum options, inferred widget, unit. Works
+for every JSFX with no authoring effort.</p>
+<p><strong>Manifest (optional, per plugin).</strong> JSON keyed by ident, giving what the
+source can't: panel grouping, ordering, pages, widget overrides, XY pairings,
+and marking known-unreachable controls. Ships with the app; a missing manifest
+just means the auto descriptor is rendered in declaration order.</p>
+<p><strong>XY pads</strong> are a manifest construct — JSFX has no such declaration. An XY pad
+is two parameters bound to two axes, e.g. Yutani's cutoff (28) and resonance
+(29). That is a module-authoring decision, which is the point.</p>
+<p>Non-JSFX plugins (VST/AU/CLAP) have no readable source, but REAPER still
+reports parameter names and values — so the manifest path works for them too,
+just without auto-derivation.</p>
+<h2 id="decided">Decided<a class="headerlink" href="#decided" title="Permanent link">&para;</a></h2>
+<p><strong>A new top-level tab: Grid.</strong> Alongside Media, FX, Tracks, Playtime and
+Settings. It shows the selected track's plugin interface in landscape, full
+height, and pans horizontally when it's wider than the screen.</p>
+<p><strong>The existing generic slider list is left alone.</strong> No changes to how the FX
+tab looks or behaves. Grid is an additional way in, not a replacement, and
+there's no toggle inside the FX view.</p>
+<p>This rules out the "infer widgets everywhere" option, which would have improved
+the generic list by rendering enums and toggles properly. Still available later
+as an independent improvement.</p>
+<h2 id="why-the-horizontal-strip-resolves-the-layout-problem">Why the horizontal strip resolves the layout problem<a class="headerlink" href="#why-the-horizontal-strip-resolves-the-layout-problem" title="Permanent link">&para;</a></h2>
+<p>The earlier worry was that "truthful to the original" fights "usable with
+fingers": Yutani's window is 1460×600 with 35px knobs, an iPad in landscape is
+roughly 1180×820, and reliable touch wants ~44px. Reproducing it 1:1 means
+controls too small to hit.</p>
+<p>Panning sideways removes the conflict. Fix the height to the screen, let the
+width be whatever the controls need at a comfortable size, and swipe right for
+the rest. Nothing gets scaled down. Yutani becomes a wide strip you move along
+rather than a shrunken photograph, which is what Ableton's device view does and
+why it works on small screens.</p>
+<p>This also sets the layout format: <strong>fixed height, variable width, ordered
+panels.</strong> A module describes panels left to right, each holding controls in a
+fixed-height arrangement. No absolute pixel positions.</p>
+<h2 id="where-this-goes">Where this goes<a class="headerlink" href="#where-this-goes" title="Permanent link">&para;</a></h2>
+<p>The tab is called Grid because one plugin is the first case, not the only one.
+The intended end state is Ableton's device chain: every FX on the selected
+track laid out side by side in one continuously pannable strip, so a track's
+whole signal path is one surface. That falls out of the same layout format —
+panels left to right — with device boundaries between plugins.</p>
+<h2 id="phasing">Phasing<a class="headerlink" href="#phasing" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong>The Grid tab with one plugin.</strong> Widget kit (knob, toggle, segmented, XY),
+   the horizontal-pan container, and a module rendered for a single simple
+   plugin. Establishes the layout format end to end.</li>
+<li><strong>Yutani</strong>, as the stress test: a patched copy exposing its private
+   controls, plus a module definition for its panel structure. 167 drawn
+   widgets across five original panel rows is the real test of whether the
+   format holds up.</li>
+<li><strong>Multiple plugins in one strip</strong> — the actual grid, with device boundaries
+   and the whole chain pannable.</li>
+<li><strong>XY pads and richer widgets</strong>, once the format has settled.</li>
+</ol>
+<h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Press a pad</strong> — play that note (or chord, in Chord mode). <strong>Press higher up</strong> the pad for louder velocity.</li>
-<li><strong>Slide across pads</strong> — glissando: each pad you cross plays, the last one releases when you lift off.</li>
-<li><strong>Multi-touch</strong> — every finger is its own note, so play a chord with several fingers.</li>
-<li><strong>Hold toggle</strong> — with Hold on, notes keep ringing after you lift; toggle it off to release them all.</li>
-<li><strong>Drag the note-name pill</strong> (between the −/+ buttons) — pan the whole grid up or down by single scale steps; the −/+ buttons jump whole octaves.</li>
+<li><code>App.tsx</code> has a <code>Tab</code> union and a <code>TABS</code> array; adding one is small. There's
+  a precedent for shipping an unfinished tab hidden behind a flag —
+  <code>SHOW_SEQUENCER</code> — worth reusing here while the format is in flux.</li>
+<li>The data layer already exists: <code>track/getFx</code> lists a track's FX,
+  <code>fx/getParams</code> returns parameters with ranges and formatted values. Grid
+  needs no new backend commands until modules require parsed JSFX metadata.</li>
+<li>Nothing in the app pans horizontally yet, so the container is new. It should
+  reuse the pointer-gating work from #138/#140 rather than inventing its own
+  gesture handling — and note that a horizontal pan container sitting under
+  horizontally-dragged knobs is exactly the gesture conflict <code>touch-action</code>
+  was added to resolve.</li>
 </ul>
-<h3 id="samples">Samples<a class="headerlink" href="#samples" title="Permanent link">&para;</a></h3>
-<p>Tap to hear a sample (and a mini Session grid appears so you can tap a slot to send it there). Hold to open its menu — send to track, send to sampler, drag to a slot, or file info. Drag to carry it onto a clip slot.</p>
-<h3 id="sequencer-steps-hidden-in-the-current-release">Sequencer steps <em>(hidden in the current release)</em><a class="headerlink" href="#sequencer-steps-hidden-in-the-current-release" title="Permanent link">&para;</a></h3>
-<p>Tap a step to turn it on or off. That's it — build your pattern one tap at a time.</p>
+<h2 id="open-questions">Open questions<a class="headerlink" href="#open-questions" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Do we patch, and if so how far?</strong> Exposing internal state means shipping or
+  generating patched copies of other people's plugins. Yutani is MIT so it's
+  permitted, but it's a support burden and a divergence to maintain. A middle
+  path: patch nothing by default, offer a generator for plugins where a module
+  exists and the user opts in.</li>
+<li><strong><code>@serialize</code> precedence must be established empirically</strong> before any
+  patching work. Build a two-line JSFX with one variable both serialized and
+  declared as a slider, save a project, reload, and see which value wins. That
+  single experiment decides whether promotion is safe for existing sessions.</li>
+<li><strong>Reachability in the UI.</strong> How should a module show a control the host
+  cannot set? Omit it, or show it disabled with an explanation? Omitting is
+  cleaner; showing it disabled is more honest about the plugin's real surface.</li>
+<li><strong>Manifest authoring.</strong> Hand-written JSON per plugin does not scale past a
+  handful. Worth considering a generator that takes the parsed descriptor and
+  a rough grouping, and only the grouping is authored by hand.</li>
+<li><strong>Parsing cost.</strong> Reading and parsing source per FX is cheap, but should be
+  cached alongside the existing FX cache rather than done per request.</li>
+<li><strong>Where inference lives.</strong> Extension (C++) keeps the frontend thin and gives
+  filesystem access; frontend (TS) is faster to iterate on. The descriptor
+  boundary means this can be moved later without changing the UI.</li>
+</ul>
+<h2 id="pattern-data-parameters-now-gmem-later">Pattern data: parameters now, <code>gmem</code> later<a class="headerlink" href="#pattern-data-parameters-now-gmem-later" title="Permanent link">&para;</a></h2>
+<p>The arp's step grid is mirrored into 160 hidden parameters by
+<code>tools/jsfx_stepgrid.py</code>, because parameters are the only channel a JSFX has
+to a host. That works, but it caps what can be shown: a 5x32 window onto a
+60x64 pattern, and 160 of REAPER's 256 parameter slots spent on something
+that isn't automation.</p>
+<p>There is a better channel, not yet used. JSFX has <code>gmem[]</code> — a shared array
+addressed by namespace, which <code>options:gmem=name</code> grows to 8 million entries.
+REAPER exports <code>gmem_attach</code>, <code>gmem_read</code>, <code>gmem_write</code> and <code>eel_gmem_attach</code>
+from <code>reaper.exe</code>, so the extension can attach to the same namespace and read
+or write it directly. That would remove the parameters entirely and let the
+whole buffer through — all 64 patterns, not a window.</p>
+<p>Two things to solve before it is worth doing:</p>
+<ul>
+<li><strong>Instance collision.</strong> A namespace is per-JSFX, not per-instance, so two
+  copies of the arp share one region. Instances would need to claim a slot at
+  init and the extension address them by index.</li>
+<li><strong>No change notification.</strong> <code>gmem</code> has no callback, so the extension would
+  poll. Cheap if the JSFX maintains a dirty counter the poll can read first,
+  but it is polling either way.</li>
+</ul>
+<p>Neither is hard; both are more than the parameter approach needed. Worth
+revisiting when a second pattern-based plugin wants the same treatment.</p>
+<h2 id="parameter-ranges-differ-between-jsfx-and-vst">Parameter ranges differ between JSFX and VST<a class="headerlink" href="#parameter-ranges-differ-between-jsfx-and-vst" title="Permanent link">&para;</a></h2>
+<p><code>TrackFX_GetParamEx</code> reports a value in the plugin's own range, and what that
+range <em>is</em> depends on the format:</p>
+<ul>
+<li><strong>JSFX</strong> declares it: <code>slider1:300&lt;0,4000,20&gt;Delay (ms)</code> reports 0..4000, in
+  milliseconds. A module formats it directly — <code>${Math.round(v)} ms</code>.</li>
+<li><strong>Native VSTs</strong> commonly expose 0..1 and do their own formatting, so the
+  same call reports 0.06 for the same delay. A module has to scale —
+  <code>${Math.round(v * 5000)} ms</code> — and the scale factor is the plugin's, found
+  by reading real values rather than assumed.</li>
+</ul>
+<p>Neither needs rescaling by min/max; the ranges are simply different. Assuming
+the first is what made Chorus read 62251 ms. Assuming the second is universal
+is what made a working Stock delay module look broken on inspection.</p>
+<p><code>tools/fx_dump.js</code> prints value, range and formatted string side by side,
+which settles it in one command.</p>
 
 
 

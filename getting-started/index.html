@@ -565,6 +565,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/grid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../features/media/" class="md-nav__link">
         
   
@@ -914,28 +942,50 @@
 <p>Spidercrab is self-contained — it does <strong>not</strong> require SWS, js_ReaScriptAPI, ReaPack, a MIDI loopback (like loopMIDI), or any other REAPER extension or script. Track, FX and sample control all work with a plain REAPER install (the sampler uses REAPER's stock ReaSamplOmatic5000). The <strong>only</strong> add-on you'll need is <strong>Helgobox (ReaLearn + Playtime 2)</strong> — and only if you want the <a href="../features/playtime/">Clip Launcher</a> (step 4 below).</p>
 </div>
 <h2 id="1-install-spidercrab-into-reaper">1. Install Spidercrab into REAPER<a class="headerlink" href="#1-install-spidercrab-into-reaper" title="Permanent link">&para;</a></h2>
+<p>Download the latest release for your system from the <a href="https://github.com/quantockhills/spidercrab/releases">releases page</a>, then:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Windows / macOS installer (easiest)</label><label for="__tabbed_1_2">Manual (any OS)</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>Run <strong><code>SpidercrabSetup.exe</code></strong> (Windows) or <strong><code>SpidercrabInstaller.pkg</code></strong> (macOS). It places the plugin and the web UI into REAPER's UserPlugins folder for you — no manual copying.</p>
+<div class="admonition warning">
+<p class="admonition-title">macOS: allow the installer once</p>
+<p>The <code>.pkg</code> isn't notarized (that needs a paid Apple Developer account), so macOS blocks it the first time you try to open it. <strong>Right-click (or Control-click) <code>SpidercrabInstaller.pkg</code> → Open</strong>, then confirm in the dialog that appears — on most macOS versions that's it, no Settings menu needed.</p>
+<p>If right-clicking doesn't offer an <strong>Open</strong> option, double-click it once (it'll get blocked), then go to <strong>System Settings → Privacy &amp; Security</strong>, scroll to <strong>Security</strong>, and click <strong>Open Anyway</strong> next to it there instead.</p>
+<p>Either way, that's the only manual step — the installer then places the files <em>and</em> clears Gatekeeper's quarantine flag on them itself, so there's no Terminal command to run.</p>
+</div>
+<p><strong>Restart REAPER.</strong></p>
+</div>
+<div class="tabbed-block">
 <ol>
-<li>Download the latest release for your system from the <a href="https://github.com/quantockhills/spidercrab/releases">releases page</a>.</li>
 <li>
-<p>Put the plugin file into REAPER's <strong>UserPlugins</strong> folder:</p>
 <ul>
 <li><strong>Windows</strong> — <code>reaper_spidercrab.dll</code></li>
 <li><strong>macOS</strong> — <code>reaper_spidercrab.dylib</code></li>
 <li><strong>Linux</strong> — <code>reaper_spidercrab.so</code></li>
 </ul>
-<p>(Not sure where UserPlugins is? In REAPER: <strong>Options → Show REAPER resource path</strong>, then open the <code>UserPlugins</code> folder.)
-3. Copy the <strong><code>frontend</code></strong> folder from the release into that <strong>same</strong> UserPlugins folder, right next to the plugin file. It must be named exactly <strong><code>frontend</code></strong>, with <strong><code>index.html</code> directly inside it</strong> — that is the folder the plugin serves to your iPad.
-4. <strong>Restart REAPER.</strong></p>
+<p>Put the plugin file into REAPER's <strong>UserPlugins</strong> folder:</p>
+<p>(Not sure where UserPlugins is? In REAPER: <strong>Options → Show REAPER resource path</strong>, then open the <code>UserPlugins</code> folder.)</p>
+<div class="admonition warning">
+<p class="admonition-title">macOS: clear the quarantine flag first</p>
+<p>macOS blocks downloaded plugins by default. Before REAPER can load <code>reaper_spidercrab.dylib</code>, run this in Terminal from wherever you downloaded it: <code>xattr -dr com.apple.quarantine reaper_spidercrab.dylib</code>. Otherwise REAPER (or macOS) may say it "cannot be opened" or "is damaged" — it isn't, that's just Gatekeeper.</p>
+</div>
 </li>
+<li>
+<p>Copy the <strong><code>frontend</code></strong> folder from the release into that <strong>same</strong> UserPlugins folder, right next to the plugin file. It must be named exactly <strong><code>frontend</code></strong>, with <strong><code>index.html</code> directly inside it</strong> — that is the folder the plugin serves to your iPad.</p>
+</li>
+<li><strong>Restart REAPER.</strong></li>
 </ol>
+</div>
+</div>
+</div>
 <p>Spidercrab now lives in REAPER's <strong>Extensions</strong> menu, and it <strong>doesn't start on its own</strong> — you launch it when you want it:</p>
 <blockquote>
 <p><strong>Extensions → Spidercrab → Start / stop remote</strong></p>
 </blockquote>
 <p>That starts the small web server that hosts the iPad page plus the control connection your iPad talks to. The same item stops it, and a checkmark shows when it's running.</p>
 <div class="admonition note">
-<p class="admonition-title">On macOS / Linux</p>
-<p>The <strong>Extensions → Spidercrab</strong> submenu is currently Windows-only. On macOS and Linux, open REAPER's <strong>Action List</strong> and search for "Spidercrab" — you'll find <strong>Spidercrab: Start/stop remote</strong> and <strong>Spidercrab: Show connection address</strong> there instead, and you can bind either to a shortcut or a toolbar button.</p>
+<p class="admonition-title">On Linux</p>
+<p>The <strong>Extensions → Spidercrab</strong> submenu works on Windows and macOS. On Linux it isn't verified yet (no build/test environment for it currently) — open REAPER's <strong>Action List</strong> and search for "Spidercrab" instead, where you'll find <strong>Spidercrab: Start/stop remote</strong> and <strong>Spidercrab: Show connection address</strong>, and can bind either to a shortcut or a toolbar button.</p>
 </div>
 <h2 id="2-open-it-on-your-ipad">2. Open it on your iPad<a class="headerlink" href="#2-open-it-on-your-ipad" title="Permanent link">&para;</a></h2>
 <p>Your iPad and your computer need to be on the <strong>same Wi-Fi network</strong>, and Spidercrab must be started (above).</p>
@@ -944,16 +994,24 @@
 <li><em>No menu handy?</em> Find your computer's IP yourself (Windows: <code>ipconfig</code>; macOS: <strong>System Settings → Network</strong>) and use <code>http://&lt;that-ip&gt;:5173</code>.</li>
 </ul>
 </li>
-<li>On the tablet, open that address in a browser (<strong>Safari</strong> or <strong>Chrome</strong>).</li>
+<li>
+<p>On the tablet, open that address in a browser (<strong>Safari</strong> or <strong>Chrome</strong>).</p>
+<div class="admonition warning">
+<p class="admonition-title">Not Firefox</p>
+<p>Firefox currently doesn't seem to work. Safari, Chrome, and other Chromium-based browsers are fine.</p>
+</div>
+<ol>
 <li>The control surface loads. 🎉</li>
 <li><strong>Recommended — go tabless:</strong> use <strong>Share → Add to Home Screen</strong>, then launch it from that new icon. It opens <strong>full-screen with no browser tabs or address bar</strong>, exactly like a native app. (Opening the URL in a normal browser tab works too; you just get the browser chrome.)</li>
+</ol>
+</li>
 </ol>
 <p>That's enough to <strong>control tracks, mixing, effects, and the transport</strong>. Samples and the clip launcher each need a bit more setup, below.</p>
 <h2 id="3-point-it-at-your-samples-optional">3. Point it at your samples (optional)<a class="headerlink" href="#3-point-it-at-your-samples-optional" title="Permanent link">&para;</a></h2>
 <p>To use the <strong>Media</strong> tab:</p>
 <ol>
 <li>In the app, open <strong>Settings</strong> and add one or more <strong>sample folders</strong>.</li>
-<li>Tap <strong>scan/refresh</strong>. The first pass through a big folder takes a moment; after that, browsing is instant.</li>
+<li>Tap the <strong>⟳</strong> button next to the folder you just added. This is required the first time — a freshly-added folder has nothing cached yet, so the Media tab won't show anything in it until you do this. The first pass through a big folder takes a moment; after that, browsing is instant, and you won't need to press it again unless the folder's contents change.</li>
 </ol>
 <h2 id="4-set-up-the-clip-launcher-optional">4. Set up the Clip Launcher (optional)<a class="headerlink" href="#4-set-up-the-clip-launcher-optional" title="Permanent link">&para;</a></h2>
 <p>The <a href="../features/playtime/">Clip Launcher</a> drives <strong>Playtime 2</strong> through <strong>ReaLearn</strong>, using OSC messages. It's a one-time setup — allow yourself a few minutes.</p>
@@ -966,12 +1024,23 @@
 <li><strong>Add ReaLearn</strong> to a track (any track works, or add it as monitoring FX).</li>
 <li><strong>Download + import the preset — on the computer:</strong> open Spidercrab in a browser <strong>on the PC</strong> (<code>http://localhost:5173</code>) and go to <strong>Settings → Download ReaLearn Preset</strong>. (Download it here, not on the tablet — the file has to land on the same machine as REAPER.) Open the downloaded file, copy everything, and in ReaLearn's <strong>Main</strong> compartment click the menu (<strong>⋯</strong>) → <strong>Import from Lua</strong>, paste, and confirm. This builds the mappings for an 8×8 grid of clips.</li>
 <li>
-<p><strong>Connect OSC:</strong> in ReaLearn, go to <strong>Preferences → OSC devices → Add</strong>:</p>
+<p><strong>Connect OSC:</strong></p>
+<div class="admonition success">
+<p class="admonition-title">Already done if you used the installer</p>
+<p><code>SpidercrabSetup.exe</code> / <code>SpidercrabInstaller.pkg</code> already registered a <code>spidercrab</code> device in ReaLearn's own OSC device list during install (matching the ports below) — skip straight to selecting it, below. If REAPER had never been run before you installed, or you used the manual-copy path, add it yourself first:</p>
+<div class="admonition note">
+<p class="admonition-title">This is ReaLearn's own device list, not REAPER's</p>
+<p>ReaLearn keeps its own separate list of OSC devices — it doesn't use REAPER's built-in OSC control surfaces (Preferences → Control/OSC/web), which is a different, unrelated system.</p>
+</div>
+<p>In ReaLearn's <strong>Input</strong> menu, choose <strong>Manage OSC devices → \&lt;New&gt;</strong>, and set:</p>
 <ul>
-<li><strong>Control input</strong> — listen on port <strong>9001</strong></li>
-<li><strong>Feedback output</strong> — address <code>127.0.0.1</code>, port <strong>9011</strong></li>
+<li><strong>Name</strong> — <code>spidercrab</code></li>
+<li><strong>Local port</strong> — <strong>9001</strong></li>
+<li><strong>Device host</strong> — <code>127.0.0.1</code></li>
+<li><strong>Device port</strong> — <strong>9011</strong></li>
 </ul>
-<p>Then, back in the <strong>Main</strong> compartment, select this device as <strong>both</strong> the Control input and the Feedback output.
+</div>
+<p>Either way, back in ReaLearn's <strong>Main</strong> compartment, select the <strong><code>spidercrab</code></strong> device as <strong>both</strong> the Control input and the Feedback output — that part's a per-ReaLearn-instance setting, so it always needs picking once by hand even when the device itself was set up automatically.
 5. <strong>Try it:</strong> make sure Playtime 2 has a matrix with some clips, open the <strong>Playtime</strong> tab on your iPad, and tap a slot. It should fire the clip, and the slot should light up live as it plays.</p>
 </li>
 </ol>

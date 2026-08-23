@@ -450,6 +450,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../features/grid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../features/media/" class="md-nav__link">
         
   
@@ -787,10 +815,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sequencer-step-sequencer" class="md-nav__link">
+  <a href="#seq-step-sequencer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        sequencer/ (step sequencer)
+        seq/ (step sequencer)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extstate-reapers-shared-keyvalue-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        extstate/ (REAPER's shared key/value store)
       
     </span>
   </a>
@@ -813,6 +852,28 @@
     <span class="md-ellipsis">
       
         midi/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#applemidi-rtp-midi-apple-network-midi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        applemidi/ (RTP-MIDI / Apple Network MIDI)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
       
     </span>
   </a>
@@ -939,10 +1000,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sequencer-step-sequencer" class="md-nav__link">
+  <a href="#seq-step-sequencer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        sequencer/ (step sequencer)
+        seq/ (step sequencer)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#extstate-reapers-shared-keyvalue-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        extstate/ (REAPER's shared key/value store)
       
     </span>
   </a>
@@ -965,6 +1037,28 @@
     <span class="md-ellipsis">
       
         midi/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#applemidi-rtp-midi-apple-network-midi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        applemidi/ (RTP-MIDI / Apple Network MIDI)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
       
     </span>
   </a>
@@ -997,7 +1091,7 @@
 <p>This page is a technical reference for anyone building on or debugging Spidercrab. If you're using the app to make music, you don't need anything here — head to <a href="../gestures/">Touch Gestures</a> or <a href="../features/">The App at a Glance</a> instead.</p>
 </div>
 <p>The extension's complete capability surface — every command registered in <code>command_handler.cpp</code> on <code>master</code>. The frontend sends these as flat JSON over <code>ws://&lt;host&gt;:9224</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;command&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;name&gt;&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&lt;n&gt;&quot;</span><span class="p">,</span><span class="w"> </span><span class="err">...params</span><span class="w"> </span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"command"</span><span class="p">,</span><span class="w"> </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;name&gt;"</span><span class="p">,</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;n&gt;"</span><span class="p">,</span><span class="w"> </span><span class="err">...params</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
 <p>Responses come back keyed by <code>id</code>. Grouped by namespace below.</p>
 <h2 id="transport">transport/<a class="headerlink" href="#transport" title="Permanent link">&para;</a></h2>
@@ -1118,6 +1212,10 @@
 <tr>
 <td><code>fx/getPreset</code> / <code>fx/setPreset</code></td>
 <td>Read / apply a preset</td>
+</tr>
+<tr>
+<td><code>fx/getNamedConfigParm</code></td>
+<td>Read a per-FX config value (fx_type, pdc, vst_chunk, clap_chunk)</td>
 </tr>
 <tr>
 <td><code>fx/getAllPresetNames</code></td>
@@ -1280,8 +1378,36 @@
 <td>Record into a slot</td>
 </tr>
 <tr>
+<td><code>matrix/recordSlotCountdown</code></td>
+<td>Record into a slot after an N-bar count-in (<code>bars</code>: 0-8). The trigger fires at the next bar boundary + N bars (4/4 at the project tempo); the UI follows <code>matrix/countdown</code> events. <code>bars: 0</code> behaves exactly like <code>matrix/recordSlot</code></td>
+</tr>
+<tr>
 <td><code>matrix/clearSlot</code></td>
 <td>Clear a slot (OSC → Playtime ClearSlot)</td>
+</tr>
+<tr>
+<td><code>matrix/play</code></td>
+<td>Playtime's own playback, not REAPER's transport</td>
+</tr>
+<tr>
+<td><code>matrix/stopAll</code></td>
+<td>Stop every clip in the matrix</td>
+</tr>
+<tr>
+<td><code>matrix/click</code></td>
+<td>REAPER's metronome on or off; called with no argument it reads the state</td>
+</tr>
+<tr>
+<td><code>matrix/panic</code></td>
+<td>Abruptly stop all clips</td>
+</tr>
+<tr>
+<td><code>transport/getTempo</code></td>
+<td>Project tempo, which Playtime follows</td>
+</tr>
+<tr>
+<td><code>transport/setTempo</code></td>
+<td>Set the project tempo</td>
 </tr>
 <tr>
 <td><code>matrix/setSlotReverse</code></td>
@@ -1289,7 +1415,9 @@
 </tr>
 </tbody>
 </table>
-<h2 id="sequencer-step-sequencer">sequencer/  (step sequencer)<a class="headerlink" href="#sequencer-step-sequencer" title="Permanent link">&para;</a></h2>
+<h2 id="seq-step-sequencer">seq/  (step sequencer)<a class="headerlink" href="#seq-step-sequencer" title="Permanent link">&para;</a></h2>
+<p>Patterns live in MIDI items, not in the extension. See
+<a href="https://github.com/quantockhills/spidercrab/issues/141">issue #141</a>.</p>
 <table>
 <thead>
 <tr>
@@ -1299,36 +1427,57 @@
 </thead>
 <tbody>
 <tr>
-<td><code>sequencer/getAll</code></td>
-<td>Read the grid</td>
+<td><code>seq/listItems</code></td>
+<td>MIDI items on a track, with take names</td>
 </tr>
 <tr>
-<td><code>sequencer/getPlayhead</code></td>
-<td>Current step position</td>
+<td><code>seq/readPattern</code></td>
+<td>Notes and per-step ext data for one item</td>
 </tr>
 <tr>
-<td><code>sequencer/toggleStep</code></td>
-<td>Toggle a step</td>
+<td><code>seq/writePattern</code></td>
+<td>Replace an item's notes and ext data, in one undo block</td>
 </tr>
 <tr>
-<td><code>sequencer/setStep</code></td>
-<td>Set a step (with velocity)</td>
+<td><code>seq/createTrack</code></td>
+<td>Make a track with an empty MIDI item to sequence</td>
 </tr>
 <tr>
-<td><code>sequencer/setLength</code></td>
-<td>Set pattern length</td>
+<td><code>seq/addPad</code></td>
+<td>Add a sample to a drum rack as a new pad, creating the rack if needed</td>
 </tr>
 <tr>
-<td><code>sequencer/setBaseNote</code></td>
-<td>Set the base MIDI note</td>
+<td><code>seq/listRacks</code></td>
+<td>Drum racks built by MPL's RS5k manager, with their pads</td>
 </tr>
 <tr>
-<td><code>sequencer/clearAll</code></td>
-<td>Clear the pattern</td>
+<td><code>seq/sendToSlot</code></td>
+<td>Hand the pattern to a Playtime slot, via ReaLearn</td>
+</tr>
+</tbody>
+</table>
+<h2 id="extstate-reapers-shared-keyvalue-store">extstate/  (REAPER's shared key/value store)<a class="headerlink" href="#extstate-reapers-shared-keyvalue-store" title="Permanent link">&para;</a></h2>
+<p>The only channel into a Lua script that draws its own window — such a script
+owns no track and no FX slot, so nothing else reaches it.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>extstate/get</code></td>
+<td>One key, with <code>exists</code> alongside the value</td>
 </tr>
 <tr>
-<td><code>sequencer/convertToClip</code></td>
-<td>Bake the pattern into a Playtime clip</td>
+<td><code>extstate/getMany</code></td>
+<td>A batch of keys, returned as an object</td>
+</tr>
+<tr>
+<td><code>extstate/set</code></td>
+<td>Write a key (not persisted unless asked)</td>
 </tr>
 </tbody>
 </table>
@@ -1363,6 +1512,82 @@
 <tr>
 <td><code>midi/event</code></td>
 <td>Send a raw MIDI event (e.g. note on)</td>
+</tr>
+<tr>
+<td><code>midi/noteOn</code></td>
+<td>Play a note into the selected track (<code>note</code>, <code>velocity</code>?, <code>channel</code>?)</td>
+</tr>
+<tr>
+<td><code>midi/noteOff</code></td>
+<td>Release a note (<code>note</code>, <code>channel</code>?)</td>
+</tr>
+<tr>
+<td><code>midi/setFastPath</code></td>
+<td>Toggle the low-latency note path (<code>enabled</code>): when on, note frames are dispatched by the dedicated fast socket without waiting for REAPER's ~30 Hz Run() tick</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">The low-latency note socket</p>
+<p>The Keys tab sends notes over a second WebSocket on <strong>port + 1</strong> (9225 by default). It runs its own ~1 ms thread in the extension, so note latency is roughly 5 ms instead of ~22 ms through the main socket. Notes land in the selected track's Virtual MIDI Keyboard input, which is auto-routed/armed/monitored while the Keys tab is in use.</p>
+</div>
+<h2 id="applemidi-rtp-midi-apple-network-midi">applemidi/  (RTP-MIDI / Apple Network MIDI)<a class="headerlink" href="#applemidi-rtp-midi-apple-network-midi" title="Permanent link">&para;</a></h2>
+<p>The extension speaks Apple's Network MIDI session protocol (RFC 4695/6295) over UDP. iOS devices are session <em>listeners</em> only, so the extension initiates; the iPad's CoreMIDI Network Session connects to it over Wi-Fi.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>applemidi/connect</code></td>
+<td>Initiate a session with the caller's own IP (<code>host</code> and <code>port</code> optional; control port defaults to 5004)</td>
+</tr>
+<tr>
+<td><code>applemidi/disconnect</code></td>
+<td>End the session (also panics held notes)</td>
+</tr>
+<tr>
+<td><code>applemidi/status</code></td>
+<td>Session state, peer host/port, routing flag</td>
+</tr>
+<tr>
+<td><code>applemidi/setRouting</code></td>
+<td>Toggle "direct to selected track" (<code>enabled</code>). Disabling restores the tracks' previous input/monitor settings</td>
+</tr>
+</tbody>
+</table>
+<h2 id="events">Events<a class="headerlink" href="#events" title="Permanent link">&para;</a></h2>
+<p>Beyond request/response, the extension broadcasts <code>{"type":"event","event":"&lt;name&gt;","payload":{...}}</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Event</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>matrix/slotStateChanged</code></td>
+<td>A clip slot changed (launch, record, stop…)</td>
+</tr>
+<tr>
+<td><code>matrix/countdown</code></td>
+<td>Record count-in progress (<code>column</code>, <code>row</code>, <code>active</code>, <code>bars</code>, <code>targetBars</code>)</td>
+</tr>
+<tr>
+<td><code>applemidi/stateChanged</code></td>
+<td>AppleMIDI session state (<code>state</code>: idle/connecting/syncing/open/failed)</td>
+</tr>
+<tr>
+<td><code>track_state_changed</code> / <code>track_list_changed</code></td>
+<td>Track state / list changed</td>
+</tr>
+<tr>
+<td><code>fx_param_changed</code></td>
+<td>A watched FX parameter moved (e.g. from the plugin's own window)</td>
 </tr>
 </tbody>
 </table>

@@ -454,6 +454,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../grid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../media/" class="md-nav__link">
         
   
@@ -579,6 +607,34 @@
     <span class="md-ellipsis">
       
         Recording a clip
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Recording a clip">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#count-in-before-recording" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count-in before recording
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keys-play-it-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keys — play it live 🎹
       
     </span>
   </a>
@@ -883,6 +939,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Recording a clip">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#count-in-before-recording" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Count-in before recording
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#keys-play-it-live" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Keys — play it live 🎹
+      
+    </span>
+  </a>
+  
 </li>
       
         <li class="md-nav__item">
@@ -972,6 +1056,20 @@
 <li><strong>Tap an empty slot</strong> — it starts recording into that slot.</li>
 <li><strong>Tap it again</strong> to stop.</li>
 </ol>
+<h3 id="count-in-before-recording">Count-in before recording<a class="headerlink" href="#count-in-before-recording" title="Permanent link">&para;</a></h3>
+<p>Set a <strong>Count-in</strong> in the transport bar — <em>none</em>, <em>1</em>, <em>2</em>, or <em>4 bars</em> — and recording starts on the beat instead of the instant you tap. The armed slot shows a big <strong>red countdown</strong> (3… 2… 1…), and the record trigger fires exactly on the <strong>next bar boundary + N bars</strong>, so your take begins musically. Changing the project tempo mid-count keeps it in time. Stop all / panic cancels an armed count-in.</p>
+<h2 id="keys-play-it-live">Keys — play it live 🎹<a class="headerlink" href="#keys-play-it-live" title="Permanent link">&para;</a></h2>
+<p>The third Playtime sub-tab is a <strong>performance pad instrument</strong> that plays into the selected track (Tracks tab):</p>
+<ul>
+<li><strong>16 scale-locked pads</strong> in a 4×4 grid — tap to play, and you can't hit a wrong note: every pad is a degree of the chosen scale. <strong>Slide</strong> across pads for glissando; <strong>press higher up the pad</strong> for louder velocity. Multi-touch works, so chords are one hand and bass is the other.</li>
+<li>Pick the <strong>scale</strong> (Major, Minor, Dorian, pentatonics, Chromatic…) and <strong>root key</strong>.</li>
+<li><strong>Scroll the window</strong> — drag the note-name pill between the −/+ buttons to pan the grid by single scale degrees, so it can start <em>anywhere</em> (D4, A4…) without changing key. The −/+ buttons jump whole octaves.</li>
+<li><strong>Chord mode</strong> — each pad plays a chord instead of one note, with 19 voicings: Triad (follows the key), Major, Minor, Sus2, Sus4, Augmented, Diminished, 6th, m6, 7th, Maj7, m7, m7b5, dim7, 7sus4, 9th, Maj9, m9, Add9. Pads label themselves with chord symbols (C7, Cm9…).</li>
+<li><strong>Hold</strong> — latches notes so they keep ringing after you lift off; the button shows how many are held. Hold survives octave/scale changes (only your fingers' notes release).</li>
+<li><strong>Grid on/off</strong> — the top-right toggle swaps between <em>16 pads + the FX grid</em> (so you can tweak the synth you're playing) and <em>32 pads full-width</em> (an 8×4 launchpad-style grid, C4…F8 in C major).</li>
+<li>Everything (scale, key, window, chords, hold, grid) is remembered between sessions.</li>
+</ul>
+<p><strong>Latency:</strong> notes ride a dedicated low-latency socket (~5 ms end-to-end) instead of the main control socket, and land straight in the selected track's MIDI input — the track is auto-armed and monitored while you play, and restored when you leave. (If your chosen track's instrument is quiet, make sure <em>Preferences → MIDI Devices → Virtual MIDI Keyboard</em> is enabled.)</p>
 <h2 id="working-with-a-clip">Working with a clip<a class="headerlink" href="#working-with-a-clip" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>Reverse</strong> — each clip has a little <strong>↻ / ◄ button in its top-right corner</strong>; tap it to flip the clip backwards (a small <strong>R</strong> badge shows when it's reversed).</li>

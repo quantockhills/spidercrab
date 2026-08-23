@@ -454,6 +454,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../grid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../media/" class="md-nav__link">
         
   
@@ -570,10 +598,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#reading-the-grid" class="md-nav__link">
+  <a href="#why-it-was-removed-rather-than-fixed" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reading the grid
+        Why it was removed rather than fixed
       
     </span>
   </a>
@@ -581,10 +609,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#building-a-pattern" class="md-nav__link">
+  <a href="#what-replaces-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Building a pattern
+        What replaces it
       
     </span>
   </a>
@@ -592,32 +620,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#setting-velocity" class="md-nav__link">
+  <a href="#what-it-will-be-like-to-use" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Setting velocity
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#turning-it-into-a-clip" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Turning it into a clip
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#gestures" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gestures
+        What it will be like to use
       
     </span>
   </a>
@@ -809,10 +815,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#reading-the-grid" class="md-nav__link">
+  <a href="#why-it-was-removed-rather-than-fixed" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reading the grid
+        Why it was removed rather than fixed
       
     </span>
   </a>
@@ -820,10 +826,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#building-a-pattern" class="md-nav__link">
+  <a href="#what-replaces-it" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Building a pattern
+        What replaces it
       
     </span>
   </a>
@@ -831,32 +837,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#setting-velocity" class="md-nav__link">
+  <a href="#what-it-will-be-like-to-use" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Setting velocity
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#turning-it-into-a-clip" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Turning it into a clip
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#gestures" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Gestures
+        What it will be like to use
       
     </span>
   </a>
@@ -885,33 +869,58 @@
 
 <h1 id="step-sequencer">Step Sequencer 🎹<a class="headerlink" href="#step-sequencer" title="Permanent link">&para;</a></h1>
 <div class="admonition warning">
-<p class="admonition-title">Not currently available</p>
-<p>The step sequencer is <strong>hidden in the current release</strong> — it isn't working reliably yet, so the Session/Sequencer toggle doesn't appear in the app. The page below describes how it's intended to work, and it will return once it's fixed and verified.</p>
+<p class="admonition-title">Being rebuilt</p>
+<p>The step sequencer has been <strong>removed</strong> and is being written again from a
+different starting point. This page describes why, and what is coming.
+Progress lives in <a href="https://github.com/quantockhills/spidercrab/issues/141">issue #141</a>.</p>
 </div>
-<p>A step grid for programming drum patterns and melodies — then turning them into a clip you can launch. When enabled, it's the second mode of the <strong>Playtime</strong> tab (tap <strong>Sequencer</strong> at the top).</p>
-<h2 id="reading-the-grid">Reading the grid<a class="headerlink" href="#reading-the-grid" title="Permanent link">&para;</a></h2>
-<p>Notes run down the side, steps run across the top, and <strong>every cell shows its note name</strong> (like <code>C2</code>). A moving <strong>orange highlight</strong> marks the current step, and a readout up top tells you exactly where you are — <em>"Playhead: step 5 / 16."</em> There's a step-indicator strip along the bottom too.</p>
-<h2 id="building-a-pattern">Building a pattern<a class="headerlink" href="#building-a-pattern" title="Permanent link">&para;</a></h2>
+<h2 id="why-it-was-removed-rather-than-fixed">Why it was removed rather than fixed<a class="headerlink" href="#why-it-was-removed-rather-than-fixed" title="Permanent link">&para;</a></h2>
+<p>The first version kept its pattern in the extension's memory — an 8×8 grid of
+steps held in RAM — and offered one button to bake that grid into a MIDI item.</p>
+<p>That is the wrong shape for a sequencer, and no amount of polish would have
+fixed it:</p>
 <ul>
-<li><strong>Tap a step</strong> to switch it on or off. Active steps glow green and show a little <strong>velocity bar</strong>.</li>
-<li><strong>Length</strong> — set how many steps the pattern runs, from 1 to 64 (top controls).</li>
-<li><strong>Base Note</strong> — pick the grid's root note from a dropdown (C1 up to C7).</li>
-<li><strong>✕ Clear</strong> — wipe the pattern and start fresh.</li>
-<li><strong>↻</strong> — refresh the grid.</li>
+<li><strong>The pattern had nowhere to live.</strong> Closing REAPER lost it. The project file
+  knew nothing about it.</li>
+<li><strong>It was a one-way trip.</strong> Once baked, the item and the grid had no
+  relationship. Editing either left the other stale, and there was no way to
+  read a pattern back in.</li>
+<li><strong>The export never actually ran.</strong> Two REAPER API functions it depended on
+  were declared but never assigned, so they were null at runtime and the handler
+  failed its own availability check every time. Nobody noticed, because the
+  feature was already hidden behind a flag.</li>
 </ul>
-<h2 id="setting-velocity">Setting velocity<a class="headerlink" href="#setting-velocity" title="Permanent link">&para;</a></h2>
-<p>Up top there's a <strong>Note / VEL</strong> toggle:</p>
+<p>It was switched off in the shipped app rather than finished.</p>
+<h2 id="what-replaces-it">What replaces it<a class="headerlink" href="#what-replaces-it" title="Permanent link">&para;</a></h2>
+<p><strong>The pattern will be the MIDI item.</strong> Not a copy of it, not something exported
+to it — the item itself is the pattern.</p>
+<p>That single change settles most of the difficulties at once. REAPER plays the
+notes with no help from us. The project file saves them. They open in the MIDI
+editor like any other part, render, and export as MIDI. Undo works, because
+every edit is an ordinary edit.</p>
+<p>Detail that MIDI has no way to express — per-step probability, ratchets, per-row
+lengths — is stored alongside the notes in the take's own extension data. This
+is the arrangement MPL's RS5k sequencer arrived at, and it degrades gracefully:
+a part drawn by hand has notes and no extra data, and still reads back correctly.</p>
+<h2 id="what-it-will-be-like-to-use">What it will be like to use<a class="headerlink" href="#what-it-will-be-like-to-use" title="Permanent link">&para;</a></h2>
+<p>The old grid was desktop software in a dark colour scheme. Every step was an
+individual tap, so laying down sixteen hi-hats meant sixteen separate taps.
+Velocity was a mode you switched into, followed by a popup with a slider and a
+confirm button — four interactions to change one number.</p>
+<p>The replacement is built for fingers:</p>
 <ul>
-<li>In <strong>Note</strong> mode, tapping a step just turns it on or off.</li>
-<li>In <strong>VEL</strong> mode, tapping a step opens a little <strong>velocity slider</strong> (1–127) — set how hard that hit plays, then tap <strong>Set</strong>.</li>
+<li><strong>Drag to paint.</strong> Whether a drag draws or erases is decided by the first step
+  you touch, so a single sweep fills a run — or clears one.</li>
+<li><strong>Velocity is a vertical drag on the step itself.</strong> No mode, no dialog. A
+  step's height <em>is</em> its velocity, so a groove has a shape you can read at a
+  glance.</li>
+<li><strong>Press and hold a step</strong> for its finer detail: ratchets, probability, timing
+  nudge, gate length.</li>
+<li><strong>Press and hold a row's label</strong> for that row's own length and step size —
+  which is how two rows of different lengths can drift against each other.</li>
+<li><strong>Steps sound as you place them</strong>, because a sequencer you cannot hear while
+  building is a spreadsheet.</li>
 </ul>
-<h2 id="turning-it-into-a-clip">Turning it into a clip<a class="headerlink" href="#turning-it-into-a-clip" title="Permanent link">&para;</a></h2>
-<p>Happy with your pattern? Tap <strong>⇩ Clip</strong> to bake it into a MIDI clip. It drops into the <a href="../playtime/">Clip Launcher</a> grid and the app <strong>switches you straight to Session view</strong> so you can fire it off right away. (The button stays greyed out until you've placed at least one step.)</p>
-<h2 id="gestures">Gestures<a class="headerlink" href="#gestures" title="Permanent link">&para;</a></h2>
-<ul>
-<li><strong>Tap a step</strong> — toggle it on or off (or open the velocity slider, in VEL mode)</li>
-</ul>
-<p>Full list: <a href="../../gestures/">Touch Gestures</a>.</p>
 
 
 

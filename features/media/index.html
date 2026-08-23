@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://quantockhills.github.io/spidercrab/features/media/">
       
       
-        <link rel="prev" href="../fx/">
+        <link rel="prev" href="../grid/">
       
       
         <link rel="next" href="../playtime/">
@@ -451,6 +451,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../grid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -547,10 +575,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sending-a-sample-to-the-clip-launcher" class="md-nav__link">
+  <a href="#sending-a-sample-to-a-track-or-to-the-clip-launcher" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Sending a sample to the Clip Launcher
+        Sending a sample to a track, or to the Clip Launcher
       
     </span>
   </a>
@@ -853,10 +881,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#sending-a-sample-to-the-clip-launcher" class="md-nav__link">
+  <a href="#sending-a-sample-to-a-track-or-to-the-clip-launcher" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Sending a sample to the Clip Launcher
+        Sending a sample to a track, or to the Clip Launcher
       
     </span>
   </a>
@@ -912,31 +940,35 @@
 <p>Before the Media tab can show anything, add your sample folders in <strong>Settings</strong> — see <a href="../../getting-started/#3-point-it-at-your-samples-optional">Getting Started → Point it at your samples</a>.</p>
 </div>
 <h2 id="finding-samples">Finding samples<a class="headerlink" href="#finding-samples" title="Permanent link">&para;</a></h2>
-<p>Browse the folders on your computer, or dip into your <strong>REAPER media libraries</strong> (the same databases you've set up in REAPER's Media Explorer show up here as their own section). The browser <strong>remembers where you were</strong>, so you pick up where you left off.</p>
-<p>Samples show up as cards, two across, with a waveform and a preview panel side by side. Big folders are scanned in the background, with a progress bar so you know it's working — after the first scan, browsing is instant.</p>
+<p>Browse the folders on your computer — or use <strong>REAPER's media databases</strong>. Since a file can live in several databases at once (exactly like a tag), the databases show up as <strong>🎵 chips in the Tags section</strong> of the home screen, right alongside your own tags. Tap one to see everything in that database. There's also a <strong>📚 All databases</strong> chip: the <em>megafolder</em> — every file across every database in one list, each row labelled with the databases it belongs to (plus your own tags). The browser <strong>remembers where you were</strong>, so you pick up where you left off.</p>
+<p>Samples show up as cards, two across, with a waveform and a preview panel side by side. Big folders are scanned in the background, with a progress bar so you know it's working — it fades out on its own once the scan completes. After the first scan, browsing is instant.</p>
 <h2 id="previewing">Previewing<a class="headerlink" href="#previewing" title="Permanent link">&para;</a></h2>
 <p><strong>Tap a sample to hear it</strong> — and it's a proper little player, not just play/stop:</p>
 <ul>
 <li><strong>Play / pause</strong> the preview</li>
 <li><strong>Scrub</strong> through the sample by dragging along the waveform</li>
-<li><strong>Reverse</strong> it to hear it backwards</li>
+<li><strong>Trim a region</strong> — the waveform always shows two draggable handles (at the very start and end by default). Drag either one in from the edge and playback, Send, and Loop all apply to just that slice</li>
+<li><strong>🔁 Loop</strong> — keep the preview (or the selected region) repeating instead of stopping after one pass</li>
+<li><strong>↔ Reverse</strong> it to hear it — or the selected region — backwards. Toggling Reverse mid-playback flips direction immediately from wherever the sound currently is</li>
 <li><strong>Autoplay</strong> — flick this on and samples play the moment you tap them, so you can rip through a folder fast</li>
 </ul>
 <h2 id="organising-with-tags">Organising with tags<a class="headerlink" href="#organising-with-tags" title="Permanent link">&para;</a></h2>
 <p>Give samples your own <strong>tags</strong> — "kick", "vinyl", "fav", whatever works. Tags are colour-coded and stick around between sessions. Tap a tag to filter — and the filter works <strong>across every folder at once</strong>, so "show me everything tagged <em>fav</em>" pulls matches from your whole library, wherever they live.</p>
-<h2 id="sending-a-sample-to-the-clip-launcher">Sending a sample to the Clip Launcher<a class="headerlink" href="#sending-a-sample-to-the-clip-launcher" title="Permanent link">&para;</a></h2>
-<p>Once you've selected a sample, a <strong>mini Session grid</strong> appears right beside it — <strong>tap any slot</strong> to drop the sample into that <a href="../playtime/">Clip Launcher</a> slot. Spidercrab works out the sample's tempo (from its embedded info, or by listening to it) and sets the playback rate so it plays in time with your project, then trims the clip to land neatly on a whole bar.</p>
+<h2 id="sending-a-sample-to-a-track-or-to-the-clip-launcher">Sending a sample to a track, or to the Clip Launcher<a class="headerlink" href="#sending-a-sample-to-a-track-or-to-the-clip-launcher" title="Permanent link">&para;</a></h2>
+<p>Every sample row has a <strong>🎯 Send</strong> button — tap it and the sample goes straight onto the track you've selected (Tracks tab), as a new media item. This is the direct route to the arrangement and has nothing to do with the Clip Launcher.</p>
+<p>To send to the <a href="../playtime/">Clip Launcher</a> instead, flip the <strong>Arrangement / Session</strong> switch (top of the Media tab, next to Autoplay) to <strong>Session</strong>. With Session selected, choosing a sample reveals a <strong>mini Session grid</strong> beside the preview — <strong>tap any slot</strong> to drop the sample into that Clip Launcher slot. Spidercrab works out the sample's tempo (from its embedded info, or by listening to it) and sets the playback rate so it plays in time with your project, then trims the clip to land neatly on a whole bar.</p>
+<p>If you've made a <a href="#previewing">region selection</a> or turned on Reverse, both the 🎯 Send button and the Session grid send that trimmed/reversed slice instead of the whole file.</p>
 <h2 id="more-places-a-sample-can-go">More places a sample can go<a class="headerlink" href="#more-places-a-sample-can-go" title="Permanent link">&para;</a></h2>
 <p><strong>Hold a sample</strong> to open its menu:</p>
 <ul>
-<li><strong>🎯 Send to Track</strong> — drop it onto the track you've selected.</li>
+<li><strong>🎯 Send to Track</strong> — same destination as the row's Send button, drops it onto the track you've selected.</li>
 <li><strong>🎹 Send to Sampler (RS5K)</strong> — turn it into a <strong>playable instrument</strong> on a new track. It's MIDI-armed, so you play the sample up and down the keyboard (same sampler as in the <a href="../playtime/">Clip Launcher</a>).</li>
-<li><strong>↗️ Start Drag to Slot</strong> — pick the sample up and drag it onto a clip slot yourself.</li>
+<li><strong>↗️ Start Drag to Slot</strong> — pick the sample up and drag it onto a clip slot yourself, without switching to Session mode first.</li>
 <li><strong>ℹ️ File Info</strong> — see its name, path, and type.</li>
 </ul>
 <h2 id="the-gestures">The gestures<a class="headerlink" href="#the-gestures" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Tap</strong> — select and preview (and reveals the Send-to-grid)</li>
+<li><strong>Tap</strong> — select and preview (and, in Session mode, reveals the Send-to-grid)</li>
 <li><strong>Hold</strong> — open the menu (to track / to sampler / drag to slot / info)</li>
 <li><strong>Drag</strong> — carry the sample to a clip slot</li>
 </ul>

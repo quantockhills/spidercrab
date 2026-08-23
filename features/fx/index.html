@@ -16,7 +16,7 @@
         <link rel="prev" href="../tracks/">
       
       
-        <link rel="next" href="../media/">
+        <link rel="next" href="../grid/">
       
       
         
@@ -545,6 +545,34 @@
   
   
     <li class="md-nav__item">
+      <a href="../grid/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Grid
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../media/" class="md-nav__link">
         
   
@@ -872,11 +900,13 @@
 </ul>
 <p>Tap a plugin's <strong>Add</strong> button to drop it on the selected track (it flashes <strong>✓ Added</strong>), or tap its <strong>name</strong> to jump straight into its parameters. If you haven't picked a track yet, the browser reminds you to <strong>select one first</strong> (over on the Tracks tab).</p>
 <p>You can also add effects without leaving the Tracks tab — hold the <strong>Add FX</strong> button on any track card for a quick search. (See <a href="../tracks/">Tracks &amp; Mixing</a>.)</p>
+<p>A <strong>🔗 Chains</strong> button next to the FX Browser title jumps straight to the <a href="#effect-chains">effect chain browser</a> below.</p>
 <p><strong>Tags:</strong> tap the <strong>✏️</strong> next to any plugin to give it labels (comma-separated). Tags are colour-coded, persist between sessions, and power the filter chips.</p>
 <h2 id="effect-chains">Effect chains<a class="headerlink" href="#effect-chains" title="Permanent link">&para;</a></h2>
 <p>An effect chain is a saved stack of effects — a whole vocal chain or drum-bus setup in one go. Spidercrab reads them from your REAPER <strong>FXChains</strong> folder (set the folder in <a href="../settings/">Settings</a>).</p>
+<p>The chain browser has two tabs: <strong>Browse &amp; Load</strong> (find and apply an existing chain) and <strong>Save Chain</strong> (save the selected track's current effects as a new one).</p>
 <ul>
-<li><strong>Browse</strong> chains by folder, or <strong>search</strong> them.</li>
+<li><strong>Browse</strong> chains by folder, or <strong>search</strong> them. Either way, results beyond 100 are paginated with <strong>← Prev / Next →</strong>.</li>
 <li><strong>Peek inside</strong> a chain (Chain Info) to see what effects it contains before you load it.</li>
 <li><strong>Load a chain two ways:</strong> <strong>Append</strong> it after the track's current effects, or <strong>Replace</strong> everything on the track with it.</li>
 <li><strong>Save</strong> a track's current effects as a new chain — you give it a name.</li>
@@ -890,6 +920,7 @@
 <li><strong>Double-tap</strong> to snap it back to the default.</li>
 </ul>
 <p>Plugins with lots of parameters are paged so the list stays manageable. The sliders stay in sync with REAPER, so if a value changes on the desktop it updates here too — and your in-progress adjustment won't get yanked out from under you.</p>
+<p>A <strong>Remove FX</strong> button in the header deletes the plugin outright — unlike the Tracks tab's hold-to-delete, this one doesn't ask you to confirm, so use it deliberately.</p>
 <p><strong>Right on the Tracks tab:</strong> you don't even have to come to this tab — each track card has an <strong>inline drawer</strong> that shows an effect's parameters in place. (See <a href="../tracks/">Tracks &amp; Mixing</a>.)</p>
 <h2 id="presets">Presets<a class="headerlink" href="#presets" title="Permanent link">&para;</a></h2>
 <p>Every plugin's built-in presets are available — open the <strong>preset dropdown</strong>, <strong>search</strong> by name, and tap to apply, or just step through them with the <strong>◀ ▶</strong> buttons.</p>
