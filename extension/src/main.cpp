@@ -95,6 +95,7 @@
 #define REAPERAPI_WANT_NamedCommandLookup
 #define REAPERAPI_WANT_Master_GetTempo
 #define REAPERAPI_WANT_CSurf_OnTempoChange
+#define REAPERAPI_WANT_GetToggleCommandState
 #define REAPERAPI_WANT_GetSetMediaItemTakeInfo
 #define REAPERAPI_WANT_GetMediaFileMetadata
 #define REAPERAPI_WANT_PCM_Source_GetPeaks
@@ -644,6 +645,7 @@ static bool InitializeCoreServices()
     api.GetSetMediaItemTakeInfo_String = GetSetMediaItemTakeInfo_String;
     api.Master_GetTempo             = Master_GetTempo;
     api.CSurf_OnTempoChange         = CSurf_OnTempoChange;
+    api.GetToggleCommandState       = GetToggleCommandState;
     api.GetSetMediaItemTakeInfo     = GetSetMediaItemTakeInfo;
     api.GetMediaFileMetadata        = GetMediaFileMetadata;
     api.PCM_Source_GetPeaks         = PCM_Source_GetPeaks;

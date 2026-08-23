@@ -348,7 +348,10 @@ public:
         return sendPacket(buildMessageWithFloat("/playtime/matrix/stop", 1.0f));
     }
 
-    /// Playtime's own metronome, which is separate from REAPER's.
+    /// Playtime's own metronome, which is separate from REAPER's project
+    /// metronome. Kept because the mapping exists, but matrix/click drives
+    /// REAPER's instead — that is the one people mean, and it needs no
+    /// ReaLearn preset to be imported first.
     bool sendMatrixClick(bool on)
     {
         return sendPacket(buildMessageWithFloat("/playtime/matrix/click", on ? 1.0f : 0.0f));
@@ -357,11 +360,6 @@ public:
     bool sendMatrixPanic()
     {
         return sendPacket(buildMessageWithFloat("/playtime/matrix/panic", 1.0f));
-    }
-
-    bool sendMatrixTapTempo()
-    {
-        return sendPacket(buildMessageWithFloat("/playtime/matrix/taptempo", 1.0f));
     }
 
     bool sendClearSlot(int col, int row)

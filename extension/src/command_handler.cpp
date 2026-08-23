@@ -101,7 +101,6 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["matrix/stopAll"]          = &CommandHandler::HandleMatrixStopAll;
     m_commandMap["matrix/click"]            = &CommandHandler::HandleMatrixClick;
     m_commandMap["matrix/panic"]            = &CommandHandler::HandleMatrixPanic;
-    m_commandMap["matrix/tapTempo"]         = &CommandHandler::HandleMatrixTapTempo;
     m_commandMap["transport/setTempo"]      = &CommandHandler::HandleTransportSetTempo;
     m_commandMap["transport/getTempo"]      = &CommandHandler::HandleTransportGetTempo;
     m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;

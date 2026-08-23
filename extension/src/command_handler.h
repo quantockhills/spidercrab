@@ -150,6 +150,10 @@ struct ReaperAPI {
     // Playtime has no numeric tempo of its own — it follows the project, so
     // this is what a tempo control on the Playtime view actually moves.
     void (*CSurf_OnTempoChange)(double bpm) = nullptr;
+    // Reads whether a toggle action is on. Returns -1 when REAPER does not
+    // recognise the command, which makes it a check on the action ID as well
+    // as a way to show real state instead of what we last asked for.
+    int (*GetToggleCommandState)(int command_id) = nullptr;
     void* (*GetSetMediaItemTakeInfo)(MediaItem_Take* tk, const char* parmname, void* setNewValue) = nullptr;
     int (*GetMediaFileMetadata)(PCM_source* mediaSource, const char* identifier, char* bufOutNeedBig, int bufOutNeedBig_sz) = nullptr;
     int (*PCM_Source_GetPeaks)(PCM_source* src, double peakrate, double starttime, int numchannels, int numsamplesperchannel, int want_extra_type, double* buf) = nullptr;
@@ -442,7 +446,6 @@ private:
     void HandleMatrixStopAll(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixClick(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixPanic(int clientId, const std::string& id, const std::string& params);
-    void HandleMatrixTapTempo(int clientId, const std::string& id, const std::string& params);
     void HandleTransportSetTempo(int clientId, const std::string& id, const std::string& params);
     void HandleTransportGetTempo(int clientId, const std::string& id, const std::string& params);
 

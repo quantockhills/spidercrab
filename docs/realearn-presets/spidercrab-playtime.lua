@@ -148,7 +148,6 @@ local matrixActions = {
     { addr = "stop",     action = "Stop" },
     { addr = "click",    action = "ClickOnOffState" },
     { addr = "panic",    action = "Panic" },
-    { addr = "taptempo", action = "TapTempo" },
 }
 
 for _, m in ipairs(matrixActions) do

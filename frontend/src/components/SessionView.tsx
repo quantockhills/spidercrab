@@ -15,12 +15,11 @@ interface SessionViewProps {
    *  whether or not the project transport is rolling. */
   onMatrixPlay?: (on: boolean) => Promise<boolean>;
   onMatrixStopAll?: () => Promise<boolean>;
-  /** Playtime's metronome, separate from REAPER's. */
-  onMatrixClick?: (on: boolean) => Promise<boolean>;
+  /** REAPER's metronome. Called with no argument it just reads the state. */
+  onMatrixClick?: (on?: boolean) => Promise<boolean>;
   /** Tempo is the project's — Playtime follows it and offers only tap. */
   onGetTempo?: () => Promise<number>;
   onSetTempo?: (bpm: number) => Promise<boolean>;
-  onTapTempo?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
   /** Launch Playtime 2 (Issue #88) */
   onLaunchPlaytime?: () => Promise<{launched: boolean; message: string}>;
@@ -77,7 +76,6 @@ export function SessionView({
   onMatrixClick,
   onGetTempo,
   onSetTempo,
-  onTapTempo,
   onGetTransportState,
   onLaunchPlaytime,
   onCheckPlaytimeAvailable,
@@ -176,6 +174,13 @@ export function SessionView({
   const [matrixPlaying, setMatrixPlaying] = useState(false);
   const [clickOn, setClickOn] = useState(false);
   const [tempo, setTempo] = useState<number | null>(null);
+
+  // Read the real metronome state rather than assuming it is off, or the
+  // button lies until it happens to be pressed.
+  useEffect(() => {
+    if (!onMatrixClick) return;
+    void onMatrixClick().then(setClickOn);
+  }, [onMatrixClick]);
   const [samplerPanelOpen, setSamplerPanelOpen] = useState(false);
   const [samplerBusy, setSamplerBusy] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -421,7 +426,7 @@ export function SessionView({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+      <div className="flex items-center justify-between gap-2 flex-wrap px-4 py-3 border-b border-[var(--border)]">
         <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
           Session View
         </h2>
@@ -450,14 +455,14 @@ export function SessionView({
           )}
           {onMatrixClick && (
             <button
-              onClick={async () => { const n = !clickOn; setClickOn(n); await onMatrixClick(n); }}
+              onClick={async () => { setClickOn(await onMatrixClick(!clickOn)); }}
               className={`px-3 py-2 text-xs rounded min-h-[36px] transition-colors ${
                 clickOn
                   ? 'bg-[var(--accent-orange)]/25 text-[var(--accent-orange)]'
                   : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'}`}
               title="Playtime's metronome"
             >
-              Click
+              🔔 Metronome
             </button>
           )}
           {onSetTempo && (
@@ -473,16 +478,6 @@ export function SessionView({
                            rounded text-[var(--text-primary)] border-none min-h-[36px]"
                 title="Project tempo — Playtime follows it"
               />
-              {onTapTempo && (
-                <button
-                  onClick={() => void onTapTempo()}
-                  className="px-2 py-2 text-xs rounded min-h-[36px] bg-[var(--bg-tertiary)]
-                             text-[var(--text-secondary)] active:brightness-90"
-                  title="Tap tempo"
-                >
-                  Tap
-                </button>
-              )}
             </div>
           )}
         <button

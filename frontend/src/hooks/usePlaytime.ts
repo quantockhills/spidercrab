@@ -237,9 +237,21 @@ export function usePlaytime() {
     return r.success;
   }, [send]);
 
-  const matrixClick = useCallback(async (on: boolean): Promise<boolean> => {
-    const r = await send('matrix/click', { on: on ? 'true' : 'false' });
-    return r.success;
+  /**
+   * REAPER's metronome.
+   *
+   * Playtime has a click of its own, but the project metronome is the one
+   * people mean and the one they can already hear, and it needs no ReaLearn
+   * preset to be imported first.
+   *
+   * Returns what REAPER reports rather than what was asked for, so the button
+   * cannot drift out of step with the thing it controls. Pass no argument to
+   * read the state without changing it.
+   */
+  const matrixClick = useCallback(async (on?: boolean): Promise<boolean> => {
+    const r = await send('matrix/click', on === undefined ? {} : { on: on ? 'true' : 'false' });
+    if (!r.success) return false;
+    return (r.payload as unknown as { on: boolean }).on === true;
   }, [send]);
 
   const matrixPanic = useCallback(async (): Promise<boolean> => {
@@ -265,11 +277,6 @@ export function usePlaytime() {
     return r.success;
   }, [send]);
 
-  const tapTempo = useCallback(async (): Promise<boolean> => {
-    const r = await send('matrix/tapTempo');
-    return r.success;
-  }, [send]);
-
 return {
     matrix,
     getMatrix,
@@ -292,6 +299,5 @@ return {
     matrixPanic,
     getTempo,
     setTempo,
-    tapTempo,
   };
 }

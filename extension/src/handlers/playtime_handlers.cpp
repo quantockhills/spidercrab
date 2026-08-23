@@ -132,14 +132,44 @@ void CommandHandler::HandleMatrixStopAll(
 void CommandHandler::HandleMatrixClick(
     int clientId, const std::string& id, const std::string& params)
 {
+    // REAPER's metronome, not Playtime's.
+    //
+    // Playtime has a click of its own, reachable through ReaLearn's matrix
+    // action target, but it is the project metronome people mean and the one
+    // they can already hear. This needs no ReaLearn mapping and no preset
+    // import, so it works the moment the extension loads.
+    //
+    // Enable and disable are separate actions rather than one toggle, so a
+    // button that thinks it is off cannot turn the metronome off by asking
+    // for "on". 40364 is the toggle, used only to read the state back.
+    constexpr int kToggle  = 40364;  // Options: Toggle metronome
+    constexpr int kEnable  = 41745;  // Options: Enable metronome
+    constexpr int kDisable = 41746;  // Options: Disable metronome
+
+    if (!m_api.Main_OnCommand) {
+        SendResponse(clientId, id, false, "{\"error\":\"Main_OnCommand not loaded\"}");
+        return;
+    }
+
     std::string payloadStr = extractPayload(params);
     JsonParser  p1(payloadStr);
     const std::string on = p1.getString("on");
-    const bool enable = !(on == "false" || on == "0");
-    const bool sent = m_oscSender.sendMatrixClick(enable);
-    SendResponse(clientId, id, true,
-        "{\"click\":" + std::string(enable ? "true" : "false")
-        + ",\"sent\":" + std::string(sent ? "true" : "false") + "}");
+
+    if (!on.empty()) {
+        const bool enable = !(on == "false" || on == "0");
+        m_api.Main_OnCommand(enable ? kEnable : kDisable, 0);
+    }
+
+    // Report what REAPER actually thinks, not what was asked for. -1 means it
+    // does not recognise the command, which would mean the action ID is wrong.
+    const int state = m_api.GetToggleCommandState
+                    ? m_api.GetToggleCommandState(kToggle) : -1;
+
+    std::string payload = "{";
+    payload += json_string("on") + ":" + std::string(state == 1 ? "true" : "false") + ",";
+    payload += json_string("known") + ":" + std::string(state >= 0 ? "true" : "false");
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
 }
 
 void CommandHandler::HandleMatrixPanic(
@@ -147,15 +177,6 @@ void CommandHandler::HandleMatrixPanic(
 {
     (void)params;
     const bool sent = m_oscSender.sendMatrixPanic();
-    SendResponse(clientId, id, true,
-        "{\"sent\":" + std::string(sent ? "true" : "false") + "}");
-}
-
-void CommandHandler::HandleMatrixTapTempo(
-    int clientId, const std::string& id, const std::string& params)
-{
-    (void)params;
-    const bool sent = m_oscSender.sendMatrixTapTempo();
     SendResponse(clientId, id, true,
         "{\"sent\":" + std::string(sent ? "true" : "false") + "}");
 }
