@@ -7,6 +7,7 @@ import { ParamControl } from './components/ParamControl';
 import { SampleBrowser } from './components/SampleBrowser';
 import { SessionView } from './components/SessionView';
 import { SequencerView } from './components/SequencerView';
+import { useSeqPattern } from './hooks/useSeqPattern';
 import { FxChainBrowser } from './components/FxChainBrowser';
 import { GridView } from './components/grid/GridView';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -103,6 +104,10 @@ function AppInner() {
 
   const { preference, isDark, setTheme } = useTheme();
   const { scale: uiScale, setScale: setUiScale, increase: increaseUiScale, decrease: decreaseUiScale, canIncrease: canIncreaseUiScale, canDecrease: canDecreaseUiScale } = useUIScale();
+
+  // The Media tab can send a sample to a drum rack pad, so the Steps grid has
+  // a sound on that row rather than a bare note number.
+  const { addPad } = useSeqPattern();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
 
@@ -465,6 +470,7 @@ function AppInner() {
               samplePaths={samplePaths}
               sendToSampler={samplerFromPath}
               sendToSlot={sendSampleToSlot}
+              addPad={addPad}
               matrix={matrix}
               getSampleTags={getSampleTags}
               setSampleTags={setSampleTags}

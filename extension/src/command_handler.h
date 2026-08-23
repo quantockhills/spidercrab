@@ -54,6 +54,10 @@ struct ReaperAPI {
     bool (*TrackFX_GetParamName)(MediaTrack* track, int fx, int param, char* bufOut, int bufOut_sz)
         = nullptr;
     bool (*TrackFX_SetParam)(MediaTrack* track, int fx, int param, double val)        = nullptr;
+    // 0..1 rather than the parameter's own range. RS5k's note range is set
+    // this way (param 3 and 4, as note/127) — which is how MPL's manager does
+    // it, and matching that keeps our racks and his interchangeable.
+    bool (*TrackFX_SetParamNormalized)(MediaTrack* track, int fx, int param, double value) = nullptr;
     bool (*TrackFX_GetFormattedParamValue)(MediaTrack* track, int fx, int param, char* bufOut, int bufOut_sz) = nullptr;
     bool (*TrackFX_Delete)(MediaTrack* track, int fx)                                 = nullptr;
     bool (*fxGetEnabled)(MediaTrack* track, int fx)                                 = nullptr;
@@ -122,6 +126,7 @@ struct ReaperAPI {
     // (probability, ratchets, per-row length) is stored, alongside the notes
     // that actually play. This is the convention MPL's RS5k sequencer uses.
     bool (*GetSetMediaItemTakeInfo_String)(MediaItem_Take* tk, const char* parmname, char* stringNeedBig, bool setNewValue) = nullptr;
+    bool (*SetMediaTrackInfo_Value)(MediaTrack* tr, const char* parmname, double newvalue) = nullptr;
     bool (*SetMediaItemInfo_Value)(MediaItem* item, const char* parmname, double newvalue) = nullptr;
     double (*GetMediaItemInfo_Value)(MediaItem* item, const char* parmname) = nullptr;
     MediaItem* (*AddMediaItemToTrack)(MediaTrack* tr) = nullptr;
@@ -359,6 +364,7 @@ private:
     void HandleSeqReadPattern(int clientId, const std::string& id, const std::string& params);
     void HandleSeqWritePattern(int clientId, const std::string& id, const std::string& params);
     void HandleSeqCreateTrack(int clientId, const std::string& id, const std::string& params);
+    void HandleSeqAddPad(int clientId, const std::string& id, const std::string& params);
     void HandleSeqListRacks(int clientId, const std::string& id, const std::string& params);
     void HandleSeqSendToSlot(int clientId, const std::string& id, const std::string& params);
 

@@ -43,6 +43,8 @@ interface SampleBrowserProps {
   sendSampleToTrack: (path: string, trackIdx: number, region?: SampleRegion) => Promise<boolean>;
   sendCommand: (command: string, params?: Record<string, unknown>) => Promise<{ payload: Record<string, unknown> }>;
   sendToSlot?: (path: string, column: number, row: number, region?: SampleRegion) => Promise<boolean>;
+  /** Add the sample to a drum rack as a new pad, so it becomes a row in the step grid. */
+  addPad?: (path: string) => Promise<{ note: number; name: string } | null>;
   sendToSampler?: (path: string) => Promise<{trackIdx: number; fxIdx: number; name: string} | null>;
   samplePaths?: string[];
   matrix?: MatrixData | null;
@@ -62,6 +64,7 @@ export function SampleBrowser({
   sendCommand,
   samplePaths,
   sendToSlot,
+  addPad,
   sendToSampler,
   matrix,
   getSampleTags,
@@ -95,7 +98,10 @@ export function SampleBrowser({
   const [sentFiles, setSentFiles] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [autoplay, setAutoplay] = useState(() => localStorage.getItem('sampleAutoplay') === 'true');
-  const [sessionMode, setSessionMode] = useState<'arrangement' | 'session'>('arrangement');
+  // Where a tapped sample goes: onto a track, into a Playtime slot, or onto
+  // a drum rack pad where the step sequencer can reach it.
+  const [sessionMode, setSessionMode] = useState<'arrangement' | 'session' | 'sequencer'>('arrangement');
+  const [padAdded, setPadAdded] = useState<string | null>(null);
 
   // Context menu state (Issue #28)
   const [contextMenu, setContextMenu] = useState<{
@@ -783,6 +789,18 @@ export function SampleBrowser({
               >
                 Session
               </button>
+              {addPad && (
+                <button
+                  onClick={() => setSessionMode('sequencer')}
+                  className={`px-2 py-2 text-[10px] font-medium min-h-[36px] transition-colors ${
+                    sessionMode === 'sequencer'
+                      ? 'bg-[var(--accent-orange)]/20 text-[var(--accent-orange)]'
+                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'
+                  }`}
+                >
+                  Sequencer
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1087,6 +1105,24 @@ export function SampleBrowser({
           so enlarging the grid never hides the waveform (Issue: grid overlap) */}
       {((sessionMode === 'session' && matrix && sendToSlot) || selectedFile) && (
         <div className="border-t border-[var(--border)] bg-[var(--bg-secondary)] flex items-stretch">
+          {sessionMode === 'sequencer' && addPad && selectedFile && (
+            <div className="flex flex-col justify-center gap-2 px-4 py-3 border-r border-[var(--border)]">
+              <button
+                onClick={async () => {
+                  const made = await addPad(selectedFile);
+                  setPadAdded(made ? made.name : null);
+                  window.setTimeout(() => setPadAdded(null), 2000);
+                }}
+                className="px-4 py-3 text-xs rounded-lg bg-[var(--accent-green)]/20
+                           text-[var(--accent-green)] active:brightness-90 whitespace-nowrap"
+              >
+                {padAdded ? 'Added ' + padAdded : 'Add as drum pad'}
+              </button>
+              <p className="text-[10px] text-[var(--text-secondary)]/60 max-w-[9rem]">
+                Becomes a row in the Steps grid, on the next free note.
+              </p>
+            </div>
+          )}
           {sessionMode === 'session' && matrix && sendToSlot && (
             <MiniPlaytimeGrid
               matrix={matrix}

@@ -103,6 +103,7 @@ Patterns live in MIDI items, not in the extension. See
 | `seq/readPattern` | Notes and per-step ext data for one item |
 | `seq/writePattern` | Replace an item's notes and ext data, in one undo block |
 | `seq/createTrack` | Make a track with an empty MIDI item to sequence |
+| `seq/addPad` | Add a sample to a drum rack as a new pad, creating the rack if needed |
 | `seq/listRacks` | Drum racks built by MPL's RS5k manager, with their pads |
 | `seq/sendToSlot` | Hand the pattern to a Playtime slot, via ReaLearn |
 

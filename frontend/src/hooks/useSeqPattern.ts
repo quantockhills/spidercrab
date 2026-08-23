@@ -128,5 +128,21 @@ export function useSeqPattern() {
     return p.racks ?? [];
   }, [send]);
 
-  return { listItems, readPattern, writePattern, createTrack, sendToSlot, listRacks };
+  /**
+   * Add a sample to a drum rack as a new pad.
+   *
+   * Creates the rack if there is not one yet, and takes the next free note.
+   * Writes the RS5k manager own ext-data keys, so a rack begun here can be
+   * opened and extended in the manager, and one built there gains pads from
+   * here.
+   */
+  const addPad = useCallback(
+    async (path: string, note?: number): Promise<{ note: number; name: string } | null> => {
+      const resp = await send('seq/addPad', note === undefined ? { path } : { path, note });
+      if (!resp.success) return null;
+      const p = resp.payload as unknown as { note: number; name: string };
+      return { note: p.note, name: p.name };
+    }, [send]);
+
+  return { listItems, readPattern, writePattern, createTrack, sendToSlot, listRacks, addPad };
 }

@@ -24,6 +24,8 @@
 #define REAPERAPI_WANT_TrackFX_GetParamName
 #define REAPERAPI_WANT_TrackFX_GetFormattedParamValue
 #define REAPERAPI_WANT_TrackFX_SetParam
+#define REAPERAPI_WANT_TrackFX_SetParamNormalized
+#define REAPERAPI_WANT_SetMediaTrackInfo_Value
 #define REAPERAPI_WANT_TrackFX_Delete
 #define REAPERAPI_WANT_TrackFX_GetEnabled
 #define REAPERAPI_WANT_TrackFX_SetEnabled
@@ -646,6 +648,8 @@ static bool InitializeCoreServices()
     api.InsertTrackAtIndex          = InsertTrackAtIndex;
     api.DeleteTrack                 = DeleteTrack;
     api.SetOnlyTrackSelected        = SetOnlyTrackSelected;
+    api.TrackFX_SetParamNormalized  = TrackFX_SetParamNormalized;
+    api.SetMediaTrackInfo_Value     = SetMediaTrackInfo_Value;
     api.SetMediaItemInfo_Value      = SetMediaItemInfo_Value;
     api.GetMediaItemInfo_Value      = GetMediaItemInfo_Value;
     g_cmdHandler->SetApi(api);

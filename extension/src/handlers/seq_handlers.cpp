@@ -597,3 +597,193 @@ void CommandHandler::HandleSeqListRacks(
 
     SendResponse(clientId, id, true, "{\"racks\":" + out + "}");
 }
+
+// ------------------------------------------------------------
+// Adding a pad to a drum rack.
+//
+// Reading a rack the manager built (seq/listRacks) was the easy half. This is
+// the other: building one from the iPad, so a sample tapped in the browser
+// becomes a row in the step grid with a sound behind it.
+//
+// It writes the manager's own ext-data keys rather than inventing a private
+// format. Those keys are what seq/listRacks already reads, and using them
+// means a rack started here can be picked up and extended in the manager, and
+// one built there gains pads from here. Two tools, one rack.
+//
+// The RS5k setup mirrors what the manager does, including note range on
+// parameters 3 and 4 as note/127 — taken from its source rather than guessed,
+// since getting that wrong makes a pad answer to every note at once.
+//
+// Not verified against the manager's own window: it reads these keys, but
+// whether it considers a rack of ours complete is not something this can
+// assert.
+// ------------------------------------------------------------
+
+void CommandHandler::HandleSeqAddPad(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.CountTracks || !m_api.GetTrack || !m_api.InsertTrackAtIndex
+        || !m_api.GetSetMediaTrackInfo_String || !m_api.TrackFX_AddByName
+        || !m_api.TrackFX_SetNamedConfigParm || !m_api.SetMediaTrackInfo_Value) {
+        SendResponse(clientId, id, false, "{\"error\":\"Required track APIs not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    const std::string path = p1.getString("path");
+    JsonParser  p2(payloadStr);
+    const std::string noteStr = p2.getString("note");
+
+    if (path.empty()) {
+        SendResponse(clientId, id, false, "{\"error\":\"path is required\"}");
+        return;
+    }
+
+    auto bare = [](const char* g) {
+        std::string out;
+        for (const char* p = g; p && *p; ++p)
+            if (*p != '{' && *p != '}') out += (char)toupper((unsigned char)*p);
+        return out;
+    };
+    auto readExt = [&](MediaTrack* tr, const char* key, std::string& out) {
+        std::vector<char> buf(4096, 0);
+        if (!m_api.GetSetMediaTrackInfo_String(tr, key, buf.data(), false)) return false;
+        out = buf.data();
+        return !out.empty();
+    };
+    auto writeExt = [&](MediaTrack* tr, const char* key, const std::string& value) {
+        std::vector<char> buf(value.begin(), value.end());
+        buf.push_back('\0');
+        m_api.GetSetMediaTrackInfo_String(tr, key, buf.data(), true);
+    };
+
+    if (m_api.Undo_BeginBlock2) m_api.Undo_BeginBlock2(nullptr);
+
+    // Find an existing rack: a track carrying the manager's parent marker.
+    int         parentIdx = -1;
+    std::string parentGuid;
+    int         trackCount = m_api.CountTracks(nullptr);
+    for (int t = 0; t < trackCount && parentIdx < 0; ++t) {
+        MediaTrack* tr = m_api.GetTrack(nullptr, t);
+        if (!tr) continue;
+        std::string marker;
+        if (readExt(tr, "P_EXT:MPLRS5KMAN", marker)) {
+            parentIdx = t;
+            std::vector<char> g(128, 0);
+            if (m_api.GetSetMediaTrackInfo_String(tr, "GUID", g.data(), false))
+                parentGuid = bare(g.data());
+        }
+    }
+
+    if (parentIdx < 0) {
+        // No rack yet, so make one. A folder, so its pads collapse into it and
+        // the arrangement does not fill with one track per drum.
+        parentIdx = trackCount;
+        m_api.InsertTrackAtIndex(parentIdx, true);
+        MediaTrack* parent = m_api.GetTrack(nullptr, parentIdx);
+        if (!parent) {
+            if (m_api.Undo_EndBlock2) m_api.Undo_EndBlock2(nullptr, "Add drum pad", 1);
+            SendResponse(clientId, id, false, "{\"error\":\"Could not create the rack track\"}");
+            return;
+        }
+        writeExt(parent, "P_NAME", "Drum Rack");
+        writeExt(parent, "P_EXT:MPLRS5KMAN", "1");
+        m_api.SetMediaTrackInfo_Value(parent, "I_FOLDERDEPTH", 1);
+        std::vector<char> g(128, 0);
+        if (m_api.GetSetMediaTrackInfo_String(parent, "GUID", g.data(), false))
+            parentGuid = bare(g.data());
+        trackCount = m_api.CountTracks(nullptr);
+    }
+
+    // Existing pads, so a new one lands after them and takes the next free
+    // note rather than colliding with one already in use.
+    int  lastPadIdx  = parentIdx;
+    int  highestNote = 35;  // 36 is the General MIDI kick, a conventional first pad
+    bool used[128]   = {false};
+    for (int t = parentIdx + 1; t < trackCount; ++t) {
+        MediaTrack* tr = m_api.GetTrack(nullptr, t);
+        if (!tr) continue;
+        std::string pg;
+        if (!readExt(tr, "P_EXT:MPLRS5KMAN_CHILD_PARENTGUID", pg)) continue;
+        if (bare(pg.c_str()) != parentGuid) continue;
+        lastPadIdx = t;
+        std::string n;
+        if (readExt(tr, "P_EXT:MPLRS5KMAN_NOTE", n)) {
+            const int v = atoi(n.c_str());
+            if (v >= 0 && v < 128) { used[v] = true; if (v > highestNote) highestNote = v; }
+        }
+    }
+
+    int note = noteStr.empty() ? -1 : atoi(noteStr.c_str());
+    if (note < 0 || note > 127) {
+        note = highestNote + 1;
+        while (note < 128 && used[note]) ++note;
+    }
+    if (note > 127) {
+        if (m_api.Undo_EndBlock2) m_api.Undo_EndBlock2(nullptr, "Add drum pad", 1);
+        SendResponse(clientId, id, false, "{\"error\":\"No free note left in this rack\"}");
+        return;
+    }
+
+    const int padIdx = lastPadIdx + 1;
+    m_api.InsertTrackAtIndex(padIdx, true);
+    MediaTrack* pad = m_api.GetTrack(nullptr, padIdx);
+    if (!pad) {
+        if (m_api.Undo_EndBlock2) m_api.Undo_EndBlock2(nullptr, "Add drum pad", 1);
+        SendResponse(clientId, id, false, "{\"error\":\"Could not create the pad track\"}");
+        return;
+    }
+
+    // Name the pad after the sample. That name becomes the grid's row label,
+    // which is the whole point of a rack over a bare note number.
+    std::string fileName = path;
+    const size_t sep = fileName.find_last_of("/\\");
+    if (sep != std::string::npos) fileName = fileName.substr(sep + 1);
+    const size_t dot = fileName.find_last_of('.');
+    if (dot != std::string::npos && dot > 0) fileName = fileName.substr(0, dot);
+    writeExt(pad, "P_NAME", fileName);
+
+    writeExt(pad, "P_EXT:MPLRS5KMAN_CHILD_PARENTGUID", parentGuid);
+    writeExt(pad, "P_EXT:MPLRS5KMAN_NOTE", std::to_string(note));
+    writeExt(pad, "P_EXT:MPLRS5KMAN_TYPE_REGCHILD", "1");
+
+    // Close the folder on the new last pad and reopen the one that used to
+    // close it, so the rack stays a single collapsible group as it grows.
+    if (lastPadIdx > parentIdx) {
+        MediaTrack* prev = m_api.GetTrack(nullptr, lastPadIdx);
+        if (prev) m_api.SetMediaTrackInfo_Value(prev, "I_FOLDERDEPTH", 0);
+    }
+    m_api.SetMediaTrackInfo_Value(pad, "I_FOLDERDEPTH", -1);
+
+    const int fxIdx = m_api.TrackFX_AddByName(pad, "ReaSamplOmatic5000", false, 1);
+    if (fxIdx >= 0) {
+        m_api.TrackFX_SetNamedConfigParm(pad, fxIdx, "FILE0", path.c_str());
+        m_api.TrackFX_SetNamedConfigParm(pad, fxIdx, "DONE", "");
+        // Mode 0 plays the sample as recorded. A drum pad answers to one note
+        // and must not transpose with it, unlike the chromatic sampler track
+        // that sampler/create builds.
+        m_api.TrackFX_SetNamedConfigParm(pad, fxIdx, "MODE", "0");
+        if (m_api.TrackFX_SetParamNormalized) {
+            m_api.TrackFX_SetParamNormalized(pad, fxIdx, 3, note / 127.0);  // note range start
+            m_api.TrackFX_SetParamNormalized(pad, fxIdx, 4, note / 127.0);  // note range end
+        }
+    }
+
+    // MIDI comes down from the rack track, not a hardware input, so the
+    // pattern on the parent reaches every pad.
+    m_api.SetMediaTrackInfo_Value(pad, "I_RECARM", 0);
+    m_api.SetMediaTrackInfo_Value(pad, "B_MAINSEND", 1);
+
+    if (m_api.Undo_EndBlock2) m_api.Undo_EndBlock2(nullptr, "Add drum pad", 1);
+    if (m_api.UpdateArrange) m_api.UpdateArrange();
+
+    std::string payload = "{";
+    payload += json_string("rackTrackIdx") + ":" + std::to_string(parentIdx) + ",";
+    payload += json_string("padTrackIdx") + ":" + std::to_string(padIdx) + ",";
+    payload += json_string("note") + ":" + std::to_string(note) + ",";
+    payload += json_string("name") + ":" + json_string(fileName) + ",";
+    payload += json_string("fxIdx") + ":" + std::to_string(fxIdx);
+    payload += "}";
+    SendResponse(clientId, id, true, payload);
+}
