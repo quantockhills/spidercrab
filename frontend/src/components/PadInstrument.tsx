@@ -17,6 +17,8 @@ export interface PadInstrumentProps {
   noteOff: (note: number) => void;
   /** Fast-path socket status; notes are dropped when disconnected. */
   connected?: boolean;
+  /** Number of pads: 16 (4x4) by default, 32 (8x4 launchpad style). */
+  padCount?: number;
 }
 
 const MIN_OCTAVE = 2;
@@ -34,10 +36,15 @@ function velocityFromEvent(e: React.PointerEvent): number {
   return Math.max(MIN_VELOCITY, Math.min(MAX_VELOCITY, Math.round(MIN_VELOCITY + frac * (MAX_VELOCITY - MIN_VELOCITY))));
 }
 
-export function PadInstrument({ noteOn, noteOff, connected = true }: PadInstrumentProps) {
+export function PadInstrument({ noteOn, noteOff, connected = true, padCount = PAD_COUNT }: PadInstrumentProps) {
   const [scaleId, setScaleId] = useState(padConfigStore.scaleId);
   const [root, setRoot] = useState(padConfigStore.root);
   const [octave, setOctave] = useState(padConfigStore.octave);
+  // Where the grid window starts, in scale degrees from the root. The
+  // octave buttons move it by whole octaves; dragging the octave pill
+  // scrolls it by single degrees, so the grid can start anywhere in
+  // between octaves without changing the key.
+  const [startOffset, setStartOffset] = useState(padConfigStore.startOffset);
   const [chordMode, setChordMode] = useState(padConfigStore.chordMode);
   const [chordTypeId, setChordTypeId] = useState(padConfigStore.chordTypeId);
   const [latch, setLatch] = useState(padConfigStore.latch);
@@ -46,20 +53,41 @@ export function PadInstrument({ noteOn, noteOff, connected = true }: PadInstrume
   // Persist config so it survives tab switches (which unmount this view)
   // and reloads.
   useEffect(() => {
-    Object.assign(padConfigStore, { scaleId, root, octave, chordMode, chordTypeId, latch });
+    Object.assign(padConfigStore, { scaleId, root, octave, startOffset, chordMode, chordTypeId, latch });
     persistPadConfig();
-  }, [scaleId, root, octave, chordMode, chordTypeId, latch]);
+  }, [scaleId, root, octave, startOffset, chordMode, chordTypeId, latch]);
 
   const heldRef = useRef(new Map<number, number[]>()); // pointerId -> notes
   const latchedRef = useRef(new Set<number>()); // notes sustained by latch
+  const scrollRef = useRef<{ lastY: number; acc: number } | null>(null);
   const [latchedCount, setLatchedCount] = useState(0);
 
   const scale = SCALES[scaleId] ?? SCALES.Major;
   const chordType = CHORD_TYPES.find((c) => c.id === chordTypeId) ?? CHORD_TYPES[0];
 
+  // Keep the visible window inside the MIDI range: pad 0 >= 0 and the
+  // top pad <= 127.
+  const clampOffset = useCallback((offset: number): number => {
+    let next = offset;
+    while (padPitch(next, scale, root, octave) < 0) next++;
+    while (padPitch(next + padCount - 1, scale, root, octave) > 127) next--;
+    return next;
+  }, [scale, root, octave, padCount]);
+
+  const shiftOffset = useCallback((delta: number) => {
+    setStartOffset((prev) => clampOffset(prev + delta));
+  }, [clampOffset]);
+
+  // Re-clamp after a scale/root/octave change moved the window's bounds
+  useEffect(() => {
+    setStartOffset((prev) => clampOffset(prev));
+  }, [scaleId, root, octave, clampOffset]);
+
   const notesForPad = useCallback(
-    (padIndex: number) => (chordMode ? chordNotesFor(padIndex, chordType, scale, root, octave) : [padPitch(padIndex, scale, root, octave)]),
-    [chordMode, chordType, scale, root, octave],
+    (padIndex: number) => (chordMode
+      ? chordNotesFor(padIndex + startOffset, chordType, scale, root, octave)
+      : [padPitch(padIndex + startOffset, scale, root, octave)]),
+    [chordMode, chordType, scale, root, octave, startOffset],
   );
 
   // Release the notes under active fingers. Latched notes are concrete
@@ -85,13 +113,13 @@ export function PadInstrument({ noteOn, noteOff, connected = true }: PadInstrume
     if (!connected) panicAll();
   }, [connected, panicAll]);
 
-  // A scale/root/octave/chord change reinterprets the pads — notes under
+  // A scale/root/octave/scroll change reinterprets the pads — notes under
   // fingers are released so the next press plays the new pitch. Notes the
   // latch is already sustaining keep playing: changing octave must not
   // silence what Hold is holding.
   useEffect(() => {
     releaseHeld();
-  }, [scaleId, root, octave, chordMode, chordTypeId, releaseHeld]);
+  }, [scaleId, root, octave, startOffset, chordMode, chordTypeId, releaseHeld]);
 
   const pressPad = (e: React.PointerEvent, padIndex: number) => {
     if (!connected) return;
@@ -155,7 +183,11 @@ export function PadInstrument({ noteOn, noteOff, connected = true }: PadInstrume
   };
 
   // DOM order: top row first (highest pitch), bottom row last.
-  const displayOrder = Array.from({ length: 4 }, (_, r) => Array.from({ length: 4 }, (_, c) => (3 - r) * 4 + c)).flat();
+  const cols = padCount === 32 ? 8 : 4;
+  const rows = padCount / cols;
+  const displayOrder = Array.from({ length: rows }, (_, r) =>
+    Array.from({ length: cols }, (_, c) => (rows - 1 - r) * cols + c),
+  ).flat();
 
   const selectCls =
     'bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-xs min-h-[44px] px-2 border border-[var(--border)] flex-1 min-w-0';
@@ -196,8 +228,36 @@ export function PadInstrument({ noteOn, noteOff, connected = true }: PadInstrume
           >
             −
           </button>
-          <div className="flex items-center justify-center px-2 min-h-[44px] text-xs text-[var(--text-primary)] bg-[var(--bg-tertiary)] border border-[var(--border)] border-r-0">
-            {noteName(root + octave * 12)}
+          {/* Scrollable window indicator: drag vertically to pan the grid by
+              single scale degrees (anything in between octaves); the start
+              note stays in the selected key. */}
+          <div
+            aria-label="Scroll pitch"
+            title="Drag up/down to scroll the pitch range by scale steps"
+            onPointerDown={(e) => {
+              e.currentTarget.setPointerCapture?.(e.pointerId);
+              scrollRef.current = { lastY: e.clientY, acc: 0 };
+            }}
+            onPointerMove={(e) => {
+              if (!scrollRef.current) return;
+              const dy = scrollRef.current.lastY - e.clientY;
+              scrollRef.current.lastY = e.clientY;
+              scrollRef.current.acc += dy;
+              const step = 36; // px per scale degree
+              while (scrollRef.current.acc >= step) {
+                scrollRef.current.acc -= step;
+                shiftOffset(1);
+              }
+              while (scrollRef.current.acc <= -step) {
+                scrollRef.current.acc += step;
+                shiftOffset(-1);
+              }
+            }}
+            onPointerUp={() => { scrollRef.current = null; }}
+            onPointerCancel={() => { scrollRef.current = null; }}
+            className="touch-none select-none cursor-ns-resize flex items-center justify-center px-2 min-h-[44px] text-xs text-[var(--text-primary)] bg-[var(--bg-tertiary)] border border-[var(--border)] border-r-0"
+          >
+            {noteName(padPitch(startOffset, scale, root, octave))}
           </div>
           <button
             aria-label="Octave up"
@@ -226,13 +286,19 @@ export function PadInstrument({ noteOn, noteOff, connected = true }: PadInstrume
         </button>
       </div>
 
-      {/* Pad grid — 4x4, ascending left-to-right and bottom-to-top */}
-      <div className="grid grid-cols-4 grid-rows-4 gap-1.5 flex-1 min-h-0 p-2">
+      {/* Pad grid — ascending left-to-right and bottom-to-top */}
+      <div
+        className="grid gap-1.5 flex-1 min-h-0 p-2"
+        style={{
+          gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+        }}
+      >
         {displayOrder.map((padIndex) => {
           const active = activePads.has(padIndex);
           const pitch = notesForPad(padIndex)[0];
           const label = chordMode
-            ? chordLabel(padIndex, chordType, scale, root, octave)
+            ? chordLabel(padIndex + startOffset, chordType, scale, root, octave)
             : noteName(pitch);
           return (
             <button

@@ -5,6 +5,7 @@ import { ReaperClientProvider } from '../hooks/useReaperClient';
 import { WsClient } from '../lib/wsClient';
 import { FastMidiClient } from '../lib/fastMidiClient';
 import { KeysView } from '../components/KeysView';
+import { resetPadConfigStore } from '../utils/padConfigStore';
 
 vi.mock('../components/grid/GridView', () => ({
   GridView: () => <div data-testid="grid-view" />,
@@ -41,6 +42,7 @@ describe('KeysView', () => {
     (FastMidiClient as any).WebSocketFactory = mockWsClass.MockWebSocket;
     HTMLElement.prototype.setPointerCapture = vi.fn();
     document.elementFromPoint = vi.fn(() => null) as any;
+    resetPadConfigStore();
   });
 
   afterEach(() => {
@@ -98,5 +100,22 @@ describe('KeysView', () => {
     renderKeys();
     await waitFor(() => expect(screen.getByTestId('grid-view')).toBeDefined());
     expect(screen.getByLabelText('Pad C4')).toBeDefined();
+  });
+
+  it('grid toggle swaps 16 pads + grid for 32 pads full width', async () => {
+    renderKeys();
+    await waitFor(() => expect(screen.getByTestId('grid-view')).toBeDefined());
+    expect(screen.getAllByLabelText(/^Pad /)).toHaveLength(16);
+
+    fireEvent.click(screen.getByLabelText('Toggle FX grid'));
+
+    await waitFor(() => expect(screen.queryByTestId('grid-view')).toBeNull());
+    expect(screen.getAllByLabelText(/^Pad /)).toHaveLength(32);
+    expect(screen.getByText('Grid: off')).toBeDefined();
+
+    // Back again
+    fireEvent.click(screen.getByLabelText('Toggle FX grid'));
+    await waitFor(() => expect(screen.getByTestId('grid-view')).toBeDefined());
+    expect(screen.getAllByLabelText(/^Pad /)).toHaveLength(16);
   });
 });

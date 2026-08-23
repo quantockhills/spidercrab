@@ -4,11 +4,13 @@
 
 export interface PadConfig {
   scaleId: string;
-  root: number;      // semitone 0-11
-  octave: number;    // octave of pad 0
+  root: number;      // semitone 0-11 (the scale's key)
+  octave: number;    // octave of the grid start
+  startOffset: number; // grid window position in scale degrees from the root
   chordMode: boolean;
   chordTypeId: string;
   latch: boolean;
+  gridOn: boolean;   // Keys view: FX grid visible (16 pads) vs 32 pads
 }
 
 export const PAD_CONFIG_KEY = 'padConfig';
@@ -17,9 +19,11 @@ export const DEFAULT_PAD_CONFIG: PadConfig = {
   scaleId: 'Major',
   root: 0,
   octave: 4,
+  startOffset: 0,
   chordMode: false,
   chordTypeId: 'triad',
   latch: false,
+  gridOn: true,
 };
 
 function load(): PadConfig {
@@ -31,6 +35,7 @@ function load(): PadConfig {
       // Defensive range checks against hand-edited or stale storage
       merged.root = Math.max(0, Math.min(11, Number(merged.root) || 0));
       merged.octave = Math.max(2, Math.min(6, Number(merged.octave) || 4));
+      merged.startOffset = Math.max(-48, Math.min(48, Number(merged.startOffset) || 0));
       return merged;
     }
   } catch { /* unreadable storage — fall through to defaults */ }

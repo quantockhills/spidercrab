@@ -42,6 +42,25 @@ describe('PadInstrument', () => {
     expect(screen.getAllByLabelText(/^Pad /)).toHaveLength(16);
   });
 
+  it('renders 32 pads in an 8x4 grid when padCount is 32', () => {
+    render(<PadInstrument noteOn={vi.fn()} noteOff={vi.fn()} padCount={32} />);
+    const pads = screen.getAllByLabelText(/^Pad /);
+    expect(pads).toHaveLength(32);
+    // Pad 0 is the bottom-left, pad 31 the top-right — check the extremes
+    expect(document.querySelector('[data-pad="0"]')?.textContent).toBe('C4');
+    expect(document.querySelector('[data-pad="31"]')?.textContent).toBe('F8'); // 32nd major degree
+    // 8 columns: pads 0..7 share a row (bottom)
+    const row0 = document.querySelectorAll('[data-pad="0"],[data-pad="1"],[data-pad="2"],[data-pad="3"],[data-pad="4"],[data-pad="5"],[data-pad="6"],[data-pad="7"]');
+    expect(row0).toHaveLength(8);
+  });
+
+  it('32-pad mode plays pitches across the wider window', () => {
+    const noteOn = vi.fn();
+    render(<PadInstrument noteOn={noteOn} noteOff={vi.fn()} padCount={32} />);
+    press(pad('A4')); // pad 5 in C major = A4
+    expect(noteOn).toHaveBeenCalledWith(69, expect.any(Number));
+  });
+
   it('plays a note on press and releases on release', () => {
     const noteOn = vi.fn();
     const noteOff = vi.fn();
@@ -71,6 +90,45 @@ describe('PadInstrument', () => {
     fireEvent.click(screen.getByLabelText('Octave up'));
     press(pad('C5'));
     expect(noteOn).toHaveBeenCalledWith(72, expect.any(Number));
+  });
+
+  it('dragging the pitch pill scrolls by scale degrees (between octaves)', () => {
+    const noteOn = vi.fn();
+    render(<PadInstrument noteOn={noteOn} noteOff={vi.fn()} />);
+
+    // Drag up ~72px = 2 scale degrees: C4 -> E4 (major scale)
+    const pill = screen.getByLabelText('Scroll pitch');
+    fireEvent.pointerDown(pill, { pointerId: 1, clientY: 100 });
+    fireEvent.pointerMove(pill, { pointerId: 1, clientY: 64 });
+    fireEvent.pointerMove(pill, { pointerId: 1, clientY: 28 });
+    fireEvent.pointerUp(pill, { pointerId: 1 });
+
+    // Pad 0 is now E4 — no longer octave-locked to C
+    press(pad('E4'));
+    expect(noteOn).toHaveBeenCalledWith(64, expect.any(Number));
+
+    // Dragging back down returns to C4
+    fireEvent.pointerDown(pill, { pointerId: 2, clientY: 28 });
+    fireEvent.pointerMove(pill, { pointerId: 2, clientY: 100 });
+    fireEvent.pointerUp(pill, { pointerId: 2 });
+    press(pad('C4'));
+    expect(noteOn).toHaveBeenCalledWith(60, expect.any(Number));
+  });
+
+  it('scrolled window keeps the key: D4 pad is a scale note, not chromatic', () => {
+    const noteOn = vi.fn();
+    render(<PadInstrument noteOn={noteOn} noteOff={vi.fn()} />);
+
+    // Scroll up one degree: grid starts at D4 (still C major — no sharps)
+    const pill = screen.getByLabelText('Scroll pitch');
+    fireEvent.pointerDown(pill, { pointerId: 1, clientY: 100 });
+    fireEvent.pointerMove(pill, { pointerId: 1, clientY: 63 });
+    fireEvent.pointerUp(pill, { pointerId: 1 });
+
+    // Pad 0 is D4, pad 1 is E4 (major scale degrees from D)
+    expect(document.querySelector('[data-pad="0"]')?.textContent).toBe('D4');
+    press(padByIndex(1));
+    expect(noteOn).toHaveBeenCalledWith(64, expect.any(Number));
   });
 
   it('chord mode plays a triad per pad', () => {
