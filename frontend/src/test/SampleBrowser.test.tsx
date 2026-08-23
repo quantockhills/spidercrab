@@ -1577,4 +1577,83 @@ describe('SampleBrowser', () => {
       });
     });
   });
+
+  describe('databases as tags (megafolder)', () => {
+    const mockGetLibraries = vi.fn();
+    const mockGetLibraryFiles = vi.fn();
+    const mockGetTags = vi.fn();
+    const mockSetTags = vi.fn();
+
+    beforeEach(() => {
+      mockGetLibraries.mockResolvedValue([
+        { file: 'library1.reapeaks', name: 'Drums DB', type: 'media' },
+        { file: 'library2.reapeaks', name: 'Foley DB', type: 'media' },
+      ]);
+      mockGetLibraryFiles.mockImplementation(async (file: string) => {
+        if (file === 'library1.reapeaks') return ['C:/samples/drums/kick.wav', 'C:/samples/drums/snare.wav'];
+        return ['C:/samples/foley/rain.wav', 'C:/samples/drums/kick.wav']; // kick is in BOTH databases
+      });
+      mockGetTags.mockResolvedValue({ sampleTags: {} });
+    });
+
+    function renderBrowser() {
+      return render(
+        <SampleBrowser
+          tracks={createMockTracks()}
+          selectedTrack={0}
+          getDirectory={mockGetDirectory}
+          sendSampleToTrack={mockSendSampleToTrack}
+          sendCommand={mockSendCommand}
+          onBack={() => {}}
+          samplePaths={['/samples']}
+          getSampleTags={mockGetTags}
+          setSampleTags={mockSetTags}
+          getReaperLibraries={mockGetLibraries}
+          getReaperLibraryFiles={mockGetLibraryFiles}
+        />
+      );
+    }
+
+    it('shows databases as tags plus the megafolder chip', async () => {
+      renderBrowser();
+      await waitFor(() => expect(screen.getByText(/Drums DB/)).toBeDefined());
+      expect(screen.getByText(/Foley DB/)).toBeDefined();
+      expect(screen.getByText('📚 All databases')).toBeDefined();
+      // The separate Libraries section is gone — one tags section now
+      expect(screen.queryByText('Libraries')).toBeNull();
+    });
+
+    it('megafolder lists every file across every database, deduped', async () => {
+      renderBrowser();
+      await waitFor(() => expect(screen.getByText('📚 All databases')).toBeDefined());
+      fireEvent.click(screen.getByText('📚 All databases'));
+
+      await waitFor(() => expect(screen.getByText('kick.wav')).toBeDefined());
+      expect(screen.getByText('snare.wav')).toBeDefined();
+      expect(screen.getByText('rain.wav')).toBeDefined();
+      // kick.wav lives in both databases — must appear once
+      expect(screen.getAllByText('kick.wav')).toHaveLength(1);
+    });
+
+    it('clicking a database tag opens that database', async () => {
+      renderBrowser();
+      await waitFor(() => expect(screen.getByText(/Drums DB/)).toBeDefined());
+      fireEvent.click(screen.getByText(/Drums DB/));
+
+      await waitFor(() => expect(screen.getByText('kick.wav')).toBeDefined());
+      expect(screen.getByText('snare.wav')).toBeDefined();
+      expect(screen.queryByText('rain.wav')).toBeNull();
+    });
+
+    it('megafolder back button returns home', async () => {
+      renderBrowser();
+      await waitFor(() => expect(screen.getByText('📚 All databases')).toBeDefined());
+      fireEvent.click(screen.getByText('📚 All databases'));
+      await waitFor(() => expect(screen.getByText('kick.wav')).toBeDefined());
+
+      fireEvent.click(screen.getByText('← Home'));
+      await waitFor(() => expect(screen.getByText('📚 All databases')).toBeDefined());
+      expect(screen.queryByText('kick.wav')).toBeNull();
+    });
+  });
 });

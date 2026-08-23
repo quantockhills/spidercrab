@@ -16,7 +16,7 @@ import { GridStrip } from './GridStrip';
 import { DeviceInfo } from './DeviceInfo';
 import { PresetPicker } from './PresetPicker';
 
-interface GridViewProps {
+export interface GridViewProps {
   tracks: Track[];
   selectedTrack: number | null;
   getTrackFx: (trackIdx: number) => Promise<FxInfo[]>;

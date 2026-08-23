@@ -136,6 +136,50 @@ export function SampleBrowser({
   const [libraryFiles, setLibraryFiles] = useState<string[] | null>(null);
   const [libraryLoading, setLibraryLoading] = useState(false);
 
+  // "Megafolder" — every file across every REAPER media database, in one list.
+  // Databases are many-to-many, exactly like our tags, so they live in the
+  // tags section; this is the union view.
+  const [showAllDatabases, setShowAllDatabases] = useState(false);
+  const [allDatabaseFiles, setAllDatabaseFiles] = useState<string[] | null>(null);
+  const [allDatabasesLoading, setAllDatabasesLoading] = useState(false);
+
+  // Open one media database (a "database tag")
+  const openLibrary = useCallback(async (lib: ReaperLibrary) => {
+    if (!getReaperLibraryFiles) return;
+    setActiveLibrary(lib);
+    setLibraryFiles(null);
+    setLibraryLoading(true);
+    setShowAllDatabases(false);
+    try {
+      const files = await getReaperLibraryFiles(lib.file);
+      setLibraryFiles(files);
+    } catch {
+      setLibraryFiles([]);
+    }
+    setLibraryLoading(false);
+  }, [getReaperLibraryFiles]);
+
+  // Open the megafolder: union of all files across all databases
+  const openAllDatabases = useCallback(async () => {
+    if (!getReaperLibraries || !getReaperLibraryFiles) return;
+    setShowAllDatabases(true);
+    setGlobalTagFilter(null);
+    setActiveLibrary(null);
+    setLibraryFiles(null);
+    setAllDatabaseFiles(null);
+    setAllDatabasesLoading(true);
+    try {
+      const libs = await getReaperLibraries();
+      const lists = await Promise.all(
+        libs.map((l) => getReaperLibraryFiles(l.file).catch(() => [] as string[])),
+      );
+      setAllDatabaseFiles(Array.from(new Set(lists.flat())).sort());
+    } catch {
+      setAllDatabaseFiles([]);
+    }
+    setAllDatabasesLoading(false);
+  }, [getReaperLibraries, getReaperLibraryFiles]);
+
   // Frontend directory cache: module-level singleton shared with App.tsx
   const dirCache = useRef(dirCacheStore);
 
@@ -673,9 +717,9 @@ export function SampleBrowser({
               ← Roots
             </button>
           )}
-          {(globalTagFilter || activeLibrary) && !currentPath && (
+          {(globalTagFilter || activeLibrary || showAllDatabases) && !currentPath && (
             <button
-              onClick={() => { setGlobalTagFilter(null); setActiveLibrary(null); setLibraryFiles(null); }}
+              onClick={() => { setGlobalTagFilter(null); setActiveLibrary(null); setLibraryFiles(null); setShowAllDatabases(false); }}
               className="text-[11px] text-[var(--accent-orange)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0 px-2 py-1"
             >
               ← Home
@@ -684,6 +728,11 @@ export function SampleBrowser({
           {globalTagFilter && !currentPath && (
             <span className="text-[11px] font-mono text-[var(--text-primary)] truncate flex-1">
               # {globalTagFilter}
+            </span>
+          )}
+          {showAllDatabases && !currentPath && (
+            <span className="text-[11px] font-mono text-[var(--text-primary)] truncate flex-1">
+              📚 All databases
             </span>
           )}
           {activeLibrary && !currentPath && (
@@ -937,6 +986,47 @@ export function SampleBrowser({
                 ))}
               </div>
             )
+          ) : showAllDatabases ? (
+            /* Megafolder — every file across every database */
+            allDatabasesLoading ? (
+              <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3">
+                <div className="text-4xl animate-pulse">📚</div>
+                <p className="text-sm">Loading all databases...</p>
+              </div>
+            ) : (allDatabaseFiles ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">
+                <div className="text-4xl">📂</div>
+                <p className="text-sm">No files in any database</p>
+                <p className="text-xs">Add files to REAPER's Media Explorer databases (right-click → Add to database) and they'll show up here.</p>
+              </div>
+            ) : (
+              <div className="px-3 py-2 grid grid-cols-2 gap-1">
+                {(allDatabaseFiles ?? []).map((filePath) => {
+                  const lastSep = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
+                  const name = filePath.substring(lastSep + 1);
+                  const basePath = filePath.substring(0, lastSep);
+                  const entry: DirEntry = { name, type: 'file' };
+                  const tags = tagData?.sampleTags[filePath] ?? tagData?.sampleTags[filePath.replace(/\\/g, '/')] ?? [];
+                  return (
+                    <FileRow
+                      key={filePath}
+                      entry={entry}
+                      isAudio={isAudioFile(name)}
+                      isSending={sending === filePath}
+                      isSent={sentFiles.has(filePath)}
+                      canSend={selectedTrack !== null}
+                      isSelected={selectedFile === filePath}
+                      isPlaying={selectedFile === filePath && audioPreview.isPlaying}
+                      tags={tags}
+                      onSend={() => handleSendToTrack(entry, basePath)}
+                      onSelect={() => handleFileClick(entry, basePath)}
+                      onPlayButtonClick={() => handlePlayButtonClick(entry, basePath)}
+                      onLongPress={(x, y) => handleLongPress(entry, basePath, x, y)}
+                    />
+                  );
+                })}
+              </div>
+            )
           ) : activeLibrary ? (
             /* REAPER library files view */
             libraryLoading ? (
@@ -978,14 +1068,22 @@ export function SampleBrowser({
               </div>
             )
           ) : (
-            /* Normal home screen: tags + libraries + directory list */
+            /* Normal home screen: tags (incl. databases) + directory list */
             <div className="p-4 space-y-4">
-              {allGlobalTags.length > 0 && (
+              {(allGlobalTags.length > 0 || reaperLibraries.length > 0) && (
                 <div>
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
                     Tags
                   </h3>
                   <div className="flex flex-wrap gap-1.5">
+                    {reaperLibraries.length > 0 && (
+                      <button
+                        onClick={openAllDatabases}
+                        className="px-2.5 py-1.5 text-[11px] font-medium bg-[var(--bg-tertiary)] text-[var(--accent-orange)] border border-[var(--accent-orange)]/40 active:brightness-95 transition-colors"
+                      >
+                        📚 All databases
+                      </button>
+                    )}
                     {allGlobalTags.map((tag) => {
                       const color = getTagColor(tag);
                       return (
@@ -998,34 +1096,18 @@ export function SampleBrowser({
                         </button>
                       );
                     })}
-                  </div>
-                </div>
-              )}
-              {reaperLibraries.length > 0 && (
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-                    Libraries
-                  </h3>
-                  <div className="space-y-1.5">
+                    {allGlobalTags.length > 0 && reaperLibraries.length > 0 && (
+                      <div className="w-full border-b border-[var(--border)]" />
+                    )}
+                    {/* REAPER media databases as tags — a file can live in
+                        several, just like our tags */}
                     {reaperLibraries.map((lib) => (
                       <button
                         key={lib.file}
-                        onClick={async () => {
-                          if (!getReaperLibraryFiles) return;
-                          setActiveLibrary(lib);
-                          setLibraryFiles(null);
-                          setLibraryLoading(true);
-                          const files = await getReaperLibraryFiles(lib.file);
-                          setLibraryFiles(files);
-                          setLibraryLoading(false);
-                        }}
-                        className="w-full flex items-center gap-3 px-3 py-2.5
-                          bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]
-                          active:brightness-95 transition-colors duration-100 text-left"
+                        onClick={() => void openLibrary(lib)}
+                        className="px-2.5 py-1.5 text-[11px] font-medium bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] active:brightness-95 transition-colors"
                       >
-                        <span className="text-base flex-shrink-0">🎵</span>
-                        <span className="text-sm truncate flex-1">{lib.name}</span>
-                        <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0">→</span>
+                        🎵 {lib.name}
                       </button>
                     ))}
                   </div>

@@ -10,6 +10,7 @@ import { SequencerView } from './components/SequencerView';
 import { useSeqPattern } from './hooks/useSeqPattern';
 import { FxChainBrowser } from './components/FxChainBrowser';
 import { GridView } from './components/grid/GridView';
+import { KeysView } from './components/KeysView';
 import ErrorBoundary from './components/ErrorBoundary';
 import SampleIndexProgressBar from './components/SampleIndexProgressBar';
 import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
@@ -22,7 +23,7 @@ type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
 // launches. Keeping them beside what they belong to shortens the nav and
 // puts each next to the thing it acts on.
 type TrackView = 'list' | 'grid';
-type ClipsView = 'session' | 'steps';
+type ClipsView = 'session' | 'steps' | 'keys';
 type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 
 // The step sequencer is built but not yet working reliably, so it's hidden
@@ -524,10 +525,26 @@ function AppInner() {
             <SubTabs<ClipsView>
               value={clipsView}
               onChange={setClipsView}
-              options={[{ id: 'session', label: 'Session' }, { id: 'steps', label: 'Steps' }]}
+              options={[
+                { id: 'session', label: 'Session' },
+                { id: 'steps', label: 'Steps' },
+                { id: 'keys', label: 'Keys' },
+              ]}
             />
             <div className="flex-1 overflow-hidden min-h-0">
-              {clipsView === 'steps' ? <SequencerView tracks={tracks} /> : (
+              {clipsView === 'steps' ? <SequencerView tracks={tracks} /> : clipsView === 'keys' ? (
+              <KeysView
+                  tracks={tracks}
+                  selectedTrack={selectedTrack}
+                  getTrackFx={getTrackFx}
+                  getFxParams={getFxParams}
+                  setFxParam={setFxParam}
+                  getFxPreset={getFxPreset}
+                  setFxPreset={setFxPreset}
+                  getAllFxPresetNames={getAllFxPresetNames}
+                  onEvent={onEvent}
+                />
+              ) : (
               <SessionView
                   matrix={matrix}
                   tracks={tracks}
