@@ -295,13 +295,23 @@ export function SampleBrowser({
   }, [currentPath, search, samplePaths, getDirectory]);
 
   // Search the media databases whenever there is a query on the home screen.
+  //
+  // Debounced, because every keystroke would otherwise be a query and the
+  // prefixes are the expensive ones: typing "waves" asks for "wav" on the way
+  // past, which matches every .wav file in every database. Waiting for a pause
+  // means the prefixes are usually never sent at all.
+  //
+  // Still versioned as well as debounced. A pause mid-word does fire a query,
+  // and a slow one must not land on top of a later, narrower one.
   useEffect(() => {
     if (!searchDatabases || currentPath || !search.trim()) { setDbResults(null); return; }
     const version = ++dbSearchVersion.current;
-    void searchDatabases(search.trim()).then((r) => {
-      // Only the newest query may write, or a slow earlier one overwrites it.
-      if (version === dbSearchVersion.current) setDbResults(r);
-    });
+    const timer = window.setTimeout(() => {
+      void searchDatabases(search.trim()).then((r) => {
+        if (version === dbSearchVersion.current) setDbResults(r);
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
   }, [search, currentPath, searchDatabases]);
 
   // Load directory on mount / path change (always start at offset 0)
