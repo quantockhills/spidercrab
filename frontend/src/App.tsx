@@ -15,7 +15,14 @@ import SampleIndexProgressBar from './components/SampleIndexProgressBar';
 import { dirCacheStore, persistDirCache } from './utils/dirCacheStore';
 import type { DirResult, ReaperLibrary } from './hooks/useSampleBrowser';
 
-type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'grid' | 'seq' | 'settings';
+type Tab = 'media' | 'fx' | 'tracks' | 'clips' | 'settings';
+
+// Grid and Steps are sub-views rather than top-level tabs: Grid is another
+// way of looking at a track's FX, and Steps writes the patterns Playtime
+// launches. Keeping them beside what they belong to shortens the nav and
+// puts each next to the thing it acts on.
+type TrackView = 'list' | 'grid';
+type ClipsView = 'session' | 'steps';
 type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 
 // The step sequencer is built but not yet working reliably, so it's hidden
@@ -25,17 +32,40 @@ type NavPosition = 'top' | 'bottom' | 'left' | 'right';
 // Grid shows the selected track's plugins as a pannable strip of purpose-built
 // device layouts. Only Chorus has a module so far, and the layout format is
 // still settling — hidden until there's enough there to be useful.
-const SHOW_GRID = true;
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'media',   label: 'Media',   icon: '📂' },
   { id: 'fx',      label: 'FX',      icon: '🎛️' },
   { id: 'tracks',  label: 'Tracks',  icon: '🎚️' },
   { id: 'clips',   label: 'Playtime',   icon: '🎹' },
-  ...(SHOW_GRID ? [{ id: 'grid' as Tab, label: 'Grid', icon: '🎹' }] : []),
-  { id: 'seq',     label: 'Steps',   icon: '▦' },
   { id: 'settings',label: 'Settings',icon: '⚙️' },
 ];
+
+/** A pair of sub-tabs inside a main tab. Deliberately plain: the main nav
+ *  already carries the icons, and a second row of them competes with it. */
+function SubTabs<T extends string>({ value, onChange, options }: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { id: T; label: string }[];
+}) {
+  return (
+    <div className="flex border-b border-[var(--border)] shrink-0">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          onClick={() => onChange(o.id)}
+          className={`flex-1 py-2 text-xs font-medium transition-colors min-h-[40px] ${
+            value === o.id
+              ? 'bg-[var(--bg-tertiary)] text-[var(--accent-orange)]'
+              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function AppInner() {
   const {
@@ -110,6 +140,8 @@ function AppInner() {
   const { addPad } = useSeqPattern();
 
   const [activeTab, setActiveTab] = useState<Tab>('tracks');
+  const [trackView, setTrackView] = useState<TrackView>('list');
+  const [clipsView, setClipsView] = useState<ClipsView>('session');
 
   // Tab bar placement (Settings): top / bottom / left / right
   const [navPosition, setNavPosition] = useState<NavPosition>(() => {
@@ -482,7 +514,13 @@ function AppInner() {
 
         {activeTab === 'clips' && (
           <div className="flex flex-col h-full min-h-0">
+            <SubTabs<ClipsView>
+              value={clipsView}
+              onChange={setClipsView}
+              options={[{ id: 'session', label: 'Session' }, { id: 'steps', label: 'Steps' }]}
+            />
             <div className="flex-1 overflow-hidden min-h-0">
+              {clipsView === 'steps' ? <SequencerView tracks={tracks} /> : (
               <SessionView
                   matrix={matrix}
                   tracks={tracks}
@@ -508,6 +546,7 @@ function AppInner() {
                   onToggleRecordMode={handleToggleRecordMode}
                   onNavigateToTrack={handleNavigateToTrack}
                 />
+              )}
             </div>
           </div>
         )}
@@ -561,6 +600,14 @@ function AppInner() {
         ))}
 
         {activeTab === 'tracks' && (
+          <div className="flex flex-col h-full min-h-0">
+            <SubTabs<TrackView>
+              value={trackView}
+              onChange={setTrackView}
+              options={[{ id: 'list', label: 'Tracks' }, { id: 'grid', label: 'Grid' }]}
+            />
+            <div className="flex-1 min-h-0">
+            {trackView === 'list' ? (
           <TrackOverview
             tracks={tracks}
             selectedTrack={selectedTrack}
@@ -599,24 +646,21 @@ function AppInner() {
             }}
             loadChain={(trackIdx: number, filePath: string) => fxChainLoad(trackIdx, filePath)}
           />
-        )}
-
-        {activeTab === 'grid' && (
-          <GridView
-            tracks={tracks}
-            selectedTrack={selectedTrack}
-            getTrackFx={getTrackFx}
-            getFxParams={getFxParams}
-            setFxParam={setFxParam}
-            getFxPreset={getFxPreset}
-            setFxPreset={setFxPreset}
-            getAllFxPresetNames={getAllFxPresetNames}
-            onEvent={onEvent}
-          />
-        )}
-
-        {activeTab === 'seq' && (
-          <SequencerView tracks={tracks} />
+            ) : (
+              <GridView
+                tracks={tracks}
+                selectedTrack={selectedTrack}
+                getTrackFx={getTrackFx}
+                getFxParams={getFxParams}
+                setFxParam={setFxParam}
+                getFxPreset={getFxPreset}
+                setFxPreset={setFxPreset}
+                getAllFxPresetNames={getAllFxPresetNames}
+                onEvent={onEvent}
+              />
+            )}
+            </div>
+          </div>
         )}
 
         {activeTab === 'settings' && (

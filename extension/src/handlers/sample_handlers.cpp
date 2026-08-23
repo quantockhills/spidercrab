@@ -961,7 +961,17 @@ void CommandHandler::HandleSampleReaperLibraries(
     std::map<int, std::string> files; // index -> xx.ReaperFileList
     std::map<int, std::string> names; // index -> display name
     std::string line;
+
+    // Only the media explorer's own section. Shortcut keys are numbered per
+    // section, so reading the whole file would let an unrelated section's
+    // Shortcut3 overwrite the explorer's.
+    bool inExplorer = false;
     while (std::getline(f, line)) {
+        if (!line.empty() && line[0] == '[') {
+            inExplorer = (line.rfind("[reaper_explorer]", 0) == 0);
+            continue;
+        }
+        if (!inExplorer) continue;
         if (line.rfind("Shortcut", 0) != 0) continue;
         size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
@@ -980,14 +990,30 @@ void CommandHandler::HandleSampleReaperLibraries(
         } catch (...) {}
     }
 
-    std::string resp = "{\"libraries\":[";
-    bool first = true;
+    // What REAPER.ini lists and what the media explorer actually offers are
+    // not the same thing. It happily keeps two shortcuts to one database —
+    // this project has 03.ReaperFileList twice — and keeps shortcuts to
+    // databases whose file has since gone. Report the databases, not the
+    // shortcuts: first mention wins, missing files are dropped.
+    const std::string dbDir = getReaperAppDataPath() + "\\MediaDB\\";
+    std::vector<std::pair<std::string, std::string>> libs;  // (file, name)
     for (auto& [n, file] : files) {
-        if (!first) resp += ",";
-        first = false;
-        std::string name = names.count(n) ? names[n] : file;
-        resp += "{" + json_string("name") + ":" + json_string(name) + ","
-                    + json_string("file") + ":" + json_string(file) + "}";
+        bool already = false;
+        for (const auto& l : libs)
+            if (l.first == file) { already = true; break; }
+        if (already) continue;
+
+        std::ifstream probe(dbDir + file);
+        if (!probe.is_open()) continue;
+
+        libs.emplace_back(file, names.count(n) ? names[n] : file);
+    }
+
+    std::string resp = "{\"libraries\":[";
+    for (size_t i = 0; i < libs.size(); ++i) {
+        if (i > 0) resp += ",";
+        resp += "{" + json_string("name") + ":" + json_string(libs[i].second) + ","
+                    + json_string("file") + ":" + json_string(libs[i].first) + "}";
     }
     resp += "]}";
     SendResponse(clientId, id, true, resp);
