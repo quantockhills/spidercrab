@@ -7,7 +7,7 @@ Find your samples, hear them before you commit, keep them organised, and drop th
 
 ## Finding samples
 
-Browse the folders on your computer, or dip into your **REAPER media libraries** (the same databases you've set up in REAPER's Media Explorer show up here as their own section). The browser **remembers where you were**, so you pick up where you left off.
+Browse the folders on your computer — or use **REAPER's media databases**. Since a file can live in several databases at once (exactly like a tag), the databases show up as **🎵 chips in the Tags section** of the home screen, right alongside your own tags. Tap one to see everything in that database. There's also a **📚 All databases** chip: the *megafolder* — every file across every database in one list, each row labelled with the databases it belongs to (plus your own tags). The browser **remembers where you were**, so you pick up where you left off.
 
 Samples show up as cards, two across, with a waveform and a preview panel side by side. Big folders are scanned in the background, with a progress bar so you know it's working — it fades out on its own once the scan completes. After the first scan, browsing is instant.
 

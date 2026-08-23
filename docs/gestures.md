@@ -22,6 +22,7 @@ Everything in Spidercrab happens by touch, and a **tap**, a **double-tap**, and 
 | **Chain block header** | — | — | *2s: Chain Cycler* | Reorder the whole block |
 | **Add FX button** | Add an effect | — | Open search | — |
 | **Clip slot** | Launch (or record) | — | Actions: sampler / delete | — |
+| **Keys pad** | Play the note | — | — | Slide = glissando |
 | **Clip's ↻ corner button** | Reverse the clip | — | — | — |
 | **Sample** | Preview it | — | Open its menu | Pick it up |
 | **Sequencer step** *(hidden for now)* | Turn it on/off | — | — | — |
@@ -39,7 +40,14 @@ Slide to dial a value in — you'll hear it change as you move. Tap anywhere to 
 Tap to add an effect. **Hold** it to open a search box: start typing and it finds both plugins and your saved effect chains — tap a result to drop it on the track.
 
 ### Clip slots
-Tap to launch the clip. If you've armed recording first, tapping an empty slot **records into it** instead — tap again to stop. Each clip has a small **↻ button in its corner** to reverse it. Hold a slot that has a clip to open its actions — **send to sampler** (turn it into a playable instrument) and **delete**.
+Tap to launch the clip. If you've armed recording first, tapping an empty slot **records into it** instead — tap again to stop. With a **Count-in** set, the slot shows a red countdown and recording starts on the next bar boundary + N bars. Each clip has a small **↻ button in its corner** to reverse it. Hold a slot that has a clip to open its actions — **send to sampler** (turn it into a playable instrument) and **delete**.
+
+### Keys pads (Playtime → Keys)
+- **Press a pad** — play that note (or chord, in Chord mode). **Press higher up** the pad for louder velocity.
+- **Slide across pads** — glissando: each pad you cross plays, the last one releases when you lift off.
+- **Multi-touch** — every finger is its own note, so play a chord with several fingers.
+- **Hold toggle** — with Hold on, notes keep ringing after you lift; toggle it off to release them all.
+- **Drag the note-name pill** (between the −/+ buttons) — pan the whole grid up or down by single scale steps; the −/+ buttons jump whole octaves.
 
 ### Samples
 Tap to hear a sample (and a mini Session grid appears so you can tap a slot to send it there). Hold to open its menu — send to track, send to sampler, drag to a slot, or file info. Drag to carry it onto a clip slot.

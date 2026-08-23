@@ -90,6 +90,7 @@ Responses come back keyed by `id`. Grouped by namespace below.
 | `matrix/triggerSlot` | Launch a clip |
 | `matrix/triggerScene` | Launch a scene (row) |
 | `matrix/recordSlot` | Record into a slot |
+| `matrix/recordSlotCountdown` | Record into a slot after an N-bar count-in (`bars`: 0-8). The trigger fires at the next bar boundary + N bars (4/4 at the project tempo); the UI follows `matrix/countdown` events. `bars: 0` behaves exactly like `matrix/recordSlot` |
 | `matrix/clearSlot` | Clear a slot (OSC → Playtime ClearSlot) |
 | `matrix/play` | Playtime's own playback, not REAPER's transport |
 | `matrix/stopAll` | Stop every clip in the matrix |
@@ -133,3 +134,30 @@ owns no track and no FX slot, so nothing else reaches it.
 | Command | Purpose |
 |---------|---------|
 | `midi/event` | Send a raw MIDI event (e.g. note on) |
+| `midi/noteOn` | Play a note into the selected track (`note`, `velocity`?, `channel`?) |
+| `midi/noteOff` | Release a note (`note`, `channel`?) |
+| `midi/setFastPath` | Toggle the low-latency note path (`enabled`): when on, note frames are dispatched by the dedicated fast socket without waiting for REAPER's ~30 Hz Run() tick |
+
+!!! note "The low-latency note socket"
+    The Keys tab sends notes over a second WebSocket on **port + 1** (9225 by default). It runs its own ~1 ms thread in the extension, so note latency is roughly 5 ms instead of ~22 ms through the main socket. Notes land in the selected track's Virtual MIDI Keyboard input, which is auto-routed/armed/monitored while the Keys tab is in use.
+
+## applemidi/  (RTP-MIDI / Apple Network MIDI)
+The extension speaks Apple's Network MIDI session protocol (RFC 4695/6295) over UDP. iOS devices are session *listeners* only, so the extension initiates; the iPad's CoreMIDI Network Session connects to it over Wi-Fi.
+
+| Command | Purpose |
+|---------|---------|
+| `applemidi/connect` | Initiate a session with the caller's own IP (`host` and `port` optional; control port defaults to 5004) |
+| `applemidi/disconnect` | End the session (also panics held notes) |
+| `applemidi/status` | Session state, peer host/port, routing flag |
+| `applemidi/setRouting` | Toggle "direct to selected track" (`enabled`). Disabling restores the tracks' previous input/monitor settings |
+
+## Events
+Beyond request/response, the extension broadcasts `{"type":"event","event":"<name>","payload":{...}}`:
+
+| Event | When |
+|-------|------|
+| `matrix/slotStateChanged` | A clip slot changed (launch, record, stop…) |
+| `matrix/countdown` | Record count-in progress (`column`, `row`, `active`, `bars`, `targetBars`) |
+| `applemidi/stateChanged` | AppleMIDI session state (`state`: idle/connecting/syncing/open/failed) |
+| `track_state_changed` / `track_list_changed` | Track state / list changed |
+| `fx_param_changed` | A watched FX parameter moved (e.g. from the plugin's own window) |

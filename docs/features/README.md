@@ -8,7 +8,7 @@ Spidercrab is organised into **six tabs** along the edge of the screen. Here's w
 | **FX** | 🎛️ | Add effects and effect chains, and tweak their knobs. |
 | **Grid** | 🎚️ | Hand-built layouts for particular plugins, laid out like the real thing. |
 | **Tracks** | 🎚️ | Play, record, and mix — volume, pan, mute, solo per track. |
-| **Playtime** | 🎹 | Launch clips and scenes in a session grid. |
+| **Playtime** | 🎹 | Launch clips and scenes — or play the pad keys and record loops with a count-in. |
 | **Settings** | ⚙️ | Connection, appearance, and housekeeping. |
 
 The app opens on the **Tracks** tab. You can move the tab bar to the top or bottom of the screen in [Settings](settings.md).
