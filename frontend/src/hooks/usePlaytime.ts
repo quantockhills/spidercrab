@@ -220,7 +220,57 @@ export function usePlaytime() {
     }
   }, [send]);
 
-  return {
+    /**
+   * Playtime's own transport, metronome and panic.
+   *
+   * Distinct from the play/stop/record buttons, which drive REAPER's
+   * transport. The matrix has its own playback that runs whether or not the
+   * project is rolling, and its own metronome.
+   */
+  const matrixPlay = useCallback(async (on: boolean): Promise<boolean> => {
+    const r = await send('matrix/play', { on: on ? 'true' : 'false' });
+    return r.success;
+  }, [send]);
+
+  const matrixStopAll = useCallback(async (): Promise<boolean> => {
+    const r = await send('matrix/stopAll');
+    return r.success;
+  }, [send]);
+
+  const matrixClick = useCallback(async (on: boolean): Promise<boolean> => {
+    const r = await send('matrix/click', { on: on ? 'true' : 'false' });
+    return r.success;
+  }, [send]);
+
+  const matrixPanic = useCallback(async (): Promise<boolean> => {
+    const r = await send('matrix/panic');
+    return r.success;
+  }, [send]);
+
+  /**
+   * Tempo.
+   *
+   * Playtime has no numeric tempo of its own — it follows the project — so
+   * setting one means setting REAPER's. Tap tempo is the only tempo control
+   * Playtime itself offers.
+   */
+  const getTempo = useCallback(async (): Promise<number> => {
+    const r = await send('transport/getTempo');
+    if (!r.success) return 0;
+    return (r.payload as unknown as { bpm: number }).bpm;
+  }, [send]);
+
+  const setTempo = useCallback(async (bpm: number): Promise<boolean> => {
+    const r = await send('transport/setTempo', { bpm: String(bpm) });
+    return r.success;
+  }, [send]);
+
+  const tapTempo = useCallback(async (): Promise<boolean> => {
+    const r = await send('matrix/tapTempo');
+    return r.success;
+  }, [send]);
+
+return {
     matrix,
     getMatrix,
     triggerSlot,
@@ -236,5 +286,12 @@ export function usePlaytime() {
     setSlotReverse,
     launchPlaytime,
     checkPlaytimeAvailable,
+    matrixPlay,
+    matrixStopAll,
+    matrixClick,
+    matrixPanic,
+    getTempo,
+    setTempo,
+    tapTempo,
   };
 }

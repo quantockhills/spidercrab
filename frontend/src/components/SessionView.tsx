@@ -11,6 +11,16 @@ interface SessionViewProps {
   onPlay?: () => Promise<boolean>;
   onStop?: () => Promise<boolean>;
   onRecord?: () => Promise<boolean>;
+  /** Playtime's own transport, which is not REAPER's. The matrix plays
+   *  whether or not the project transport is rolling. */
+  onMatrixPlay?: (on: boolean) => Promise<boolean>;
+  onMatrixStopAll?: () => Promise<boolean>;
+  /** Playtime's metronome, separate from REAPER's. */
+  onMatrixClick?: (on: boolean) => Promise<boolean>;
+  /** Tempo is the project's — Playtime follows it and offers only tap. */
+  onGetTempo?: () => Promise<number>;
+  onSetTempo?: (bpm: number) => Promise<boolean>;
+  onTapTempo?: () => Promise<boolean>;
   onGetTransportState?: () => Promise<{playing: boolean; recording: boolean}>;
   /** Launch Playtime 2 (Issue #88) */
   onLaunchPlaytime?: () => Promise<{launched: boolean; message: string}>;
@@ -62,6 +72,12 @@ export function SessionView({
   onPlay,
   onStop,
   onRecord,
+  onMatrixPlay,
+  onMatrixStopAll,
+  onMatrixClick,
+  onGetTempo,
+  onSetTempo,
+  onTapTempo,
   onGetTransportState,
   onLaunchPlaytime,
   onCheckPlaytimeAvailable,
@@ -155,6 +171,11 @@ export function SessionView({
   const [deleteConfirm, setDeleteConfirm] = useState<{col: number; row: number} | null>(null);
   // Last sampler track created from a clip (shows the Sampler button)
   const [sampler, setSampler] = useState<{trackIdx: number; fxIdx: number; name: string} | null>(null);
+  // Playtime does not report these back, so they are what we last asked
+  // for rather than what it is definitely doing.
+  const [matrixPlaying, setMatrixPlaying] = useState(false);
+  const [clickOn, setClickOn] = useState(false);
+  const [tempo, setTempo] = useState<number | null>(null);
   const [samplerPanelOpen, setSamplerPanelOpen] = useState(false);
   const [samplerBusy, setSamplerBusy] = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -404,6 +425,66 @@ export function SessionView({
         <h2 className="text-sm font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
           Session View
         </h2>
+        <div className="flex items-center gap-2">
+          {onMatrixPlay && (
+            <button
+              onClick={async () => { const n = !matrixPlaying; setMatrixPlaying(n); await onMatrixPlay(n); }}
+              className={`px-3 py-2 text-xs rounded min-h-[36px] transition-colors ${
+                matrixPlaying
+                  ? 'bg-[var(--accent-green)]/25 text-[var(--accent-green)]'
+                  : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'}`}
+              title="Playtime's own playback, separate from REAPER's transport"
+            >
+              {matrixPlaying ? '■ Matrix' : '▶ Matrix'}
+            </button>
+          )}
+          {onMatrixStopAll && (
+            <button
+              onClick={() => { setMatrixPlaying(false); void onMatrixStopAll(); }}
+              className="px-3 py-2 text-xs rounded min-h-[36px] bg-[var(--bg-tertiary)]
+                         text-[var(--text-secondary)] active:brightness-90"
+              title="Stop every clip in the matrix"
+            >
+              Stop all
+            </button>
+          )}
+          {onMatrixClick && (
+            <button
+              onClick={async () => { const n = !clickOn; setClickOn(n); await onMatrixClick(n); }}
+              className={`px-3 py-2 text-xs rounded min-h-[36px] transition-colors ${
+                clickOn
+                  ? 'bg-[var(--accent-orange)]/25 text-[var(--accent-orange)]'
+                  : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)]'}`}
+              title="Playtime's metronome"
+            >
+              Click
+            </button>
+          )}
+          {onSetTempo && (
+            <div className="flex items-center gap-1">
+              <input
+                type="number" min={20} max={400}
+                value={tempo ?? ''}
+                placeholder="bpm"
+                onFocus={async () => { if (tempo === null && onGetTempo) setTempo(Math.round(await onGetTempo())); }}
+                onChange={(e) => setTempo(Number(e.target.value))}
+                onBlur={() => { if (tempo && tempo >= 20 && tempo <= 400) void onSetTempo(tempo); }}
+                className="w-16 px-2 py-2 text-xs text-center bg-[var(--bg-tertiary)]
+                           rounded text-[var(--text-primary)] border-none min-h-[36px]"
+                title="Project tempo — Playtime follows it"
+              />
+              {onTapTempo && (
+                <button
+                  onClick={() => void onTapTempo()}
+                  className="px-2 py-2 text-xs rounded min-h-[36px] bg-[var(--bg-tertiary)]
+                             text-[var(--text-secondary)] active:brightness-90"
+                  title="Tap tempo"
+                >
+                  Tap
+                </button>
+              )}
+            </div>
+          )}
         <button
           onClick={() => getMatrix()}
           className="p-2 hover:bg-[var(--bg-tertiary)] active:brightness-95 transition-colors text-sm"
@@ -411,6 +492,7 @@ export function SessionView({
         >
           ↻
         </button>
+        </div>
       </div>
 
       {/* Legend */}

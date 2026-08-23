@@ -332,6 +332,38 @@ public:
     }
 
     // Clear a slot (delete clip): sends /playtime/slot/<col>/<row>/clear
+    // Matrix-level actions, as opposed to a single slot.
+    //
+    // The transport buttons on the Playtime view drive REAPER's transport,
+    // which is not the same thing as Playtime's: the matrix has its own
+    // playback, its own metronome and its own panic. These reach the
+    // "Playtime: Matrix action" target through the shipped ReaLearn preset.
+    bool sendMatrixPlay(bool on)
+    {
+        return sendPacket(buildMessageWithFloat("/playtime/matrix/play", on ? 1.0f : 0.0f));
+    }
+
+    bool sendMatrixStop()
+    {
+        return sendPacket(buildMessageWithFloat("/playtime/matrix/stop", 1.0f));
+    }
+
+    /// Playtime's own metronome, which is separate from REAPER's.
+    bool sendMatrixClick(bool on)
+    {
+        return sendPacket(buildMessageWithFloat("/playtime/matrix/click", on ? 1.0f : 0.0f));
+    }
+
+    bool sendMatrixPanic()
+    {
+        return sendPacket(buildMessageWithFloat("/playtime/matrix/panic", 1.0f));
+    }
+
+    bool sendMatrixTapTempo()
+    {
+        return sendPacket(buildMessageWithFloat("/playtime/matrix/taptempo", 1.0f));
+    }
+
     bool sendClearSlot(int col, int row)
     {
         return sendPacket(buildClearSlotMessage(col, row));

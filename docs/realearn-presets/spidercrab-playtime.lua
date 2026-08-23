@@ -135,6 +135,39 @@ for row = 0, ROWS - 1 do
     })
 end
 
+
+-- Matrix-level mappings: /playtime/matrix/ACTION
+--
+-- Playtime's own transport and metronome, which are not REAPER's. The session
+-- view's play/stop/record buttons drive the project transport; these drive the
+-- matrix. Both are useful, and they are different things.
+--
+-- Action names come from ReaLearn's "Playtime: Matrix action" target.
+local matrixActions = {
+    { addr = "play",     action = "PlayStop" },
+    { addr = "stop",     action = "Stop" },
+    { addr = "click",    action = "ClickOnOffState" },
+    { addr = "panic",    action = "Panic" },
+    { addr = "taptempo", action = "TapTempo" },
+}
+
+for _, m in ipairs(matrixActions) do
+    table.insert(mappings, {
+        name = string.format("Matrix %s", m.addr),
+        source = {
+            kind = "Osc",
+            address = string.format("/playtime/matrix/%s", m.addr),
+            argument = { index = 0, kind = "Float" },
+            feedback_behavior = "Normal",
+        },
+        glue = { absolute_mode = "Normal" },
+        target = {
+            kind = "PlaytimeMatrixAction",
+            action = m.action,
+        },
+    })
+end
+
 return {
     kind = "MainCompartment",
     value = {

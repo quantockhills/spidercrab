@@ -93,3 +93,101 @@ void CommandHandler::HandlePlaytimeLaunch(
     payload += "}";
     SendResponse(clientId, id, true, payload);
 }
+
+// ------------------------------------------------------------
+// Playtime's own transport, metronome and tempo.
+//
+// The play/stop/record buttons on the session view drive REAPER's transport
+// (CSurf_OnPlay and friends), which is a different thing from Playtime's: the
+// matrix has its own playback, its own metronome, its own panic. Those reach
+// the "Playtime: Matrix action" target through the shipped ReaLearn preset.
+//
+// Tempo is the exception. Playtime has no numeric tempo of its own — it
+// follows the project — so setting tempo means setting REAPER's, and the only
+// Playtime-side control is tap tempo.
+// ------------------------------------------------------------
+
+void CommandHandler::HandleMatrixPlay(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    const std::string on = p1.getString("on");
+    const bool play = !(on == "false" || on == "0");
+    const bool sent = m_oscSender.sendMatrixPlay(play);
+    SendResponse(clientId, id, true,
+        "{\"playing\":" + std::string(play ? "true" : "false")
+        + ",\"sent\":" + std::string(sent ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleMatrixStopAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    const bool sent = m_oscSender.sendMatrixStop();
+    SendResponse(clientId, id, true,
+        "{\"sent\":" + std::string(sent ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleMatrixClick(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    const std::string on = p1.getString("on");
+    const bool enable = !(on == "false" || on == "0");
+    const bool sent = m_oscSender.sendMatrixClick(enable);
+    SendResponse(clientId, id, true,
+        "{\"click\":" + std::string(enable ? "true" : "false")
+        + ",\"sent\":" + std::string(sent ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleMatrixPanic(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    const bool sent = m_oscSender.sendMatrixPanic();
+    SendResponse(clientId, id, true,
+        "{\"sent\":" + std::string(sent ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleMatrixTapTempo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    const bool sent = m_oscSender.sendMatrixTapTempo();
+    SendResponse(clientId, id, true,
+        "{\"sent\":" + std::string(sent ? "true" : "false") + "}");
+}
+
+void CommandHandler::HandleTransportSetTempo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    if (!m_api.CSurf_OnTempoChange) {
+        SendResponse(clientId, id, false, "{\"error\":\"CSurf_OnTempoChange not loaded\"}");
+        return;
+    }
+
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    const double bpm = atof(p1.getString("bpm").c_str());
+
+    // REAPER accepts a wider range than this, but a tempo outside it is far
+    // more likely to be a bad parse than an intention, and it would be
+    // tiresome to undo by hand.
+    if (bpm < 20.0 || bpm > 400.0) {
+        SendResponse(clientId, id, false, "{\"error\":\"Tempo must be between 20 and 400\"}");
+        return;
+    }
+
+    m_api.CSurf_OnTempoChange(bpm);
+    SendResponse(clientId, id, true, "{\"bpm\":" + std::to_string(bpm) + "}");
+}
+
+void CommandHandler::HandleTransportGetTempo(
+    int clientId, const std::string& id, const std::string& params)
+{
+    (void)params;
+    const double bpm = m_api.Master_GetTempo ? m_api.Master_GetTempo() : 0.0;
+    SendResponse(clientId, id, true, "{\"bpm\":" + std::to_string(bpm) + "}");
+}

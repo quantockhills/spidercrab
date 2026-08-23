@@ -97,6 +97,13 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["fx/setPreset"]            = &CommandHandler::HandleSetFxPreset;
     m_commandMap["fx/getAllPresetNames"]    = &CommandHandler::HandleGetAllFxPresetNames;
     m_commandMap["midi/event"]              = &CommandHandler::HandleMidiEvent;
+    m_commandMap["matrix/play"]             = &CommandHandler::HandleMatrixPlay;
+    m_commandMap["matrix/stopAll"]          = &CommandHandler::HandleMatrixStopAll;
+    m_commandMap["matrix/click"]            = &CommandHandler::HandleMatrixClick;
+    m_commandMap["matrix/panic"]            = &CommandHandler::HandleMatrixPanic;
+    m_commandMap["matrix/tapTempo"]         = &CommandHandler::HandleMatrixTapTempo;
+    m_commandMap["transport/setTempo"]      = &CommandHandler::HandleTransportSetTempo;
+    m_commandMap["transport/getTempo"]      = &CommandHandler::HandleTransportGetTempo;
     m_commandMap["playtime/isAvailable"]    = &CommandHandler::HandlePlaytimeIsAvailable;
     m_commandMap["playtime/launch"]         = &CommandHandler::HandlePlaytimeLaunch;
     m_commandMap["fx/tags/getAll"]           = &CommandHandler::HandleFxTagsGetAll;
@@ -104,6 +111,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["sample/tags/getAll"]           = &CommandHandler::HandleSampleTagsGetAll;
     m_commandMap["sample/tags/set"]              = &CommandHandler::HandleSampleTagsSet;
     m_commandMap["sample/reaper/libraries"]      = &CommandHandler::HandleSampleReaperLibraries;
+    m_commandMap["sample/reaper/searchAll"]       = &CommandHandler::HandleSampleReaperSearchAll;
     m_commandMap["sample/reaper/library/files"]  = &CommandHandler::HandleSampleReaperLibraryFiles;
     m_commandMap["sample/purgeStaleCache"]       = &CommandHandler::HandleSamplePurgeStaleCache;
     m_commandMap["sampler/create"]               = &CommandHandler::HandleSamplerCreate;

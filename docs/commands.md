@@ -91,6 +91,13 @@ Responses come back keyed by `id`. Grouped by namespace below.
 | `matrix/triggerScene` | Launch a scene (row) |
 | `matrix/recordSlot` | Record into a slot |
 | `matrix/clearSlot` | Clear a slot (OSC → Playtime ClearSlot) |
+| `matrix/play` | Playtime's own playback, not REAPER's transport |
+| `matrix/stopAll` | Stop every clip in the matrix |
+| `matrix/click` | Playtime's metronome on or off |
+| `matrix/panic` | Abruptly stop all clips |
+| `matrix/tapTempo` | Playtime's tap tempo |
+| `transport/getTempo` | Project tempo, which Playtime follows |
+| `transport/setTempo` | Set the project tempo |
 | `matrix/setSlotReverse` | Reverse a clip in a slot |
 
 ## seq/  (step sequencer)

@@ -121,6 +121,12 @@ function AppInner() {
     getMatrix,
     triggerSlot,
     triggerScene,
+    matrixPlay,
+    matrixStopAll,
+    matrixClick,
+    getTempo,
+    setTempo,
+    tapTempo,
     recordSlot,
     clearSlot,
     samplerFromSlot,
@@ -531,6 +537,12 @@ function AppInner() {
                   onPlay={play}
                   onStop={stop}
                   onRecord={record}
+                  onMatrixPlay={matrixPlay}
+                  onMatrixStopAll={matrixStopAll}
+                  onMatrixClick={matrixClick}
+                  onGetTempo={getTempo}
+                  onSetTempo={setTempo}
+                  onTapTempo={tapTempo}
                   onGetTransportState={getTransportState}
                   onLaunchPlaytime={launchPlaytime}
                   onCheckPlaytimeAvailable={checkPlaytimeAvailable}

@@ -948,24 +948,25 @@ void CommandHandler::HandleSampleTagsSet(
     SendResponse(clientId, id, true, "{\"saved\":true}");
 }
 
-void CommandHandler::HandleSampleReaperLibraries(
-    int clientId, const std::string& id, const std::string& /* params */)
+
+// The media explorer's databases, as they actually exist.
+//
+// REAPER.ini lists shortcuts, which is not the same thing: keys are numbered
+// per section, more than one shortcut can point at one database, and a
+// shortcut outlives the file it names. This returns (file, display name) for
+// the databases that are really there, in the order the explorer shows them.
+static std::vector<std::pair<std::string, std::string>> collectReaperLibraries()
 {
-    std::string iniPath = getReaperAppDataPath() + "\\REAPER.ini";
-    std::ifstream f(iniPath);
-    if (!f.is_open()) {
-        SendResponse(clientId, id, false, "{\"error\":\"Could not open REAPER.ini\"}");
-        return;
-    }
+    std::vector<std::pair<std::string, std::string>> libs;
 
-    std::map<int, std::string> files; // index -> xx.ReaperFileList
-    std::map<int, std::string> names; // index -> display name
+    std::ifstream f(getReaperAppDataPath() + "\\REAPER.ini");
+    if (!f.is_open()) return libs;
+
+    std::map<int, std::string> files;
+    std::map<int, std::string> names;
     std::string line;
-
-    // Only the media explorer's own section. Shortcut keys are numbered per
-    // section, so reading the whole file would let an unrelated section's
-    // Shortcut3 overwrite the explorer's.
     bool inExplorer = false;
+
     while (std::getline(f, line)) {
         if (!line.empty() && line[0] == '[') {
             inExplorer = (line.rfind("[reaper_explorer]", 0) == 0);
@@ -982,32 +983,28 @@ void CommandHandler::HandleSampleReaperLibraries(
         if (numStr.empty()) continue;
         try {
             int n = std::stoi(numStr);
-            if (isName) {
-                names[n] = val;
-            } else if (val.find(".ReaperFileList") != std::string::npos) {
-                files[n] = val;
-            }
+            if (isName) names[n] = val;
+            else if (val.find(".ReaperFileList") != std::string::npos) files[n] = val;
         } catch (...) {}
     }
 
-    // What REAPER.ini lists and what the media explorer actually offers are
-    // not the same thing. It happily keeps two shortcuts to one database —
-    // this project has 03.ReaperFileList twice — and keeps shortcuts to
-    // databases whose file has since gone. Report the databases, not the
-    // shortcuts: first mention wins, missing files are dropped.
     const std::string dbDir = getReaperAppDataPath() + "\\MediaDB\\";
-    std::vector<std::pair<std::string, std::string>> libs;  // (file, name)
     for (auto& [n, file] : files) {
         bool already = false;
         for (const auto& l : libs)
             if (l.first == file) { already = true; break; }
         if (already) continue;
-
         std::ifstream probe(dbDir + file);
         if (!probe.is_open()) continue;
-
         libs.emplace_back(file, names.count(n) ? names[n] : file);
     }
+    return libs;
+}
+
+void CommandHandler::HandleSampleReaperLibraries(
+    int clientId, const std::string& id, const std::string& /* params */)
+{
+    const auto libs = collectReaperLibraries();
 
     std::string resp = "{\"libraries\":[";
     for (size_t i = 0; i < libs.size(); ++i) {
@@ -1366,4 +1363,75 @@ void CommandHandler::HandleSamplerSetReverse(
     SendResponse(clientId, id, true,
         "{\"reversed\":" + std::string(reversed ? "true" : "false")
         + ",\"file\":" + json_string(target) + "}");
+}
+
+// Searching every media database at once.
+//
+// The explorer makes you pick a database first, which is the wrong way round
+// when what you remember is the sound rather than where you filed it. This
+// walks all of them and reports which one each hit came from, so the answer
+// carries its own context.
+//
+// Matching is a case-insensitive substring of the whole path, so a query can
+// be a file name, a folder, or part of either. Results are capped: a bare
+// letter would otherwise match tens of thousands of files and the reply would
+// be larger than anything that could be shown.
+void CommandHandler::HandleSampleReaperSearchAll(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  p1(payloadStr);
+    std::string query = p1.getString("query");
+    JsonParser  p2(payloadStr);
+    int limit = atoi(p2.getString("limit").c_str());
+    if (limit <= 0 || limit > 2000) limit = 500;
+
+    if (query.size() < 2) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Give it at least two characters to search for\"}");
+        return;
+    }
+
+    std::string needle;
+    for (char c : query) needle += (char)tolower((unsigned char)c);
+
+    const auto libs = collectReaperLibraries();
+    const std::string dbDir = getReaperAppDataPath() + "\\MediaDB\\";
+
+    std::string resp = "{\"results\":[";
+    int  found     = 0;
+    bool truncated = false;
+    bool first     = true;
+
+    for (const auto& lib : libs) {
+        if (truncated) break;
+        std::ifstream f(dbDir + lib.first);
+        if (!f.is_open()) continue;
+
+        std::string line;
+        while (std::getline(f, line)) {
+            if (line.rfind("FILE \"", 0) != 0) continue;
+            size_t end = line.find('"', 6);
+            if (end == std::string::npos) continue;
+            const std::string path = line.substr(6, end - 6);
+
+            std::string lower;
+            for (char c : path) lower += (char)tolower((unsigned char)c);
+            if (lower.find(needle) == std::string::npos) continue;
+
+            if (found >= limit) { truncated = true; break; }
+            if (!first) resp += ",";
+            first = false;
+            resp += "{" + json_string("path") + ":" + json_string(path) + ","
+                        + json_string("library") + ":" + json_string(lib.second) + "}";
+            ++found;
+        }
+    }
+
+    resp += "],";
+    resp += json_string("count") + ":" + std::to_string(found) + ",";
+    resp += json_string("libraries") + ":" + std::to_string((int)libs.size()) + ",";
+    resp += json_string("truncated") + ":" + std::string(truncated ? "true" : "false");
+    resp += "}";
+    SendResponse(clientId, id, true, resp);
 }

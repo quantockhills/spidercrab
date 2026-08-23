@@ -94,6 +94,7 @@
 #define REAPERAPI_WANT_GetMediaSourceNumChannels
 #define REAPERAPI_WANT_NamedCommandLookup
 #define REAPERAPI_WANT_Master_GetTempo
+#define REAPERAPI_WANT_CSurf_OnTempoChange
 #define REAPERAPI_WANT_GetSetMediaItemTakeInfo
 #define REAPERAPI_WANT_GetMediaFileMetadata
 #define REAPERAPI_WANT_PCM_Source_GetPeaks
@@ -642,6 +643,7 @@ static bool InitializeCoreServices()
     api.MIDI_GetProjTimeFromPPQPos   = MIDI_GetProjTimeFromPPQPos;
     api.GetSetMediaItemTakeInfo_String = GetSetMediaItemTakeInfo_String;
     api.Master_GetTempo             = Master_GetTempo;
+    api.CSurf_OnTempoChange         = CSurf_OnTempoChange;
     api.GetSetMediaItemTakeInfo     = GetSetMediaItemTakeInfo;
     api.GetMediaFileMetadata        = GetMediaFileMetadata;
     api.PCM_Source_GetPeaks         = PCM_Source_GetPeaks;

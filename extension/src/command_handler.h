@@ -147,6 +147,9 @@ struct ReaperAPI {
 
     // Tempo matching for slot import
     double (*Master_GetTempo)() = nullptr;
+    // Playtime has no numeric tempo of its own — it follows the project, so
+    // this is what a tempo control on the Playtime view actually moves.
+    void (*CSurf_OnTempoChange)(double bpm) = nullptr;
     void* (*GetSetMediaItemTakeInfo)(MediaItem_Take* tk, const char* parmname, void* setNewValue) = nullptr;
     int (*GetMediaFileMetadata)(PCM_source* mediaSource, const char* identifier, char* bufOutNeedBig, int bufOutNeedBig_sz) = nullptr;
     int (*PCM_Source_GetPeaks)(PCM_source* src, double peakrate, double starttime, int numchannels, int numsamplesperchannel, int want_extra_type, double* buf) = nullptr;
@@ -377,6 +380,7 @@ private:
     void HandleSettingsSetFxChainPath(int clientId, const std::string& id, const std::string& params);
     void HandleSettingsSetSampleFolders(int clientId, const std::string& id, const std::string& params);
     void HandleSampleReaperLibraries(int clientId, const std::string& id, const std::string& params);
+    void HandleSampleReaperSearchAll(int clientId, const std::string& id, const std::string& params);
     void HandleSampleReaperLibraryFiles(int clientId, const std::string& id, const std::string& params);
     void HandleSamplePurgeStaleCache(int clientId, const std::string& id, const std::string& params);
     void HandleSamplerCreate(int clientId, const std::string& id, const std::string& params);
@@ -433,6 +437,15 @@ private:
     // Command handlers — step sequencer (Issue #63)
 
     // Command handlers — Playtime 2 (Issue #81)
+    // Playtime's own transport and metronome, distinct from REAPER's.
+    void HandleMatrixPlay(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixStopAll(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixClick(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixPanic(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixTapTempo(int clientId, const std::string& id, const std::string& params);
+    void HandleTransportSetTempo(int clientId, const std::string& id, const std::string& params);
+    void HandleTransportGetTempo(int clientId, const std::string& id, const std::string& params);
+
     void HandlePlaytimeIsAvailable(int clientId, const std::string& id, const std::string& params);
 
     // Command handler — Playtime 2 launch (Issue #88)
