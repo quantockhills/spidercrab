@@ -993,3 +993,78 @@ describe('SessionView', () => {
     });
   });
 });
+  describe('record count-in', () => {
+    function makeCountInMatrix() {
+      const m = makeEmptyMatrix();
+      m.slots[0] = { column: 0, row: 0, state: 'empty', color: '#ffffff', name: '', clipType: 'none' };
+      return m;
+    }
+
+    it('shows the count-in selector when the prop is present', async () => {
+      renderSessionView({ matrix: makeCountInMatrix(), onRecordSlotCountdown: vi.fn() });
+      await waitFor(() => expect(screen.getByLabelText('Record count-in')).toBeDefined());
+      const sel = screen.getByLabelText('Record count-in') as HTMLSelectElement;
+      expect(sel.value).toBe('0');
+    });
+
+    it('sends recordSlotCountdown instead of recordSlot when a count-in is set', async () => {
+      const onRecord = vi.fn().mockResolvedValue(true);
+      const onRecordSlot = vi.fn().mockResolvedValue(null);
+      const onRecordSlotCountdown = vi.fn().mockResolvedValue(null);
+      renderSessionView({
+        matrix: makeCountInMatrix(),
+        onRecord,
+        onGetTransportState: vi.fn().mockResolvedValue({ playing: false, recording: true }),
+        onRecordSlot,
+        onRecordSlotCountdown,
+      });
+      await waitFor(() => expect(screen.getByLabelText('Record count-in')).toBeDefined());
+
+      fireEvent.change(screen.getByLabelText('Record count-in'), { target: { value: '2' } });
+      fireEvent.pointerDown(screen.getByLabelText('Slot 1,1'));
+      fireEvent.pointerUp(screen.getByLabelText('Slot 1,1'));
+
+      await waitFor(() => expect(onRecordSlotCountdown).toHaveBeenCalledWith(0, 0, 2));
+      expect(onRecordSlot).not.toHaveBeenCalled();
+    });
+
+    it('falls back to immediate record with count-in set to none', async () => {
+      const onRecord = vi.fn().mockResolvedValue(true);
+      const onRecordSlot = vi.fn().mockResolvedValue(null);
+      const onRecordSlotCountdown = vi.fn().mockResolvedValue(null);
+      renderSessionView({
+        matrix: makeCountInMatrix(),
+        onRecord,
+        onGetTransportState: vi.fn().mockResolvedValue({ playing: false, recording: true }),
+        onRecordSlot,
+        onRecordSlotCountdown,
+      });
+      await waitFor(() => expect(screen.getByLabelText('Record count-in')).toBeDefined());
+
+      fireEvent.pointerDown(screen.getByLabelText('Slot 1,1'));
+      fireEvent.pointerUp(screen.getByLabelText('Slot 1,1'));
+
+      await waitFor(() => expect(onRecordSlot).toHaveBeenCalledWith(0, 0));
+      expect(onRecordSlotCountdown).not.toHaveBeenCalled();
+    });
+
+    it('shows the countdown overlay on the recording slot and clears it when done', async () => {
+      let emit: ((msg: any) => void) | null = null;
+      const onEvent = vi.fn((_pattern: string, handler: (msg: any) => void) => {
+        emit = handler;
+        return () => {};
+      });
+      renderSessionView({ matrix: makeCountInMatrix(), onEvent, onRecordSlotCountdown: vi.fn() });
+      await waitFor(() => expect(emit).not.toBeNull());
+
+      act(() => emit!({ type: 'event', event: 'matrix/countdown', payload: { column: 0, row: 0, active: true, bars: 2, targetBars: 2 } }));
+      expect(screen.getByLabelText('Record count-in 2')).toBeDefined();
+
+      act(() => emit!({ type: 'event', event: 'matrix/countdown', payload: { column: 0, row: 0, active: true, bars: 1, targetBars: 2 } }));
+      expect(screen.getByLabelText('Record count-in 1')).toBeDefined();
+
+      act(() => emit!({ type: 'event', event: 'matrix/countdown', payload: { column: 0, row: 0, active: false, bars: 0, targetBars: 2 } }));
+      // Overlay is gone (the count-in select stays, it just isn't an overlay)
+      expect(screen.queryByLabelText(/^Record count-in \d+$/)).toBeNull();
+    });
+  });

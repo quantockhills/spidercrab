@@ -80,6 +80,7 @@ CommandHandler::CommandHandler(WebSocketServer* ws)
     m_commandMap["matrix/triggerScene"]     = &CommandHandler::HandleMatrixTriggerScene;
     m_commandMap["matrix/setSlotState"]     = &CommandHandler::HandleMatrixSetSlotState;
     m_commandMap["matrix/recordSlot"]       = &CommandHandler::HandleMatrixRecordSlot;
+    m_commandMap["matrix/recordSlotCountdown"] = &CommandHandler::HandleMatrixRecordSlotCountdown;
     m_commandMap["matrix/clearSlot"]        = &CommandHandler::HandleMatrixClearSlot;
     m_commandMap["matrix/pollState"]        = &CommandHandler::HandleMatrixPollState;
     m_commandMap["matrix/setSlotReverse"]    = &CommandHandler::HandleMatrixSetSlotReverse;

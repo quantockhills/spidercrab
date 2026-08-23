@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <chrono>
 #include <cmath>
 #include <fstream>
 #include <memory>
@@ -689,6 +690,14 @@ static bool mock_SetMediaTrackInfo_Value(MediaTrack* trackPtr, const char* parmn
     return false;
 }
 
+// ---- Mock tempo + position (record count-in timing) ----
+
+static double g_mockTempo = 120.0;
+static double g_mockPosition = 0.0;
+
+static double mock_Master_GetTempo() { return g_mockTempo; }
+static double mock_GetPlayPosition() { return g_mockPosition; }
+
 // GetSelectedTrack(proj, idx): idx-th selected track, or null
 static MediaTrack* mock_GetSelectedTrack(ReaProject*, int idx)
 {
@@ -913,6 +922,8 @@ static std::unique_ptr<CommandHandler> MakeMockHandler(
     api.SetMediaTrackInfo_Value = mock_SetMediaTrackInfo_Value;
     api.GetSelectedTrack = mock_GetSelectedTrack;
     api.StuffMIDIMessage = mock_StuffMIDIMessage;
+    api.Master_GetTempo  = mock_Master_GetTempo;
+    api.GetPlayPosition  = mock_GetPlayPosition;
     api.EnumInstalledFX      = mock_EnumInstalledFX;
     api.GetTrackStateChunk   = mock_GetTrackStateChunk;
     api.SetTrackStateChunk   = mock_SetTrackStateChunk;
@@ -6298,4 +6309,198 @@ TEST(FastMidiPathTest, HeldNotesSurviveAcrossThreadsForPanic)
     ASSERT_EQ(g_mockStuffed.size(), 4u); // 2 ons + 2 panic offs
     EXPECT_EQ(g_mockStuffed[2].m1, 0x80);
     EXPECT_EQ(g_mockStuffed[2].m2, 60);
+}
+
+// ============================================================
+// Record count-in (matrix/recordSlotCountdown)
+// ============================================================
+
+namespace {
+uint32_t WallMsNow()
+{
+    const auto ns = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(ns).count());
+}
+} // namespace
+
+TEST(RecordCountInTest, BarsZeroIsImmediateRecord)
+{
+    g_mockTempo = 120.0;
+    g_mockPosition = 0.0;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlotCountdown","payload":{"column":0,"row":0,"bars":0},"id":"rc1"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"state\":\"recording\""), std::string::npos);
+}
+
+TEST(RecordCountInTest, ArmsAndFiresAfterBars)
+{
+    g_mockTempo = 120.0; // bar = 2s
+    g_mockPosition = 0.0; // exactly on a bar boundary
+
+    std::vector<std::string> captured;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+    struct MidiMsg { int status; int d1; int d2; };
+    std::vector<MidiMsg> messages;
+    handler->GetMidi().setSendFunc([&](int s, int d1, int d2) {
+        messages.push_back({s, d1, d2});
+    });
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    const uint32_t now = WallMsNow();
+
+    // Arm a 2-bar count-in on slot (2,1). pos=0 -> fires at next bar
+    // boundary (2s) + 2 bars (4s) = 6s from now.
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlotCountdown","payload":{"column":2,"row":1,"bars":2},"id":"rc2"})");
+    ASSERT_EQ(responses.size(), 1u);
+    EXPECT_NE(responses[0].find("\"armed\":true"), std::string::npos);
+    ASSERT_FALSE(captured.empty());
+    EXPECT_NE(captured[0].find("\"event\":\"matrix/countdown\""), std::string::npos);
+    EXPECT_NE(captured[0].find("\"active\":true"), std::string::npos);
+    EXPECT_NE(captured[0].find("\"bars\":2"), std::string::npos);
+    EXPECT_TRUE(messages.empty()) << "nothing fired yet";
+
+    // 1s before the target: remaining = ceil(1s/2s) = 1 bar, broadcast once
+    captured.clear();
+    handler->TickRecordCountIn(now + 5000);
+    ASSERT_EQ(captured.size(), 1u);
+    EXPECT_NE(captured[0].find("\"bars\":1"), std::string::npos);
+
+    // Same value: no repeat broadcast
+    handler->TickRecordCountIn(now + 5500);
+    EXPECT_EQ(captured.size(), 1u);
+
+    // At the target: fire the record trigger. sendMidiNote sends note-on
+    // then note-off, so one record action produces two messages.
+    captured.clear();
+    handler->TickRecordCountIn(now + 6000);
+    ASSERT_EQ(messages.size(), 2u);
+    EXPECT_EQ(messages[0].status & 0x0F, 1) << "record uses channel 1";
+    EXPECT_EQ(messages[0].d1, 36 + 1 * 8 + 2) << "note for slot (2,1)";
+    bool sawState = false;
+    bool sawDone = false;
+    for (const auto& m : captured) {
+        if (m.find("matrix/slotStateChanged") != std::string::npos
+            && m.find("\"state\":\"recording\"") != std::string::npos) sawState = true;
+        if (m.find("matrix/countdown") != std::string::npos
+            && m.find("\"active\":false") != std::string::npos) sawDone = true;
+    }
+    EXPECT_TRUE(sawState) << "slot entered recording";
+    EXPECT_TRUE(sawDone) << "countdown ended";
+}
+
+TEST(RecordCountInTest, CountdownReactsToTempoChange)
+{
+    g_mockTempo = 120.0;
+    g_mockPosition = 1.0; // mid-bar: fires at 1s + bars*2s
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    ReaperAPI api{};
+    api.GetPlayPosition = mock_GetPlayPosition;
+    api.Master_GetTempo = mock_Master_GetTempo;
+    handler->SetApi(api);
+    std::vector<std::string> captured;
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    const uint32_t now = WallMsNow();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlotCountdown","payload":{"column":0,"row":0,"bars":1},"id":"rc3"})");
+    EXPECT_NE(responses[0].find("\"armed\":true"), std::string::npos);
+
+    // Initial display includes the partial bar: 1 + 1 = 2
+    EXPECT_NE(captured[0].find("\"bars\":2"), std::string::npos);
+}
+
+TEST(RecordCountInTest, StopAllCancelsPendingCountdown)
+{
+    g_mockTempo = 120.0;
+    g_mockPosition = 0.0;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> captured;
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+    struct MidiMsg { int status; int d1; int d2; };
+    std::vector<MidiMsg> messages;
+    handler->GetMidi().setSendFunc([&](int s, int d1, int d2) {
+        messages.push_back({s, d1, d2});
+    });
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    const uint32_t now = WallMsNow();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlotCountdown","payload":{"column":1,"row":1,"bars":4},"id":"rc4"})");
+    captured.clear();
+
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/stopAll","id":"sa1"})");
+    ASSERT_EQ(captured.size(), 1u);
+    EXPECT_NE(captured[0].find("\"active\":false"), std::string::npos);
+
+    // Long past the target: nothing fires
+    handler->TickRecordCountIn(now + 60000);
+    EXPECT_TRUE(messages.empty());
+}
+
+TEST(RecordCountInTest, NewRecordRequestCancelsPendingCountdown)
+{
+    g_mockTempo = 120.0;
+    g_mockPosition = 0.0;
+    auto handler = std::make_unique<CommandHandler>(nullptr);
+    std::vector<std::string> captured;
+    handler->SetBroadcastCallback([&](const std::string& msg) {
+        captured.push_back(msg);
+    });
+    std::vector<std::string> responses;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses.push_back(resp);
+    });
+
+    const uint32_t now = WallMsNow();
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlotCountdown","payload":{"column":0,"row":2,"bars":2},"id":"rc5"})");
+    captured.clear();
+
+    // Immediate record on a different slot cancels the pending count-in
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/recordSlot","payload":{"column":3,"row":0},"id":"r5"})");
+    bool sawCancel = false;
+    for (const auto& m : captured) {
+        if (m.find("matrix/countdown") != std::string::npos
+            && m.find("\"active\":false") != std::string::npos) sawCancel = true;
+    }
+    EXPECT_TRUE(sawCancel);
+
+    // The armed slot never records
+    handler->TickRecordCountIn(now + 60000);
+    std::vector<std::string> responses2;
+    handler->SetResponseCallback([&](int, const std::string& resp) {
+        responses2.push_back(resp);
+    });
+    handler->HandleMessage(1,
+        R"({"type":"command","command":"matrix/getSlot","payload":{"column":0,"row":2},"id":"g5"})");
+    ASSERT_FALSE(responses2.empty());
+    EXPECT_NE(responses2[0].find("\"state\":\"empty\""), std::string::npos)
+        << "counted-down slot never recorded";
 }

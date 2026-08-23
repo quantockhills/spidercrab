@@ -300,6 +300,12 @@ public:
     void SetWatchedFX(int trackIdx, int fxIdx);
     void ClearWatchedFX();
 
+    // Record count-in: delay a slot's record trigger by N bars so the
+    // recording starts on a musical boundary. Playtime's own count-in is
+    // not exposed to ReaLearn, so we arm the slot and fire the trigger
+    // later, broadcasting matrix/countdown events for the UI.
+    void TickRecordCountIn(uint32_t nowMs);
+
 private:
     WebSocketServer*  m_ws;
     ReaperAPI         m_api;
@@ -499,6 +505,7 @@ private:
     void HandleMatrixTriggerScene(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixSetSlotState(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixRecordSlot(int clientId, const std::string& id, const std::string& params);
+    void HandleMatrixRecordSlotCountdown(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixClearSlot(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixPollState(int clientId, const std::string& id, const std::string& params);
     void HandleMatrixSetSlotReverse(int clientId, const std::string& id, const std::string& params);
@@ -524,6 +531,24 @@ private:
     // Command handlers — chain search (Issue #103)
     void HandleFxChainSearchCached(int clientId, const std::string& id, const std::string& params);
     void HandleFxChainRefreshCache(int clientId, const std::string& id, const std::string& params);
+
+    // Record count-in internals. 4/4 bar length from the project tempo.
+    struct RecordCountIn {
+        bool     active = false;
+        int      col = -1;
+        int      row = -1;
+        int      targetBars = 0;
+        uint64_t targetWallMs = 0; // steady-clock ms at which to fire
+        double   barLen = 0;
+        int      lastShownBars = -1;
+    };
+    RecordCountIn m_recordCountIn;
+
+    void DoRecordSlot(int col, int row);                 // state toggle + MIDI + OSC + broadcast
+    void CancelRecordCountIn();                          // broadcast active:false, reset
+    void BroadcastCountdown(int col, int row, int bars, int targetBars, bool active);
+    double CurrentBarLen() const;
+    uint32_t nowWallMs() const;                          // steady-clock milliseconds
 
     // Command handlers — AppleMIDI (RTP-MIDI / iPad keyboard)
     void HandleApplemidiConnect(int clientId, const std::string& id, const std::string& params);

@@ -157,6 +157,30 @@ export function usePlaytime() {
     }
   }, [send, updateMatrixSlot]);
 
+  // Record with a musical count-in (N bars). The extension delays the
+  // actual trigger to the next bar boundary + N bars and broadcasts
+  // matrix/countdown events for the on-slot countdown display.
+  const recordSlotCountdown = useCallback(
+    async (column: number, row: number, bars: number): Promise<ClipSlot | null> => {
+      try {
+        const resp = await send('matrix/recordSlotCountdown', { column, row, bars });
+        const payload = resp.payload as unknown;
+        // The arm response is {armed:true} — the slot itself changes only
+        // when the countdown fires, which arrives as a slotStateChanged
+        // event. Only optimistic-update when a real slot came back.
+        if (payload && typeof payload === 'object' && 'state' in payload) {
+          const slot = payload as unknown as ClipSlot;
+          updateMatrixSlot(column, row, { state: slot.state, color: slot.color });
+          return slot;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    },
+    [send, updateMatrixSlot],
+  );
+
   // Delete the clip in a slot (long-press → confirm in SessionView)
   const clearSlot = useCallback(async (column: number, row: number): Promise<ClipSlot | null> => {
     try {
@@ -285,6 +309,7 @@ return {
     setSlotState,
     updateMatrixSlot,
     recordSlot,
+    recordSlotCountdown,
     clearSlot,
     samplerFromSlot,
     samplerFromPath,

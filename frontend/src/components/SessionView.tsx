@@ -27,6 +27,10 @@ interface SessionViewProps {
   onCheckPlaytimeAvailable?: () => Promise<{available: boolean}>;
   /** Record into a clip slot (Issue #43) */
   onRecordSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
+  /** Record into a clip slot after a N-bar count-in (0 = immediate). The
+   *  extension fires the trigger at the next bar boundary + N bars and
+   *  broadcasts matrix/countdown events for the on-slot display. */
+  onRecordSlotCountdown?: (column: number, row: number, bars: number) => Promise<ClipSlot | null>;
   /** Delete the clip in a slot (long-press → confirm) */
   onClearSlot?: (column: number, row: number) => Promise<ClipSlot | null>;
   /** Bounce a slot's source sample to a new RS5K sampler track */
@@ -80,6 +84,7 @@ export function SessionView({
   onLaunchPlaytime,
   onCheckPlaytimeAvailable,
   onRecordSlot,
+  onRecordSlotCountdown,
   onClearSlot,
   onAddToSampler,
   onSamplerSetReverse,
@@ -167,6 +172,29 @@ export function SessionView({
   // Long-press (500ms) on a non-empty slot → delete confirm; quick tap on the
   // confirming slot → delete. Same gesture as deleting FX cards.
   const [deleteConfirm, setDeleteConfirm] = useState<{col: number; row: number} | null>(null);
+
+  // Record count-in: the selected length (0 = none) and the live countdown
+  // per slot, driven by matrix/countdown broadcasts from the extension.
+  const [countInBars, setCountInBars] = useState(0);
+  const [countdowns, setCountdowns] = useState<Record<string, { bars: number; targetBars: number }>>({});
+
+  useEffect(() => {
+    if (!onEvent) return;
+    const unsub = onEvent('event:matrix/countdown', (msg: any) => {
+      const payload = msg?.payload;
+      if (!payload || typeof payload.column !== 'number' || typeof payload.row !== 'number') return;
+      const key = `${payload.column},${payload.row}`;
+      setCountdowns((prev) => {
+        if (!payload.active) {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        }
+        return { ...prev, [key]: { bars: payload.bars ?? 0, targetBars: payload.targetBars ?? 0 } };
+      });
+    });
+    return unsub;
+  }, [onEvent]);
   // Last sampler track created from a clip (shows the Sampler button)
   const [sampler, setSampler] = useState<{trackIdx: number; fxIdx: number; name: string} | null>(null);
   // Playtime does not report these back, so they are what we last asked
@@ -200,7 +228,11 @@ export function SessionView({
     const shouldRecord = recording && slot && (slot.state === 'empty' || slot.state === 'stopped' || slot.state === 'recording');
 
     if (shouldRecord && onRecordSlot) {
-      await onRecordSlot(col, row);
+      if (countInBars > 0 && onRecordSlotCountdown) {
+        await onRecordSlotCountdown(col, row, countInBars);
+      } else {
+        await onRecordSlot(col, row);
+      }
     } else {
       await triggerSlot(col, row);
     }
@@ -208,7 +240,7 @@ export function SessionView({
     // reflects the new visual state (playing/stopped). Without this,
     // the matrix prop never updates and the grid stays unchanged.
     getMatrix();
-  }, [triggerSlot, getMatrix, recording, matrix, onRecordSlot]);
+  }, [triggerSlot, getMatrix, recording, matrix, onRecordSlot, onRecordSlotCountdown, countInBars]);
 
   const handleSlotPointerDown = useCallback((col: number, row: number, state: ClipSlot['state']) => {
     longPressTimerRef.current = setTimeout(() => {
@@ -480,6 +512,21 @@ export function SessionView({
               />
             </div>
           )}
+          {onRecordSlotCountdown && (
+            <select
+              aria-label="Record count-in"
+              value={countInBars}
+              onChange={(e) => setCountInBars(Number(e.target.value))}
+              className="px-2 py-2 text-xs bg-[var(--bg-tertiary)] rounded
+                         text-[var(--text-primary)] border-none min-h-[36px]"
+              title="Count-in before recording a slot (0 = record immediately)"
+            >
+              <option value={0}>Count-in: none</option>
+              <option value={1}>Count-in: 1 bar</option>
+              <option value={2}>Count-in: 2 bars</option>
+              <option value={4}>Count-in: 4 bars</option>
+            </select>
+          )}
         <button
           onClick={() => getMatrix()}
           className="p-2 hover:bg-[var(--bg-tertiary)] active:brightness-95 transition-colors text-sm"
@@ -694,6 +741,7 @@ export function SessionView({
                 const name = slot?.name ?? '';
                 const clipType = slot?.clipType ?? 'none';
                 const isConfirmingDelete = deleteConfirm?.col === col && deleteConfirm?.row === row;
+                const countdown = countdowns[`${col},${row}`];
                 return (
                   <button
                     key={col}
@@ -739,6 +787,18 @@ export function SessionView({
                         >
                           ✕
                         </button>
+                      </div>
+                    ) : countdown ? (
+                      /* Record count-in — recording starts when this hits 0 */
+                      <div
+                        className="absolute inset-0 flex flex-col items-center justify-center
+                          bg-[var(--bg-primary)]/80 text-[var(--accent-red)]"
+                        aria-label={`Record count-in ${countdown.bars}`}
+                      >
+                        <span className="text-3xl font-bold leading-none">{countdown.bars}</span>
+                        <span className="text-[9px] uppercase tracking-wider mt-0.5 opacity-80">
+                          {countdown.bars === 1 ? 'bar' : 'bars'}
+                        </span>
                       </div>
                     ) : (
                       <>

@@ -124,6 +124,8 @@ void CommandHandler::HandleMatrixStopAll(
     int clientId, const std::string& id, const std::string& params)
 {
     (void)params;
+    // Stopping the matrix aborts any armed record count-in
+    CancelRecordCountIn();
     const bool sent = m_oscSender.sendMatrixStop();
     SendResponse(clientId, id, true,
         "{\"sent\":" + std::string(sent ? "true" : "false") + "}");
@@ -176,6 +178,8 @@ void CommandHandler::HandleMatrixPanic(
     int clientId, const std::string& id, const std::string& params)
 {
     (void)params;
+    // Panic aborts any armed record count-in
+    CancelRecordCountIn();
     const bool sent = m_oscSender.sendMatrixPanic();
     SendResponse(clientId, id, true,
         "{\"sent\":" + std::string(sent ? "true" : "false") + "}");

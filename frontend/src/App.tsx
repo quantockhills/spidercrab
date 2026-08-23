@@ -129,6 +129,7 @@ function AppInner() {
     getTempo,
     setTempo,
     recordSlot,
+    recordSlotCountdown,
     clearSlot,
     samplerFromSlot,
     samplerFromPath,
@@ -564,6 +565,7 @@ function AppInner() {
                   onLaunchPlaytime={launchPlaytime}
                   onCheckPlaytimeAvailable={checkPlaytimeAvailable}
                   onRecordSlot={recordSlot}
+                  onRecordSlotCountdown={recordSlotCountdown}
                   onClearSlot={clearSlot}
                   onAddToSampler={samplerFromSlot}
                   onSamplerSetReverse={samplerSetReverse}

@@ -127,7 +127,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-
+#include <chrono>
 #include <string>
 
 // === Debug logging ===
@@ -276,6 +276,13 @@ public:
 
         // AppleMIDI: drain UDP sockets + session timers
         if (g_cmdHandler) g_cmdHandler->PollAppleMidi();
+
+        // Record count-in: fire armed record triggers at the bar boundary
+        if (g_cmdHandler) {
+            const auto ns = std::chrono::steady_clock::now().time_since_epoch();
+            g_cmdHandler->TickRecordCountIn(static_cast<uint32_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(ns).count()));
+        }
 
         // Publish the selected track for the fast MIDI thread (1ms)
         if (g_cmdHandler) g_cmdHandler->TickMidiRouting();

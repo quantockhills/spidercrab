@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
+#include <cmath>
 #include <cstring>
 #include <cmath>
 
@@ -416,13 +418,25 @@ void CommandHandler::HandleMatrixRecordSlot(
         return;
     }
 
+    // An immediate record request supersedes any pending count-in
+    CancelRecordCountIn();
+
+    DoRecordSlot(col, row);
+
+    SlotState updated = m_playtimeState.getSlot(col, row);
+    SendResponse(clientId, id, true, updated.toJson());
+}
+
+// Shared record-toggle work: stop↔record the slot, send the MIDI note and
+// OSC, broadcast the state change. Used by both the immediate command and
+// the count-in fire.
+void CommandHandler::DoRecordSlot(int col, int row)
+{
     SlotState current = m_playtimeState.getSlot(col, row);
     std::string newState;
 
     if (current.state == "playing") {
-        // Can't record on a playing slot
-        SendResponse(clientId, id, false,
-            "{\"error\":\"Cannot record on a playing clip. Stop the clip first.\"}");
+        // Can't record on a playing slot — nothing to do
         return;
     } else if (current.state == "recording") {
         // Stop recording → stopped (clip saved)
@@ -451,8 +465,148 @@ void CommandHandler::HandleMatrixRecordSlot(
     // Broadcast event to all clients
     SlotState updated = m_playtimeState.getSlot(col, row);
     BroadcastMatrixEvent("matrix/slotStateChanged", updated.toJson());
+}
 
-    SendResponse(clientId, id, true, updated.toJson());
+// Record with a musical count-in. Playtime's own count-in is not exposed
+// to ReaLearn, so the record trigger (DoRecordSlot) is fired here after
+// N bars, starting at the next bar boundary. The frontend shows the
+// remaining bars from matrix/countdown broadcasts.
+void CommandHandler::HandleMatrixRecordSlotCountdown(
+    int clientId, const std::string& id, const std::string& params)
+{
+    std::string payloadStr = extractPayload(params);
+    JsonParser  parser(payloadStr);
+    std::string colStr = parser.getString("column");
+    std::string rowStr = parser.getString("row");
+    int bars = atoi(parser.getString("bars").c_str());
+
+    if (colStr.empty() || rowStr.empty() || bars < 0 || bars > 8) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Expected 'column', 'row' and 'bars' (0-8)\"}");
+        return;
+    }
+
+    int col = atoi(colStr.c_str());
+    int row = atoi(rowStr.c_str());
+
+    if (col < 0 || col >= m_playtimeState.columns() ||
+        row < 0 || row >= m_playtimeState.rows()) {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Column or row out of range\"}");
+        return;
+    }
+
+    CancelRecordCountIn();
+
+    const SlotState current = m_playtimeState.getSlot(col, row);
+    if (current.state == "playing") {
+        SendResponse(clientId, id, false,
+            "{\"error\":\"Cannot record on a playing clip. Stop the clip first.\"}");
+        return;
+    }
+
+    if (bars == 0 || current.state == "recording") {
+        // Immediate count-in, or a count-in requested on a slot already
+        // recording (toggle stop) — both behave like a plain recordSlot.
+        DoRecordSlot(col, row);
+        SlotState updated = m_playtimeState.getSlot(col, row);
+        SendResponse(clientId, id, true, updated.toJson());
+        return;
+    }
+
+    // Arm: fire at the next bar boundary + N bars. Playtime follows the
+    // project, so bar alignment comes from REAPER's tempo and position.
+    const double pos = m_api.GetPlayPosition ? m_api.GetPlayPosition() : 0.0;
+    const double barLen = CurrentBarLen();
+    const double intoBar = fmod(pos, barLen);
+    const double nextBarDelay = barLen - intoBar; // (0, barLen]
+
+    RecordCountIn& rc = m_recordCountIn;
+    rc.active       = true;
+    rc.col          = col;
+    rc.row          = row;
+    rc.targetBars   = bars;
+    rc.barLen       = barLen;
+    rc.lastShownBars = -1;
+    rc.targetWallMs = nowWallMs() + static_cast<uint64_t>(
+        (nextBarDelay + bars * barLen) * 1000.0);
+
+    // Show the full count immediately: aligned bars + the partial bar we
+    // are waiting out to land on the boundary.
+    BroadcastCountdown(col, row, bars + (intoBar > 0.001 ? 1 : 0), bars, true);
+
+    SendResponse(clientId, id, true,
+        "{\"column\":" + std::to_string(col) + ",\"row\":" + std::to_string(row)
+        + ",\"bars\":" + std::to_string(bars) + ",\"armed\":true}");
+}
+
+void CommandHandler::TickRecordCountIn(uint32_t nowMs)
+{
+    if (!m_recordCountIn.active) return;
+
+    m_recordCountIn.barLen = CurrentBarLen();
+
+    if (nowMs < m_recordCountIn.targetWallMs) {
+        // Broadcast when the displayed remaining bars change
+        const double remainSec = static_cast<double>(m_recordCountIn.targetWallMs - nowMs) / 1000.0;
+        int remaining = static_cast<int>(std::ceil(remainSec / m_recordCountIn.barLen));
+        if (remaining != m_recordCountIn.lastShownBars) {
+            m_recordCountIn.lastShownBars = remaining;
+            BroadcastCountdown(m_recordCountIn.col, m_recordCountIn.row,
+                remaining, m_recordCountIn.targetBars, true);
+        }
+        return;
+    }
+
+    // Time's up — fire the record trigger
+    const int col = m_recordCountIn.col;
+    const int row = m_recordCountIn.row;
+    CancelRecordCountIn();
+    DoRecordSlot(col, row);
+}
+
+void CommandHandler::CancelRecordCountIn()
+{
+    if (!m_recordCountIn.active) return;
+    const int col = m_recordCountIn.col;
+    const int row = m_recordCountIn.row;
+    const int targetBars = m_recordCountIn.targetBars;
+    m_recordCountIn = RecordCountIn();
+    BroadcastCountdown(col, row, 0, targetBars, false);
+}
+
+void CommandHandler::BroadcastCountdown(
+    int col, int row, int bars, int targetBars, bool active)
+{
+    std::string event = "{\"type\":\"event\",\"event\":\"matrix/countdown\",\"payload\":{";
+    event += "\"column\":" + std::to_string(col) + ",";
+    event += "\"row\":" + std::to_string(row) + ",";
+    event += "\"active\":" + std::string(active ? "true" : "false") + ",";
+    event += "\"bars\":" + std::to_string(bars) + ",";
+    event += "\"targetBars\":" + std::to_string(targetBars);
+    event += "}}";
+
+    if (m_broadcastCb) {
+        m_broadcastCb(event);
+    } else if (m_ws) {
+        m_ws->Broadcast(event);
+    }
+}
+
+// 4/4 bar length in seconds at the project tempo. Playtime follows the
+// project tempo; if the tempo read fails, 120 BPM keeps the count running.
+double CommandHandler::CurrentBarLen() const
+{
+    double bpm = m_api.Master_GetTempo ? m_api.Master_GetTempo() : 120.0;
+    if (bpm < 20.0 || bpm > 400.0) bpm = 120.0;
+    return 4.0 * 60.0 / bpm;
+}
+
+uint32_t CommandHandler::nowWallMs() const
+{
+    const auto ns = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<uint32_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(ns).count());
 }
 
 void CommandHandler::HandleMatrixClearSlot(
