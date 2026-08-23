@@ -138,9 +138,10 @@ export function SampleBrowser({
 
   // "Megafolder" — every file across every REAPER media database, in one list.
   // Databases are many-to-many, exactly like our tags, so they live in the
-  // tags section; this is the union view.
+  // tags section; this is the union view. Each entry remembers which
+  // databases it belongs to, shown as badges on the file row.
   const [showAllDatabases, setShowAllDatabases] = useState(false);
-  const [allDatabaseFiles, setAllDatabaseFiles] = useState<string[] | null>(null);
+  const [allDatabaseFiles, setAllDatabaseFiles] = useState<{ path: string; dbs: string[] }[] | null>(null);
   const [allDatabasesLoading, setAllDatabasesLoading] = useState(false);
 
   // Open one media database (a "database tag")
@@ -173,7 +174,18 @@ export function SampleBrowser({
       const lists = await Promise.all(
         libs.map((l) => getReaperLibraryFiles(l.file).catch(() => [] as string[])),
       );
-      setAllDatabaseFiles(Array.from(new Set(lists.flat())).sort());
+      // Merge by path, accumulating the databases each file belongs to
+      const merged = new Map<string, string[]>();
+      lists.forEach((files, libIdx) => {
+        const libName = libs[libIdx].name;
+        for (const file of files) {
+          const dbs = merged.get(file) ?? [];
+          if (!dbs.includes(libName)) dbs.push(libName);
+          merged.set(file, dbs);
+        }
+      });
+      const sorted = Array.from(merged.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+      setAllDatabaseFiles(sorted.map(([path, dbs]) => ({ path, dbs: dbs.sort() })));
     } catch {
       setAllDatabaseFiles([]);
     }
@@ -1001,12 +1013,16 @@ export function SampleBrowser({
               </div>
             ) : (
               <div className="px-3 py-2 grid grid-cols-2 gap-1">
-                {(allDatabaseFiles ?? []).map((filePath) => {
+                {(allDatabaseFiles ?? []).map((item) => {
+                  const filePath = item.path;
                   const lastSep = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'));
                   const name = filePath.substring(lastSep + 1);
                   const basePath = filePath.substring(0, lastSep);
                   const entry: DirEntry = { name, type: 'file' };
-                  const tags = tagData?.sampleTags[filePath] ?? tagData?.sampleTags[filePath.replace(/\\/g, '/')] ?? [];
+                  const userTags = tagData?.sampleTags[filePath] ?? tagData?.sampleTags[filePath.replace(/\\/g, '/')] ?? [];
+                  // Database memberships ride along as badges — the point of
+                  // the megafolder is seeing where every file lives.
+                  const tags = Array.from(new Set([...userTags, ...item.dbs]));
                   return (
                     <FileRow
                       key={filePath}
@@ -1101,15 +1117,18 @@ export function SampleBrowser({
                     )}
                     {/* REAPER media databases as tags — a file can live in
                         several, just like our tags */}
-                    {reaperLibraries.map((lib) => (
-                      <button
-                        key={lib.file}
-                        onClick={() => void openLibrary(lib)}
-                        className="px-2.5 py-1.5 text-[11px] font-medium bg-[var(--bg-tertiary)] text-[var(--text-primary)] border border-[var(--border)] active:brightness-95 transition-colors"
-                      >
-                        🎵 {lib.name}
-                      </button>
-                    ))}
+                    {reaperLibraries.map((lib) => {
+                      const color = getTagColor(lib.name);
+                      return (
+                        <button
+                          key={lib.file}
+                          onClick={() => void openLibrary(lib)}
+                          className={`px-2.5 py-1.5 text-[11px] font-medium ${color.bg} ${color.text} active:brightness-95 transition-colors`}
+                        >
+                          🎵 {lib.name}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}

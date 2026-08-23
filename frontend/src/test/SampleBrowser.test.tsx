@@ -1623,7 +1623,7 @@ describe('SampleBrowser', () => {
       expect(screen.queryByText('Libraries')).toBeNull();
     });
 
-    it('megafolder lists every file across every database, deduped', async () => {
+    it('megafolder lists every file across every database, deduped, with database badges', async () => {
       renderBrowser();
       await waitFor(() => expect(screen.getByText('📚 All databases')).toBeDefined());
       fireEvent.click(screen.getByText('📚 All databases'));
@@ -1633,6 +1633,9 @@ describe('SampleBrowser', () => {
       expect(screen.getByText('rain.wav')).toBeDefined();
       // kick.wav lives in both databases — must appear once
       expect(screen.getAllByText('kick.wav')).toHaveLength(1);
+      // ...but carries both database badges
+      expect(screen.getAllByText('Drums DB')).toHaveLength(2); // kick + snare
+      expect(screen.getAllByText('Foley DB')).toHaveLength(2); // kick + rain
     });
 
     it('clicking a database tag opens that database', async () => {
