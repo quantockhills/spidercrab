@@ -28,6 +28,21 @@ export interface SampleTagData {
   sampleTags: Record<string, string[]>;
 }
 
+/** One hit from searching every media database at once. */
+export interface DatabaseHit {
+  path: string;
+  /** Which database it came from — the answer carries its own context. */
+  library: string;
+}
+
+export interface DatabaseSearchResult {
+  results: DatabaseHit[];
+  count: number;
+  libraries: number;
+  /** True when the cap was reached, so the list is a sample not the whole answer. */
+  truncated: boolean;
+}
+
 export interface ReaperLibrary {
   name: string;
   file: string;
@@ -118,5 +133,20 @@ export function useSampleBrowser() {
     } catch { return []; }
   }, [send]);
 
-  return { getDirectory, sendSampleToTrack, refreshSampleCache, sendSampleToSlot, getSampleTags, setSampleTags, getReaperLibraries, getReaperLibraryFiles };
+  /**
+   * Search every media database at once.
+   *
+   * The media explorer makes you pick a database first, which is backwards
+   * when what you remember is the sound rather than where you filed it.
+   */
+  const searchDatabases = useCallback(
+    async (query: string, limit = 300): Promise<DatabaseSearchResult> => {
+      const empty = { results: [], count: 0, libraries: 0, truncated: false };
+      if (query.trim().length < 2) return empty;
+      const resp = await send('sample/reaper/searchAll', { query: query.trim(), limit: String(limit) });
+      if (!resp.success) return empty;
+      return resp.payload as unknown as DatabaseSearchResult;
+    }, [send]);
+
+  return { getDirectory, sendSampleToTrack, refreshSampleCache, sendSampleToSlot, getSampleTags, setSampleTags, getReaperLibraries, getReaperLibraryFiles, searchDatabases };
 }

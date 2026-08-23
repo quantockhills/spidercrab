@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { dirCacheStore, persistDirCache } from '../utils/dirCacheStore';
 import type { Track, DirEntry, MatrixData, ClipSlot, SampleTagData } from '../hooks/useReaper';
-import type { DirResult, ReaperLibrary, SampleRegion } from '../hooks/useSampleBrowser';
+import type { DirResult, ReaperLibrary, SampleRegion, DatabaseSearchResult } from '../hooks/useSampleBrowser';
 import { useAudioPreview } from '../hooks/useAudioPreview';
 import { WaveformDisplay } from './WaveformDisplay';
 import { ContextMenu, type ContextMenuItem } from './ContextMenu';
@@ -52,6 +52,8 @@ interface SampleBrowserProps {
   setSampleTags?: (filePath: string, tags: string[]) => Promise<boolean>;
   getReaperLibraries?: () => Promise<ReaperLibrary[]>;
   getReaperLibraryFiles?: (file: string) => Promise<string[]>;
+  /** Search across every media database rather than one at a time. */
+  searchDatabases?: (query: string, limit?: number) => Promise<DatabaseSearchResult>;
 }
 
 // ── Component ─────────────────────────────────────────────────
@@ -71,6 +73,7 @@ export function SampleBrowser({
   setSampleTags,
   getReaperLibraries,
   getReaperLibraryFiles,
+  searchDatabases,
 }: SampleBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string>(
     () => {
@@ -137,6 +140,11 @@ export function SampleBrowser({
   const dirCache = useRef(dirCacheStore);
 
   // Cross-root search state (Issue #101, Acceptance Criterion #4)
+  // Database search runs alongside the cross-root one: the same query, asked
+  // of REAPER's own libraries as well as the configured folders.
+  const dbSearchVersion = useRef(0);
+  const [dbResults, setDbResults] = useState<DatabaseSearchResult | null>(null);
+
   const crossRootSearchVersion = useRef(0);
   const [crossRootResults, setCrossRootResults] = useState<{
     root: string;
@@ -285,6 +293,16 @@ export function SampleBrowser({
       });
     }
   }, [currentPath, search, samplePaths, getDirectory]);
+
+  // Search the media databases whenever there is a query on the home screen.
+  useEffect(() => {
+    if (!searchDatabases || currentPath || !search.trim()) { setDbResults(null); return; }
+    const version = ++dbSearchVersion.current;
+    void searchDatabases(search.trim()).then((r) => {
+      // Only the newest query may write, or a slow earlier one overwrites it.
+      if (version === dbSearchVersion.current) setDbResults(r);
+    });
+  }, [search, currentPath, searchDatabases]);
 
   // Load directory on mount / path change (always start at offset 0)
   useEffect(() => {
@@ -819,7 +837,40 @@ export function SampleBrowser({
       <div className="flex-1 overflow-y-auto">
         {/* Cross-root search mode (Issue #101, Acceptance Criterion #4) */}
         {isCrossRootSearchActive ? (
-          crossRootLoading ? (
+          <>
+          {dbResults && dbResults.results.length > 0 && (
+            <div className="px-3 pt-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider
+                             text-[var(--text-secondary)] mb-2">
+                In your libraries — {dbResults.count}
+                {dbResults.truncated ? '+' : ''} across {dbResults.libraries}
+              </h3>
+              <div className="space-y-1">
+                {dbResults.results.map((hit) => (
+                  <button
+                    key={hit.path}
+                    onClick={() => setSelectedFile(hit.path)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left
+                      bg-[var(--bg-secondary)] active:brightness-95 transition-colors ${
+                      selectedFile === hit.path ? 'ring-1 ring-[var(--accent-orange)]' : ''}`}
+                  >
+                    <span className="text-sm truncate flex-1">
+                      {hit.path.split(/[\\/]/).pop()}
+                    </span>
+                    <span className="text-[10px] text-[var(--text-secondary)] flex-shrink-0">
+                      {hit.library}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {dbResults.truncated && (
+                <p className="mt-2 text-[10px] text-[var(--text-secondary)]/60">
+                  Showing the first {dbResults.count}. Narrow the search to see the rest.
+                </p>
+              )}
+            </div>
+          )}
+          {crossRootLoading ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3">
               <div className="text-4xl animate-pulse">🔍</div>
               <p className="text-sm">Searching all directories...</p>
@@ -839,7 +890,8 @@ export function SampleBrowser({
               onPlayButtonClick={(entry, basePath) => handlePlayButtonClick(entry, basePath)}
               onLongPress={(entry, basePath, x, y) => handleLongPress(entry, basePath, x, y)}
             />
-          ) : null
+          ) : null}
+          </>
         ) : !currentPath && samplePaths !== undefined ? (
           samplePaths.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-[var(--text-secondary)] space-y-3 p-8 text-center">

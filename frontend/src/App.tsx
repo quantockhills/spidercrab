@@ -96,6 +96,7 @@ function AppInner() {
     setSampleTags,
     getReaperLibraries,
     getReaperLibraryFiles,
+    searchDatabases,
     sendCommand,
     isRefreshingFx,
     refreshFxCache,
@@ -514,6 +515,7 @@ function AppInner() {
               setSampleTags={setSampleTags}
               getReaperLibraries={getReaperLibraries}
               getReaperLibraryFiles={getReaperLibraryFiles}
+              searchDatabases={searchDatabases}
             />
           </div>
         )}
